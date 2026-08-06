@@ -33,6 +33,7 @@ MonoBehaviour:
   - Text/LocalizationTextTable_InteractionOption
   - Text/LocalizationTextTable_Misc
   - Text/LocalizationTextTable_Old
+  - Text/ObjectiveTable
   - Text/TipsTable
   - Story/StoryScriptTable
   - Story/StoryTriggerTable

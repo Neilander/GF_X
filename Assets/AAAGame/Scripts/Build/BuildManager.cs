@@ -579,7 +579,7 @@ public class BuildManager : GameFrameworkComponent
         if (buildingData == null || buildingData.Type == BuilType.Base)
             return 0;
 
-        if (buildingData.Arche == Archetype.None)
+        if (buildingData.Arche == Archetype.None || buildingData.Arche == Archetype.Common)
             return 0;
 
         return LevelTagRuntime.ModifyRequiredBaseLevel(Mathf.Clamp(buildingData.Lv, 1, 3));
@@ -596,7 +596,8 @@ public class BuildManager : GameFrameworkComponent
             if (arche == Archetype.None)
                 continue;
 
-            if (m_BaseMilestoneTechService.HasArchetypeBaseLevelTech(arche, 1, EntitySideHelper.PlayerFactionId))
+            if (arche == Archetype.Common
+                || m_BaseMilestoneTechService.HasArchetypeBaseLevelTech(arche, 1, EntitySideHelper.PlayerFactionId))
                 arches.Add(arche);
         }
 

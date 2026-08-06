@@ -18,6 +18,10 @@ public class EntityPresetPoint : MonoBehaviour
     public bool IsGameEndConditionBuilding;
     public int UnitSpawnCount; // 仅对 Unit 类型有效，表示在战斗阶段开始时以此预设点为中心生成多少个单位
     public int DefendSpawnWeight = 1; // 仅对 DefendSpawn 类型有效，表示该点在防御阶段的出怪权重
+    [Tooltip("仅对 Destination 类型有效：关卡内唯一目标点 ID")]
+    public int DestinationId;
+    [Tooltip("仅对 Destination 类型有效：以游戏距离为单位的目标范围半径")]
+    public float DestinationRadius;
     [Tooltip("仅对 Building 类型有效：勾选后使用该点位配置的橙髓初始存量；不勾选则使用 GameConfig.ResourcePointInitialAmount")]
     public bool UseCustomCoinReserves;
     [Tooltip("仅对 Building 类型有效：橙髓初始存量（需勾选 UseCustomCoinReserves）")]
@@ -41,7 +45,7 @@ public class EntityPresetPoint : MonoBehaviour
     }
 }
 
-public enum EntityPresetPointType { Unit, Hero, Building, DefendSpawn } //Spawn, Respawn, Patrol, Device
+public enum EntityPresetPointType { Unit, Hero, Building, DefendSpawn, Destination } //Spawn, Respawn, Patrol, Device
 
 #if UNITY_EDITOR
 static class EntityPresetPointEditorPreview
@@ -527,6 +531,9 @@ static class EntityPresetPointEditorPreview
             case EntityPresetPointType.Hero:
             case EntityPresetPointType.DefendSpawn:
                 return TryGetUnitPrefabAssetPath(point.Identifier, out prefabAssetPath);
+
+            case EntityPresetPointType.Destination:
+                return false;
 
             default:
                 return false;

@@ -9,7 +9,8 @@ namespace AAAGame.MiniMap
     public enum MinimapUnitType
     {
         Soldier,    // 士兵 - 显示为正方形小点
-        Building    // 建筑 - 显示为自定义图标
+        Building,   // 建筑 - 显示为自定义图标
+        Objective   // 行动目标 - 始终显示为绿色标志
     }
 
     /// <summary>

@@ -10,16 +10,24 @@ public enum TutorialObjectiveStatus
 
 public readonly struct TutorialObjective
 {
-    public TutorialObjective(string id, string textKey, TutorialObjectiveStatus status)
+    public TutorialObjective(
+        string id,
+        string definitionIdentifier,
+        TutorialObjectiveStatus status,
+        params object[] formatArgs)
     {
         Id = id;
-        TextKey = textKey;
+        DefinitionIdentifier = definitionIdentifier;
         Status = status;
+        FormatArgs = formatArgs == null || formatArgs.Length == 0
+            ? Array.Empty<object>()
+            : (object[])formatArgs.Clone();
     }
 
     public string Id { get; }
-    public string TextKey { get; }
+    public string DefinitionIdentifier { get; }
     public TutorialObjectiveStatus Status { get; }
+    public object[] FormatArgs { get; }
 }
 
 public static class TutorialObjectiveService
@@ -39,8 +47,8 @@ public static class TutorialObjectiveService
         for (int i = 0; i < objectives.Length; i++)
         {
             TutorialObjective objective = objectives[i];
-            if (string.IsNullOrWhiteSpace(objective.Id) || string.IsNullOrWhiteSpace(objective.TextKey))
-                throw new InvalidOperationException($"Tutorial objective {i} has an empty id or text key.");
+            if (string.IsNullOrWhiteSpace(objective.Id) || string.IsNullOrWhiteSpace(objective.DefinitionIdentifier))
+                throw new InvalidOperationException($"Tutorial objective {i} has an empty id or definition identifier.");
             if (FindIndex(objective.Id) >= 0)
                 throw new InvalidOperationException($"Tutorial objective id '{objective.Id}' is duplicated.");
             s_Objectives.Add(objective);
@@ -57,7 +65,11 @@ public static class TutorialObjectiveService
         TutorialObjective current = s_Objectives[index];
         if (current.Status == status)
             return;
-        s_Objectives[index] = new TutorialObjective(current.Id, current.TextKey, status);
+        s_Objectives[index] = new TutorialObjective(
+            current.Id,
+            current.DefinitionIdentifier,
+            status,
+            current.FormatArgs);
         s_PresentationDirty = true;
     }
 
@@ -84,7 +96,11 @@ public static class TutorialObjectiveService
             TutorialObjective objective = s_Objectives[i];
             if (objective.Status != TutorialObjectiveStatus.Active)
                 continue;
-            s_Objectives[i] = new TutorialObjective(objective.Id, objective.TextKey, TutorialObjectiveStatus.Failed);
+            s_Objectives[i] = new TutorialObjective(
+                objective.Id,
+                objective.DefinitionIdentifier,
+                TutorialObjectiveStatus.Failed,
+                objective.FormatArgs);
             changed = true;
         }
         s_PresentationDirty |= changed;

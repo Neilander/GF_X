@@ -33,6 +33,8 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
     public static event Action PhaseSwitchButtonGuideChanged;
 
     private const string LevelIdentifier = "Lv_1";
+    private const int DevelopmentCoinGrant = 8;
+    private const int CoreUpgradeCoinGrant = 40;
     private const string GoalReach = "reach-friendly";
     private const string GoalProtect = "protect-stronghold";
     private const string GoalArmy = "build-army";
@@ -134,7 +136,7 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
             switch (request.Kind)
             {
                 case PresentationKind.ShowTip:
-                    RequireSideTipsManager().ShowTip(request.Identifier, conditionTipId: request.Identifier);
+                    RequireSideTipsManager().ShowTip(request.Identifier);
                     break;
                 case PresentationKind.CloseTip:
                     RequireSideTipsManager().CloseTip(request.Identifier);
@@ -292,6 +294,7 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
     {
         CloseAllTips();
         TutorialObjectiveService.Reset();
+        ObjectiveDestinationService.Clear();
         Stage = TutorialStage.Inactive;
         m_InputModel = null;
         m_EnemyStrongholdIntroShown = false;
@@ -329,8 +332,9 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
             throw new InvalidOperationException("Level_1 tutorial requires a live player before its first logic frame.");
 
         Stage = TutorialStage.ReachFriendlyStronghold;
+        ObjectiveDestinationService.Activate(0);
         TutorialObjectiveService.Replace(
-            Objective(GoalReach, "Tutorial.Goal.ReachFriendlyStronghold"));
+            Objective(GoalReach, "ReachDestination"));
         ShowTip("TutorialGoFriendlyStronghold");
         ShowTip("TutorialMovement");
         QueuePhaseGuideChanged();
@@ -340,10 +344,11 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
     private void StartFirstDefense(Component triggerSource)
     {
         TutorialObjectiveService.SetStatus(GoalReach, TutorialObjectiveStatus.Completed);
+        ObjectiveDestinationService.Clear();
         CloseAllTips();
         Stage = TutorialStage.FirstDefense;
         TutorialObjectiveService.Replace(
-            Objective(GoalProtect, "Tutorial.Goal.ProtectStronghold"));
+            Objective(GoalProtect, "ProtectStronghold"));
         ShowTip("TutorialEnemyAttack");
         DefendPhaseRuntime.StartTutorialTriggeredFirstDefense();
         QueuePhaseGuideChanged();
@@ -359,9 +364,7 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
             return;
         if (!player.Alive || player.Side != SideType.PlayerSide)
             throw new InvalidOperationException("Tutorial friendly-stronghold detection requires a live player-side entity.");
-        if (!LogicStrongholdMap.TryResolveStrongholdId(player.PositionFixed, out string strongholdId))
-            return;
-        if (LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId) != EntitySideHelper.PlayerFactionId)
+        if (!ObjectiveDestinationService.IsReached(player.PositionFixed))
             return;
 
         StartFirstDefense(null);
@@ -399,8 +402,8 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         m_ArmyBaseline = CountPlayerBuildings(BuilType.Army);
         m_DefenseBaseline = CountPlayerBuildings(BuilType.Def);
         TutorialObjectiveService.Replace(
-            Objective(GoalArmy, "Tutorial.Goal.BuildArmy"),
-            Objective(GoalDefense, "Tutorial.Goal.BuildDefense"));
+            Objective(GoalArmy, "BuildMilitaryBuilding", 1),
+            Objective(GoalDefense, "BuildDefenseBuilding", 1));
         ShowTip("TutorialFirstDefenseComplete");
         ShowTip("TutorialSwitchToBuild");
         QueuePhaseGuideChanged();
@@ -418,7 +421,7 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         CloseAllTips();
         Stage = TutorialStage.AwaitInvadePhase;
         TutorialObjectiveService.Replace(
-            Objective(GoalCapture, "Tutorial.Goal.OccupyStronghold"));
+            Objective(GoalCapture, "CaptureStrongholdCount", 1));
         ShowTip("TutorialGoInvade");
         ShowTip("TutorialSwitchToInvade");
         QueuePhaseGuideChanged();
@@ -438,7 +441,7 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         CloseAllTips();
         Stage = TutorialStage.AwaitDefensePhase;
         TutorialObjectiveService.Replace(
-            Objective(GoalDefendBase, "Tutorial.Goal.DefendBase"));
+            Objective(GoalDefendBase, "DefendBase"));
         ShowTip("TutorialEnemyWarning");
         ShowTip("TutorialSwitchToDefend");
         QueuePhaseGuideChanged();
@@ -458,6 +461,7 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
             if (distanceSquared <= tipDistance * tipDistance)
             {
                 m_UpgradeControlsShown = true;
+                CloseAllTips();
                 ShowTip("TutorialUpgradeControls");
             }
         }
@@ -503,6 +507,7 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
             case TutorialStage.AwaitCapturedBuildPhase when InGameDataModel.IsBuildPhase(newPhase):
                 CloseAllTips();
                 Stage = TutorialStage.BuildProductionAndResearch;
+                GrantTutorialCoins(DevelopmentCoinGrant, "development");
                 m_ProductionBaseline = CountPlayerBuildings(BuilType.Prod);
                 m_ResearchBuildingBaseline = CountPlayerBuildings(BuilType.Tech);
                 m_ResearchCommandBaseline = CountAppliedResearchCommands();
@@ -526,11 +531,12 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
     {
         CloseAllTips();
         Stage = TutorialStage.UpgradeCore;
+        GrantTutorialCoins(CoreUpgradeCoinGrant, "core-upgrade");
         IBuildingLogicContext core = FindCapturedCoreRequired();
         m_CoreStartLevel = core.BuildingData?.Lv
             ?? throw new InvalidOperationException("Captured tutorial core has no BuildingData.");
         TutorialObjectiveService.Replace(
-            Objective(GoalUpgradeCore, "Tutorial.Goal.UpgradeCore"));
+            Objective(GoalUpgradeCore, "UpgradeCodingCoreLevel3"));
         ShowTip("TutorialUpgradeMission");
         ShowTip("TutorialWorldMap");
         QueuePhaseGuideChanged();
@@ -579,9 +585,9 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         CloseAllTips();
         Stage = TutorialStage.AwaitCapturedBuildPhase;
         TutorialObjectiveService.Replace(
-            Objective(GoalProduction, "Tutorial.Goal.BuildProduction"),
-            Objective(GoalResearchBuilding, "Tutorial.Goal.BuildResearch"),
-            Objective(GoalResearchTech, "Tutorial.Goal.ResearchTech"));
+            Objective(GoalProduction, "BuildProductionBuilding", 1),
+            Objective(GoalResearchBuilding, "BuildResearchBuilding", 1),
+            Objective(GoalResearchTech, "ResearchTechnologyCount", 1));
         ShowTip("TutorialOccupied");
         ShowTip("TutorialSwitchToDevelopment");
         QueuePhaseGuideChanged();
@@ -648,9 +654,16 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         m_PresentationRequests.Enqueue(new PresentationRequest(PresentationKind.PhaseGuideChanged, null));
     }
 
-    private static TutorialObjective Objective(string id, string textKey)
+    private static TutorialObjective Objective(
+        string id,
+        string definitionIdentifier,
+        params object[] formatArgs)
     {
-        return new TutorialObjective(id, textKey, TutorialObjectiveStatus.Active);
+        return new TutorialObjective(
+            id,
+            definitionIdentifier,
+            TutorialObjectiveStatus.Active,
+            formatArgs);
     }
 
     private static void SetObjectiveCompletion(string id, bool completed)
@@ -660,6 +673,23 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
             : TutorialObjectiveStatus.Active;
         if (TutorialObjectiveService.GetStatus(id) != desired)
             TutorialObjectiveService.SetStatus(id, desired);
+    }
+
+    private static void GrantTutorialCoins(int amount, string reason)
+    {
+        if (amount <= 0)
+            throw new ArgumentOutOfRangeException(nameof(amount), amount, "Tutorial coin grant must be positive.");
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new ArgumentException("Tutorial coin grant reason is empty.", nameof(reason));
+
+        LogicInGameValueCommand command = LogicInGameValueCommandService.ScheduleDeltaForNextFrame(
+            IngameValueType.Coin,
+            amount);
+        Log.Info(
+            "[Tutorial] Scheduled coin grant. reason={0}, amount={1}, frame={2}.",
+            reason,
+            amount,
+            command.EffectiveFrame);
     }
 
     private static int CountPlayerBuildings(BuilType type)

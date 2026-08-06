@@ -12,3 +12,4 @@
 	8	园艺	Archetype_Gardening	Archetype.Gardening
 	9	医疗	Archetype_Medical	Archetype.Medical
 	10	体育	Archetype_Sports	Archetype.Sports
+	11	通用	Archetype_Common	Archetype.Common

@@ -2936,6 +2936,9 @@ public static partial class FlowFieldCrowdMovementSystem
         AddIntArray(hasher, handle.PortalIds);
         hasher.Add(handle.CurrentSectorIndex);
         hasher.Add(handle.BuildSource);
+        hasher.Add(handle.HasCommittedCurrentTileKey);
+        if (handle.HasCommittedCurrentTileKey)
+            AddFlowTileCacheKey(hasher, handle.CommittedCurrentTileKey);
     }
 
     private static void AddFlowTileBuildKey(LogicStateHasher hasher, FlowTileBuildKey key)

@@ -3918,7 +3918,7 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void 跨Sector待建PortalTile时不会用软视线直冲最终目标()
+    public void 跨Sector首次权威移动直接使用正式PortalTile而不直冲最终目标()
     {
         const int width = 8;
         const int height = 8;
@@ -3939,54 +3939,17 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out Vector3 firstVelocity));
 
-        Assert.Less(firstVelocity.z, -0.8f, $"portal tile 尚未可用时也应先朝 portal access 前进，velocity={firstVelocity}");
-        Assert.AreEqual(0f, firstVelocity.x, 0.35f, $"portal tile 尚未可用时不应软视线斜切最终目标，velocity={firstVelocity}");
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCurrentPathSegment(
-            ctx.LogicEntityId.Value,
-            out _,
-            out int portalId,
-            out _));
-        Assert.GreaterOrEqual(portalId, 0);
-        int nextX = 1 + Math.Sign(firstVelocity.x);
-        int nextY = 6 + Math.Sign(firstVelocity.z);
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPortalSummary(
-            portalId,
-            out int sectorAId,
-            out int sectorBId,
-            out _,
-            out _,
-            out _));
-        bool currentInSectorA = FlowFieldCrowdMovementSystem.TryGetEditorTestSectorPortalAccessCostRaw(
-            sectorAId,
-            portalId,
-            1,
-            6,
-            out long currentCostA);
-        bool currentInSectorB = FlowFieldCrowdMovementSystem.TryGetEditorTestSectorPortalAccessCostRaw(
-            sectorBId,
-            portalId,
-            1,
-            6,
-            out long currentCostB);
-        Assert.AreNotEqual(currentInSectorA, currentInSectorB, "当前格必须只属于 Portal 的一个侧边 Sector。");
-        int currentSectorId = currentInSectorA ? sectorAId : sectorBId;
-        long currentCost = currentInSectorA ? currentCostA : currentCostB;
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestSectorPortalAccessCostRaw(
-            currentSectorId,
-            portalId,
-            nextX,
-            nextY,
-            out long nextCost));
-        Assert.Less(nextCost, currentCost,
-            $"PendingPortal 必须沿预构建 portal access 积分场严格降值。current={currentCost}, next={nextCost}, velocity={firstVelocity}");
+        Assert.Less(firstVelocity.z, -0.8f, $"正式 portal tile 应先沿竖向走廊朝 portal 前进，velocity={firstVelocity}");
+        Assert.AreEqual(0f, firstVelocity.x, 0.35f, $"正式 portal tile 不应软视线斜切最终目标，velocity={firstVelocity}");
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
             ctx.LogicEntityId.Value,
             out string diagnostic));
-        StringAssert.Contains("tile-pending-portal-access", diagnostic);
+        StringAssert.Contains("/cached=True/", diagnostic);
+        StringAssert.Contains("/lastResult=direction=", diagnostic);
     }
 
     [Test]
-    public void 待建PortalTile也按积分势负梯度输出浅斜向()
+    public void 首次提交的正式PortalTile按积分势负梯度输出浅斜向()
     {
         FlowFieldNavigationConfig config = CreateConfig();
         config.SectorSizeInCells = 30;
@@ -4014,11 +3977,125 @@ public class FlowFieldCrowdMovementSystemTests
             ctx.LogicEntityId.Value,
             out string diagnostic));
 
-        StringAssert.Contains("tile-pending-portal-access", diagnostic);
-        StringAssert.Contains("accessGradient=", diagnostic);
-        Assert.Greater(velocity.x, 1.7f, $"pending access 势的主下降轴应保持向右，velocity={velocity}, diagnostic={diagnostic}");
-        Assert.Less(velocity.z, -0.6f, $"pending access 势应包含向下的次下降分量，velocity={velocity}, diagnostic={diagnostic}");
-        Assert.Greater(velocity.z, -0.95f, $"pending access 势不能量化为 45 度，velocity={velocity}, diagnostic={diagnostic}");
+        StringAssert.Contains("/cached=True/", diagnostic);
+        StringAssert.Contains("/lastResult=direction=", diagnostic);
+        Assert.Greater(velocity.x, 1.5f, $"正式积分势的主下降轴应保持向右，velocity={velocity}, diagnostic={diagnostic}");
+        Assert.Less(velocity.z, -0.5f, $"正式积分势应包含向下的次下降分量，velocity={velocity}, diagnostic={diagnostic}");
+        Assert.Greater(velocity.x, Mathf.Abs(velocity.z) + 0.25f,
+            $"正式 Eikonal 势应输出主轴占优的浅斜向，不能量化成 45 度，velocity={velocity}, diagnostic={diagnostic}");
+    }
+
+    [Test]
+    public void 首次权威移动前会精确提交CurrentTile及其必要依赖()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 30;
+        config.DeterministicFlowTileCommitQuota = 1;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 60;
+        const int height = 30;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        for (int y = 0; y < height; y++)
+        {
+            if (y != 7)
+                walkable[29 + y * width] = false;
+        }
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        SimEntityContext ctx = CreateEntity(new Vector3(4.5f, 0f, 15.5f), false, 0, 0.18f);
+        Vector3 goal = new Vector3(55.5f, 0f, 7.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out Vector3 velocity));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+            ctx.LogicEntityId.Value,
+            out string diagnostic));
+
+        StringAssert.Contains("/cached=True/", diagnostic,
+            $"首次权威移动不能消费 generic pending access 场，diagnostic={diagnostic}");
+        StringAssert.Contains("/lastResult=direction=", diagnostic,
+            $"首次权威移动必须直接消费正式 current tile，diagnostic={diagnostic}");
+        Assert.Greater(velocity.sqrMagnitude, 0f, $"正式 current tile 应产生移动速度，diagnostic={diagnostic}");
+        Assert.AreEqual(2, FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount(),
+            "current portal tile 紧邻最终 Sector 时，只应精确提交 current tile 与 final tile 依赖。");
+    }
+
+    [Test]
+    public void 首次权威移动只提交CurrentTile而保留后续Tile预热队列()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 30;
+        config.DeterministicFlowTileCommitQuota = 1;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 90;
+        const int height = 30;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        SimEntityContext ctx = CreateEntity(new Vector3(4.5f, 0f, 15.5f), false, 0, 0.18f);
+        Vector3 goal = new Vector3(85.5f, 0f, 15.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out Vector3 velocity));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+            ctx.LogicEntityId.Value,
+            out string diagnostic));
+
+        StringAssert.Contains("/cached=True/", diagnostic);
+        Assert.Greater(velocity.x, 1.5f, $"正式 current tile 应沿路径前进，velocity={velocity}, diagnostic={diagnostic}");
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount(),
+            "非 final-adjacent 的 current tile 不应同步提交整条路径。");
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), 0,
+            "lookahead tile 必须继续留在预算预热队列。");
+    }
+
+    [Test]
+    public void PortalCurrentTile首次提交后不因Lookahead晋升改变权威方向()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 30;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 60;
+        const int height = 30;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        for (int y = 0; y < height; y++)
+        {
+            if (y != 7)
+                walkable[29 + y * width] = false;
+        }
+        walkable[15 + 12 * width] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        SimEntityContext ctx = CreateEntity(new Vector3(4.5f, 0f, 15.5f), false, 0, 0.18f);
+        Vector3 goal = new Vector3(55.5f, 0f, 7.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out Vector3 initialVelocity));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+            ctx.LogicEntityId.Value,
+            out string initialDiagnostic));
+        StringAssert.Contains("/cached=True/", initialDiagnostic);
+
+        ProcessFlowTileBuildQueueUntilTileReady(4, 15);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(512, 51.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out Vector3 cachedVelocity));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+            ctx.LogicEntityId.Value,
+            out string cachedDiagnostic));
+        StringAssert.Contains("/lastResult=direction=", cachedDiagnostic);
+
+        float authorityAngle = Vector3.Angle(initialVelocity, cachedVelocity);
+        Assert.LessOrEqual(authorityAngle, 5f,
+            $"同位置、同路径只发生 lookahead 晋升时 current tile 权威方向必须连续，angle={authorityAngle:F3}, initial={initialVelocity}, cached={cachedVelocity}, initialDiagnostic={initialDiagnostic}, cachedDiagnostic={cachedDiagnostic}");
     }
 
     [Test]
@@ -4242,9 +4319,67 @@ public class FlowFieldCrowdMovementSystemTests
 
         Vector3 velocity = ResolveDeterministicFlowVelocityAfterQueue(ctx, goal, 2f, 1, out string diagnostic);
 
-        Assert.Greater(velocity.x, 1.7f, $"积分势的主下降轴应保持向右，velocity={velocity}, diagnostic={diagnostic}");
-        Assert.Less(velocity.z, -0.6f, $"积分势仍应包含向下的次下降分量，velocity={velocity}, diagnostic={diagnostic}");
-        Assert.Greater(velocity.z, -0.95f, $"octile 势的次轴导数应约为主轴的 0.414，不能量化为 45 度，velocity={velocity}, diagnostic={diagnostic}");
+        Assert.Greater(velocity.x, 1.5f, $"积分势的主下降轴应保持向右，velocity={velocity}, diagnostic={diagnostic}");
+        Assert.Less(velocity.z, -0.5f, $"积分势仍应包含向下的次下降分量，velocity={velocity}, diagnostic={diagnostic}");
+        Assert.Greater(velocity.x, Mathf.Abs(velocity.z) + 0.25f,
+            $"Eikonal 势应输出主轴占优的浅斜向，不能量化成 45 度，velocity={velocity}, diagnostic={diagnostic}");
+    }
+
+    [Test]
+    public void 高速单位单Tick跨越多个导航格时窄路方向不会左右交替()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 12;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 48;
+        const int height = 4;
+        const float cellSize = 0.075f;
+        const float speed = 6.9f;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, cellSize, Vector3.zero, walkable);
+        SimEntityContext ctx = CreateEntity(new Vector3(cellSize * 0.5f, 0f, cellSize * 2.02f), false, 0, cellSize * 0.18f);
+        Vector3 goal = new Vector3(cellSize * 47.5f, 0f, cellSize * 2f);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 1f / 30f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, speed, out _));
+        ProcessFlowTileBuildQueueUntilTileReady(0, 2);
+
+        int previousLateralSign = 0;
+        int lateralAlternations = 0;
+        int abruptTurns = 0;
+        Vector3 previousDirection = Vector3.zero;
+        var trace = new System.Text.StringBuilder(2048);
+        for (int frame = 2; frame <= 14; frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, speed, out Vector3 velocity));
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+                ctx.LogicEntityId.Value,
+                out string diagnostic));
+            Vector3 direction = velocity.normalized;
+            int lateralSign = direction.z > 0.025f ? 1 : direction.z < -0.025f ? -1 : 0;
+            if (lateralSign != 0 && previousLateralSign != 0 && lateralSign != previousLateralSign)
+                lateralAlternations++;
+            if (lateralSign != 0)
+                previousLateralSign = lateralSign;
+            if (previousDirection.sqrMagnitude > 0f && Vector3.Dot(previousDirection, direction) < Mathf.Cos(20f * Mathf.Deg2Rad))
+                abruptTurns++;
+            trace.Append("frame=").Append(frame)
+                .Append(" position=").Append(ctx.Position)
+                .Append(" velocity=").Append(velocity)
+                .Append(" diagnostic=").Append(diagnostic)
+                .AppendLine();
+            previousDirection = direction;
+            ctx.Position += velocity / 30f;
+        }
+
+        Assert.LessOrEqual(lateralAlternations, 1,
+            $"LvTest 比例下单 Tick 跨约三格时不应左右交替，alternations={lateralAlternations}, abrupt={abruptTurns}, position={ctx.Position}\n{trace}");
+        Assert.Zero(abruptTurns,
+            $"LvTest 比例下单 Tick 跨约三格时不应产生超过 20 度的突转，alternations={lateralAlternations}, abrupt={abruptTurns}, position={ctx.Position}\n{trace}");
     }
 
     [Test]
@@ -4286,7 +4421,7 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void 高速单位在PortalTile持续待建时Access空间梯度不会逐帧翻转()
+    public void 高速单位在低预热配额下始终消费正式CurrentTile且不会逐帧翻转()
     {
         FlowFieldNavigationConfig config = CreateConfig();
         config.SectorSizeInCells = 12;
@@ -4311,7 +4446,8 @@ public class FlowFieldCrowdMovementSystemTests
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
                 ctx.LogicEntityId.Value,
                 out string diagnostic));
-            StringAssert.Contains("tile-pending-portal-access", diagnostic);
+            StringAssert.Contains("/cached=True/", diagnostic,
+                $"每个新 current tile 都必须在本 Tick 权威消费前精确提交，diagnostic={diagnostic}");
             int lateralSign = velocity.z > 0.05f ? 1 : velocity.z < -0.05f ? -1 : 0;
             if (lateralSign != 0 && previousLateralSign != 0 && lateralSign != previousLateralSign)
                 lateralAlternations++;
@@ -4321,7 +4457,7 @@ public class FlowFieldCrowdMovementSystemTests
         }
 
         Assert.LessOrEqual(lateralAlternations, 1,
-            $"pending access 空间采样应让高速单位收敛到双 lane 边界，不能逐帧翻转，alternations={lateralAlternations}, position={ctx.Position}");
+            $"正式 current tile 空间采样应让高速单位收敛到双 lane 边界，不能逐帧翻转，alternations={lateralAlternations}, position={ctx.Position}");
     }
 
     [Test]
@@ -5463,7 +5599,10 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
             ctx.LogicEntityId.Value,
             out string pendingDiagnostic));
-        StringAssert.Contains("tile-pending-last-flow", pendingDiagnostic);
+        StringAssert.Contains("/cached=True/", pendingDiagnostic,
+            $"RuntimeDirty 期间已有 current tile 时必须继续消费旧 committed world 的正式场，diagnostic={pendingDiagnostic}");
+        StringAssert.Contains("dirty=1", pendingDiagnostic,
+            $"RuntimeDirty 提交前不能提前消费新 world tile，diagnostic={pendingDiagnostic}");
         FixVector2 pendingStart = ctx.PositionFixed;
         FixVector2 pendingRequested = new FixVector2((Fix64)6f, Fix64.Zero);
         Assert.IsTrue(LogicStaticCollisionShadowService.TrySolveFixed(
@@ -6401,10 +6540,18 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(first, new Vector3(5.5f, 0f, 2.5f), 2f, out Vector3 firstVelocity));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+            first.LogicEntityId.Value,
+            out string firstDiagnostic));
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(second, new Vector3(5.5f, 0f, 4.5f), 2f, out Vector3 secondVelocity));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+            second.LogicEntityId.Value,
+            out string secondDiagnostic));
 
-        Assert.Less(firstVelocity.z, -0.1f, $"第一个目标点在目标下侧，应保持下侧分量 first={firstVelocity}");
-        Assert.Greater(secondVelocity.z, 0.1f, $"第二个目标点在目标上侧，不应被同 targetId 共享锚点压回下侧 second={secondVelocity}");
+        Assert.Less(firstVelocity.z, -0.1f,
+            $"第一个目标点在目标下侧，应保持下侧分量 first={firstVelocity}, diagnostic={firstDiagnostic}");
+        Assert.Greater(secondVelocity.z, 0.1f,
+            $"第二个目标点在目标上侧，不应被同 targetId 共享锚点压回下侧 second={secondVelocity}, diagnostic={secondDiagnostic}");
     }
 
     [Test]
@@ -6785,7 +6932,7 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void 查询热路径不应同步构建非末端PortalTile链()
+    public void 查询热路径只提交CurrentTile而不构建非末端PortalTile链()
     {
         const int width = 24;
         const int height = 8;
@@ -6808,9 +6955,11 @@ public class FlowFieldCrowdMovementSystemTests
         int tileCount = FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount();
         int tileBuildCount = FlowFieldCrowdMovementSystem.GetEditorTestFrameTileBuildCount();
         Assert.Greater(velocity.x, 0.5f, $"长路径首段仍应沿走廊前进，velocity={velocity}");
-        Assert.AreEqual(0, tileCount, $"查询热路径不应同步构建 portal tile 链，tileCount={tileCount}");
-        Assert.AreEqual(0, tileBuildCount, $"查询热路径不应同步 build tile，tileBuilds={tileBuildCount}");
-        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), 0, "portal tile 链应进入预算队列");
+        Assert.AreEqual(1, tileCount, $"首次权威消费只应精确提交 current portal tile，tileCount={tileCount}");
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestRequiredFlowTileCommitCount(),
+            "非末端 current portal tile 不应带上 lookahead tile 一起同步提交。");
+        Assert.AreEqual(0, tileBuildCount, $"旧的同步整链 build 入口必须保持停用，tileBuilds={tileBuildCount}");
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), 0, "lookahead portal tile 链应保留在预算队列");
     }
 
     [Test]
@@ -6968,7 +7117,7 @@ public class FlowFieldCrowdMovementSystemTests
         };
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
-        ResolveDeterministicFlowVelocityAfterQueue(chaser, target.Position, 2f, 2, out string initialDiagnostic);
+        Vector3 initialVelocity = ResolveDeterministicFlowVelocityAfterQueue(chaser, target.Position, 2f, 2, out string initialDiagnostic);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCurrentPathSegment(
             chaser.LogicEntityId.Value,
             out int initialPathIndex,
@@ -6979,10 +7128,11 @@ public class FlowFieldCrowdMovementSystemTests
 
         target.Position = new Vector3(20.5f, 0f, 10.5f);
         bool promoted = false;
+        Vector3 replannedVelocity = Vector3.zero;
         for (int frame = 600; frame < 1200; frame++)
         {
             FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.1f);
-            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out _));
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out replannedVelocity));
             FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
             if (FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(
                     chaser.LogicEntityId.Value,
@@ -7012,6 +7162,13 @@ public class FlowFieldCrowdMovementSystemTests
             chaser.LogicEntityId.Value,
             out string buildSource));
         Assert.AreEqual("committedPortalPrefix", buildSource);
+        Assert.AreEqual(0f, Vector3.Angle(initialVelocity, replannedVelocity), 0.01f,
+            $"目标移动只能重规划 committed tile 之后的后缀；当前位置未变时当前局部场方向必须保持一致，initial={initialVelocity}, replanned={replannedVelocity}。");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+            chaser.LogicEntityId.Value,
+            out string replannedDiagnostic));
+        StringAssert.Contains("/cached=True/", replannedDiagnostic,
+            $"已提交的当前局部场不能因后缀变化退回 pending，diagnostic={replannedDiagnostic}");
 
         chaser.Position = new Vector3(8.5f, 0f, 1.5f);
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1200, 120f);
@@ -7027,7 +7184,7 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void 长路径PendingTile即使最终目标LOS清晰也沿PortalAccess势推进()
+    public void 长路径CurrentTile即使最终目标LOS清晰也沿正式Portal势推进()
     {
         FlowFieldNavigationConfig config = CreateConfig();
         config.SectorSizeInCells = 8;
@@ -7047,15 +7204,15 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, goal, 2f, out Vector3 velocity));
-        Assert.Greater(velocity.x, 0.5f, $"长路径 pending 阶段应沿首个 Portal 的 access 势推进，velocity={velocity}");
+        Assert.Greater(velocity.x, 0.5f, $"长路径 current tile 应沿正式 Portal 势推进，velocity={velocity}");
 
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestLastSteeringSource(chaser.LogicEntityId.Value, out _, out bool hasLineOfSight));
         Assert.IsFalse(hasLineOfSight, "Portal 分段必须由积分势保持单一 steering 权威，不能切到最终目标 LOS。");
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
             chaser.LogicEntityId.Value,
             out string diagnostic));
-        StringAssert.Contains("tile-pending-portal-access", diagnostic);
-        StringAssert.Contains("accessGradient=", diagnostic);
+        StringAssert.Contains("/cached=True/", diagnostic);
+        StringAssert.Contains("/lastResult=direction=", diagnostic);
 
         ProcessFlowTileBuildQueueUntilTileReady(0, 2);
         FlowFieldCrowdMovementSystem.SetEditorTestClock(512, 51.2f);

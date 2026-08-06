@@ -1837,6 +1837,8 @@ namespace AAAGame.Tools.Editor
                 point.PointType = pointData.pointType;
                 point.UnitSpawnCount = pointData.unitSpawnCount;
                 point.DefendSpawnWeight = pointData.defendSpawnWeight;
+                point.DestinationId = pointData.destinationId;
+                point.DestinationRadius = pointData.destinationRadius;
                 point.IsGameEndConditionBuilding = pointData.isGameEndConditionBuilding;
                 point.UseCustomCoinReserves = pointData.useCustomCoinReserves;
                 point.CustomCoinReserves = pointData.customCoinReserves;
@@ -2407,6 +2409,8 @@ namespace AAAGame.Tools.Editor
             string identifier;
             int unitSpawnCount = 0;
             int defendSpawnWeight = 1;
+            int destinationId = 0;
+            float destinationRadius = 0f;
             bool isGameEndConditionBuilding = false;
             bool useCustomCoinReserves = false;
             int customCoinReserves = 0;
@@ -2443,6 +2447,20 @@ namespace AAAGame.Tools.Editor
                 identifier = GetFieldString(entity, "Identifier");
                 defendSpawnWeight = Mathf.Max(0, Mathf.RoundToInt(GetFieldFloat(entity, "Weight", 1f)));
             }
+            else if (string.Equals(entityType, "Destination", StringComparison.OrdinalIgnoreCase))
+            {
+                pointType = EntityPresetPointType.Destination;
+                float authoredId = GetFieldFloat(entity, "ID", float.NaN);
+                if (!float.IsFinite(authoredId) || authoredId < 0f || !Mathf.Approximately(authoredId, Mathf.Round(authoredId)))
+                    throw new InvalidOperationException($"Destination ID must be a non-negative integer, actual={authoredId}.");
+
+                destinationId = Mathf.RoundToInt(authoredId);
+                destinationRadius = GetFieldFloat(entity, "Radius", float.NaN);
+                if (!float.IsFinite(destinationRadius) || destinationRadius <= 0f)
+                    throw new InvalidOperationException($"Destination {destinationId} radius must be positive, actual={destinationRadius}.");
+
+                identifier = destinationId.ToString(CultureInfo.InvariantCulture);
+            }
             else
             {
                 return false;
@@ -2454,6 +2472,8 @@ namespace AAAGame.Tools.Editor
                 identifier = identifier,
                 unitSpawnCount = unitSpawnCount,
                 defendSpawnWeight = defendSpawnWeight,
+                destinationId = destinationId,
+                destinationRadius = destinationRadius,
                 isGameEndConditionBuilding = isGameEndConditionBuilding,
                 useCustomCoinReserves = useCustomCoinReserves,
                 customCoinReserves = customCoinReserves,
@@ -2748,6 +2768,7 @@ namespace AAAGame.Tools.Editor
             builder.AppendLine($"Entity buildings: {result.buildingCount}");
             builder.AppendLine($"Entity units: {result.unitCount}");
             builder.AppendLine($"Entity defend spawns: {result.defendSpawnCount}");
+            builder.AppendLine($"Entity destinations: {result.destinationCount}");
             return builder.ToString();
         }
 
@@ -2832,6 +2853,8 @@ namespace AAAGame.Tools.Editor
             public string identifier;
             public int unitSpawnCount;
             public int defendSpawnWeight;
+            public int destinationId;
+            public float destinationRadius;
             public bool isGameEndConditionBuilding;
             public bool useCustomCoinReserves;
             public int customCoinReserves;
@@ -2937,6 +2960,7 @@ namespace AAAGame.Tools.Editor
             public int buildingCount;
             public int unitCount;
             public int defendSpawnCount;
+            public int destinationCount;
 
             public static EntityImportResult Skipped(string reason)
             {
@@ -2965,6 +2989,10 @@ namespace AAAGame.Tools.Editor
 
                     case EntityPresetPointType.DefendSpawn:
                         defendSpawnCount++;
+                        break;
+
+                    case EntityPresetPointType.Destination:
+                        destinationCount++;
                         break;
                 }
             }

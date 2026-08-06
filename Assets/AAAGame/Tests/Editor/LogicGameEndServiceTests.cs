@@ -115,6 +115,36 @@ public sealed class LogicGameEndServiceTests
     }
 
     [Test]
+    public void ScriptedTutorialCompletion_ProducesCompleteTutorialWin()
+    {
+        LevelData level = CreateLevel(
+            new[] { VictoryConditionType.CompleteTutorial },
+            0,
+            Array.Empty<FailConditionType>(),
+            0);
+        SetPrivate(level, nameof(LevelData.Identifier), "Lv_1");
+        LogicGameEndService.Initialize(level);
+
+        LogicGameEndResult? captured = null;
+        void Capture(LogicGameEndResult result) => captured = result;
+        LogicGameEndService.GameEnded += Capture;
+        try
+        {
+            LogicGameEndService.CompleteScriptedWin(VictoryConditionType.CompleteTutorial);
+        }
+        finally
+        {
+            LogicGameEndService.GameEnded -= Capture;
+        }
+
+        Assert.IsTrue(LogicGameEndService.IsGameEnded);
+        Assert.IsTrue(LogicGameEndService.IsWin);
+        Assert.IsTrue(captured.HasValue);
+        Assert.IsTrue(captured.Value.IsWin);
+        Assert.AreEqual(VictoryConditionType.CompleteTutorial, captured.Value.VictoryCondition);
+    }
+
+    [Test]
     public void TargetHashIsStableForRegistrationOrder()
     {
         LogicEntityState first = CreateBuilding("target-z", EntitySideHelper.EnemyFactionId, true);

@@ -17,7 +17,7 @@ public static class DefendPhaseRuntime
     private const float TutorialEnemyClusterRadius = 3f;
     private const float TutorialEnemyClusterMinDistance = 1.2f;
 
-    private static readonly ArchetypeUnitTypeMapper s_ArchetypeUnitTypeMapper = new();
+    private static ArchetypeUnitTypeMapper s_ArchetypeUnitTypeMapper;
     private static readonly Dictionary<UnitType, Archetype> s_ArchetypeByUnitType = new();
     private static readonly Dictionary<UnitType, int> s_AgentTypeIdByUnitType = new();
     private static readonly List<DefendSpawnPointRuntime> s_DefendSpawnPoints = new();
@@ -124,6 +124,7 @@ public static class DefendPhaseRuntime
     {
         ResetDefendPhaseState(keepRoundIndex: false);
         s_ArchetypeByUnitType.Clear();
+        s_ArchetypeUnitTypeMapper = null;
         s_AgentTypeIdByUnitType.Clear();
         s_DefendSpawnPoints.Clear();
         s_DefendWaves.Clear();
@@ -494,6 +495,7 @@ public static class DefendPhaseRuntime
         if (s_ArchetypeCacheConfigured)
             return;
 
+        s_ArchetypeUnitTypeMapper = new ArchetypeUnitTypeMapper();
         foreach (Archetype archetype in Enum.GetValues(typeof(Archetype)))
         {
             var unitTypes = s_ArchetypeUnitTypeMapper.GetUnitTypes(archetype);

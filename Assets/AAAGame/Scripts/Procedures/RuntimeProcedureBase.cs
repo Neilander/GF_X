@@ -140,6 +140,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         TutorialManager tutorialManager = GameEntry.GetComponent<TutorialManager>();
         if (tutorialManager != null)
             tutorialManager.UpdatePresentation();
+        ObjectiveDestinationService.PublishPendingPresentation();
         ProjectilePresentationService.UpdateRenderFrame();
         OnRuntimeUpdate(elapseSeconds, realElapseSeconds);
     }

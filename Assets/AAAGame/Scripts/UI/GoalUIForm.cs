@@ -78,7 +78,9 @@ public partial class GoalUIForm : UIFormBase
 				if (itemObject?.itemLogic is GoalConditionItem goalConditionItem)
 				{
 					goalConditionItem.SetTutorialObjective(
-						LocalizationTextDataModel.GetText(objective.TextKey),
+						ObjectiveDataModel.GetText(
+							objective.DefinitionIdentifier,
+							objective.FormatArgs),
 						objective.Status);
 				}
 			}
