@@ -50,12 +50,6 @@ public static class EntityCombatTeamHelper
     {
         if (factionId < 0)
             return UnknownTeamId;
-
-        var model = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
-        if (model != null && model.Factions != null && model.Factions.TryGetValue(factionId, out var faction) && faction != null)
-            return faction.TeamID;
-
-        // 数据尚未加载完全时，回退用 factionId 本身作为 teamId，保持战斗可进行。
-        return factionId;
+        return InGameDataModel.GetTeamIdByFactionRequired(factionId);
     }
 }

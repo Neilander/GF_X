@@ -23,6 +23,31 @@ public class ActiveSkillSO : SkillEffectSO
     public float radius = 10f;
     public Vector3 selectRatio;
 
+    internal ActiveSkillSO CreateRuntimeSnapshot()
+    {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Active skill assets cannot be snapshotted during a logic frame.");
+
+        SkillRuntimeSnapshotValidation.ValidateReferenceFields(this, nameof(actions));
+        ActiveSkillSO snapshot = Instantiate(this);
+        snapshot.hideFlags = HideFlags.HideAndDontSave;
+        if (actions == null)
+        {
+            snapshot.actions = null;
+            return snapshot;
+        }
+
+        snapshot.actions = new List<BasicAction>(actions.Count);
+        for (int i = 0; i < actions.Count; i++)
+        {
+            BasicAction action = actions[i]
+                                 ?? throw new InvalidOperationException(
+                                     $"Active skill contains a null action. skillId={skillId}, index={i}.");
+            snapshot.actions.Add(action.CreateRuntimeSnapshot());
+        }
+        return snapshot;
+    }
+
     public Fix64 ResolveCooldownIntervalFixed()
     {
         return ResolveCooldownIntervalFixed(1);
@@ -31,29 +56,31 @@ public class ActiveSkillSO : SkillEffectSO
     public Fix64 ResolveCooldownIntervalFixed(int level)
     {
         if (string.IsNullOrWhiteSpace(skillId))
-            return (Fix64)coolDownInterval;
+            throw new InvalidOperationException($"ActiveSkillSO missing skillId. asset={name}");
+        if (level <= 0)
+            throw new ArgumentOutOfRangeException(nameof(level), level, "Skill level must be positive.");
 
         SkillData skillData = SkillDataModel.GetSkillData(skillId);
         if (skillData == null)
-            return (Fix64)coolDownInterval;
+            throw new InvalidOperationException($"SkillData missing. skillId={skillId}, asset={name}");
 
         Fix64 cooldown = skillData.GetCooldown(level);
-        return cooldown > Fix64.Zero ? cooldown : (Fix64)coolDownInterval;
+        if (cooldown <= Fix64.Zero)
+            throw new InvalidOperationException(
+                $"Active skill cooldown must be positive. skillId={skillId}, level={level}, raw={cooldown.RawValue}");
+        return cooldown;
     }
 
-    protected float GetCastDistanceWorldOrFallback()
+    protected Fix64 GetRequiredCastDistanceWorldFixed()
     {
-        float tableValue = GetCastDistanceWorld();
-        return tableValue > 0f ? tableValue : radius;
+        Fix64 castDistance = GetCastDistanceWorldFixed();
+        if (castDistance <= Fix64.Zero)
+            throw new InvalidOperationException(
+                $"Position skill cast distance must be positive. skillId={skillId}, raw={castDistance.RawValue}");
+        return castDistance;
     }
 
-    protected Fix64 GetCastDistanceWorldFixedOrFallback()
-    {
-        Fix64 tableValue = GetCastDistanceWorldFixed();
-        return tableValue > Fix64.Zero ? tableValue : (Fix64)radius;
-    }
-
-    protected Vector3 GetSelectionScaleOrFallback()
+    protected Vector3 GetSelectionScale()
     {
         float areaRange = GetAreaRangeWorld();
         if (areaRange <= 0f)
@@ -163,12 +190,8 @@ public class ActiveSkillSO : SkillEffectSO
         switch (actionInfo)
         {
             case PositionSelectActionInfo posSelectInfo:
-                posSelectInfo.radius = GetCastDistanceWorldFixedOrFallback();
-                posSelectInfo.selectScale = GetSelectionScaleOrFallback();
-                Fix64 areaRange = GetAreaRangeWorldFixed();
-                posSelectInfo.selectionRadius = areaRange > Fix64.Zero
-                    ? areaRange
-                    : (Fix64)posSelectInfo.selectScale.x;
+                posSelectInfo.radius = GetRequiredCastDistanceWorldFixed();
+                posSelectInfo.selectionRadius = GetAreaRangeWorldFixed();
                 break;
 
         }
@@ -184,12 +207,10 @@ public class ActiveSkillSO : SkillEffectSO
                     continue;
 
                 Fix64 selectionRadius = GetAreaRangeWorldFixed();
-                Vector3 selectionScale = GetSelectionScaleOrFallback();
-                if (selectionRadius <= Fix64.Zero)
-                    selectionRadius = (Fix64)selectionScale.x;
+                Vector3 selectionScale = GetSelectionScale();
                 descriptor = new SkillCastPreviewDescriptor(
                     true,
-                    GetCastDistanceWorldFixedOrFallback(),
+                    GetRequiredCastDistanceWorldFixed(),
                     selectionRadius,
                     selectionScale,
                     positionAction.SelectorPrefabName);
@@ -217,6 +238,35 @@ public class ActiveSkillSO : SkillEffectSO
         GF.LogError("尝试打断了技能，但是并没有实现。感觉是没问题的，就是因为没具体case，所以想有需求了再实现");
     }
 
+}
+
+internal static class SkillRuntimeSnapshotValidation
+{
+    public static void ValidateReferenceFields(object source, params string[] explicitlyHandledFields)
+    {
+        if (source == null)
+            throw new ArgumentNullException(nameof(source));
+
+        var handled = new HashSet<string>(explicitlyHandledFields ?? Array.Empty<string>(), StringComparer.Ordinal);
+        for (Type type = source.GetType(); type != null && type != typeof(ScriptableObject); type = type.BaseType)
+        {
+            System.Reflection.FieldInfo[] fields = type.GetFields(
+                System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic
+                | System.Reflection.BindingFlags.DeclaredOnly);
+            for (int i = 0; i < fields.Length; i++)
+            {
+                System.Reflection.FieldInfo field = fields[i];
+                Type fieldType = field.FieldType;
+                if (fieldType.IsValueType || fieldType == typeof(string) || handled.Contains(field.Name))
+                    continue;
+
+                throw new InvalidOperationException(
+                    $"Skill runtime snapshot contains an unsupported reference field. asset={source.GetType().Name}, field={field.Name}, type={fieldType.FullName}.");
+            }
+        }
+    }
 }
 
 public class SkillInfo

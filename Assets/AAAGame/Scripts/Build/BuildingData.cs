@@ -56,10 +56,10 @@ public class BuildingData
         HP = hp;
         Weapon = weapon;
         Def = def;
-        UniqueValues = uniqueValues;
+        UniqueValues = uniqueValues != null ? (Fix64[])uniqueValues.Clone() : null;
         UnitID = unitID;
         Production = production;
-        UpgradeTechIDs = upgradeTechIDs;
+        UpgradeTechIDs = upgradeTechIDs != null ? (string[])upgradeTechIDs.Clone() : null;
     }
 
 }

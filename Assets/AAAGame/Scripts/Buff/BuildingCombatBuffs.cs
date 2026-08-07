@@ -348,10 +348,10 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
 {
     private const string ActiveControlBuffId = "restroom_queue_control_active";
     private const string HandledBuffPrefix = "restroom_queue_handled";
-    private const float DoorOffset = 0.8f;
-    private const float SlotSpacing = 0.85f;
-    private const float ArriveDistance = 0.08f;
-    private const float ScanInterval = 0.1f;
+    private static readonly Fix64 DoorOffset = Fix64.FromRaw(3277);
+    private static readonly Fix64 SlotSpacing = Fix64.FromRaw(3482);
+    private static readonly Fix64 ArriveDistance = Fix64.FromRaw(328);
+    private static readonly Fix64 ScanInterval = Fix64.FromRaw(410);
 
     private readonly int _queueLimit;
     private readonly Fix64 _releaseInterval;
@@ -411,7 +411,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
             return;
 
         _scanTimer += deltaTime;
-        if (_scanTimer < (Fix64)ScanInterval)
+        if (_scanTimer < ScanInterval)
             return;
 
         _scanTimer = Fix64.Zero;
@@ -514,7 +514,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
 
             FixVector2 offset = slot - LogicEntityFrameSnapshotService.GetRequiredPosition(target);
             Fix64 distance = FixVector2.Magnitude(offset);
-            if (distance <= (Fix64)ArriveDistance)
+            if (distance <= ArriveDistance)
             {
                 target.MoveExecutor.SetOverrideFixed(FixVector2.Zero);
                 continue;
@@ -533,7 +533,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
     {
         FixVector2 forward = LogicEntityFrameSnapshotService.GetRequiredForward(building);
         Fix64 buildingRadius = AreaWeaponDamageQuery.GetRequiredRadialExtent(building);
-        Fix64 distance = buildingRadius + (Fix64)DoorOffset + (Fix64)SlotSpacing * index;
+        Fix64 distance = buildingRadius + DoorOffset + SlotSpacing * index;
         return LogicEntityFrameSnapshotService.GetRequiredPosition(building) + forward * distance;
     }
 
@@ -619,7 +619,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
         if (string.IsNullOrWhiteSpace(building.BuildingInstanceId))
             throw new InvalidOperationException($"RestroomQueueBuff.GetHandledBuffId failed: BuildingInstanceId is empty. building={building.CharacterKey}.");
 
-        int phase = InGameDataModel.GetValue(IngameValueType.Phase);
+        int phase = (int)LogicPhaseCommandService.GetRequiredCurrentPhase();
         return $"{HandledBuffPrefix}_{phase}_{building.BuildingInstanceId}";
     }
 

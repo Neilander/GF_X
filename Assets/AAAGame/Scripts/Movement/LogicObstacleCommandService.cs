@@ -214,7 +214,7 @@ public static class LogicObstacleCommandService
             throw new ArgumentNullException(nameof(snapshot));
         if (sink == null)
             throw new ArgumentNullException(nameof(sink));
-        if (IsApplyingFrame || LogicFrameRuntime.IsTicking)
+        if (IsApplyingFrame || LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("LogicObstacleCommandService.RestoreSnapshot failed: a logic or command frame is running.");
 
         var currentIds = new List<int>(s_Active.Keys);

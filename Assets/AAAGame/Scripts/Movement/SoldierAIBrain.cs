@@ -53,7 +53,6 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     }
 
     // --- 配置参数 ---
-    public Fix64 WeaponRange = Fix64.FromRaw(6144); // WeaponData.AttackRange 的 fallback
     public Fix64 DetectEnemyRange = (Fix64)10;
 
     // --- 脱战返航参数（仅敌方有效，调参先在这里改）---
@@ -61,7 +60,6 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     public Fix64 HomeArrivedRadius = Fix64.FromRaw(6144);         // 距出生点 < 此值视为到家
     public Fix64 ReturnSpeedBonusPercent = Fix64.FromRaw(2048);        // 返航移速加成（50%）
     public Fix64 ReturnHpRegenPercentPerSec = Fix64.FromRaw(820);     // 返航回血（每秒最大血量的 20%）
-    public Fix64 SoftReturnRatio = Fix64.FromRaw(2458);           // 软返航比例的 fallback（运行时优先读 GroupMoveConfig）
     private const string ReturningBuffId = "soldier_returning";
 
     // --- 状态 ---
@@ -83,9 +81,6 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     // --- 内部 ---
     private bool _inDeadZone;                // 是否已进入 leader 附近的死区
     // 死区参数由 GroupMoveConfig 的 FollowBaseStopRadius / FollowDeadZoneRange / FollowInnerDeadZoneRange 提供
-    // 协调器不在场（测试环境）时使用下面的兜底默认值
-    private static readonly Fix64 FallbackDeadZoneRange = Fix64.FromRaw(49152);
-    private static readonly Fix64 FallbackInnerDeadZoneRange = Fix64.FromRaw(8192);
     private FixVector2? _deadZoneTarget;        // 死区内的稳定定点导航目标点
     private FixVector2? _birthPosition;         // 出生点（敌方专属，未设置则不启用脱战返航）
     private bool _softReturning;             // 软返航中：触发后一直走到 HomeArrivedRadius 才停
@@ -476,8 +471,9 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
     private Fix64 GetSoftReturnRatio()
     {
-        var cfg = GroupMoveManager.HasInstance ? GroupMoveManager.Instance.Config : null;
-        return cfg != null ? cfg.EnemySoftReturnRatioFixed : SoftReturnRatio;
+        if (!GroupMoveManager.HasInstance)
+            throw new System.InvalidOperationException("SoldierAIBrain requires GroupMoveManager for soft-return configuration.");
+        return GroupMoveManager.Instance.EnemySoftReturnRatioFixed;
     }
 
     private bool HasEnemyInScanRange(IEntityContext self)
@@ -504,23 +500,12 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             return;
         }
 
-        Fix64 leaderEqR;
-        Fix64 deadZoneRange;
-        Fix64 innerDeadZoneRange;
-        if (GroupMoveManager.HasInstance)
-        {
-            var mgr = GroupMoveManager.Instance;
-            var cfg = mgr.Config;
-            leaderEqR = cfg != null ? cfg.FollowBaseStopRadiusFixed : Fix64.FromRaw(6144);
-            deadZoneRange = cfg != null ? cfg.FollowDeadZoneRangeFixed : FallbackDeadZoneRange;
-            innerDeadZoneRange = cfg != null ? cfg.FollowInnerDeadZoneRangeFixed : FallbackInnerDeadZoneRange;
-        }
-        else
-        {
-            leaderEqR = Fix64.FromRaw(6144);
-            deadZoneRange = FallbackDeadZoneRange;
-            innerDeadZoneRange = FallbackInnerDeadZoneRange;
-        }
+        if (!GroupMoveManager.HasInstance)
+            throw new System.InvalidOperationException("SoldierAIBrain requires GroupMoveManager for follow configuration.");
+        var mgr = GroupMoveManager.Instance;
+        Fix64 leaderEqR = mgr.FollowBaseStopRadiusFixed;
+        Fix64 deadZoneRange = mgr.FollowDeadZoneRangeFixed;
+        Fix64 innerDeadZoneRange = mgr.FollowInnerDeadZoneRangeFixed;
         Fix64 deadZoneOuter = leaderEqR + deadZoneRange;
         Fix64 distToLeader = FixVector2.Distance(self.LogicFramePositionFixed(), _leader.LogicFramePositionFixed());
         Fix64 innerDeadZone = leaderEqR + innerDeadZoneRange;
@@ -594,12 +579,16 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
     /// <summary>
     /// 实际攻击判定距离 = 武器攻击距离。
-    /// 优先从 WeaponComp 读攻击距离，没有则用 WeaponRange 回退。
     /// </summary>
     private Fix64 GetEffectiveAttackRange(IEntityContext self)
     {
-        Fix64 wpnRange = self.WeaponComp != null ? self.WeaponComp.AttackRange : WeaponRange;
-        return wpnRange;
+        WeaponComp weaponComp = self.WeaponComp
+                                ?? throw new System.InvalidOperationException(
+                                    $"SoldierAIBrain requires WeaponComp. entity={self.LogicEntityId.Value}.");
+        if (weaponComp.Data == null)
+            throw new System.InvalidOperationException(
+                $"SoldierAIBrain requires initialized weapon data. entity={self.LogicEntityId.Value}.");
+        return weaponComp.AttackRange;
     }
 
     private void TickCombat(IEntityContext self, Fix64 dt)

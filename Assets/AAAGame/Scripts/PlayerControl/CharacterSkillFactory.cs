@@ -9,6 +9,11 @@ public class CharacterSkillFactory : SkillCompFactory
     [Header("被动技能")]
     public List<PassiveSkillSO> passiveSkills;
 
+    public override void PrepareRuntimeDependencies()
+    {
+        PrepareRuntimeSkillAssets(skills, passiveSkills);
+    }
+
     public override ISkillComp CreateSkillComp(IEntityContext gmo)
     {
         if (gmo is not ISkillCompHost host)
@@ -16,7 +21,7 @@ public class CharacterSkillFactory : SkillCompFactory
 
         var comp = new CharacterSkillComp();
         host.SetSkillComp(comp);
-        comp.Init(gmo, skills, passiveSkills);
+        comp.Init(gmo, RuntimeActiveSkills, RuntimePassiveSkills);
         return comp;
     }
 }

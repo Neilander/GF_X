@@ -56,7 +56,7 @@ public partial class LevelSwitchUIForm : UIFormBase
         LevelSelectionService.LevelLoadCompleted -= OnLevelLoadCompleted;
         LevelSelectionService.LevelLoadFailed -= OnLevelLoadFailed;
         UnbindButtons();
-        ResumeGameIfNeeded();
+        RelinquishPauseOwnership(isShutdown);
         base.OnClose(isShutdown, userData);
 
         if (!isShutdown)
@@ -105,14 +105,18 @@ public partial class LevelSwitchUIForm : UIFormBase
         m_HoldsLogicPause = true;
     }
 
-    private void ResumeGameIfNeeded()
+    private void RelinquishPauseOwnership(bool isShutdown)
     {
         if (!m_HoldsLogicPause)
         {
             return;
         }
 
-        LogicTimeControlService.ReleasePause(LogicTimeControlSources.LevelSwitchUiPause);
+        if (!isShutdown)
+        {
+            LogicTimeControlService.ReleasePause(LogicTimeControlSources.LevelSwitchUiPause);
+        }
+
         m_HoldsLogicPause = false;
     }
 

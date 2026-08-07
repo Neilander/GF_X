@@ -20,13 +20,20 @@ public static class EntityContextExtensions
         return context.TryGetLogicBuilding(out _);
     }
 
-    /// <summary>
-    /// 检查 IEntityContext 背后的 Unity 对象是否已被销毁。
-    /// 接口变量不走 Unity 的 == 重载，需要先转为 Object。
-    /// </summary>
     public static bool IsDestroyed(this IEntityContext ctx)
     {
-        return ctx == null || (ctx is Object obj && obj == null);
+        if (ctx == null)
+            return true;
+        if (ctx is Object)
+        {
+            throw new System.InvalidOperationException(
+                "Logic entity lifetime cannot be resolved from a Unity Object view.");
+        }
+        if (!ctx.LogicEntityId.IsValid)
+            throw new System.InvalidOperationException("Logic-world entity has an invalid logic id.");
+
+        return !EntityRegistry.TryGet(ctx.LogicEntityId, out IEntityContext registered)
+               || !ReferenceEquals(registered, ctx);
     }
 
     public static bool IsRegisteredInLogicWorld(this IEntityContext ctx)
@@ -34,11 +41,7 @@ public static class EntityContextExtensions
         if (ctx.IsDestroyed())
             return false;
 
-        if (!ctx.LogicEntityId.IsValid)
-            throw new System.InvalidOperationException("Logic-world entity has an invalid logic id.");
-
-        return EntityRegistry.TryGet(ctx.LogicEntityId, out IEntityContext registered)
-               && ReferenceEquals(registered, ctx);
+        return true;
     }
 
     /// <summary>
@@ -57,8 +60,8 @@ public static class EntityContextExtensions
             return false;
 
         // 检查是否处于战斗阶段（进攻阶段）
-        int currentPhase = InGameDataModel.GetValue(IngameValueType.Phase);
-        if (currentPhase != (int)GamePhase.Invade && currentPhase != (int)GamePhase.Defend)
+        GamePhase currentPhase = LogicPhaseCommandService.GetRequiredCurrentPhase();
+        if (currentPhase != GamePhase.Invade && currentPhase != GamePhase.Defend)
             return false;
 
         return true;
@@ -72,8 +75,8 @@ public static class EntityContextExtensions
         if (ctx is IHeroLogicContext se && se.IsGhostState)
             return false;
 
-        int currentPhase = InGameDataModel.GetValue(IngameValueType.Phase);
-        if (currentPhase != (int)GamePhase.Invade && currentPhase != (int)GamePhase.Defend)
+        GamePhase currentPhase = LogicPhaseCommandService.GetRequiredCurrentPhase();
+        if (currentPhase != GamePhase.Invade && currentPhase != GamePhase.Defend)
             return false;
 
         return ctx.NeedsHealing();

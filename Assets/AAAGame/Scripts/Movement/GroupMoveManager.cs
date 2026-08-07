@@ -10,14 +10,24 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
     [SerializeField] private GroupMoveConfig _config;
     [SerializeField] private FlowFieldNavigationConfig _flowFieldConfig;
     private bool _logicFrameRegistered;
-    public GroupMoveConfig Config => _config;
-    public FlowFieldNavigationConfig FlowFieldConfig => _flowFieldConfig;
+    private bool _logicConfigCaptured;
+    private bool _requireAuthoredNavigationSource;
+    private Fix64 _enemySoftReturnRatio;
+    private Fix64 _followBaseStopRadius;
+    private Fix64 _followDeadZoneRange;
+    private Fix64 _followInnerDeadZoneRange;
+
+    public Fix64 EnemySoftReturnRatioFixed => GetCapturedValue(_enemySoftReturnRatio, nameof(EnemySoftReturnRatioFixed));
+    public Fix64 FollowBaseStopRadiusFixed => GetCapturedValue(_followBaseStopRadius, nameof(FollowBaseStopRadiusFixed));
+    public Fix64 FollowDeadZoneRangeFixed => GetCapturedValue(_followDeadZoneRange, nameof(FollowDeadZoneRangeFixed));
+    public Fix64 FollowInnerDeadZoneRangeFixed => GetCapturedValue(_followInnerDeadZoneRange, nameof(FollowInnerDeadZoneRangeFixed));
     public int LogicFrameOrder => -1000;
 
     private void Awake()
     {
         Instance = this;
         ApplyFlowFieldConfig();
+        CaptureGroupMoveConfig();
         LogicFrameRuntime.Began += HandleLogicRuntimeBegan;
         LogicFrameRuntime.Ending += HandleLogicRuntimeEnding;
         if (LogicFrameRuntime.IsActive)
@@ -41,6 +51,8 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
 
     private void HandleLogicRuntimeBegan()
     {
+        ApplyFlowFieldConfig();
+        CaptureGroupMoveConfig();
         RegisterLogicFrameListener();
     }
 
@@ -80,13 +92,7 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
         try
         {
             long sectionStartTicks = Stopwatch.GetTimestamp();
-            ApplyFlowFieldConfig();
-            long configTicks = Stopwatch.GetTimestamp() - sectionStartTicks;
-            FlowFieldCrowdMovementSystem.RecordManagerConfigTicks(configTicks);
-            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowConfig, configTicks);
-
-            sectionStartTicks = Stopwatch.GetTimestamp();
-            if (_flowFieldConfig.RequireAuthoredNavigationSource
+            if (_requireAuthoredNavigationSource
                 && !FlowFieldCrowdMovementSystem.HasAuthoredNavigationSource())
             {
                 if (FlowFieldCrowdMovementSystem.IsRuntimeNavigationTransitionActive())
@@ -146,6 +152,39 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
             throw new System.InvalidOperationException("GroupMoveManager.ApplyFlowFieldConfig failed: FlowFieldNavigationConfig is not assigned.");
 
         FlowFieldCrowdMovementSystem.SetConfig(_flowFieldConfig);
+        _requireAuthoredNavigationSource = _flowFieldConfig.RequireAuthoredNavigationSource;
+    }
+
+    private void CaptureGroupMoveConfig()
+    {
+        if (_config == null)
+            throw new System.InvalidOperationException("GroupMoveManager requires a GroupMoveConfig.");
+
+        Fix64 enemySoftReturnRatio = _config.EnemySoftReturnRatioFixed;
+        Fix64 followBaseStopRadius = _config.FollowBaseStopRadiusFixed;
+        Fix64 followDeadZoneRange = _config.FollowDeadZoneRangeFixed;
+        Fix64 followInnerDeadZoneRange = _config.FollowInnerDeadZoneRangeFixed;
+        if (enemySoftReturnRatio <= Fix64.Zero || enemySoftReturnRatio > Fix64.One)
+            throw new System.InvalidOperationException("GroupMoveConfig enemy soft-return ratio must be in (0, 1].");
+        if (followBaseStopRadius < Fix64.Zero
+            || followDeadZoneRange < Fix64.Zero
+            || followInnerDeadZoneRange < Fix64.Zero)
+        {
+            throw new System.InvalidOperationException("GroupMoveConfig follow radii must be non-negative.");
+        }
+
+        _enemySoftReturnRatio = enemySoftReturnRatio;
+        _followBaseStopRadius = followBaseStopRadius;
+        _followDeadZoneRange = followDeadZoneRange;
+        _followInnerDeadZoneRange = followInnerDeadZoneRange;
+        _logicConfigCaptured = true;
+    }
+
+    private Fix64 GetCapturedValue(Fix64 value, string propertyName)
+    {
+        if (!_logicConfigCaptured)
+            throw new System.InvalidOperationException($"GroupMoveManager.{propertyName} was read before logic configuration was captured.");
+        return value;
     }
 
     // ── Agent 注册 ──

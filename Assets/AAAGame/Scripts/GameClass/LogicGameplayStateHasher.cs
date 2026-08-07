@@ -51,7 +51,6 @@ public static class LogicGameplayStateHasher
         SkillRuntimeDataModel.WriteDeterministicState(hasher);
         LogicRewardStateService.WriteDeterministicState(hasher);
         ulong economyHash = hasher.Hash;
-        LogicInteractionHoldService.WriteDeterministicState(hasher);
         LogicInteractionTargetStateService.WriteDeterministicState(hasher);
         LogicInteractionAuthorityService.WriteDeterministicState(hasher);
         LogicInteractionCommandService.WriteDeterministicState(hasher);
@@ -68,7 +67,7 @@ public static class LogicGameplayStateHasher
         ulong commandsHash = hasher.Hash;
         LevelTagRuntime.WriteDeterministicState(hasher);
         GlobalBuffManager.WriteCurrentDeterministicState(hasher);
-        BuildingTechRuntimeEffectSO.WriteStaticModifierDeterministicState(hasher);
+        BuildingTechRuntimeEffect.WriteStaticModifierDeterministicState(hasher);
         LogicBuildingExtraPropsStore.WriteDeterministicState(hasher);
         LogicProductionConditionState.WriteDeterministicState(hasher);
         LogicStrongholdMap.WriteDeterministicState(hasher);

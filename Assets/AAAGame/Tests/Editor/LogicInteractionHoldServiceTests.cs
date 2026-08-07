@@ -3,76 +3,6 @@
 [TestFixture]
 public sealed class LogicInteractionHoldServiceTests
 {
-    [SetUp]
-    public void SetUp()
-    {
-        if (LogicInteractionHoldService.IsActive)
-            LogicInteractionHoldService.EndTimeline();
-        LogicInteractionHoldService.BeginTimeline();
-    }
-
-    [TearDown]
-    public void TearDown()
-    {
-        if (LogicInteractionHoldService.IsActive)
-            LogicInteractionHoldService.EndTimeline();
-    }
-
-    [Test]
-    public void HeldInput_CompletesOnExactLogicFrameAndLocksUntilRelease()
-    {
-        int executionCount = 0;
-        LogicInteractionHoldService.RegisterConsumer(_ => true, _ =>
-        {
-            executionCount++;
-            return true;
-        });
-        LogicInputTimeline timeline = CreateTimeline();
-        timeline.EnqueueButtonPressed(0.001d, LogicInputButton.InteractionPrimary);
-
-        for (ulong frame = 1; frame < LogicInteractionHoldService.HoldThresholdFrames; frame++)
-        {
-            LogicInputFrame input = timeline.Seal(frame, frame / 30d);
-            LogicInteractionHoldService.ProcessFrame(input);
-        }
-
-        Assert.AreEqual(0, executionCount);
-        Assert.Less(
-            LogicInteractionHoldService.GetProgress(InputKey.InteractionPrimary).RawValue,
-            Fix64.One.RawValue);
-
-        ulong completionFrame = LogicInteractionHoldService.HoldThresholdFrames;
-        LogicInteractionHoldService.ProcessFrame(timeline.Seal(completionFrame, completionFrame / 30d));
-        Assert.AreEqual(1, executionCount);
-        Assert.AreEqual(Fix64.One, LogicInteractionHoldService.GetProgress(InputKey.InteractionPrimary));
-
-        LogicInteractionHoldService.ProcessFrame(timeline.Seal(completionFrame + 1, (completionFrame + 1) / 30d));
-        Assert.AreEqual(1, executionCount);
-
-        timeline.EnqueueButtonReleased((completionFrame + 1.5d) / 30d, LogicInputButton.InteractionPrimary);
-        LogicInteractionHoldService.ProcessFrame(timeline.Seal(completionFrame + 2, (completionFrame + 2) / 30d));
-        Assert.AreEqual(Fix64.Zero, LogicInteractionHoldService.GetProgress(InputKey.InteractionPrimary));
-    }
-
-    [Test]
-    public void UnavailableInteraction_DoesNotPrechargeHold()
-    {
-        bool available = false;
-        LogicInteractionHoldService.RegisterConsumer(_ => available, _ => true);
-        LogicInputTimeline timeline = CreateTimeline();
-        timeline.EnqueueButtonPressed(0.001d, LogicInputButton.InteractionSecondary);
-
-        for (ulong frame = 1; frame <= 20; frame++)
-            LogicInteractionHoldService.ProcessFrame(timeline.Seal(frame, frame / 30d));
-        Assert.AreEqual(Fix64.Zero, LogicInteractionHoldService.GetProgress(InputKey.InteractionSecondary));
-
-        available = true;
-        LogicInteractionHoldService.ProcessFrame(timeline.Seal(21, 21d / 30d));
-        Assert.AreEqual(
-            (Fix64)1 / LogicInteractionHoldService.HoldThresholdFrames,
-            LogicInteractionHoldService.GetProgress(InputKey.InteractionSecondary));
-    }
-
     [TestCase(1, 1f)]
     [TestCase(2, 1f)]
     [TestCase(3, 1f)]
@@ -126,8 +56,6 @@ public sealed class LogicInteractionHoldServiceTests
             starCount,
             deltaTime,
             frameCount);
-        Assert.AreEqual(Fix64.Zero,
-            LogicInteractionHoldService.GetProgress(InputKey.InteractionPrimary));
     }
 
     [TestCase(30)]
@@ -147,8 +75,6 @@ public sealed class LogicInteractionHoldServiceTests
             typeof(BuildingUpgradeTips),
             deltaTime,
             frameCount);
-        Assert.AreEqual(Fix64.Zero,
-            LogicInteractionHoldService.GetProgress(InputKey.InteractionPrimary));
     }
 
     [Test]
@@ -166,16 +92,34 @@ public sealed class LogicInteractionHoldServiceTests
     }
 
     [Test]
-    public void InteractionHoldService_DoesNotOwnPanelPresentationState()
+    public void InteractionKeyHold_RemainsRenderFramePresentationAndDoesNotEnterLogicTimeline()
     {
-        string source = System.IO.File.ReadAllText(
-            System.IO.Path.Combine(
-                UnityEngine.Application.dataPath,
-                "AAAGame/Scripts/GameClass/LogicInteractionHoldService.cs"));
+        string assetsPath = UnityEngine.Application.dataPath;
+        string tips = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            assetsPath,
+            "AAAGame/Scripts/UI/InteractOptionTips.cs"));
+        string inputManager = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            assetsPath,
+            "AAAGame/Scripts/UTManagers/InputManager.cs"));
+        string procedure = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            assetsPath,
+            "AAAGame/Scripts/Procedures/RuntimeProcedureBase.cs"));
+        string authority = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            assetsPath,
+            "AAAGame/Scripts/Interaction/LogicInteractionAuthorityService.cs"));
+        string hasher = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            assetsPath,
+            "AAAGame/Scripts/GameClass/LogicGameplayStateHasher.cs"));
 
-        StringAssert.DoesNotContain("Panel", source);
-        Assert.IsNull(typeof(LogicInteractionHoldService).GetMethod("RegisterPanelConsumer"));
-        Assert.IsNull(typeof(LogicInteractionHoldService).GetMethod("GetPanelProgress"));
+        StringAssert.Contains("IsInteractionPressed", tips);
+        StringAssert.Contains("SetHoldState", tips);
+        StringAssert.Contains("_target.TryExecute", tips);
+        StringAssert.DoesNotContain("LogicInteractionHoldService", tips);
+        StringAssert.DoesNotContain("SetLogicHoldProgress", tips);
+        StringAssert.DoesNotContain("AddHeldBit(_interactAction", inputManager);
+        StringAssert.DoesNotContain("LogicInteractionHoldService", procedure);
+        StringAssert.DoesNotContain("LogicInteractionHoldService", authority);
+        StringAssert.DoesNotContain("LogicInteractionHoldService", hasher);
     }
 
     [Test]
@@ -250,13 +194,6 @@ public sealed class LogicInteractionHoldServiceTests
         {
             IngameCoinPreviewState.ClearPreviewDeduction(ownerId);
         }
-    }
-
-    private static LogicInputTimeline CreateTimeline()
-    {
-        var timeline = new LogicInputTimeline();
-        timeline.Begin(0d, FixVector2.Zero, 0);
-        return timeline;
     }
 
     private static float ResolveHoldDuration(System.Type panelType, int starCount)

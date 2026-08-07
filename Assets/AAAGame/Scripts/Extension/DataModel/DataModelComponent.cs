@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using GameFramework.Event;
 using UnityGameFramework.Runtime;
 namespace GameFramework
 {
@@ -9,7 +8,6 @@ namespace GameFramework
     public class DataModelComponent : GameFrameworkComponent
     {
         private Dictionary<TypeIdPair, DataModelBase> m_DataModels;
-        private bool m_IsSubscribedToQuitEvent;
         /// <summary>
         /// 获取DataModel数量。
         /// </summary>
@@ -25,35 +23,10 @@ namespace GameFramework
             base.Awake();
             m_DataModels = new Dictionary<TypeIdPair, DataModelBase>(1024);
         }
-        private void Start()
-        {
-            GF.Event.Subscribe(GFEventArgs.EventId, OnGFEventCallback);
-            m_IsSubscribedToQuitEvent = true;
-        }
         private void OnDestroy()
         {
-            if (m_IsSubscribedToQuitEvent)
-            {
-                GF.Event.Unsubscribe(GFEventArgs.EventId, OnGFEventCallback);
-                m_IsSubscribedToQuitEvent = false;
-            }
-
             ReleaseAll();
             m_DataModels.Clear();
-        }
-        private void OnGFEventCallback(object sender, GameEventArgs e)
-        {
-            var args = e as GFEventArgs;
-            if (args.EventType == GFEventType.ApplicationQuit)
-            {
-                if (m_IsSubscribedToQuitEvent)
-                {
-                    GF.Event.Unsubscribe(GFEventArgs.EventId, OnGFEventCallback);
-                    m_IsSubscribedToQuitEvent = false;
-                }
-
-                ReleaseAll();
-            }
         }
         /// <summary>
         /// 清除所有已存在的数据模型

@@ -5,14 +5,14 @@ using AAAGame.Scripts.BuffSystem;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
-public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
+public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
 {
     private const string DiscardFutureBuffPrefix = "base_tech_discard_future_";
     private const string DiscardFieldBuffPrefix = "base_tech_discard_field_";
 
     private sealed class RuntimeTechRule
     {
-        public Action<BuildingTechRuntimeEffectSO, TechEffectContext> Activate;
+        public Action<BuildingTechRuntimeEffect, TechEffectContext> Activate;
         public bool RegisterUnitBuffsAfterActivate;
         public Func<TechData, string, List<BuffCallback>> CreateUnitModules;
         public Func<TechData, string, List<BuffCallback>> CreateBuildingModules;
@@ -185,7 +185,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         m_DeterministicStringKeys.Sort(s_StringComparison);
     }
 
-    public override void Activate(TechEffectContext context)
+    public void Activate(TechEffectContext context)
     {
         if (context?.TechData == null || context.GlobalBuffManager == null)
             return;
@@ -215,7 +215,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
             RegisterUnitBuffs(context);
     }
 
-    public override BuffData CreateUnitInitialBuff(TechData techData, UnitType unitType, string techId)
+    public BuffData CreateUnitInitialBuff(TechData techData, UnitType unitType, string techId)
     {
         List<BuffCallback> modules = CreateUnitModules(techData, techId);
         if (modules == null || modules.Count == 0)
@@ -229,7 +229,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
             modules: modules);
     }
 
-    public override List<BuffCallback> CreateBuildingScopedModules(TechData techData, string techId)
+    public List<BuffCallback> CreateBuildingScopedModules(TechData techData, string techId)
     {
         if (techData == null || string.IsNullOrWhiteSpace(techId))
             return null;
@@ -492,7 +492,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
     private static void AddActivation(
         Dictionary<string, RuntimeTechRule> rules,
         string techId,
-        Action<BuildingTechRuntimeEffectSO, TechEffectContext> action,
+        Action<BuildingTechRuntimeEffect, TechEffectContext> action,
         bool registerUnitBuffsAfterActivate = false)
     {
         RuntimeTechRule rule = GetOrCreateRule(rules, techId);
@@ -563,7 +563,13 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         if (context.OwnerFactionId != EntitySideHelper.PlayerFactionId || amount == Fix64.Zero)
             return;
 
-        InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, Mathf.Max(0, (int)amount), true);
+        int supplyDelta = Mathf.Max(0, (int)amount);
+        if (supplyDelta > 0
+            && !InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, supplyDelta, true))
+        {
+            throw new InvalidOperationException(
+                $"Tech max-supply effect could not be committed. tech={context.TechData.Identifier}, delta={supplyDelta}.");
+        }
     }
 
     private void RegisterDiscardBuff(TechEffectContext context, Fix64 healthBonus, Fix64 attackSpeedPercent)
@@ -653,7 +659,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         if (ownerFactionId < 0)
             return;
 
-        GamePhase phase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
+        GamePhase phase = LogicPhaseCommandService.GetRequiredCurrentPhase();
         if (phase != GamePhase.Invade && phase != GamePhase.Defend)
             return;
 
@@ -751,7 +757,11 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
             if (pair.Value <= 0 || pair.Key != EntitySideHelper.PlayerFactionId)
                 continue;
 
-            InGameDataModel.TryModifyValue(IngameValueType.Coin, pair.Value, true);
+            if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, pair.Value, true))
+            {
+                throw new InvalidOperationException(
+                    $"Pending tech coin effect could not be committed. tech={pair.Key} amount={pair.Value}.");
+            }
         }
 
         m_PendingBuildPhaseCoinsByFaction.Clear();
@@ -849,7 +859,11 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
             m_DeadSupplyByFaction.TryGetValue(spec.OwnerFactionId, out int deadSupply);
             int coin = deadSupply / spec.SupplyPerCoin;
             if (coin > 0)
-                InGameDataModel.TryModifyValue(IngameValueType.Coin, coin, true);
+                if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, coin, true))
+                {
+                    throw new InvalidOperationException(
+                        $"Fire HQ death coin reward could not be committed. faction={spec.OwnerFactionId}, amount={coin}.");
+                }
         }
 
         m_DeadSupplyByFaction.Clear();
@@ -1022,11 +1036,9 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
 
     private static CharacterDataDetail FindCharacterData(string characterKey)
     {
-        if (string.IsNullOrWhiteSpace(characterKey) || GF.DataTable == null)
+        if (string.IsNullOrWhiteSpace(characterKey))
             return null;
-
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
-        return table?.GetDataRow(row => row.CharacterKey == characterKey);
+        return LogicRuntimeDataTableCache.TryGetCharacter(characterKey, out CharacterDataDetail row) ? row : null;
     }
 
     internal static bool HasTag(UnitTag[] tags, UnitTag tag)
@@ -1072,7 +1084,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
 
 public sealed class ConditionalCoinAttackSpeedBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private const float UpdateInterval = 0.1f;
+    private static readonly Fix64 UpdateInterval = Fix64.FromRaw(410);
     private readonly int m_CoinThreshold;
     private readonly Fix64 m_AttackSpeedPercent;
     private Fix64 m_Timer;
@@ -1088,7 +1100,7 @@ public sealed class ConditionalCoinAttackSpeedBuff : BuffCallback, ILogicDetermi
     public override void OnUpdate(Fix64 deltaTime)
     {
         m_Timer += (Fix64)deltaTime;
-        if (m_Timer < (Fix64)UpdateInterval)
+        if (m_Timer < UpdateInterval)
             return;
 
         m_Timer = Fix64.Zero;
@@ -1140,7 +1152,7 @@ public sealed class ConditionalCoinAttackSpeedBuff : BuffCallback, ILogicDetermi
 
 public sealed class EnemySizeAttackSpeedAuraBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private const float UpdateInterval = 0.1f;
+    private static readonly Fix64 UpdateInterval = Fix64.FromRaw(410);
     private readonly Fix64 m_Radius;
     private readonly UnitSize m_TargetSize;
     private readonly Fix64 m_AttackSpeedPercent;
@@ -1157,7 +1169,7 @@ public sealed class EnemySizeAttackSpeedAuraBuff : BuffCallback, ILogicDetermini
     public override void OnUpdate(Fix64 deltaTime)
     {
         m_Timer += (Fix64)deltaTime;
-        if (m_Timer < (Fix64)UpdateInterval || hostEntity == null)
+        if (m_Timer < UpdateInterval || hostEntity == null)
             return;
 
         m_Timer = Fix64.Zero;
@@ -1283,7 +1295,7 @@ public sealed class MeleeVsRangedDamageBonusBuff : BuffCallback
 
 public sealed class OutOfCombatStickyMoveSpeedBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private const float UpdateInterval = 0.1f;
+    private static readonly Fix64 UpdateInterval = Fix64.FromRaw(410);
     private readonly Fix64 m_RequiredOutOfCombatSeconds;
     private readonly Fix64 m_MoveSpeedPercent;
     private readonly Fix64 m_StickySeconds;
@@ -1302,7 +1314,7 @@ public sealed class OutOfCombatStickyMoveSpeedBuff : BuffCallback, ILogicDetermi
     public override void OnUpdate(Fix64 deltaTime)
     {
         m_Timer += (Fix64)deltaTime;
-        if (m_Timer < (Fix64)UpdateInterval)
+        if (m_Timer < UpdateInterval)
             return;
 
         Fix64 elapsed = m_Timer;
@@ -1371,7 +1383,7 @@ public sealed class OutOfCombatStickyMoveSpeedBuff : BuffCallback, ILogicDetermi
 
 public sealed class OutOfCombatHealToThresholdOnceBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private const float UpdateInterval = 0.1f;
+    private static readonly Fix64 UpdateInterval = Fix64.FromRaw(410);
     private readonly Fix64 m_RequiredOutOfCombatSeconds;
     private readonly Fix64 m_HealthThresholdPercent;
     private readonly Fix64 m_AttackSpeedPenaltyPercent;
@@ -1393,7 +1405,7 @@ public sealed class OutOfCombatHealToThresholdOnceBuff : BuffCallback, ILogicDet
             return;
 
         m_Timer += (Fix64)deltaTime;
-        if (m_Timer < (Fix64)UpdateInterval)
+        if (m_Timer < UpdateInterval)
             return;
 
         m_Timer = Fix64.Zero;
@@ -1500,7 +1512,7 @@ public sealed class LightMeleeReflectDamageBuff : BuffCallback
             return baseDamage;
         if (attacker.CharacterData == null || attacker.CharacterData.Size != UnitSize.Small)
             return baseDamage;
-        if (!BuildingTechRuntimeEffectSO.HasTag(attacker.CharacterData.UnitTags, UnitTag.Melee))
+        if (!BuildingTechRuntimeEffect.HasTag(attacker.CharacterData.UnitTags, UnitTag.Melee))
             return baseDamage;
 
         Fix64 reflect = baseDamage * m_ReflectPercent / (Fix64)100;
@@ -1516,7 +1528,7 @@ public sealed class LightMeleeReflectDamageBuff : BuffCallback
 
 public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private const float UpdateInterval = 0.15f;
+    private static readonly Fix64 UpdateInterval = Fix64.FromRaw(615);
     private readonly Fix64 m_AttackBonus;
     private readonly Fix64 m_ConeAngle;
     private readonly Fix64 m_Distance;
@@ -1534,7 +1546,7 @@ public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback, ILogicDet
     public override void OnUpdate(Fix64 deltaTime)
     {
         m_Timer += (Fix64)deltaTime;
-        if (m_Timer < (Fix64)UpdateInterval)
+        if (m_Timer < UpdateInterval)
             return;
 
         m_Timer = Fix64.Zero;
@@ -1551,7 +1563,7 @@ public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback, ILogicDet
 
     private bool ShouldApply()
     {
-        if (hostEntity == null || hostEntity.CharacterData == null || !BuildingTechRuntimeEffectSO.HasTag(hostEntity.CharacterData.UnitTags, UnitTag.Ranged))
+        if (hostEntity == null || hostEntity.CharacterData == null || !BuildingTechRuntimeEffect.HasTag(hostEntity.CharacterData.UnitTags, UnitTag.Ranged))
             return false;
 
         Fix64 maxDistance = DistanceUnitConverter.ConvertToWorld(m_Distance);
@@ -1607,7 +1619,7 @@ public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback, ILogicDet
 
 public sealed class EnemyEnterFriendlyStrongholdDamageWatcherBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private const float UpdateInterval = 0.2f;
+    private static readonly Fix64 UpdateInterval = Fix64.FromRaw(820);
     private readonly Fix64 m_Damage;
     private readonly Dictionary<int, string> m_LastStrongholdIdByEntity = new();
     private Fix64 m_Timer;
@@ -1620,7 +1632,7 @@ public sealed class EnemyEnterFriendlyStrongholdDamageWatcherBuff : BuffCallback
     public override void OnUpdate(Fix64 deltaTime)
     {
         m_Timer += (Fix64)deltaTime;
-        if (m_Timer < (Fix64)UpdateInterval || m_Damage <= Fix64.Zero)
+        if (m_Timer < UpdateInterval || m_Damage <= Fix64.Zero)
             return;
 
         m_Timer = Fix64.Zero;
@@ -1659,7 +1671,7 @@ public sealed class EnemyEnterFriendlyStrongholdDamageWatcherBuff : BuffCallback
 
 public sealed class EnemyInFriendlyStrongholdDefAuraWatcherBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private const float UpdateInterval = 0.2f;
+    private static readonly Fix64 UpdateInterval = Fix64.FromRaw(820);
     private readonly Fix64 m_DefPenalty;
     private readonly HashSet<int> m_Affected = new();
     private Fix64 m_Timer;
@@ -1672,7 +1684,7 @@ public sealed class EnemyInFriendlyStrongholdDefAuraWatcherBuff : BuffCallback, 
     public override void OnUpdate(Fix64 deltaTime)
     {
         m_Timer += (Fix64)deltaTime;
-        if (m_Timer < (Fix64)UpdateInterval)
+        if (m_Timer < UpdateInterval)
             return;
 
         m_Timer = Fix64.Zero;
@@ -1753,7 +1765,7 @@ public sealed class EnemyInFriendlyStrongholdDefAuraWatcherBuff : BuffCallback, 
 
 public sealed class NearbyMedicalDelayedDamageBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private const float UpdateInterval = 0.15f;
+    private static readonly Fix64 UpdateInterval = Fix64.FromRaw(615);
     private readonly Fix64 m_Radius;
     private readonly Fix64 m_DelayPercent;
     private readonly Fix64 m_Duration;
@@ -1770,7 +1782,7 @@ public sealed class NearbyMedicalDelayedDamageBuff : BuffCallback, ILogicDetermi
     public override void OnUpdate(Fix64 deltaTime)
     {
         m_Timer += (Fix64)deltaTime;
-        if (m_Timer < (Fix64)UpdateInterval)
+        if (m_Timer < UpdateInterval)
             return;
 
         m_Timer = Fix64.Zero;
@@ -2151,7 +2163,7 @@ public static class HealingTargetFilterService
         if (threshold <= Fix64.Zero)
             return true;
 
-        return (Fix64)target.HealthRatio() * (Fix64)100 < threshold;
+        return target.HealthRatioFixed() * (Fix64)100 < threshold;
     }
 
     internal static void WriteDeterministicState(LogicStateHasher hasher)

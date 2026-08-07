@@ -13,6 +13,8 @@ public static class WeaponHelper
     /// </summary>
     public static void LoadWeapon(string weaponPath, DirectAtkComp comp)
     {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Weapon presentation assets cannot load during a logic frame.");
         if (string.IsNullOrWhiteSpace(weaponPath))
             throw new InvalidOperationException("WeaponHelper.LoadWeapon failed: weaponPath is empty.");
         if (comp == null)

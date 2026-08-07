@@ -12,6 +12,10 @@ public sealed class LogicBuildingProductionTests
     [SetUp]
     public void SetUp()
     {
+        LogicRuntimeDataTableCache.PrepareForEditorTests(
+            Array.Empty<CharacterDataDetail>(),
+            LoadBuildingRows(),
+            Array.Empty<LevelTagTable>());
         EnsureInGameDataModel();
         EntityRegistry.Clear();
         LogicTimeControlService.BeginTimeline();
@@ -19,6 +23,7 @@ public sealed class LogicBuildingProductionTests
         LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
         LogicEntityLifecycleService.BeginTimeline();
         LogicStrongholdMap.Clear();
+        LogicProductionConditionState.ClearAll();
     }
 
     [TearDown]
@@ -28,9 +33,11 @@ public sealed class LogicBuildingProductionTests
             UnityEngine.Object.DestroyImmediate(m_RewardManagerObject);
         EntityRegistry.Clear();
         LogicStrongholdMap.Clear();
+        LogicProductionConditionState.ClearAll();
         LogicEntityLifecycleService.EndTimeline();
         LogicPhaseCommandService.EndTimeline();
         LogicTimeControlService.EndTimeline();
+        LogicRuntimeDataTableCache.ResetForEditorTests();
     }
 
     [Test]
@@ -114,6 +121,41 @@ public sealed class LogicBuildingProductionTests
         LogicProductionConditionState.RecordUnitDeath(enemy);
         Assert.AreEqual(0, LogicProductionConditionState.GetKillCount("SH_0_1", 1));
         Assert.AreEqual(1, LogicProductionConditionState.GetKillCount("SH_1_1", 1));
+    }
+
+    [Test]
+    public void ProductionConditions_PreserveFixedPositionAcrossLargeCoordinateCellBoundary()
+    {
+        Fix64 originX = (Fix64)1000000;
+        FixVector2 origin = new FixVector2(originX, Fix64.Zero);
+        FixVector2 position = new FixVector2(
+            originX + Fix64.FromRaw((1L << (Fix64.FRACTIONAL_PLACES - 1)) + 1),
+            Fix64.Zero);
+        LogicStrongholdMap.Initialize(
+            origin,
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            Fix64.One,
+            new[]
+            {
+                new LogicStrongholdCellDefinition("SH_HIGH_0", 0, 0, EntitySideHelper.PlayerFactionId),
+                new LogicStrongholdCellDefinition("SH_HIGH_1", 1, 0, EntitySideHelper.EnemyFactionId),
+            });
+        LogicEntityId enemyId = CreateUnit(
+            "Unit_Enemy_HighCoordinate",
+            SideType.EnemySide,
+            "SH_HIGH_1",
+            position);
+        LogicTimeControlService.BeginFrame(1);
+        LogicEntityLifecycleService.ApplyFrame(1);
+
+        Assert.AreEqual(1, LogicProductionConditionState.GetTroopCount("SH_HIGH_1"));
+        LogicProductionConditionState.SnapshotSurvivors(1);
+        Assert.AreEqual(1, LogicProductionConditionState.GetSurvivorCount("SH_HIGH_1", 1));
+
+        LogicProductionConditionState.RecordUnitDeath(LogicEntityStateStore.GetRequired(enemyId));
+        Assert.AreEqual(0, LogicProductionConditionState.GetKillCount("SH_HIGH_0", 1));
+        Assert.AreEqual(1, LogicProductionConditionState.GetKillCount("SH_HIGH_1", 1));
     }
 
     [Test]
@@ -230,6 +272,7 @@ public sealed class LogicBuildingProductionTests
 
     private static void EnsureInGameDataModel()
     {
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(LogicBuildingProductionTests));
         FieldInfo dataModelField = typeof(GF).GetField(
             "<DataModel>k__BackingField",
             BindingFlags.Static | BindingFlags.NonPublic);
@@ -283,6 +326,28 @@ public sealed class LogicBuildingProductionTests
             ?.GetValue(model) as Dictionary<string, int>;
         reserves?.Clear();
         InGameDataModel.SetStrongholds(new List<Stronghold>());
+    }
+
+    private static BuildingTable[] LoadBuildingRows()
+    {
+        string path = System.IO.Path.Combine(
+            Application.dataPath,
+            "AAAGame/DataTable/Build/BuildingTable.txt");
+        if (!System.IO.File.Exists(path))
+            throw new System.IO.FileNotFoundException("Building table was not found.", path);
+
+        var rows = new List<BuildingTable>();
+        foreach (string line in System.IO.File.ReadAllLines(path))
+        {
+            if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#", StringComparison.Ordinal))
+                continue;
+            var row = new BuildingTable();
+            if (!row.ParseDataRow(line, null))
+                throw new InvalidOperationException("Building table row could not be parsed for editor tests.");
+            rows.Add(row);
+        }
+
+        return rows.ToArray();
     }
 
 }

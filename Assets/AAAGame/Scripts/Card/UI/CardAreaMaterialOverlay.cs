@@ -761,14 +761,13 @@ namespace AAAGame.Card.UI
                 return !string.IsNullOrWhiteSpace(assetPath);
             }
 
-            if (GF.DataTable == null || !GF.DataTable.HasDataTable<CharacterDataDetail>())
+            if (!LogicRuntimeDataTableCache.IsPrepared)
             {
                 return false;
             }
 
             string characterKey = cardModel.DataProvider.SoldierIndex.ToString();
-            CharacterDataDetail tableRow = GF.DataTable.GetDataTable<CharacterDataDetail>()
-                .GetDataRow(row => row.CharacterKey == characterKey);
+            LogicRuntimeDataTableCache.TryGetCharacter(characterKey, out CharacterDataDetail tableRow);
 
             if (tableRow == null || string.IsNullOrWhiteSpace(tableRow.PrefabPath))
             {

@@ -194,14 +194,7 @@ public static class LogicBuildingConfigurator
                 return 0;
             throw new InvalidOperationException($"Army building '{buildingData.Identifier}' has no UnitID.");
         }
-        if (GF.DataTable == null)
-            throw new InvalidOperationException($"Cannot configure army building '{buildingData.Identifier}': data tables are unavailable.");
-
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>()
-                    ?? throw new InvalidOperationException("CharacterDataDetail table is unavailable.");
-        CharacterDataDetail row = table.GetDataRow(candidate => candidate.CharacterKey == buildingData.UnitID)
-                                  ?? throw new InvalidOperationException(
-                                      $"Army building '{buildingData.Identifier}' references missing unit '{buildingData.UnitID}'.");
+        CharacterDataDetail row = LogicRuntimeDataTableCache.GetCharacterRequired(buildingData.UnitID);
         if (row.Supply < 0)
             throw new InvalidOperationException($"Unit '{buildingData.UnitID}' has negative supply {row.Supply}.");
         return row.Supply;

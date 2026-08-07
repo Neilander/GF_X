@@ -77,7 +77,7 @@ public static class MAEntityLogicFrameSystem
     public static void ResetForWorldTransition()
     {
         EnsureActive();
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("MAEntityLogicFrameSystem.ResetForWorldTransition failed: a logic frame is running.");
         ClearFrameState();
         LogicAgentCollisionShadowService.Clear();
@@ -88,7 +88,7 @@ public static class MAEntityLogicFrameSystem
     public static void EndTimeline()
     {
         EnsureActive();
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("MAEntityLogicFrameSystem.EndTimeline failed: a logic frame is running.");
 
         LogicFrameRuntime.Unregister(s_Listener);

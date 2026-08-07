@@ -30,6 +30,44 @@ public static class NavigationGridFixedMath
         return Fix64.FromRaw(fixRaw);
     }
 
+    public static long Fix64ToGridRaw(Fix64 value)
+    {
+        return checked(value.RawValue << GridToFixShift);
+    }
+
+    public static int WorldToGridCell(Fix64 worldPosition, long originGridRaw, long cellSizeGridRaw)
+    {
+        return GridRawToCell(Fix64ToGridRaw(worldPosition), originGridRaw, cellSizeGridRaw);
+    }
+
+    public static int WorldToGridCell(float worldPosition, long originGridRaw, long cellSizeGridRaw)
+    {
+        return GridRawToCell(FloatToGridRaw(worldPosition), originGridRaw, cellSizeGridRaw);
+    }
+
+    private static int GridRawToCell(long worldGridRaw, long originGridRaw, long cellSizeGridRaw)
+    {
+        if (cellSizeGridRaw <= 0)
+            throw new ArgumentOutOfRangeException(nameof(cellSizeGridRaw));
+
+        long offset = checked(worldGridRaw - originGridRaw);
+        long result = offset / cellSizeGridRaw;
+        if (offset < 0 && offset % cellSizeGridRaw != 0)
+            result--;
+        return checked((int)result);
+    }
+
+    public static int DivideCeilingByCellSize(Fix64 distance, long cellSizeGridRaw)
+    {
+        if (distance < Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(distance));
+        if (cellSizeGridRaw <= 0)
+            throw new ArgumentOutOfRangeException(nameof(cellSizeGridRaw));
+
+        long distanceGridRaw = Fix64ToGridRaw(distance);
+        return checked((int)((distanceGridRaw + cellSizeGridRaw - 1) / cellSizeGridRaw));
+    }
+
     public static FixVector2 GridCellCenterFixed(
         long cellSizeGridRaw,
         long originXGridRaw,

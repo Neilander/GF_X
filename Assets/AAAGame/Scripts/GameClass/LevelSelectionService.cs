@@ -246,15 +246,13 @@ public static class LevelSelectionService
             return false;
         }
 
-        var levelTable = GF.DataTable != null ? GF.DataTable.GetDataTable<LevelTable>() : null;
-        if (levelTable == null)
+        if (!LogicRuntimeDataTableCache.IsPrepared)
         {
-            errorMessage = "LevelTable is not loaded.";
+            errorMessage = "Logic runtime level snapshot is not prepared.";
             return false;
         }
 
-        row = levelTable.GetDataRow(item => string.Equals(item.Identifier, levelIdentifier, StringComparison.Ordinal));
-        if (row == null)
+        if (!LogicRuntimeDataTableCache.TryGetLevel(levelIdentifier, out row))
         {
             errorMessage = Utility.Text.Format("Level '{0}' not found in LevelTable.", levelIdentifier);
             return false;
@@ -271,13 +269,15 @@ public static class LevelSelectionService
 
     private static LevelTable[] GetSortedLevelRows()
     {
-        var levelTable = GF.DataTable != null ? GF.DataTable.GetDataTable<LevelTable>() : null;
-        if (levelTable == null)
+        if (!LogicRuntimeDataTableCache.IsPrepared)
         {
             return Array.Empty<LevelTable>();
         }
 
-        LevelTable[] rows = levelTable.GetAllDataRows();
+        IReadOnlyList<LevelTable> snapshotRows = LogicRuntimeDataTableCache.LevelRows;
+        var rows = new LevelTable[snapshotRows.Count];
+        for (int i = 0; i < snapshotRows.Count; i++)
+            rows[i] = snapshotRows[i];
         Array.Sort(rows, (a, b) => a.Id.CompareTo(b.Id));
         return rows;
     }

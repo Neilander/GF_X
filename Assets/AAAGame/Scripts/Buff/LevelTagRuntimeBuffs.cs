@@ -74,7 +74,7 @@ public sealed class AttackLifeStealPercentBuff : BuffCallback
 
 public sealed class DayScalingHeroStatsBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private const float RefreshInterval = 0.25f;
+    private static readonly Fix64 RefreshInterval = Fix64.FromRaw(1024);
 
     private readonly Fix64 m_AttackPercentPerDay;
     private readonly Fix64 m_HealthPercentPerDay;
@@ -98,7 +98,7 @@ public sealed class DayScalingHeroStatsBuff : BuffCallback, ILogicDeterministicS
     public override void OnUpdate(Fix64 deltaTime)
     {
         m_Timer += (Fix64)deltaTime;
-        if (m_Timer < (Fix64)RefreshInterval)
+        if (m_Timer < RefreshInterval)
             return;
 
         m_Timer = Fix64.Zero;

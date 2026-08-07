@@ -378,10 +378,11 @@ public sealed class StoryUIForm : UIFormBase, IPointerClickHandler
     {
         if (string.IsNullOrWhiteSpace(key))
             throw new InvalidOperationException("Story localization key is empty.");
-        string text = LocalizationTextManager.GetLocalizedText(key);
-        if (string.IsNullOrWhiteSpace(text) || string.Equals(text, key, StringComparison.Ordinal))
+        if (GF.Localization == null)
+            throw new InvalidOperationException("Story localization is not ready.");
+        if (!GF.Localization.HasRawString(key))
             throw new InvalidOperationException($"Story localization key is missing: {key}");
-        return text;
+        return LocalizationTextManager.GetLocalizedText(key);
     }
 
     private static string LocalizeOptional(string key)

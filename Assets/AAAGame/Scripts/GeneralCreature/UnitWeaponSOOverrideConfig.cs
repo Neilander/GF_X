@@ -63,25 +63,46 @@ public class UnitWeaponSOOverrideConfig : ScriptableObject
 public static class UnitWeaponSOOverrideResolver
 {
     private const string ResourcePath = "UnitWeaponSOOverrideConfig";
-    private static UnitWeaponSOOverrideConfig s_Config;
+    private static readonly Dictionary<string, string> s_PathsByCharacterKey =
+        new(StringComparer.Ordinal);
+    private static bool s_RuntimeMappingsPrepared;
+
+    public static void PrepareRuntimeMappings()
+    {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Weapon presentation overrides cannot be prepared during a logic frame.");
+
+        UnitWeaponSOOverrideConfig config = Resources.Load<UnitWeaponSOOverrideConfig>(ResourcePath);
+        s_PathsByCharacterKey.Clear();
+        if (config != null)
+        {
+            IReadOnlyList<UnitWeaponSOOverrideEntry> entries = config.Entries;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                UnitWeaponSOOverrideEntry entry = entries[i]
+                                                  ?? throw new InvalidOperationException(
+                                                      $"Weapon presentation override entry is null. index={i}.");
+                if (string.IsNullOrWhiteSpace(entry.characterKey))
+                    throw new InvalidOperationException($"Weapon presentation override has an empty character key. index={i}.");
+                if (!s_PathsByCharacterKey.TryAdd(entry.characterKey, entry.weaponSOPath ?? string.Empty))
+                    throw new InvalidOperationException(
+                        $"Weapon presentation override has duplicate character key '{entry.characterKey}'.");
+            }
+        }
+
+        s_RuntimeMappingsPrepared = true;
+    }
 
     public static string GetWeaponSOPath(string characterKey)
     {
         if (string.IsNullOrWhiteSpace(characterKey))
-        {
             return string.Empty;
-        }
+        if (!s_RuntimeMappingsPrepared)
+            throw new InvalidOperationException("Weapon presentation override mappings were not prepared.");
 
-        if (s_Config == null)
-        {
-            s_Config = Resources.Load<UnitWeaponSOOverrideConfig>(ResourcePath);
-        }
-
-        if (s_Config == null)
-        {
-            return string.Empty;
-        }
-
-        return s_Config.TryGetWeaponSOPath(characterKey, out var path) ? path : string.Empty;
+        return s_PathsByCharacterKey.TryGetValue(characterKey, out string path)
+               && !string.IsNullOrWhiteSpace(path)
+            ? path
+            : string.Empty;
     }
 }

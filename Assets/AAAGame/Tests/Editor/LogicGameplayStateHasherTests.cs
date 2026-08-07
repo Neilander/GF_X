@@ -181,7 +181,6 @@ public class LogicGameplayStateHasherTests
         Assert.AreEqual(playerId, LogicInteractionAuthorityService.CurrentActorId);
         Assert.AreEqual(1, LogicInteractionTargetStateService.ActorCount);
         Assert.IsFalse(LogicInteractionTargetStateService.TryGetTarget(playerId, out _));
-        Assert.IsTrue(LogicInteractionHoldService.HasConsumer);
     }
 
     [Test]
@@ -753,10 +752,10 @@ public class LogicGameplayStateHasherTests
     private static void BeginAndRunEmptyFrame(System.Action beforeFirstFrame = null)
     {
         EnsureInGameDataModel();
+        EnsureSkillRuntimeDataModel();
         LevelTagRuntime.ClearActiveTags();
         EntityRegistry.Clear();
         LogicTimeControlService.BeginTimeline();
-        LogicInteractionHoldService.BeginTimeline();
         LogicInteractionTargetStateService.BeginTimeline();
         LogicInteractionCommandService.BeginTimeline();
         LogicCardCommandService.BeginTimeline();
@@ -764,7 +763,6 @@ public class LogicGameplayStateHasherTests
         LogicInGameValueCommandService.BeginTimeline();
         LogicSkillSlotCommandService.BeginTimeline();
         LogicSkillCastCommandService.BeginTimeline();
-        Assert.IsTrue(LogicInteractionHoldService.IsActive, "Interaction hold service must be active after BeginTimeline.");
         LogicPhaseCommandService.BeginTimeline();
         LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
         LogicTechEffectCommandService.BeginTimeline();
@@ -780,8 +778,7 @@ public class LogicGameplayStateHasherTests
         LogicTimeControlService.BeginFrame(1);
         var inputTimeline = new LogicInputTimeline();
         inputTimeline.Begin(0d, FixVector2.Zero, 0);
-        LogicInteractionHoldService.ProcessFrame(inputTimeline.Seal(1, 1d / 30d));
-        Assert.IsTrue(LogicInteractionHoldService.IsActive, "Interaction hold service became inactive while sealing input.");
+        inputTimeline.Seal(1, 1d / 30d);
         LogicCardCommandService.ApplyFrameForTests(1, _ => { });
         LogicInGameValueCommandService.ApplyFrameForTests(1, _ => { });
         LogicSkillSlotCommandService.ApplyFrameForTests(1, _ => { });
@@ -792,7 +789,6 @@ public class LogicGameplayStateHasherTests
         LogicEntityLifecycleService.ApplyFrame(1);
         LogicObstacleCommandService.ApplyFrameForTests(1, _ => { });
         LogicFrameRuntime.Tick(1);
-        Assert.IsTrue(LogicInteractionHoldService.IsActive, "Interaction hold service became inactive during LogicFrameRuntime.Tick.");
     }
 
     private sealed class HashTestSkillComp : ISkillComp, ILogicDeterministicStateContributor
@@ -853,8 +849,6 @@ public class LogicGameplayStateHasherTests
             LogicInteractionTargetStateService.EndTimeline();
         if (LogicPhaseCommandService.IsActive)
             LogicPhaseCommandService.EndTimeline();
-        if (LogicInteractionHoldService.IsActive)
-            LogicInteractionHoldService.EndTimeline();
         if (LogicTimeControlService.IsActive)
             LogicTimeControlService.EndTimeline();
         ClearBuildingTechStaticRules();
@@ -864,6 +858,7 @@ public class LogicGameplayStateHasherTests
 
     private static void EnsureInGameDataModel()
     {
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(LogicGameplayStateHasherTests));
         System.Reflection.FieldInfo dataModelField = typeof(GF).GetField(
             "<DataModel>k__BackingField",
             System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
@@ -884,19 +879,98 @@ public class LogicGameplayStateHasherTests
             dataModels = System.Activator.CreateInstance(dataModelsField.FieldType);
             dataModelsField.SetValue(current, dataModels);
         }
-        if (current.GetDataModel<InGameDataModel>() != null)
-            return;
+        InGameDataModel model = current.GetDataModel<InGameDataModel>();
+        if (model == null)
+        {
+            model = (InGameDataModel)System.Activator.CreateInstance(typeof(InGameDataModel), true);
+            System.Type pairType = typeof(GameFramework.DataModelComponent).Assembly.GetType("TypeIdPair")
+                                   ?? throw new System.InvalidOperationException("TypeIdPair is unavailable.");
+            object pair = System.Activator.CreateInstance(
+                pairType,
+                System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic,
+                null,
+                new object[] { typeof(InGameDataModel), 0 },
+                null);
+            System.Reflection.MethodInfo addMethod = dataModels.GetType().GetMethod("Add")
+                                                     ?? throw new System.InvalidOperationException(
+                                                         "DataModelComponent storage has no Add method.");
+            addMethod.Invoke(dataModels, new[] { pair, model });
+        }
 
-        var model = (InGameDataModel)System.Activator.CreateInstance(typeof(InGameDataModel), true);
-        System.Type pairType = typeof(GameFramework.DataModelComponent).Assembly.GetType("TypeIdPair");
+        System.Reflection.FieldInfo activeModelField = typeof(InGameDataModel).GetField(
+            "s_ActiveModel",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new System.InvalidOperationException("InGameDataModel active binding field is unavailable.");
+        object active = activeModelField.GetValue(null);
+        if (active != null && !ReferenceEquals(active, model))
+            throw new System.InvalidOperationException("InGameDataModel test binding is inconsistent.");
+        activeModelField.SetValue(null, model);
+
+        System.Reflection.FieldInfo valuesField = typeof(InGameDataModel).GetField(
+            "m_IngameValue",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new System.InvalidOperationException("InGameDataModel value storage field is unavailable.");
+        if (valuesField.GetValue(model) == null)
+        {
+            valuesField.SetValue(
+                model,
+                new System.Collections.Generic.Dictionary<IngameValueType, int>
+                {
+                    [IngameValueType.Phase] = (int)GamePhase.Defend,
+                    [IngameValueType.Day] = 1,
+                    [IngameValueType.Coin] = 0,
+                    [IngameValueType.CurrentSupply] = 0,
+                    [IngameValueType.MaxSupply] = 0,
+                });
+        }
+    }
+
+    private static void EnsureSkillRuntimeDataModel()
+    {
+        System.Reflection.FieldInfo dataModelField = typeof(GF).GetField(
+            "<DataModel>k__BackingField",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        GameFramework.DataModelComponent current = dataModelField?.GetValue(null) as GameFramework.DataModelComponent
+                                                   ?? throw new System.InvalidOperationException(
+                                                       "LogicGameplayStateHasherTests requires a DataModelComponent.");
+        SkillRuntimeDataModel existing = current.GetDataModel<SkillRuntimeDataModel>();
+        if (existing != null)
+        {
+            System.Reflection.FieldInfo activeModelField = typeof(SkillRuntimeDataModel).GetField(
+                "s_ActiveModel",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+                ?? throw new System.InvalidOperationException("SkillRuntimeDataModel active binding field is unavailable.");
+            object active = activeModelField.GetValue(null);
+            if (active != null && !ReferenceEquals(active, existing))
+                throw new System.InvalidOperationException("SkillRuntimeDataModel test binding is inconsistent.");
+            activeModelField.SetValue(null, existing);
+            return;
+        }
+
+        System.Reflection.FieldInfo dataModelsField = typeof(GameFramework.DataModelComponent).GetField(
+            "m_DataModels",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        object dataModels = dataModelsField?.GetValue(current)
+                            ?? throw new System.InvalidOperationException(
+                                "LogicGameplayStateHasherTests DataModelComponent storage is unavailable.");
+        var model = (SkillRuntimeDataModel)System.Activator.CreateInstance(
+            typeof(SkillRuntimeDataModel),
+            true);
+        System.Type pairType = typeof(GameFramework.DataModelComponent).Assembly.GetType("TypeIdPair")
+                               ?? throw new System.InvalidOperationException("TypeIdPair is unavailable.");
         object pair = System.Activator.CreateInstance(
             pairType,
             System.Reflection.BindingFlags.Instance
             | System.Reflection.BindingFlags.Public
             | System.Reflection.BindingFlags.NonPublic,
             null,
-            new object[] { typeof(InGameDataModel), 0 },
+            new object[] { typeof(SkillRuntimeDataModel), 0 },
             null);
-        dataModels.GetType().GetMethod("Add")?.Invoke(dataModels, new[] { pair, model });
+        System.Reflection.MethodInfo addMethod = dataModels.GetType().GetMethod("Add")
+                                                 ?? throw new System.InvalidOperationException(
+                                                     "DataModelComponent storage has no Add method.");
+        addMethod.Invoke(dataModels, new[] { pair, model });
     }
 }

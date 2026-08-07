@@ -86,8 +86,7 @@ public partial class InGameDataModel
 {
     public static InGameDataCheckpoint CaptureStageCheckpointState()
     {
-        InGameDataModel model = GetModel()
-                                ?? throw new InvalidOperationException("Cannot capture stage checkpoint without InGameDataModel.");
+        InGameDataModel model = GetRequiredModel();
         if (model.m_IngameValue == null
             || model.m_TechOwnerContextsById == null
             || model.m_ProductionBuildingCoinReservesByInstanceId == null
@@ -98,7 +97,12 @@ public partial class InGameDataModel
         int valueCount = (int)IngameValueType.MaxSupply + 1;
         var values = new int[valueCount];
         for (int i = 0; i < valueCount; i++)
-            values[i] = model.m_IngameValue.TryGetValue((IngameValueType)i, out int value) ? value : 0;
+        {
+            IngameValueType type = (IngameValueType)i;
+            if (!model.m_IngameValue.TryGetValue(type, out int value))
+                throw new InvalidOperationException($"Cannot capture missing in-game value. type={type}.");
+            values[i] = value;
+        }
 
         var techIds = new List<string>(model.m_TechOwnerContextsById.Keys);
         techIds.Sort(StringComparer.Ordinal);

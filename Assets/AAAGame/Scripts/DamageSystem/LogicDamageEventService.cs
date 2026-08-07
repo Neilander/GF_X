@@ -80,7 +80,7 @@ public static class LogicDamageEventService
     public static void ResetForWorldTransition()
     {
         EnsureActive();
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("LogicDamageEventService.ResetForWorldTransition failed: a logic frame is running.");
         ClearState();
     }
@@ -88,7 +88,7 @@ public static class LogicDamageEventService
     public static void EndTimeline()
     {
         EnsureActive();
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("LogicDamageEventService.EndTimeline failed: a logic frame is running.");
         ClearState();
         IsActive = false;

@@ -295,11 +295,14 @@ public static class LogicBuildingProductionService
 
     private static int LevelTech(IBuildingLogicContext building, int uniqueIndex)
     {
+        if (building.BuildingData.Lv < 2)
+            return 0;
+
         string identifier = RequireIdentifier(building);
         int lvIndex = identifier.LastIndexOf("_Lv", StringComparison.Ordinal);
         string baseIdentifier = lvIndex > 0 ? identifier.Substring(0, lvIndex) : identifier;
-        BuildingTable row = GF.DataTable?.GetDataTable<BuildingTable>()?.GetDataRow(candidate => candidate.Identifier == baseIdentifier);
-        if (row == null || row.Type != BuilType.Prod)
+        if (!LogicRuntimeDataTableCache.TryGetBuilding(baseIdentifier, out BuildingTable row)
+            || row.Type != BuilType.Prod)
             return 0;
 
         int total = 0;

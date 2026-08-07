@@ -82,7 +82,7 @@ public static partial class FlowFieldCrowdMovementSystem
     private const float WalkableSteeringCandidateMinSpeedRatio = 0.25f;
     private const int NavigationGoalCandidateCount = 16;
     private const int NavigationGoalRingCount = 3;
-    private const float NavigationGoalOccupancyPadding = 0.35f;
+    private static readonly Fix64 NavigationGoalOccupancyPadding = Fix64.FromRaw(1434);
     private const int CombatTargetSlotCacheFrameLifetime = 120;
     private const float IntegrationSignificantImprovement = 0.05f;
     private const int MovingTargetGoalRefreshCellDelta = 2;
@@ -3842,10 +3842,20 @@ public static partial class FlowFieldCrowdMovementSystem
         if (AuthoredTerrainSources.TryGetValue(ResolvePreferredAgentTypeId(0), out TestTerrainOverride defaultSource))
             return defaultSource;
 
-        foreach (TestTerrainOverride source in AuthoredTerrainSources.Values)
-            return source;
+        TestTerrainOverride selectedSource = null;
+        int selectedAgentTypeId = int.MaxValue;
+        foreach (KeyValuePair<int, TestTerrainOverride> pair in AuthoredTerrainSources)
+        {
+            if (pair.Value == null)
+                throw new InvalidOperationException($"Authored navigation source is null. agentTypeId={pair.Key}.");
+            if (pair.Key >= selectedAgentTypeId)
+                continue;
 
-        return null;
+            selectedAgentTypeId = pair.Key;
+            selectedSource = pair.Value;
+        }
+
+        return selectedSource;
     }
 
     public static void SetConfig(FlowFieldNavigationConfig config)
@@ -4047,6 +4057,7 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         if (agentTypeIds == null)
             throw new ArgumentNullException(nameof(agentTypeIds));
+        agentTypeIds.Sort();
         return agentTypeIds;
     }
 
@@ -25227,7 +25238,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         Fix64 selfRadius = Fix64.Max(ResolveCollisionRadiusFixed(self), agent.RadiusFixed);
         Fix64 requiredDistance = Fix64.Max(
-            selfRadius * (Fix64)2 + (Fix64)NavigationGoalOccupancyPadding,
+            selfRadius * (Fix64)2 + NavigationGoalOccupancyPadding,
             selfRadius + Fix64.FromRaw(820));
         int ignoredTargetId = ResolveIgnoredGoalOccupancyTargetIdFixed(self, goalPosition);
         Fix64 distanceToGoal = FixVector2.Magnitude(goalPosition - selfFramePosition);
@@ -25456,7 +25467,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
             Fix64 otherThreshold = Fix64.Max(
                 requiredDistance,
-                other.RadiusFixed * (Fix64)2 + (Fix64)NavigationGoalOccupancyPadding);
+                other.RadiusFixed * (Fix64)2 + NavigationGoalOccupancyPadding);
             Fix64 otherThresholdSq = otherThreshold * otherThreshold;
             Fix64 positionDistanceSq = FixVector2.SqrMagnitude(other.PositionFixed - position);
             if (positionDistanceSq < otherThresholdSq

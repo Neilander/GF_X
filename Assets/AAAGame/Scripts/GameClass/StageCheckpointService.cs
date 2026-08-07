@@ -244,7 +244,7 @@ public static class StageCheckpointService
         if (!LogicPersistentIdAllocator.IsActive)
             throw new InvalidOperationException("Stage checkpoint requires an active persistent id allocator.");
 
-        GamePhase phase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
+        GamePhase phase = LogicPhaseCommandService.GetRequiredCurrentPhase();
         if (!Enum.IsDefined(typeof(GamePhase), phase))
             throw new InvalidOperationException($"Stage checkpoint has invalid current phase {phase}.");
 

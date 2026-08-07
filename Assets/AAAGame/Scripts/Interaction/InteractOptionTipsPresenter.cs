@@ -18,6 +18,7 @@ public class InteractOptionTipsPresenter : MonoBehaviour
     private int _upgradeTipsFormId = -1;
     private int _infoTipsFormId = -1;
     private InteractionHost _currentTarget;
+    private string _pendingUpgradeBuildingInstanceId;
 
     private void Awake()
     {
@@ -67,6 +68,12 @@ public class InteractOptionTipsPresenter : MonoBehaviour
         if (args == null)
             return;
 
+        if (args.Target == null && !string.IsNullOrEmpty(_pendingUpgradeBuildingInstanceId))
+            return;
+
+        if (args.Target != null)
+            _pendingUpgradeBuildingInstanceId = null;
+
         _currentTarget = args.Target;
         PresentTarget(_currentTarget);
     }
@@ -85,7 +92,16 @@ public class InteractOptionTipsPresenter : MonoBehaviour
             return;
         }
 
-        PresentTarget(_currentTarget);
+        if (building.buildingData == null)
+            throw new InvalidOperationException("Focused building has no building data during tech unlock presentation.");
+
+        if (building.buildingData.Type == BuilType.Tech)
+        {
+            PresentTarget(_currentTarget);
+            return;
+        }
+
+        _pendingUpgradeBuildingInstanceId = args.SourceBuildingInstanceId;
     }
 
     private void PresentTarget(InteractionHost target)

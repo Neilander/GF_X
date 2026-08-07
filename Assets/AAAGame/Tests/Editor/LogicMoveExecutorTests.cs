@@ -130,7 +130,7 @@ public sealed class LogicMoveExecutorTests
         StringAssert.Contains("LogicStrongholdMap.TryResolveStrongholdId", tutorialManager);
         StringAssert.Contains("SetTutorialStrongholdBoundary", tutorialManager);
         StringAssert.DoesNotContain("OnTriggerEnter", tutorialTrigger);
-        StringAssert.Contains("triggerType == TutorialType.EnemyStronghold", tutorialTrigger);
+        StringAssert.DoesNotContain("ILogicFrameUpdate", tutorialTrigger);
         StringAssert.DoesNotContain("FindObjectOfType<TutorialManager>", tutorialTrigger);
         StringAssert.Contains("LogicMovementRegionConstraintService.ApplyFrame(frame)", runtime);
     }

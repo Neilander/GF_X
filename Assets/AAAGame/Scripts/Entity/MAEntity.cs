@@ -281,10 +281,7 @@ public class MAEntity : CompCreature, IEntityContext
         CharacterKey = entityParams.GetString(EntityParams.P_CharacterKey);
         UnitLevel = Mathf.Clamp(entityParams.UnitLevel, 1, 3);
 
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
-        CharacterData = table.GetDataRow(r => r.CharacterKey == CharacterKey);
-        if (CharacterData == null)
-            throw new InvalidOperationException($"MAEntity 初始化失败: 未找到 CharacterDataDetail，CharacterKey={CharacterKey}。");
+        CharacterData = LogicRuntimeDataTableCache.GetCharacterRequired(CharacterKey);
 
         navAgentTypeID = GameEntry.GetComponent<AgentTypeHelper>().GetNavAgentTypeID(CharacterData.Size);
     }
@@ -505,17 +502,37 @@ public class MAEntity : CompCreature, IEntityContext
     {
         if (_logicState == null || !_logicState.IsSpawnCommitted)
             return;
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("MAEntity cannot synchronize render interpolation during a logic frame.");
 
         FixVector2 previousPosition = _logicState.Position;
         FixVector2 previousForward = _logicState.Forward;
-        if (LogicEntityFrameSnapshotService.IsActive
-            && LogicEntityFrameSnapshotService.CapturedFrame == LogicFrameRuntime.CurrentFrame
-            && LogicEntityFrameSnapshotService.Current.TryGet(LogicEntityId, out LogicEntityFrameState frameStart))
+        if (LogicEntityFrameSnapshotService.IsActive)
         {
-            previousPosition = frameStart.Position;
-            previousForward = frameStart.Forward;
+            LogicEntityFrameSnapshot snapshot = LogicEntityFrameSnapshotService.Current;
+            ulong currentFrame = LogicFrameRuntime.CurrentFrame;
+            if (snapshot == null)
+            {
+                if (currentFrame != 0)
+                {
+                    throw new InvalidOperationException(
+                        $"MAEntity render interpolation snapshot is missing. entity={LogicEntityId.Value}, logicFrame={currentFrame}.");
+                }
+            }
+            else
+            {
+                if (snapshot.FrameId != currentFrame)
+                {
+                    throw new InvalidOperationException(
+                        $"MAEntity render interpolation snapshot frame mismatch. entity={LogicEntityId.Value}, logicFrame={currentFrame}, snapshot={snapshot.FrameId}.");
+                }
+
+                if (snapshot.TryGet(LogicEntityId, out LogicEntityFrameState frameStart))
+                {
+                    previousPosition = frameStart.Position;
+                    previousForward = frameStart.Forward;
+                }
+            }
         }
 
         FixVector2 currentForward = _logicState.Forward;
@@ -669,6 +686,8 @@ public class MAEntity : CompCreature, IEntityContext
 
 	private void FlushLogicPresentationEvents()
 	{
+		if (LogicFrameRuntime.IsExecutingFrame)
+			throw new InvalidOperationException("MAEntity presentation events cannot run during a logic frame.");
 		while (_pendingLogicPresentationEvents.Count > 0)
 		{
 			LogicPresentationEvent presentationEvent = _pendingLogicPresentationEvents.Dequeue();

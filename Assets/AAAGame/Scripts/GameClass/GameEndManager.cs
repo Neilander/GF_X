@@ -16,6 +16,7 @@ public class GameEndManager : GameFrameworkComponent
     private const string ObjectiveDefendBaseTextId = "GameEnd_Cond_DefendBase";
 
     private bool m_EndEventSubscribed;
+    private readonly Queue<LogicGameEndResult> m_PendingEndPresentation = new Queue<LogicGameEndResult>();
 
     public bool IsGameEnded => LogicGameEndService.IsGameEnded;
     public bool IsWin => LogicGameEndService.IsWin;
@@ -33,12 +34,14 @@ public class GameEndManager : GameFrameworkComponent
     private void OnDestroy()
     {
         UnsubscribeEndEvent();
+        m_PendingEndPresentation.Clear();
         if (ReferenceEquals(s_Current, this))
             s_Current = null;
     }
 
     public void Init(LevelData levelData)
     {
+        m_PendingEndPresentation.Clear();
         SubscribeEndEvent();
         LogicGameEndService.Initialize(levelData);
         Log.Info(
@@ -127,13 +130,6 @@ public class GameEndManager : GameFrameworkComponent
         return false;
     }
 
-    public bool TryGetNearestPlayerInitialConditionBuilding(
-        FixVector2 origin,
-        out IBuildingLogicContext building)
-    {
-        return LogicGameEndService.TryGetNearestPlayerInitialConditionBuilding(origin, out building);
-    }
-
     private void SubscribeEndEvent()
     {
         if (m_EndEventSubscribed)
@@ -151,6 +147,20 @@ public class GameEndManager : GameFrameworkComponent
     }
 
     private void OnLogicGameEnded(LogicGameEndResult result)
+    {
+        m_PendingEndPresentation.Enqueue(result);
+    }
+
+    public void UpdatePresentation()
+    {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("GameEndManager.UpdatePresentation cannot run during a logic frame.");
+
+        while (m_PendingEndPresentation.Count > 0)
+            PresentGameEnd(m_PendingEndPresentation.Dequeue());
+    }
+
+    private void PresentGameEnd(LogicGameEndResult result)
     {
         HandleGameEndPresentation(result.IsWin);
         if (result.IsWin)

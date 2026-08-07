@@ -7,6 +7,49 @@ using UnityEngine;
 [TestFixture]
 public class MAEntityLogicFrameSystemTests
 {
+    private static void BeginLogicTimeWithVisibleFog()
+    {
+        const float worldSize = 65536f;
+        var fogMap = new Fog3MapData(new Fog3TerrainInfo(
+            1,
+            1,
+            worldSize,
+            new Vector3(-worldSize * 0.5f, 0f, -worldSize * 0.5f),
+            new[] { true },
+            "MAEntityLogicFrameSystemTests.VisibleFog"));
+
+        LogicTimeControlService.BeginTimeline();
+        LogicCardPlacementAuthority.BeginTimeline();
+        LogicCardPlacementAuthority.BindWorldForTests(
+            fogMap,
+            System.Array.Empty<LogicCombatShape>(),
+            (Fix64)worldSize,
+            (Fix64)worldSize,
+            (Fix64)worldSize);
+        fogMap.MarkVisible(0, 0);
+    }
+
+    private static void EndLogicTimeWithVisibleFog()
+    {
+        LogicCardPlacementAuthority.EndTimeline();
+        LogicTimeControlService.EndTimeline();
+    }
+
+    private static void BeginDefendEntityTimeline()
+    {
+        BeginLogicTimeWithVisibleFog();
+        LogicPhaseCommandService.BeginTimeline();
+        LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
+        LogicEntityLifecycleService.BeginTimeline();
+    }
+
+    private static void EndDefendEntityTimeline()
+    {
+        LogicEntityLifecycleService.EndTimeline();
+        LogicPhaseCommandService.EndTimeline();
+        EndLogicTimeWithVisibleFog();
+    }
+
     [SetUp]
     public void SetUp()
     {
@@ -103,8 +146,7 @@ public class MAEntityLogicFrameSystemTests
         GamePhase previousPhase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
         InGameDataModel.SetPhase(GamePhase.Defend, false);
         Assert.AreEqual(GamePhase.Defend, (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase), "测试必须进入可攻击阶段");
-        LogicTimeControlService.BeginTimeline();
-        LogicEntityLifecycleService.BeginTimeline();
+        BeginDefendEntityTimeline();
         ulong projectileId = 0;
         bool projectileViewBound = false;
         try
@@ -206,8 +248,7 @@ public class MAEntityLogicFrameSystemTests
             if (projectileViewBound && LogicProjectileService.IsActive)
                 LogicProjectileService.ReleaseView(projectileId);
             EntityRegistry.Clear();
-            LogicEntityLifecycleService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndDefendEntityTimeline();
             InGameDataModel.SetPhase(previousPhase, false);
         }
     }
@@ -218,8 +259,7 @@ public class MAEntityLogicFrameSystemTests
         EnsureInGameDataModelForCombatTest();
         GamePhase previousPhase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
         InGameDataModel.SetPhase(GamePhase.Defend, false);
-        LogicTimeControlService.BeginTimeline();
-        LogicEntityLifecycleService.BeginTimeline();
+        BeginDefendEntityTimeline();
         ProjectilePresentationService.BeginTimelineForTests();
         try
         {
@@ -269,8 +309,7 @@ public class MAEntityLogicFrameSystemTests
             if (ProjectilePresentationService.IsActive)
                 ProjectilePresentationService.EndTimelineForTests();
             EntityRegistry.Clear();
-            LogicEntityLifecycleService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndDefendEntityTimeline();
             InGameDataModel.SetPhase(previousPhase, false);
         }
     }
@@ -282,8 +321,7 @@ public class MAEntityLogicFrameSystemTests
         GamePhase previousPhase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
         InGameDataModel.SetPhase(GamePhase.Defend, false);
         Assert.AreEqual(GamePhase.Defend, (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase), "测试必须进入可攻击阶段");
-        LogicTimeControlService.BeginTimeline();
-        LogicEntityLifecycleService.BeginTimeline();
+        BeginDefendEntityTimeline();
         try
         {
             var attackerBrain = new ScriptedBrain { Attack = true };
@@ -358,8 +396,7 @@ public class MAEntityLogicFrameSystemTests
         finally
         {
             EntityRegistry.Clear();
-            LogicEntityLifecycleService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndDefendEntityTimeline();
             InGameDataModel.SetPhase(previousPhase, false);
         }
     }
@@ -419,7 +456,7 @@ public class MAEntityLogicFrameSystemTests
     [Test]
     public void StoredLogicEntityState_ExecutesFrameWithoutBoundView()
     {
-        LogicTimeControlService.BeginTimeline();
+        BeginLogicTimeWithVisibleFog();
         LogicEntityLifecycleService.BeginTimeline();
         try
         {
@@ -454,7 +491,7 @@ public class MAEntityLogicFrameSystemTests
         {
             EntityRegistry.Clear();
             LogicEntityLifecycleService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndLogicTimeWithVisibleFog();
         }
     }
 
@@ -464,8 +501,7 @@ public class MAEntityLogicFrameSystemTests
         EnsureInGameDataModelForCombatTest();
         GamePhase previousPhase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
         InGameDataModel.SetPhase(GamePhase.Defend, false);
-        LogicTimeControlService.BeginTimeline();
-        LogicEntityLifecycleService.BeginTimeline();
+        BeginDefendEntityTimeline();
         try
         {
             LogicEntityState host = CreateProjectileRegressionUnit(
@@ -537,16 +573,15 @@ public class MAEntityLogicFrameSystemTests
         finally
         {
             EntityRegistry.Clear();
-            LogicEntityLifecycleService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndDefendEntityTimeline();
             InGameDataModel.SetPhase(previousPhase, false);
         }
     }
 
     [Test]
-    public void BoundMAEntityView_IsNotSampledByLogicFrameAndBuildsInterpolationFromLogicStateOnRender()
+    public void BoundMAEntityView_BeforeFirstLogicFrameAndAfterTicksBuildsInterpolationFromLogicStateOnRender()
     {
-        LogicTimeControlService.BeginTimeline();
+        BeginLogicTimeWithVisibleFog();
         LogicEntityLifecycleService.BeginTimeline();
         GameObject viewObject = null;
         LogicEntityId entityId = default;
@@ -605,11 +640,21 @@ public class MAEntityLogicFrameSystemTests
             viewBound = true;
 
             AssertPoseCache(view, 1f, 1f);
+            Assert.DoesNotThrow(() => typeof(MAEntity).GetMethod(
+                    "SyncRenderInterpolationFromLogicState",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(view, null));
+            AssertPoseCache(view, 0f, 0f);
+            typeof(EntityBase).GetMethod(
+                    "InitializeRenderInterpolation",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(view, null);
+            AssertPoseCache(view, 2f, 2f);
             LogicFrameRuntime.Tick(1);
-            AssertPoseCache(view, 1f, 1f);
+            AssertPoseCache(view, 2f, 2f);
             LogicFrameRuntime.Tick(2);
-            AssertPoseCache(view, 1f, 1f);
-            Assert.AreEqual(1, view.PoseSampleCount);
+            AssertPoseCache(view, 2f, 2f);
+            Assert.AreEqual(2, view.PoseSampleCount);
 
             typeof(MAEntity).GetMethod(
                     "SyncRenderInterpolationFromLogicState",
@@ -625,7 +670,7 @@ public class MAEntityLogicFrameSystemTests
             if (viewObject != null)
                 Object.DestroyImmediate(viewObject);
             LogicEntityLifecycleService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndLogicTimeWithVisibleFog();
         }
     }
 
@@ -664,7 +709,7 @@ public class MAEntityLogicFrameSystemTests
         Assert.IsTrue(expectedSolve.SolveResult.StartedOverlapping);
         FixVector2 expectedPosition = spawnPosition + expectedSolve.SolveResult.ResolvedDisplacement;
 
-        LogicTimeControlService.BeginTimeline();
+        BeginLogicTimeWithVisibleFog();
         LogicEntityLifecycleService.BeginTimeline();
         try
         {
@@ -710,7 +755,7 @@ public class MAEntityLogicFrameSystemTests
         {
             EntityRegistry.Clear();
             LogicEntityLifecycleService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndLogicTimeWithVisibleFog();
         }
     }
 
@@ -787,18 +832,26 @@ public class MAEntityLogicFrameSystemTests
             DistanceUnitConverter.ConvertFromWorld(collisionRadius));
         EntityRegistry.Register(entity);
 
-        LogicFrameRuntime.Tick(1);
+        BeginLogicTimeWithVisibleFog();
+        try
+        {
+            LogicFrameRuntime.Tick(1);
 
-        FixVector2 committed = entity.PositionFixed - start;
-        Assert.That((float)committed.x, Is.EqualTo(0f).Within(0.003f));
-        Assert.That((float)committed.y, Is.EqualTo(1f).Within(0.003f));
-        Assert.That(
-            (float)FixVector2.Magnitude(committed),
-            Is.EqualTo((float)FixVector2.Magnitude(desired)).Within(0.003f));
-        Assert.IsTrue(DeterministicStaticCollisionSolver.IsCircleClear(
-            new LogicStaticCollisionWorld(0, 1, width, height, (Fix64)1, FixVector2.Zero, walkable),
-            entity.PositionFixed,
-            collisionRadius));
+            FixVector2 committed = entity.PositionFixed - start;
+            Assert.That((float)committed.x, Is.EqualTo(0f).Within(0.003f));
+            Assert.That((float)committed.y, Is.EqualTo(1f).Within(0.003f));
+            Assert.That(
+                (float)FixVector2.Magnitude(committed),
+                Is.EqualTo((float)FixVector2.Magnitude(desired)).Within(0.003f));
+            Assert.IsTrue(DeterministicStaticCollisionSolver.IsCircleClear(
+                new LogicStaticCollisionWorld(0, 1, width, height, (Fix64)1, FixVector2.Zero, walkable),
+                entity.PositionFixed,
+                collisionRadius));
+        }
+        finally
+        {
+            EndLogicTimeWithVisibleFog();
+        }
     }
 
     [Test]
@@ -829,16 +882,24 @@ public class MAEntityLogicFrameSystemTests
         EntityRegistry.Register(mover);
         EntityRegistry.Register(blocker);
 
-        LogicFrameRuntime.Tick(1);
+        BeginLogicTimeWithVisibleFog();
+        try
+        {
+            LogicFrameRuntime.Tick(1);
 
-        Assert.Greater(LogicAgentCollisionShadowService.LastPairCorrectedBodyCount, 0);
-        Assert.Less(
-            (mover.PositionFixed - moverStart).x.RawValue,
-            mover.DesiredDisplacement.x.RawValue,
-            "MoveCommit must resolve the stationary unit before applying the full requested displacement.");
-        Assert.GreaterOrEqual(
-            FixVector2.Distance(mover.PositionFixed, blocker.PositionFixed).RawValue,
-            (collisionRadius * (Fix64)2 - Fix64.FromRaw(2)).RawValue);
+            Assert.Greater(LogicAgentCollisionShadowService.LastPairCorrectedBodyCount, 0);
+            Assert.Less(
+                (mover.PositionFixed - moverStart).x.RawValue,
+                mover.DesiredDisplacement.x.RawValue,
+                "MoveCommit must resolve the stationary unit before applying the full requested displacement.");
+            Assert.GreaterOrEqual(
+                FixVector2.Distance(mover.PositionFixed, blocker.PositionFixed).RawValue,
+                (collisionRadius * (Fix64)2 - Fix64.FromRaw(2)).RawValue);
+        }
+        finally
+        {
+            EndLogicTimeWithVisibleFog();
+        }
     }
 
     [Test]
@@ -890,7 +951,7 @@ public class MAEntityLogicFrameSystemTests
     [Test]
     public void 失衡退出当帧恢复单位碰撞并解开与附近敌人的重叠()
     {
-        LogicTimeControlService.BeginTimeline();
+        BeginLogicTimeWithVisibleFog();
         LogicEntityLifecycleService.BeginTimeline();
         try
         {
@@ -926,7 +987,7 @@ public class MAEntityLogicFrameSystemTests
         {
             EntityRegistry.Clear();
             LogicEntityLifecycleService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndLogicTimeWithVisibleFog();
         }
     }
 
@@ -936,8 +997,7 @@ public class MAEntityLogicFrameSystemTests
         EnsureInGameDataModelForCombatTest();
         GamePhase previousPhase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
         InGameDataModel.SetPhase(GamePhase.Defend, false);
-        LogicTimeControlService.BeginTimeline();
-        LogicEntityLifecycleService.BeginTimeline();
+        BeginDefendEntityTimeline();
         try
         {
             var brain = new SoldierAIBrain
@@ -952,7 +1012,7 @@ public class MAEntityLogicFrameSystemTests
                 "PulledEnemySoldier",
                 brain,
                 new NoMoveComp(),
-                null,
+                CreateBratProjectileWeaponData(),
                 out ITargetingComp targeting,
                 out _);
             var runtimeTargeting = new CharacterTargetingComp
@@ -994,8 +1054,7 @@ public class MAEntityLogicFrameSystemTests
         finally
         {
             EntityRegistry.Clear();
-            LogicEntityLifecycleService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndDefendEntityTimeline();
             InGameDataModel.SetPhase(previousPhase, false);
         }
     }
@@ -1003,8 +1062,7 @@ public class MAEntityLogicFrameSystemTests
     [Test]
     public void MoveCommit_StationaryTargetSwitchFacesFrameStartTarget()
     {
-        LogicTimeControlService.BeginTimeline();
-        LogicEntityLifecycleService.BeginTimeline();
+        BeginDefendEntityTimeline();
         try
         {
             LogicEntityState source = CreateProjectileRegressionUnit(
@@ -1056,16 +1114,14 @@ public class MAEntityLogicFrameSystemTests
         finally
         {
             EntityRegistry.Clear();
-            LogicEntityLifecycleService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndDefendEntityTimeline();
         }
     }
 
     [Test]
     public void MoveCommit_AttackingMoverFacesFrameStartTargetInsteadOfDisplacement()
     {
-        LogicTimeControlService.BeginTimeline();
-        LogicEntityLifecycleService.BeginTimeline();
+        BeginDefendEntityTimeline();
         try
         {
             var move = new ProjectileRegressionApproachMoveComp(
@@ -1110,15 +1166,14 @@ public class MAEntityLogicFrameSystemTests
         finally
         {
             EntityRegistry.Clear();
-            LogicEntityLifecycleService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndDefendEntityTimeline();
         }
     }
 
     [Test]
     public void MoveCommit_HighSpeedPairSeparationDoesNotDriveFacing()
     {
-        LogicTimeControlService.BeginTimeline();
+        BeginLogicTimeWithVisibleFog();
         LogicEntityLifecycleService.BeginTimeline();
         try
         {
@@ -1158,15 +1213,14 @@ public class MAEntityLogicFrameSystemTests
         {
             EntityRegistry.Clear();
             LogicEntityLifecycleService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndLogicTimeWithVisibleFog();
         }
     }
 
     [Test]
     public void MoveCommit_BuildingWithTargetPreservesPlacementForward()
     {
-        LogicTimeControlService.BeginTimeline();
-        LogicEntityLifecycleService.BeginTimeline();
+        BeginDefendEntityTimeline();
         try
         {
             var placementForward = new FixVector2(Fix64.One, Fix64.Zero);
@@ -1236,15 +1290,14 @@ public class MAEntityLogicFrameSystemTests
         finally
         {
             EntityRegistry.Clear();
-            LogicEntityLifecycleService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndDefendEntityTimeline();
         }
     }
 
     [Test]
     public void 建筑目标完全忽略物理位移()
     {
-        LogicTimeControlService.BeginTimeline();
+        BeginLogicTimeWithVisibleFog();
         LogicEntityLifecycleService.BeginTimeline();
         try
         {
@@ -1299,7 +1352,7 @@ public class MAEntityLogicFrameSystemTests
         {
             EntityRegistry.Clear();
             LogicEntityLifecycleService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndLogicTimeWithVisibleFog();
         }
     }
 
@@ -1328,7 +1381,7 @@ public class MAEntityLogicFrameSystemTests
     [Test]
     public void MoveCommit_NavigationConstraintBypass_DoesNotBypassEnemyStrongholdBoundary()
     {
-        LogicTimeControlService.BeginTimeline();
+        BeginLogicTimeWithVisibleFog();
         LogicPhaseCommandService.BeginTimeline();
         LogicPhaseCommandService.SetInitialPhase(GamePhase.BuildBeforeInvade);
         LogicStrongholdMap.Initialize(
@@ -1369,7 +1422,7 @@ public class MAEntityLogicFrameSystemTests
         {
             LogicStrongholdMap.Clear();
             LogicPhaseCommandService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndLogicTimeWithVisibleFog();
         }
     }
 
@@ -1442,7 +1495,7 @@ public class MAEntityLogicFrameSystemTests
             walkable);
         ProcessWorldBuildQueueUntilReady();
 
-        LogicTimeControlService.BeginTimeline();
+        BeginLogicTimeWithVisibleFog();
         LogicPhaseCommandService.BeginTimeline();
         LogicPhaseCommandService.SetInitialPhase(GamePhase.BuildBeforeInvade);
         LogicStrongholdMap.Initialize(
@@ -1498,7 +1551,7 @@ public class MAEntityLogicFrameSystemTests
         {
             LogicStrongholdMap.Clear();
             LogicPhaseCommandService.EndTimeline();
-            LogicTimeControlService.EndTimeline();
+            EndLogicTimeWithVisibleFog();
         }
     }
 
@@ -1696,21 +1749,23 @@ public class MAEntityLogicFrameSystemTests
 
     private static void EnsureInGameDataModelForCombatTest()
     {
-        var dataModelField = typeof(GF).GetField(
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(MAEntityLogicFrameSystemTests));
+        System.Reflection.FieldInfo dataModelField = typeof(GF).GetField(
             "<DataModel>k__BackingField",
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        var current = dataModelField?.GetValue(null) as GameFramework.DataModelComponent;
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new System.InvalidOperationException("GF.DataModel backing field was not found.");
+        var current = dataModelField.GetValue(null) as GameFramework.DataModelComponent;
         if (current == null)
         {
             var gameObject = new GameObject("MAEntityLogicFrameSystemTests_DataModel");
             current = gameObject.AddComponent<GameFramework.DataModelComponent>();
-            dataModelField?.SetValue(null, current);
+            dataModelField.SetValue(null, current);
         }
 
-        var dataModelsField = typeof(GameFramework.DataModelComponent).GetField(
+        System.Reflection.FieldInfo dataModelsField = typeof(GameFramework.DataModelComponent).GetField(
             "m_DataModels",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        Assert.NotNull(dataModelsField, "DataModelComponent.m_DataModels was not found.");
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new System.InvalidOperationException("DataModelComponent.m_DataModels was not found.");
         object dataModels = dataModelsField.GetValue(current);
         if (dataModels == null || dataModels.GetType() != dataModelsField.FieldType)
         {
@@ -1718,19 +1773,50 @@ public class MAEntityLogicFrameSystemTests
             dataModelsField.SetValue(current, dataModels);
         }
 
-        if (current.GetDataModel<InGameDataModel>() != null)
-            return;
+        InGameDataModel model = current.GetDataModel<InGameDataModel>();
+        if (model == null)
+        {
+            model = (InGameDataModel)System.Activator.CreateInstance(typeof(InGameDataModel), true);
+            System.Type typeIdPairType = typeof(GameFramework.DataModelComponent).Assembly.GetType("TypeIdPair")
+                                            ?? throw new System.InvalidOperationException("TypeIdPair was not found.");
+            object pair = System.Activator.CreateInstance(
+                typeIdPairType,
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic,
+                null,
+                new object[] { typeof(InGameDataModel), 0 },
+                null);
+            System.Reflection.MethodInfo addMethod = dataModels.GetType().GetMethod("Add")
+                                                     ?? throw new System.InvalidOperationException(
+                                                         "DataModelComponent storage has no Add method.");
+            addMethod.Invoke(dataModels, new[] { pair, model });
+        }
 
-        var model = (InGameDataModel)System.Activator.CreateInstance(typeof(InGameDataModel), true);
-        System.Type typeIdPairType = typeof(GameFramework.DataModelComponent).Assembly.GetType("TypeIdPair");
-        Assert.NotNull(typeIdPairType, "TypeIdPair was not found.");
-        object pair = System.Activator.CreateInstance(
-            typeIdPairType,
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic,
-            null,
-            new object[] { typeof(InGameDataModel), 0 },
-            null);
-        dataModels.GetType().GetMethod("Add")?.Invoke(dataModels, new[] { pair, model });
+        System.Reflection.FieldInfo activeModelField = typeof(InGameDataModel).GetField(
+            "s_ActiveModel",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new System.InvalidOperationException("InGameDataModel active binding field was not found.");
+        object activeModel = activeModelField.GetValue(null);
+        if (activeModel != null && !ReferenceEquals(activeModel, model))
+            throw new System.InvalidOperationException("InGameDataModel test binding is inconsistent.");
+        activeModelField.SetValue(null, model);
+
+        System.Reflection.FieldInfo valuesField = typeof(InGameDataModel).GetField(
+            "m_IngameValue",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new System.InvalidOperationException("InGameDataModel value storage field was not found.");
+        if (valuesField.GetValue(model) == null)
+        {
+            valuesField.SetValue(
+                model,
+                new System.Collections.Generic.Dictionary<IngameValueType, int>
+                {
+                    [IngameValueType.Phase] = (int)GamePhase.Defend,
+                    [IngameValueType.Day] = 1,
+                    [IngameValueType.Coin] = 0,
+                    [IngameValueType.CurrentSupply] = 0,
+                    [IngameValueType.MaxSupply] = 0,
+                });
+        }
     }
 
     private static WeaponData CreateBratProjectileWeaponData()

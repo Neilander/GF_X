@@ -196,7 +196,7 @@ public static class LogicInteractionCommandService
     public static void UpdatePresentationEvents()
     {
         EnsureActive();
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("LogicInteractionCommandService presentation events cannot run inside a logic tick.");
 
         while (s_PendingAppliedPresentation.Count > 0)

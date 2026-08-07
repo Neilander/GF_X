@@ -21,14 +21,12 @@ public class AgentTypeHelper : GameFrameworkComponent
 
     public static void PrepareRuntimeMappings()
     {
-        if (GF.DataTable == null)
-            throw new InvalidOperationException("AgentTypeHelper cannot prepare runtime mappings before DataTable is initialized.");
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("AgentTypeHelper cannot prepare runtime mappings during a logic frame.");
 
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>()
-                    ?? throw new InvalidOperationException("AgentTypeHelper requires CharacterDataDetail.");
         s_UnitAgentTypeIds.Clear();
-        CharacterDataDetail[] rows = table.GetAllDataRows();
-        for (int i = 0; i < rows.Length; i++)
+        IReadOnlyList<CharacterDataDetail> rows = LogicRuntimeDataTableCache.CharacterRows;
+        for (int i = 0; i < rows.Count; i++)
         {
             CharacterDataDetail row = rows[i]
                                       ?? throw new InvalidOperationException($"AgentTypeHelper found a null CharacterDataDetail row at index {i}.");

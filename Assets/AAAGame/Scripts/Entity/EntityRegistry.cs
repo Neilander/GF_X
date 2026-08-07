@@ -20,6 +20,11 @@ public static class EntityRegistry
     {
         if (entity == null)
             throw new System.ArgumentNullException(nameof(entity));
+        if (entity is UnityEngine.Object)
+        {
+            throw new System.InvalidOperationException(
+                "EntityRegistry.Register failed: Unity Object views cannot enter the logic registry.");
+        }
         if (!entity.LogicEntityId.IsValid)
             throw new System.InvalidOperationException("EntityRegistry.Register failed: entity has an invalid logic id.");
 
@@ -51,8 +56,8 @@ public static class EntityRegistry
 
     public static void RegisterAsPlayer(IEntityContext entity)
     {
-        _player = entity;
         Register(entity);
+        _player = entity;
     }
 
     public static bool TryGet(LogicEntityId entityId, out IEntityContext entity)

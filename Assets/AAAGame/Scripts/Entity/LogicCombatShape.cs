@@ -111,17 +111,30 @@ public sealed class BuildingCombatShapeCatalog
 
     public List<Entry> Entries { get; private set; }
 
+    public static void PrepareRuntimeDependencies()
+    {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Building combat shape catalog cannot be prepared during a logic frame.");
+        if (s_Cached != null)
+            return;
+
+        TextAsset asset = Resources.Load<TextAsset>(ResourcePath);
+        if (asset == null)
+            throw new InvalidOperationException($"Building combat shape catalog is missing at Resources/{ResourcePath}.json.");
+        List<Entry> entries = Newtonsoft.Json.JsonConvert.DeserializeObject<List<Entry>>(asset.text);
+        if (entries == null)
+            throw new InvalidOperationException("Building combat shape catalog JSON did not contain an entry array.");
+        s_Cached = new BuildingCombatShapeCatalog { Entries = entries };
+        s_Cached.EnsureIndex();
+    }
+
     public static BuildingCombatShapeCatalog LoadRequired()
     {
         if (s_Cached == null)
         {
-            TextAsset asset = Resources.Load<TextAsset>(ResourcePath);
-            if (asset == null)
-                throw new InvalidOperationException($"Building combat shape catalog is missing at Resources/{ResourcePath}.json.");
-            List<Entry> entries = Newtonsoft.Json.JsonConvert.DeserializeObject<List<Entry>>(asset.text);
-            if (entries == null)
-                throw new InvalidOperationException("Building combat shape catalog JSON did not contain an entry array.");
-            s_Cached = new BuildingCombatShapeCatalog { Entries = entries };
+            if (LogicFrameRuntime.IsExecutingFrame)
+                throw new InvalidOperationException("Building combat shape catalog was not prepared before the logic frame.");
+            PrepareRuntimeDependencies();
         }
         s_Cached.EnsureIndex();
         return s_Cached;
@@ -191,17 +204,30 @@ public sealed class BuildingLogicObstacleShapeCatalog
 
     public List<PrefabEntry> Entries { get; private set; }
 
+    public static void PrepareRuntimeDependencies()
+    {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Building logic obstacle catalog cannot be prepared during a logic frame.");
+        if (s_Cached != null)
+            return;
+
+        TextAsset asset = Resources.Load<TextAsset>(ResourcePath);
+        if (asset == null)
+            throw new InvalidOperationException($"Building logic obstacle catalog is missing at Resources/{ResourcePath}.json.");
+        List<PrefabEntry> entries = Newtonsoft.Json.JsonConvert.DeserializeObject<List<PrefabEntry>>(asset.text);
+        if (entries == null)
+            throw new InvalidOperationException("Building logic obstacle catalog JSON did not contain an entry array.");
+        s_Cached = new BuildingLogicObstacleShapeCatalog { Entries = entries };
+        s_Cached.EnsureIndex();
+    }
+
     public static BuildingLogicObstacleShapeCatalog LoadRequired()
     {
         if (s_Cached == null)
         {
-            TextAsset asset = Resources.Load<TextAsset>(ResourcePath);
-            if (asset == null)
-                throw new InvalidOperationException($"Building logic obstacle catalog is missing at Resources/{ResourcePath}.json.");
-            List<PrefabEntry> entries = Newtonsoft.Json.JsonConvert.DeserializeObject<List<PrefabEntry>>(asset.text);
-            if (entries == null)
-                throw new InvalidOperationException("Building logic obstacle catalog JSON did not contain an entry array.");
-            s_Cached = new BuildingLogicObstacleShapeCatalog { Entries = entries };
+            if (LogicFrameRuntime.IsExecutingFrame)
+                throw new InvalidOperationException("Building logic obstacle catalog was not prepared before the logic frame.");
+            PrepareRuntimeDependencies();
         }
         s_Cached.EnsureIndex();
         return s_Cached;

@@ -46,7 +46,7 @@ public partial class BuildingUpgradeTips : UIFormBase
     private bool m_HoldTriggered;
     private float m_RecycleHoldProgress;
     private bool m_RecycleTriggered;
-    private bool m_IsClosingForTargetRetirement;
+    private bool m_IsAwaitingTargetTransition;
     private Color m_ConditionIconSatisfiedColor = DefaultLitColor;
 
     private sealed class UpgradeOptionBinding
@@ -64,6 +64,7 @@ public partial class BuildingUpgradeTips : UIFormBase
 
     public void ApplyTarget(InteractionHost targetHost)
     {
+        m_IsAwaitingTargetTransition = false;
         m_TargetHost = targetHost;
         m_TargetBuilding = ResolveTargetBuilding(targetHost);
         CacheTemplates();
@@ -74,13 +75,11 @@ public partial class BuildingUpgradeTips : UIFormBase
     {
         base.OnOpen(userData);
 
-        m_IsClosingForTargetRetirement = false;
         ApplyTarget(Params != null ? Params.Get(P_TargetHost) as InteractionHost : null);
 
         GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnStateChanged);
         GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnStateChanged);
         GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
-        EntityRegistry.Unregistered += OnEntityUnregistered;
     }
 
     protected override void OnClose(bool isShutdown, object userData)
@@ -88,7 +87,6 @@ public partial class BuildingUpgradeTips : UIFormBase
         GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnStateChanged);
         GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnStateChanged);
         GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
-        EntityRegistry.Unregistered -= OnEntityUnregistered;
         ClearCoinPreviewDeduction();
         ClearRuntimeState();
 
@@ -97,7 +95,7 @@ public partial class BuildingUpgradeTips : UIFormBase
 
     private void Update()
     {
-        if (m_IsClosingForTargetRetirement)
+        if (m_IsAwaitingTargetTransition)
             return;
 
         UpdatePanelPosition();
@@ -616,6 +614,7 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         if (success)
         {
+            m_IsAwaitingTargetTransition = true;
             IngameCoinPreviewState.CommitPreviewDeduction(
                 GetInstanceID(),
                 m_TargetBuilding.LogicEntityId,
@@ -625,26 +624,6 @@ public partial class BuildingUpgradeTips : UIFormBase
         }
         else
             RefreshView();
-    }
-
-    private void OnEntityUnregistered(IEntityContext entity)
-    {
-        if (entity == null)
-            throw new ArgumentNullException(nameof(entity));
-        if (m_TargetBuilding == null || entity.LogicEntityId != m_TargetBuilding.LogicEntityId)
-            return;
-
-        CloseForTargetRetirement();
-    }
-
-    private void CloseForTargetRetirement()
-    {
-        if (m_IsClosingForTargetRetirement)
-            return;
-
-        m_IsClosingForTargetRetirement = true;
-        ClearCoinPreviewDeduction();
-        GF.UI.Close(UIForm);
     }
 
     private void UpdatePanelPosition()
@@ -1094,6 +1073,22 @@ public partial class BuildingUpgradeTips : UIFormBase
 
     private void OnStateChanged(object sender, GameEventArgs e)
     {
+        if (m_IsAwaitingTargetTransition)
+            return;
+
+        TechUnlockedEventArgs techArgs = e as TechUnlockedEventArgs;
+        if (techArgs != null
+            && m_TargetBuilding != null
+            && m_TargetBuilding.buildingData != null
+            && string.Equals(
+                m_TargetBuilding.BuildingInstanceId,
+                techArgs.SourceBuildingInstanceId,
+                StringComparison.Ordinal))
+        {
+            m_IsAwaitingTargetTransition = true;
+            return;
+        }
+
         RefreshView();
     }
 

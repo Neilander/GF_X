@@ -46,12 +46,12 @@ public class TechData
         Cost = cost;
         NameKey = nameKey;
         DescKey = descKey;
-        UniqueValues = uniqueValues;
+        UniqueValues = uniqueValues != null ? (Fix64[])uniqueValues.Clone() : null;
         ScopeType = scopeType;
-        UnitScope = unitScope;
-        SizeScope = sizeScope;
-        TagScope = tagScope;
-        ArchScope = archScope;
+        UnitScope = unitScope != null ? (string[])unitScope.Clone() : null;
+        SizeScope = sizeScope != null ? (UnitSize[])sizeScope.Clone() : null;
+        TagScope = tagScope != null ? (UnitTag[])tagScope.Clone() : null;
+        ArchScope = archScope != null ? (Archetype[])archScope.Clone() : null;
         SpritePath = spritePath;
         IsStackable = isStackable;
     }

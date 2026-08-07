@@ -169,7 +169,7 @@ public sealed class LogicCardCommandServiceTests
         StringAssert.DoesNotContain("BuildingEntity SourceBuilding", cardControllerSource);
         StringAssert.DoesNotContain("TryGetBoundView", cardControllerSource);
         StringAssert.Contains("EnsurePresentationInitialized", cardControllerSource);
-        StringAssert.Contains("LogicFrameRuntime.IsTicking", cardControllerSource);
+        StringAssert.Contains("LogicFrameRuntime.IsExecutingFrame", cardControllerSource);
         StringAssert.Contains("m_PendingPresentationShutdown.Enqueue", cardSetupSource);
         StringAssert.Contains("GF.Event.Fire(this, CardPlayedEventArgs.Create", cardControllerSource);
         StringAssert.Contains("GF.Event.Fire(this, CardDiscardedEventArgs.Create", cardControllerSource);

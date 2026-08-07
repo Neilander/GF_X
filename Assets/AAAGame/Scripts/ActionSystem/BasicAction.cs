@@ -16,9 +16,18 @@ public abstract class BasicAction : ScriptableObject
      * 如果Action被打断，会由外部执行器告诉Action，触发打断函数和打断事件
      */
 
-    [Header("Config")] [SerializeField] protected bool ifUseDuration = true;
-    [SerializeField] protected float duration = 0f;
     public string relatedTriggerString;
+
+    internal BasicAction CreateRuntimeSnapshot()
+    {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Skill actions cannot be snapshotted during a logic frame.");
+
+        SkillRuntimeSnapshotValidation.ValidateReferenceFields(this);
+        BasicAction snapshot = Instantiate(this);
+        snapshot.hideFlags = HideFlags.HideAndDontSave;
+        return snapshot;
+    }
 
     // ===== runtime creation =====
     protected virtual ActionInfo CreateInfo(IEntityContext body)
@@ -54,7 +63,6 @@ public abstract class BasicAction : ScriptableObject
         info = CreateInfo(body);
 
         info.elapsed = Fix64.Zero;
-        info.duration = (Fix64)duration;
         info.isRunning = true;
         info.isInterrupted = false;
         info.isFinished = false;
@@ -74,8 +82,6 @@ public abstract class BasicAction : ScriptableObject
 
         OnUpdate(info, deltaTime);
 
-        if (info.duration > Fix64.Zero && info.elapsed >= info.duration && ifUseDuration)
-            FinishAction(info);
     }
 
     public virtual void Interrupt(ActionInfo info)
@@ -126,7 +132,6 @@ public class ActionInfo
 
 
     public Fix64 elapsed;
-    public Fix64 duration;
     public bool isRunning;
     public bool isInterrupted;
     public bool isFinished;
@@ -138,11 +143,9 @@ public class ActionInfo
 
     // 通用数据池
     public readonly Dictionary<string, bool> bools = new();
-    public readonly Dictionary<string, float> floats = new();
     public readonly Dictionary<string, int> ints = new();
-    public readonly Dictionary<string, UnityEngine.Object> objects = new();
 
-    internal void RaiseStarted()     => Started?.Invoke();
-    internal void RaiseFinished()    => Finished?.Invoke();
+    internal void RaiseStarted() => Started?.Invoke();
+    internal void RaiseFinished() => Finished?.Invoke();
     internal void RaiseInterrupted() => Interrupted?.Invoke();
 }

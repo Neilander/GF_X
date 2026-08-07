@@ -11,6 +11,26 @@ namespace AAAGame.MiniMap.FOG3
 {
     public sealed class Fog3Manager : GameFrameworkComponent
     {
+        private enum EntityRegistryPresentationKind
+        {
+            Registered = 0,
+            Unregistered = 1,
+        }
+
+        private readonly struct EntityRegistryPresentationRequest
+        {
+            public EntityRegistryPresentationRequest(
+                EntityRegistryPresentationKind kind,
+                LogicEntityId logicEntityId)
+            {
+                Kind = kind;
+                LogicEntityId = logicEntityId;
+            }
+
+            public EntityRegistryPresentationKind Kind { get; }
+            public LogicEntityId LogicEntityId { get; }
+        }
+
         private const string HeroVisionRadiusConfigKey = "HeroVisionRadius";
         private const string UnitVisionRadiusConfigKey = "UnitVisionRadius";
         private const string BuildingVisionRadiusConfigKey = "BuildingVisionRadius";
@@ -61,6 +81,8 @@ namespace AAAGame.MiniMap.FOG3
 
         private readonly Dictionary<int, int> entityRevealers = new Dictionary<int, int>();
         private readonly Dictionary<Transform, int> transformRevealers = new Dictionary<Transform, int>();
+        private readonly Queue<EntityRegistryPresentationRequest> entityRegistryPresentationRequests =
+            new Queue<EntityRegistryPresentationRequest>();
         private readonly Dictionary<int, Fog3EntityVisibilityState> enemyVisibilityStates = new Dictionary<int, Fog3EntityVisibilityState>();
         private readonly HashSet<int> updatedEnemyVisibilityIds = new HashSet<int>();
         private readonly List<int> staleEnemyVisibilityIds = new List<int>();
@@ -431,6 +453,8 @@ namespace AAAGame.MiniMap.FOG3
                     UpdateVisibilityImmediately();
                 }
 
+                UpdateEntityRegistryPresentation();
+
                 bool visibilityUpdatedThisFrame = false;
                 if (visibilityRefreshPending)
                 {
@@ -514,6 +538,7 @@ namespace AAAGame.MiniMap.FOG3
             isInitialized = false;
             visibilityRefreshPending = false;
             pendingVisibilityRefreshRequestCount = 0;
+            entityRegistryPresentationRequests.Clear();
             entityRevealers.Clear();
             transformRevealers.Clear();
             if (controller != null)
@@ -777,6 +802,7 @@ namespace AAAGame.MiniMap.FOG3
             isInitialized = false;
             visibilityRefreshPending = false;
             pendingVisibilityRefreshRequestCount = 0;
+            entityRegistryPresentationRequests.Clear();
             entityRevealers.Clear();
             transformRevealers.Clear();
             ResetEnemyVisibilityStates();
@@ -1405,27 +1431,64 @@ namespace AAAGame.MiniMap.FOG3
 
         private void OnLogicEntityRegistered(IEntityContext logicEntity)
         {
-            if (!autoRegisterPlayerSideEntities || !isInitialized || logicEntity == null)
-                return;
-            if (!TryResolveBoundView(logicEntity, out MAEntity view))
-                return;
-
-            if (TryRegisterEntity(view.Id, view))
-            {
-                RefreshOverlayHeightIfNeeded();
-                RequestVisibilityRefresh();
-            }
+            EnqueueEntityRegistryPresentation(EntityRegistryPresentationKind.Registered, logicEntity);
         }
 
         private void OnLogicEntityUnregistered(IEntityContext logicEntity)
         {
-            if (logicEntity == null || !TryResolveBoundView(logicEntity, out MAEntity view))
-                return;
-            if (!entityRevealers.TryGetValue(view.Id, out int revealerId))
-                return;
+            EnqueueEntityRegistryPresentation(EntityRegistryPresentationKind.Unregistered, logicEntity);
+        }
 
-            UnregisterRevealer(revealerId);
-            RequestVisibilityRefresh();
+        private void EnqueueEntityRegistryPresentation(
+            EntityRegistryPresentationKind kind,
+            IEntityContext logicEntity)
+        {
+            if (logicEntity == null)
+                throw new ArgumentNullException(nameof(logicEntity));
+            if (!logicEntity.LogicEntityId.IsValid)
+                throw new InvalidOperationException($"FOG3 received {kind} for an invalid logic entity id.");
+
+            entityRegistryPresentationRequests.Enqueue(
+                new EntityRegistryPresentationRequest(kind, logicEntity.LogicEntityId));
+        }
+
+        private void UpdateEntityRegistryPresentation()
+        {
+            while (entityRegistryPresentationRequests.Count > 0)
+            {
+                EntityRegistryPresentationRequest request = entityRegistryPresentationRequests.Dequeue();
+                if (!LogicEntityLifecycleService.TryGetBoundView(request.LogicEntityId, out MAEntity view))
+                    continue;
+
+                switch (request.Kind)
+                {
+                    case EntityRegistryPresentationKind.Registered:
+                        if (!autoRegisterPlayerSideEntities
+                            || !EntityRegistry.TryGet(request.LogicEntityId, out IEntityContext registered)
+                            || !ReferenceEquals(registered, view.LogicState))
+                        {
+                            continue;
+                        }
+                        if (TryRegisterEntity(view.Id, view))
+                        {
+                            RefreshOverlayHeightIfNeeded();
+                            RequestVisibilityRefresh();
+                        }
+                        break;
+                    case EntityRegistryPresentationKind.Unregistered:
+                        if (entityRevealers.TryGetValue(view.Id, out int revealerId))
+                        {
+                            UnregisterRevealer(revealerId);
+                            RequestVisibilityRefresh();
+                        }
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(
+                            nameof(request.Kind),
+                            request.Kind,
+                            "Unknown FOG3 entity registry presentation kind.");
+                }
+            }
         }
 
         private IEnumerator RegisterEntityRevealerAfterAliveRefresh(int entityId)

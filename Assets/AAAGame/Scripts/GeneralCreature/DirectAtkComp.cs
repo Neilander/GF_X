@@ -104,6 +104,7 @@ public class DirectAtkComp : IAtkComp
     private int _activeWeaponIndex;
     private BaseWeaponSO _weaponSO;
     private string _weaponLoadFailure;
+    private bool _weaponLoadRequested;
     public BaseWeaponSO WeaponSO => _weaponSO;
     public string WeaponLoadFailure => _weaponLoadFailure;
 
@@ -111,6 +112,7 @@ public class DirectAtkComp : IAtkComp
     {
         _weaponSO = so;
         _weaponLoadFailure = null;
+        _weaponLoadRequested = so != null;
     }
 
     public void SetWeaponLoadFailure(string failure)
@@ -119,6 +121,26 @@ public class DirectAtkComp : IAtkComp
             throw new ArgumentException("Weapon load failure is empty.", nameof(failure));
         _weaponSO = null;
         _weaponLoadFailure = failure;
+        _weaponLoadRequested = true;
+    }
+
+    public void EnsureWeaponPresentationLoaded()
+    {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Weapon presentation cannot initialize during a logic frame.");
+        if (_weaponSO != null || _weaponLoadFailure != null || _weaponLoadRequested)
+            return;
+
+        _weaponLoadRequested = true;
+        try
+        {
+            WeaponHelper.LoadWeapon(GetWeaponSOPath(), this);
+        }
+        catch
+        {
+            _weaponLoadRequested = false;
+            throw;
+        }
     }
 
     public AtkState State { get; private set; } = AtkState.Idle;
@@ -293,6 +315,7 @@ public class DirectAtkComp : IAtkComp
     public void Init(IEntityContext ctx)
     {
         _ctx = ctx;
+        ResetWeaponPresentationState();
         State = AtkState.Idle;
         ResetSchedule();
         AttackCount = 0;
@@ -328,8 +351,6 @@ public class DirectAtkComp : IAtkComp
         _activeWeaponIndex = 0;
         _weapon = _weapons[_activeWeaponIndex];
 
-        WeaponHelper.LoadWeapon(GetWeaponSOPath(), this);
-
         // 创建 WeaponComp 并挂载到 Entity
         var wc = new WeaponComp(_weapon);
         _ctx.SetWeaponComp(wc);
@@ -349,7 +370,7 @@ public class DirectAtkComp : IAtkComp
         else
             _ctx.WeaponComp.SwapWeapon(_weapon);
 
-        WeaponHelper.LoadWeapon(GetWeaponSOPath(), this);
+        ResetWeaponPresentationState();
         ShutDown();
     }
 
@@ -361,6 +382,13 @@ public class DirectAtkComp : IAtkComp
         {
             _weapons[i] = weaponDatas[i].ToWeapon($"{_ctx.CharacterKey}_Weapon{i + 1}", ownerManager);
         }
+    }
+
+    private void ResetWeaponPresentationState()
+    {
+        _weaponSO = null;
+        _weaponLoadFailure = null;
+        _weaponLoadRequested = false;
     }
 
     private void SetWeapons(Weapon[] weapons)

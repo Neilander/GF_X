@@ -112,4 +112,36 @@ public sealed class LogicCombatQueryTests
         Assert.IsTrue(MonitorFacingUtility.IsDirectionWithinCone(
             forward, new FixVector2(Fix64.Zero, (Fix64)(-1)), (Fix64)360));
     }
+
+    [Test]
+    public void CombatTeamResolution_UsesActiveFactionMappingInsteadOfFactionIdFallback()
+    {
+        System.Reflection.FieldInfo activeModelField = typeof(InGameDataModel).GetField(
+            "s_ActiveModel",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new System.InvalidOperationException("InGameDataModel active binding field was not found.");
+        object previousActiveModel = activeModelField.GetValue(null);
+        activeModelField.SetValue(null, null);
+
+        try
+        {
+            var model = (InGameDataModel)System.Activator.CreateInstance(typeof(InGameDataModel), true);
+            System.Reflection.PropertyInfo factionsProperty = typeof(InGameDataModel).GetProperty("Factions")
+                ?? throw new System.InvalidOperationException("InGameDataModel.Factions property was not found.");
+            factionsProperty.SetValue(
+                model,
+                new Dictionary<int, Faction>
+                {
+                    [2] = new Faction(7),
+                    [3] = new Faction(7),
+                });
+
+            Assert.AreEqual(7, EntityCombatTeamHelper.ResolveTeamIdByFaction(2));
+            Assert.AreEqual(7, EntityCombatTeamHelper.ResolveTeamIdByFaction(3));
+        }
+        finally
+        {
+            activeModelField.SetValue(null, previousActiveModel);
+        }
+    }
 }

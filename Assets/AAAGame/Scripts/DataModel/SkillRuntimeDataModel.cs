@@ -65,6 +65,8 @@ public class SkillRuntimeDataModel : DataModelBase
 
     public static void UpdatePresentationEvents()
     {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("SkillRuntimeDataModel presentation events cannot run during a logic frame.");
         if (s_ActiveModel == null)
             return;
         if (s_ActiveModel.m_PendingPresentation.Count == 0)
@@ -106,8 +108,7 @@ public class SkillRuntimeDataModel : DataModelBase
         if (string.IsNullOrWhiteSpace(skillId))
             return false;
 
-        var dm = GetModel();
-        return dm != null && dm.m_SkillLevels.ContainsKey(skillId);
+        return GetRequiredModel().m_SkillLevels.ContainsKey(skillId);
     }
 
     public static int GetLevel(string skillId)
@@ -115,8 +116,8 @@ public class SkillRuntimeDataModel : DataModelBase
         if (string.IsNullOrWhiteSpace(skillId))
             return 0;
 
-        var dm = GetModel();
-        if (dm == null || !dm.m_SkillLevels.TryGetValue(skillId, out int level) || level <= 0)
+        SkillRuntimeDataModel dm = GetRequiredModel();
+        if (!dm.m_SkillLevels.TryGetValue(skillId, out int level) || level <= 0)
             return 0;
 
         return GetEffectiveLevel(level);
@@ -124,9 +125,7 @@ public class SkillRuntimeDataModel : DataModelBase
 
     public static IReadOnlyList<SkillRuntimeInfo> GetUnlockedSkills()
     {
-        var dm = GetModel();
-        if (dm == null)
-            return Array.Empty<SkillRuntimeInfo>();
+        SkillRuntimeDataModel dm = GetRequiredModel();
 
         int heroSkillLevelBonus = LevelTagRuntime.GetHeroSkillLevelBonus();
         if (heroSkillLevelBonus != dm.m_CachedHeroSkillLevelBonus)
@@ -304,11 +303,9 @@ public class SkillRuntimeDataModel : DataModelBase
         if (hasher == null)
             throw new ArgumentNullException(nameof(hasher));
 
-        SkillRuntimeDataModel model = GetModel();
+        SkillRuntimeDataModel model = GetRequiredModel();
         hasher.Add(0x534B494C4C535441UL);
-        hasher.Add(model != null);
-        if (model == null)
-            return;
+        hasher.Add(true);
 
         if (model.m_SkillLevels.Count != model.m_UnlockOrder.Count)
         {
@@ -444,11 +441,9 @@ public class SkillRuntimeDataModel : DataModelBase
 
     private static SkillRuntimeDataModel GetRequiredModel()
     {
-        var model = GetModel();
-        if (model == null)
-            throw new InvalidOperationException("SkillRuntimeDataModel is required before learning skills.");
-
-        return model;
+        return GetModel()
+               ?? throw new InvalidOperationException(
+                   "SkillRuntimeDataModel access requires an active runtime model.");
     }
 }
 

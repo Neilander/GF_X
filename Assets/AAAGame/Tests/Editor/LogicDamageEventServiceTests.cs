@@ -2,6 +2,26 @@
 
 public class LogicDamageEventServiceTests
 {
+    private sealed class InterfaceTarget : ITargetable
+    {
+        public SideType Side => SideType.EnemySide;
+        public bool Alive => HealthValue > Fix64.Zero;
+        public UnityEngine.GameObject Gmo => null;
+        public string CharacterKey => "interface-target";
+        public Fix64 HealthValue { get; private set; } = (Fix64)10;
+        public int TakeDamageCallCount { get; private set; }
+
+        public bool CanBeSelected() => Alive;
+        public void InSelection(ISelector selector) { }
+        public void DeSelection() { }
+
+        public void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)
+        {
+            TakeDamageCallCount++;
+            HealthValue -= damage;
+        }
+    }
+
     private sealed class FrameAction : ILogicFrameUpdate
     {
         public System.Action Action;
@@ -56,6 +76,17 @@ public class LogicDamageEventServiceTests
         Assert.AreEqual((Fix64)7, target.HealthValue);
         Assert.AreEqual(0, LogicDamageEventService.LastOrderedEvents[0].AttackerId.Value);
         Assert.IsFalse(LogicDamageEventService.LastOrderedEvents[0].ApplyDamageHooks);
+    }
+
+    [Test]
+    public void DamageOutsideCollection_UsesITargetableDamageContract()
+    {
+        var target = new InterfaceTarget();
+
+        DamageHelper.DoDamage(target, new Damage(null, (Fix64)3, HealthModifyType.reduce));
+
+        Assert.AreEqual(1, target.TakeDamageCallCount);
+        Assert.AreEqual((Fix64)7, target.HealthValue);
     }
 
     [Test]

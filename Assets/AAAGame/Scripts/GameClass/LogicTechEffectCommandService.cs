@@ -74,6 +74,8 @@ public static class LogicTechEffectCommandService
 
     public static void UpdatePresentationEvents()
     {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Tech-effect presentation events cannot run during a logic frame.");
         if (s_PendingPresentation.Count == 0)
             return;
         if (GF.Event == null)

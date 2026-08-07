@@ -21,6 +21,13 @@ public sealed class StageCheckpointServiceTests
         }
         m_OriginalInGameData = InGameDataModel.CaptureStageCheckpointState();
 
+        if (LogicTimeControlService.IsActive || LogicPhaseCommandService.IsActive)
+            throw new System.InvalidOperationException("StageCheckpointServiceTests requires inactive logic phase services at setup.");
+        LogicTimeControlService.BeginTimeline();
+        LogicPhaseCommandService.BeginTimeline();
+        LogicPhaseCommandService.SetInitialPhase(GamePhase.BuildBeforeInvade);
+        InGameDataModel.SetPhase(GamePhase.BuildBeforeInvade, false);
+
         if (StageCheckpointService.IsActive)
             StageCheckpointService.EndSession();
         if (!LogicPersistentIdAllocator.IsActive)
@@ -53,6 +60,10 @@ public sealed class StageCheckpointServiceTests
         if (StageCheckpointService.IsActive)
             StageCheckpointService.EndSession();
         InGameDataModel.RestoreStageCheckpointState(m_OriginalInGameData, false);
+        if (LogicPhaseCommandService.IsActive)
+            LogicPhaseCommandService.EndTimeline();
+        if (LogicTimeControlService.IsActive)
+            LogicTimeControlService.EndTimeline();
         if (m_StartedPersistentAllocator && LogicPersistentIdAllocator.IsActive)
             LogicPersistentIdAllocator.EndTimeline();
         else if (LogicPersistentIdAllocator.IsActive)
@@ -76,7 +87,7 @@ public sealed class StageCheckpointServiceTests
             "StageCheckpointServiceTests"));
         fog.MarkExplored(0, 0);
         fog.AddVisibility(0, 0, 1f);
-        InGameDataModel.SetPhase(GamePhase.BuildBeforeInvade, false);
+        SetPhase(GamePhase.BuildBeforeInvade);
         InGameDataModel.SetValue(IngameValueType.Coin, 100, false);
         LogicEntityState building = CreatePendingBuilding(
             "building-checkpoint-1",
@@ -91,7 +102,7 @@ public sealed class StageCheckpointServiceTests
         StageCheckpoint first = StageCheckpointService.CaptureStageStart("BuildBeforeInvade", fog);
 
         LogicPersistentIdAllocator.AllocateBuildingInstanceId();
-        InGameDataModel.SetPhase(GamePhase.Invade, false);
+        SetPhase(GamePhase.Invade);
         InGameDataModel.SetValue(IngameValueType.Coin, 75, false);
         fog.MarkExplored(1, 1);
         fog.AddVisibility(1, 1, 1f);
@@ -132,7 +143,7 @@ public sealed class StageCheckpointServiceTests
             Vector3.zero,
             new[] { true, true, true, true },
             "StageCheckpointServiceTests"));
-        InGameDataModel.SetPhase(GamePhase.BuildBeforeInvade, false);
+        SetPhase(GamePhase.BuildBeforeInvade);
         CreatePendingBuilding(
             "building-checkpoint-restore",
             "Buil_Prod_Lv2",
@@ -142,7 +153,7 @@ public sealed class StageCheckpointServiceTests
 
         StageCheckpointService.BeginSession("Lv_Test");
         StageCheckpoint selected = StageCheckpointService.CaptureStageStart("BuildBeforeInvade", fog);
-        InGameDataModel.SetPhase(GamePhase.Invade, false);
+        SetPhase(GamePhase.Invade);
         StageCheckpointService.CaptureStageStart("Invade", fog);
 
         StageCheckpointRestoreRequest request = StageCheckpointService.PrepareRestore(1, fog);
@@ -163,13 +174,26 @@ public sealed class StageCheckpointServiceTests
         StageCheckpointService.BeginSession("Lv_Test", request.RetainedHistory);
         Assert.AreEqual(1, StageCheckpointService.History.Count);
         Assert.AreEqual(1, StageCheckpointService.RetainedFogSnapshotCount);
-        InGameDataModel.SetPhase(GamePhase.Invade, false);
+        SetPhase(GamePhase.Invade);
         StageCheckpoint next = StageCheckpointService.CaptureStageStart("Invade", fog);
         Assert.AreEqual(2, next.PhaseEpoch);
     }
 
+    private static void SetPhase(GamePhase phase)
+    {
+        if (LogicPhaseCommandService.GetRequiredCurrentPhase() != phase)
+        {
+            LogicPhaseCommandService.ScheduleForNextFrame(phase);
+            ulong frame = LogicTimeControlService.CurrentFrame + 1;
+            LogicTimeControlService.BeginFrame(frame);
+            LogicPhaseCommandService.ApplyFrameForTests(frame, _ => { });
+        }
+        InGameDataModel.SetPhase(phase, false);
+    }
+
     private static void EnsureInGameDataModel()
     {
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(StageCheckpointServiceTests));
         System.Reflection.FieldInfo dataModelField = typeof(GF).GetField(
             "<DataModel>k__BackingField",
             System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
@@ -192,23 +216,51 @@ public sealed class StageCheckpointServiceTests
             dataModels = System.Activator.CreateInstance(dataModelsField.FieldType);
             dataModelsField.SetValue(component, dataModels);
         }
-        if (component.GetDataModel<InGameDataModel>() != null)
-            return;
+        InGameDataModel model = component.GetDataModel<InGameDataModel>();
+        if (model == null)
+        {
+            model = (InGameDataModel)System.Activator.CreateInstance(typeof(InGameDataModel), true);
+            System.Type pairType = typeof(GameFramework.DataModelComponent).Assembly.GetType("TypeIdPair");
+            Assert.NotNull(pairType);
+            object pair = System.Activator.CreateInstance(
+                pairType,
+                System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic,
+                null,
+                new object[] { typeof(InGameDataModel), 0 },
+                null);
+            System.Reflection.MethodInfo addMethod = dataModels.GetType().GetMethod("Add");
+            Assert.NotNull(addMethod);
+            addMethod.Invoke(dataModels, new[] { pair, model });
+        }
 
-        var model = (InGameDataModel)System.Activator.CreateInstance(typeof(InGameDataModel), true);
-        System.Type pairType = typeof(GameFramework.DataModelComponent).Assembly.GetType("TypeIdPair");
-        Assert.NotNull(pairType);
-        object pair = System.Activator.CreateInstance(
-            pairType,
-            System.Reflection.BindingFlags.Instance
-            | System.Reflection.BindingFlags.Public
-            | System.Reflection.BindingFlags.NonPublic,
-            null,
-            new object[] { typeof(InGameDataModel), 0 },
-            null);
-        System.Reflection.MethodInfo addMethod = dataModels.GetType().GetMethod("Add");
-        Assert.NotNull(addMethod);
-        addMethod.Invoke(dataModels, new[] { pair, model });
+        System.Reflection.FieldInfo activeModelField = typeof(InGameDataModel).GetField(
+            "s_ActiveModel",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(activeModelField);
+        object active = activeModelField.GetValue(null);
+        if (active != null && !ReferenceEquals(active, model))
+            throw new System.InvalidOperationException("InGameDataModel test binding is inconsistent.");
+        activeModelField.SetValue(null, model);
+
+        System.Reflection.FieldInfo valuesField = typeof(InGameDataModel).GetField(
+            "m_IngameValue",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(valuesField);
+        if (valuesField.GetValue(model) == null)
+        {
+            valuesField.SetValue(
+                model,
+                new System.Collections.Generic.Dictionary<IngameValueType, int>
+                {
+                    [IngameValueType.Phase] = (int)GamePhase.BuildBeforeInvade,
+                    [IngameValueType.Day] = 1,
+                    [IngameValueType.Coin] = 0,
+                    [IngameValueType.CurrentSupply] = 0,
+                    [IngameValueType.MaxSupply] = 0,
+                });
+        }
     }
 
     private static LogicEntityState CreatePendingBuilding(

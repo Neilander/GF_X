@@ -34,10 +34,13 @@ public static class LogicFrameRuntime
 
     private static SimulationMode s_PreviousPhysicsSimulationMode;
     private static long s_NextSequence;
+    private static bool s_IsExecutingFrame;
+    private static ulong s_ExecutingFrame;
 
     public static bool IsActive { get; private set; }
     public static bool IsTimelineRunning { get; private set; }
     public static bool IsTicking { get; private set; }
+    public static bool IsExecutingFrame => s_IsExecutingFrame || IsTicking;
     public static ulong CurrentFrame { get; private set; }
     public static Fix64 FixedDeltaTime => s_FixedDeltaTime;
     public static Fix64 ElapsedTime { get; private set; }
@@ -134,6 +137,8 @@ public static class LogicFrameRuntime
         LastRenderFrameTickCount = 0;
         BacklogSeconds = 0d;
         DeferredRealtimeSeconds = 0d;
+        s_IsExecutingFrame = false;
+        s_ExecutingFrame = 0;
         IsActive = true;
         IsTimelineRunning = false;
         Began?.Invoke();
@@ -144,7 +149,7 @@ public static class LogicFrameRuntime
     {
         if (!IsActive)
             throw new InvalidOperationException("LogicFrameRuntime.End failed: runtime is not active.");
-        if (IsTicking)
+        if (IsExecutingFrame)
             throw new InvalidOperationException("LogicFrameRuntime.End failed: a logic frame is running.");
 
         Ending?.Invoke();
@@ -157,8 +162,42 @@ public static class LogicFrameRuntime
         LastRenderFrameTickCount = 0;
         BacklogSeconds = 0d;
         DeferredRealtimeSeconds = 0d;
+        s_IsExecutingFrame = false;
+        s_ExecutingFrame = 0;
         Ended?.Invoke();
         Log.Info("[LogicFrame] Runtime end. physicsModeRestored={0}.", s_PreviousPhysicsSimulationMode);
+    }
+
+    public static void BeginFrameExecution(ulong frame)
+    {
+        if (!IsActive || !IsTimelineRunning)
+            throw new InvalidOperationException("LogicFrameRuntime.BeginFrameExecution requires an active timeline.");
+        if (IsExecutingFrame)
+            throw new InvalidOperationException("LogicFrameRuntime.BeginFrameExecution failed: nested logic frame detected.");
+        if (frame != CurrentFrame + 1)
+        {
+            throw new InvalidOperationException(
+                $"LogicFrameRuntime.BeginFrameExecution failed: non-contiguous frame. expected={CurrentFrame + 1}, actual={frame}.");
+        }
+
+        s_ExecutingFrame = frame;
+        s_IsExecutingFrame = true;
+    }
+
+    public static void EndFrameExecution(ulong frame)
+    {
+        if (!s_IsExecutingFrame)
+            throw new InvalidOperationException("LogicFrameRuntime.EndFrameExecution failed: no logic frame is executing.");
+        if (IsTicking)
+            throw new InvalidOperationException("LogicFrameRuntime.EndFrameExecution failed: listener tick is still running.");
+        if (frame != s_ExecutingFrame)
+        {
+            throw new InvalidOperationException(
+                $"LogicFrameRuntime.EndFrameExecution failed: frame mismatch. expected={s_ExecutingFrame}, actual={frame}.");
+        }
+
+        s_ExecutingFrame = 0;
+        s_IsExecutingFrame = false;
     }
 
     public static void Tick(ulong frame)
@@ -171,6 +210,11 @@ public static class LogicFrameRuntime
             throw new InvalidOperationException("LogicFrameRuntime.Tick failed: nested logic tick detected.");
         if (frame != CurrentFrame + 1)
             throw new InvalidOperationException($"LogicFrameRuntime.Tick failed: non-contiguous frame. expected={CurrentFrame + 1}, actual={frame}.");
+        if (s_IsExecutingFrame && frame != s_ExecutingFrame)
+        {
+            throw new InvalidOperationException(
+                $"LogicFrameRuntime.Tick failed: execution frame mismatch. expected={s_ExecutingFrame}, actual={frame}.");
+        }
 
         CurrentFrame = frame;
         ElapsedTime = s_FixedDeltaTime * (Fix64)(long)frame;
@@ -220,20 +264,6 @@ public static class LogicFrameRuntime
                     System.Diagnostics.Stopwatch.GetTimestamp() - callbacksStartTicks);
             }
 
-#if UNITY_EDITOR
-            if (!EditorLogicRuntimeStressGate.SuppressPhysicsSimulation)
-#endif
-            {
-                long physicsSyncStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
-                Physics.SyncTransforms();
-                if (profile)
-                {
-                    MainThreadFrameProfiler.Record(
-                        MainThreadPerfScope.LogicFramePhysicsSync,
-                        System.Diagnostics.Stopwatch.GetTimestamp() - physicsSyncStartTicks);
-                }
-
-            }
         }
         finally
         {
@@ -242,11 +272,33 @@ public static class LogicFrameRuntime
         }
     }
 
+    public static void SyncPresentationPhysics()
+    {
+        if (!IsActive || !IsTimelineRunning)
+            throw new InvalidOperationException("LogicFrameRuntime.SyncPresentationPhysics requires an active timeline.");
+        if (IsExecutingFrame)
+            throw new InvalidOperationException("LogicFrameRuntime.SyncPresentationPhysics cannot run during a logic frame.");
+#if UNITY_EDITOR
+        if (EditorLogicRuntimeStressGate.SuppressPhysicsSimulation)
+            return;
+#endif
+
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long physicsSyncStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
+        Physics.SyncTransforms();
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.RenderFramePhysicsSync,
+                System.Diagnostics.Stopwatch.GetTimestamp() - physicsSyncStartTicks);
+        }
+    }
+
     public static void ResetTimeline()
     {
         if (!IsActive)
             throw new InvalidOperationException("LogicFrameRuntime.ResetTimeline failed: runtime is not active.");
-        if (IsTicking)
+        if (IsExecutingFrame)
             throw new InvalidOperationException("LogicFrameRuntime.ResetTimeline failed: a logic frame is running.");
 
         CurrentFrame = 0;
@@ -262,7 +314,7 @@ public static class LogicFrameRuntime
     {
         if (!IsActive)
             throw new InvalidOperationException("LogicFrameRuntime.StartTimeline failed: runtime is not active.");
-        if (IsTicking)
+        if (IsExecutingFrame)
             throw new InvalidOperationException("LogicFrameRuntime.StartTimeline failed: a logic frame is running.");
         if (IsTimelineRunning)
             throw new InvalidOperationException("LogicFrameRuntime.StartTimeline failed: timeline is already running.");
@@ -278,6 +330,8 @@ public static class LogicFrameRuntime
     {
         if (!IsActive)
             throw new InvalidOperationException("LogicFrameRuntime.CompleteRenderFrame failed: runtime is not active.");
+        if (IsExecutingFrame)
+            throw new InvalidOperationException("LogicFrameRuntime.CompleteRenderFrame cannot run during a logic frame.");
         if (tickCount < 0)
             throw new ArgumentOutOfRangeException(nameof(tickCount));
         if (backlogSeconds < 0d || double.IsNaN(backlogSeconds) || double.IsInfinity(backlogSeconds))

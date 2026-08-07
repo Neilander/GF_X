@@ -10,12 +10,12 @@ public static class DefendPhaseRuntime
     private const string DefendEnemyArriveIntervalConfigKey = "DefendPhaseEnemyArriveInterval";
     private const string DefendEnemyMinSpeedConfigKey = "DefendPhaseEnemyMinSpeed";
     private const string DefendEndlessGrowthRateConfigKey = "DefendPhaseEnemyEndlessGrowthRate";
-    private const float MinArriveIntervalSeconds = 0.01f;
-    private const float MinWorldSpeed = 0.001f;
-    private const float NavigationPointProbeRadius = 2.5f;
+    private static readonly Fix64 MinArriveIntervalSeconds = Fix64.FromRaw(41);
+    private static readonly Fix64 MinWorldSpeed = Fix64.FromRaw(5);
+    private static readonly Fix64 NavigationPointProbeRadius = Fix64.FromRaw(10240);
     private const string TutorialLevelIdentifier = "Lv_1";
-    private const float TutorialEnemyClusterRadius = 3f;
-    private const float TutorialEnemyClusterMinDistance = 1.2f;
+    private static readonly Fix64 TutorialEnemyClusterRadius = Fix64.FromRaw(12288);
+    private static readonly Fix64 TutorialEnemyClusterMinDistance = Fix64.FromRaw(4916);
 
     private static ArchetypeUnitTypeMapper s_ArchetypeUnitTypeMapper;
     private static readonly Dictionary<UnitType, Archetype> s_ArchetypeByUnitType = new();
@@ -141,6 +141,9 @@ public static class DefendPhaseRuntime
 
     public static void PrepareForCurrentLevelIfNeeded()
     {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("DefendPhaseRuntime cannot prepare runtime dependencies during a logic frame.");
+
         Stopwatch stopwatch = Stopwatch.StartNew();
         EnsureSubscribedSoldierDead();
         double subscribeMs = stopwatch.Elapsed.TotalMilliseconds;
@@ -205,7 +208,7 @@ public static class DefendPhaseRuntime
     {
         if (!s_TutorialFirstDefenseWaiting || s_TutorialFirstDefenseActive)
             throw new InvalidOperationException("Tutorial first defense is not waiting for its trigger.");
-        if (PhaseManager.CurrentPhase != GamePhase.Defend)
+        if (LogicPhaseCommandService.GetRequiredCurrentPhase() != GamePhase.Defend)
             throw new InvalidOperationException("Tutorial first defense can only start during the Defend phase.");
         if (EntityRegistry.Player == null || !EntityRegistry.Player.Alive)
             throw new InvalidOperationException("Tutorial first defense requires a live player.");
@@ -228,8 +231,8 @@ public static class DefendPhaseRuntime
             bool spawned = ClusterSpawnSystem.SpawnClusterFixed(
                 point.Position,
                 point.Count,
-                (Fix64)TutorialEnemyClusterRadius,
-                (Fix64)TutorialEnemyClusterMinDistance,
+                TutorialEnemyClusterRadius,
+                TutorialEnemyClusterMinDistance,
                 point.UnitType,
                 SideType.EnemySide,
                 BrainType.DefendEnemyAI,
@@ -265,7 +268,7 @@ public static class DefendPhaseRuntime
         ReleaseAuthoritativelyVisibleEnemySpawnSpeeds(frame);
         if (s_SpawnScheduleCompleted || s_PlannedSpawnEvents.Count == 0)
             return;
-        if (PhaseManager.CurrentPhase != GamePhase.Defend)
+        if (LogicPhaseCommandService.GetRequiredCurrentPhase() != GamePhase.Defend)
             throw new InvalidOperationException("DefendPhaseRuntime has a pending spawn schedule outside the Defend phase.");
 
         while (s_NextPlannedSpawnIndex < s_PlannedSpawnEvents.Count)
@@ -322,7 +325,7 @@ public static class DefendPhaseRuntime
             return false;
 
         results.Clear();
-        PrepareForCurrentLevelIfNeeded();
+        RequirePreparedRuntime();
 
         DefendWaveDefinition wave = ResolveWaveForRound(Mathf.Max(1, s_DefendRoundIndex + 1));
         if (wave == null || wave.Entries.Count == 0)
@@ -385,7 +388,7 @@ public static class DefendPhaseRuntime
         if (pathCorners == null)
             throw new ArgumentNullException(nameof(pathCorners));
 
-        PrepareForCurrentLevelIfNeeded();
+        RequirePreparedRuntime();
 
         pathCorners.Clear();
         navigationUpdatePending = false;
@@ -452,7 +455,7 @@ public static class DefendPhaseRuntime
 
     private static void OnLogicUnitDied(IEntityContext victim)
     {
-        if (PhaseManager.CurrentPhase != GamePhase.Defend)
+        if (LogicPhaseCommandService.GetRequiredCurrentPhase() != GamePhase.Defend)
             return;
 
         if (victim == null)
@@ -469,7 +472,7 @@ public static class DefendPhaseRuntime
 
     private static void TryCompleteDefendPhase()
     {
-        if (PhaseManager.CurrentPhase != GamePhase.Defend)
+        if (LogicPhaseCommandService.GetRequiredCurrentPhase() != GamePhase.Defend)
             return;
 
         if (!s_SpawnScheduleCompleted)
@@ -635,7 +638,7 @@ public static class DefendPhaseRuntime
         if (FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixed(
                 basePosition,
                 agentTypeId,
-                (Fix64)NavigationPointProbeRadius,
+                NavigationPointProbeRadius,
                 Fix64.Zero,
                 out navigationBase))
         {
@@ -645,7 +648,7 @@ public static class DefendPhaseRuntime
 
         failureReason =
             $"no legal navigation point near player base raw=({basePosition.x.RawValue},{basePosition.y.RawValue}) " +
-            $"agentType={agentTypeId} maxSnapDistanceRaw={((Fix64)NavigationPointProbeRadius).RawValue}";
+            $"agentType={agentTypeId} maxSnapDistanceRaw={NavigationPointProbeRadius.RawValue}";
         return false;
     }
 
@@ -659,7 +662,7 @@ public static class DefendPhaseRuntime
         if (FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixedNonBlocking(
                 fixedBase,
                 agentTypeId,
-                (Fix64)NavigationPointProbeRadius,
+                NavigationPointProbeRadius,
                 Fix64.Zero,
                 out FixVector2 fixedNavigationBase))
         {
@@ -671,7 +674,7 @@ public static class DefendPhaseRuntime
         navigationBase = Vector3.zero;
         failureReason =
             $"no committed legal navigation point near player base raw=({fixedBase.x.RawValue},{fixedBase.y.RawValue}) " +
-            $"agentType={agentTypeId} maxSnapDistanceRaw={((Fix64)NavigationPointProbeRadius).RawValue}";
+            $"agentType={agentTypeId} maxSnapDistanceRaw={NavigationPointProbeRadius.RawValue}";
         return false;
     }
 
@@ -682,13 +685,16 @@ public static class DefendPhaseRuntime
 
         string identifier = ResolvePreviewSpawnPointIdentifier(point);
         Vector3 position = point.Position;
-        Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(position);
+        var positionFixed = new FixVector2((Fix64)position.x, (Fix64)position.z);
+        string strongholdOwner = LogicStrongholdMap.TryResolveStrongholdId(positionFixed, out string strongholdId)
+            ? LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId).ToString()
+            : "null";
 
         int smallAgentTypeId = AgentTypeHelper.ResolveNavAgentTypeId(UnitSize.Small);
         bool flowSmall = FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
             position,
             smallAgentTypeId,
-            NavigationPointProbeRadius,
+            (float)NavigationPointProbeRadius,
             0f,
             out Vector3 smallLegalPoint);
         string smallLegalPos = flowSmall ? smallLegalPoint.ToString() : "none";
@@ -699,7 +705,7 @@ public static class DefendPhaseRuntime
             point.name,
             position,
             point.DefendSpawnWeight,
-            stronghold != null ? stronghold.OwnerFactionId.ToString() : "null",
+            strongholdOwner,
             flowSmall,
             smallLegalPos,
             smallAgentTypeId);
@@ -712,7 +718,7 @@ public static class DefendPhaseRuntime
         bool flowHit = FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
             spawnPosition,
             agentTypeId,
-            NavigationPointProbeRadius,
+            (float)NavigationPointProbeRadius,
             0f,
             out Vector3 legalPoint);
 
@@ -780,10 +786,10 @@ public static class DefendPhaseRuntime
         }
         s_ArriveInterval = ResolveFiniteConfigFixed(
             DefendEnemyArriveIntervalConfigKey,
-            (Fix64)MinArriveIntervalSeconds);
+            MinArriveIntervalSeconds);
         Fix64 minSpeedProperty = ResolveFiniteConfigFixed(DefendEnemyMinSpeedConfigKey, Fix64.One);
         s_MinSpeedWorld = Fix64.Max(
-            (Fix64)MinWorldSpeed,
+            MinWorldSpeed,
             DistanceUnitConverter.ConvertToWorld(minSpeedProperty));
         s_EndlessGrowthRate = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(
             DefendEndlessGrowthRateConfigKey);

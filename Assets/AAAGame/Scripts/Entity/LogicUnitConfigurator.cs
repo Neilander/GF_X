@@ -21,16 +21,8 @@ public static class LogicUnitConfigurator
             throw new InvalidOperationException(
                 $"LogicUnitConfigurator.Configure failed: character key mismatch. entity={state.EntityId.Value}, state={state.CharacterKey}, params={characterKey}.");
         }
-        if (GF.DataTable == null)
-            throw new InvalidOperationException("LogicUnitConfigurator.Configure failed: GF.DataTable is null.");
-
         long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
-        if (table == null)
-            throw new InvalidOperationException("LogicUnitConfigurator.Configure failed: CharacterDataDetail table is null.");
-        CharacterDataDetail characterData = table.GetDataRow(row => row.CharacterKey == characterKey);
-        if (characterData == null)
-            throw new InvalidOperationException($"LogicUnitConfigurator.Configure failed: CharacterDataDetail row is missing. character={characterKey}.");
+        CharacterDataDetail characterData = LogicRuntimeDataTableCache.GetCharacterRequired(characterKey);
         RecordPerf(MainThreadPerfScope.UnitConfigData, stageStartTicks);
 
         stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -247,11 +239,7 @@ public static class LogicUnitConfigurator
         if (entityParams.BrainType != BrainType.DefendEnemyAI)
             return null;
 
-        GameEndManager gameEndManager = GameEndManager.Current;
-        if (gameEndManager == null)
-            throw new InvalidOperationException("LogicUnitConfigurator.ResolveDefendFallbackTarget failed: GameEndManager is missing.");
-
-        gameEndManager.TryGetNearestPlayerInitialConditionBuilding(
+        LogicGameEndService.TryGetNearestPlayerInitialConditionBuilding(
             state.Position,
             out IBuildingLogicContext fallbackTarget);
         return fallbackTarget;

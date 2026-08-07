@@ -7,7 +7,7 @@ public sealed class SourceBuildingTechUnitBuffProvider : BuffCallback, ISourceBu
 {
     private readonly int m_OwnerFactionId;
     private readonly string m_TechId;
-    private readonly TechEffectSO m_Effect;
+    private readonly ITechEffectRuntime m_Effect;
     private readonly TechData m_TechData;
     private readonly Func<IBuildingLogicContext, bool> m_Matches;
     private readonly Func<IBuildingLogicContext, string> m_ResolveTechId;
@@ -15,7 +15,7 @@ public sealed class SourceBuildingTechUnitBuffProvider : BuffCallback, ISourceBu
     public SourceBuildingTechUnitBuffProvider(
         int ownerFactionId,
         string techId,
-        TechEffectSO effect,
+        ITechEffectRuntime effect,
         TechData techData,
         Func<IBuildingLogicContext, bool> matches,
         Func<IBuildingLogicContext, string> resolveTechId)
@@ -234,7 +234,7 @@ public sealed class ConsecutiveSameTargetBonusDamageBuff : BuffCallback, ILogicD
 
 public sealed class MissingHealthAttackSpeedBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private const float UpdateInterval = 0.1f;
+    private static readonly Fix64 UpdateInterval = Fix64.FromRaw(410);
     private readonly Fix64 m_HealthPerStep;
     private readonly Fix64 m_AttackSpeedPercentPerStep;
     private Fix64 m_Timer;
@@ -250,7 +250,7 @@ public sealed class MissingHealthAttackSpeedBuff : BuffCallback, ILogicDetermini
     public override void OnUpdate(Fix64 deltaTime)
     {
         m_Timer += (Fix64)deltaTime;
-        if (m_Timer < (Fix64)UpdateInterval)
+        if (m_Timer < UpdateInterval)
             return;
 
         m_Timer = Fix64.Zero;
@@ -311,8 +311,8 @@ public sealed class MissingHealthAttackSpeedBuff : BuffCallback, ILogicDetermini
 
 public sealed class StationaryAttackPercentBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private const float UpdateInterval = 0.1f;
-    private const float MoveEpsilonSqr = 0.0001f;
+    private static readonly Fix64 UpdateInterval = Fix64.FromRaw(410);
+    private static readonly Fix64 MoveEpsilonSqr = Fix64.FromRaw(1);
     private readonly Fix64 m_RequiredSeconds;
     private readonly Fix64 m_AttackPercent;
     private FixVector2 m_LastPosition;
@@ -339,7 +339,7 @@ public sealed class StationaryAttackPercentBuff : BuffCallback, ILogicDeterminis
             return;
 
         m_Timer += (Fix64)deltaTime;
-        if (m_Timer < (Fix64)UpdateInterval)
+        if (m_Timer < UpdateInterval)
             return;
 
         Fix64 elapsed = m_Timer;
@@ -347,7 +347,7 @@ public sealed class StationaryAttackPercentBuff : BuffCallback, ILogicDeterminis
         FixVector2 current = LogicEntityFrameSnapshotService.GetRequiredPosition(hostEntity);
         FixVector2 previous = m_LastPosition;
 
-        if (FixVector2.SqrMagnitude(current - previous) <= (Fix64)MoveEpsilonSqr)
+        if (FixVector2.SqrMagnitude(current - previous) <= MoveEpsilonSqr)
             m_StationarySeconds += elapsed;
         else
             m_StationarySeconds = Fix64.Zero;
@@ -437,7 +437,7 @@ public sealed class IdleNextAttackCriticalBuff : BuffCallback, ILogicDeterminist
 
 public sealed class LoneUnitBonusBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private const float UpdateInterval = 0.1f;
+    private static readonly Fix64 UpdateInterval = Fix64.FromRaw(410);
     private readonly Fix64 m_Radius;
     private readonly Fix64 m_AttackSpeedPercent;
     private readonly Fix64 m_DefBonus;
@@ -456,7 +456,7 @@ public sealed class LoneUnitBonusBuff : BuffCallback, ILogicDeterministicStateCo
     public override void OnUpdate(Fix64 deltaTime)
     {
         m_Timer += (Fix64)deltaTime;
-        if (m_Timer < (Fix64)UpdateInterval)
+        if (m_Timer < UpdateInterval)
             return;
 
         m_Timer = Fix64.Zero;
@@ -542,7 +542,7 @@ public sealed class LoneUnitBonusBuff : BuffCallback, ILogicDeterministicStateCo
 
 public sealed class NearbyFriendlyCountDefBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private const float UpdateInterval = 0.1f;
+    private static readonly Fix64 UpdateInterval = Fix64.FromRaw(410);
     private readonly Fix64 m_Radius;
     private readonly int m_FriendsPerStep;
     private readonly Fix64 m_DefPerStep;
@@ -573,7 +573,7 @@ public sealed class NearbyFriendlyCountDefBuff : BuffCallback, ILogicDeterminist
     public override void OnUpdate(Fix64 deltaTime)
     {
         m_Timer += (Fix64)deltaTime;
-        if (m_Timer < (Fix64)UpdateInterval)
+        if (m_Timer < UpdateInterval)
             return;
 
         m_Timer = Fix64.Zero;

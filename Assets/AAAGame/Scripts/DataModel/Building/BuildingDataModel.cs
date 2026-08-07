@@ -18,8 +18,7 @@ public class BuildingDataModel : DataModelBase
     protected override void OnCreate(RefParams userdata)
     {
         buildingDataDic = new();
-        var buildingTb = GF.DataTable.GetDataTable<BuildingTable>();
-        foreach (var row in buildingTb.GetAllDataRows())
+        foreach (BuildingTable row in LogicRuntimeDataTableCache.BuildingRows)
         {
             ImportBuildingDataRow(row);
         }

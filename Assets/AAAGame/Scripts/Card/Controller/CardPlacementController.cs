@@ -446,7 +446,7 @@ namespace AAAGame.Card
             LogicCardPlacementInvalidReason logicReason = LogicCardPlacementAuthority.Evaluate(
                 new FixVector2((Fix64)position.x, (Fix64)position.z),
                 logicRadius,
-                PhaseManager.CurrentPhase);
+                LogicPhaseCommandService.GetRequiredCurrentPhase());
             if (logicReason != LogicCardPlacementInvalidReason.None)
                 return ConvertInvalidReason(logicReason);
 

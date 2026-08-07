@@ -77,6 +77,8 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
 
     public void CardSystemUpdate()
     {
+		if (LogicFrameRuntime.IsExecutingFrame)
+			throw new System.InvalidOperationException("Card presentation cannot update during a logic frame.");
 		while (m_PendingUiPresentation.Count > 0)
 		{
 			CardUiPresentationRequest request = m_PendingUiPresentation.Dequeue();
@@ -111,7 +113,7 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
     {
         var totalWatch = Stopwatch.StartNew();
 
-		if (LogicFrameRuntime.IsTicking)
+		if (LogicFrameRuntime.IsExecutingFrame)
 		{
 			m_PendingUiPresentation.Enqueue(
 				new CardUiPresentationRequest(false, playCloseAnimation, null));
@@ -132,7 +134,7 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
             var controllerShutdownWatch = Stopwatch.StartNew();
             CardSystemController shutdownController = m_CardSystemController;
             shutdownController.ShutdownRuntime();
-            if (LogicFrameRuntime.IsTicking)
+            if (LogicFrameRuntime.IsExecutingFrame)
                 m_PendingPresentationShutdown.Enqueue(shutdownController);
             else
                 shutdownController.ShutdownPresentation();
@@ -251,7 +253,7 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
 
         stageStartTicks = Stopwatch.GetTimestamp();
         stageStartBytes = System.GC.GetAllocatedBytesForCurrentThread();
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
         {
             if (!LogicCardPlacementAuthority.IsWorldBound)
                 throw new System.InvalidOperationException("CardSetup cannot initialize card runtime in a logic frame before card placement world binding.");
@@ -332,7 +334,7 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
     {
 		if (m_CardSystemController == null)
 			throw new System.InvalidOperationException("CardSetup.OpenCardUI failed: card system is not initialized.");
-		if (LogicFrameRuntime.IsTicking)
+		if (LogicFrameRuntime.IsExecutingFrame)
 		{
 			m_PendingUiPresentation.Enqueue(
 				new CardUiPresentationRequest(true, false, m_CardSystemController));

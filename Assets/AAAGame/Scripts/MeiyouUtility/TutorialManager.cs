@@ -130,6 +130,8 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
 
     public void UpdatePresentation()
     {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Tutorial presentation cannot run during a logic frame.");
         while (m_PresentationRequests.Count > 0)
         {
             PresentationRequest request = m_PresentationRequests.Dequeue();
@@ -321,10 +323,11 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
     {
         if (m_InputModel == null)
             throw new InvalidOperationException("TutorialManager InputModel was not bound before logic frames began.");
-        if (PhaseManager.CurrentPhase != GamePhase.Defend)
+        GamePhase currentPhase = LogicPhaseCommandService.GetRequiredCurrentPhase();
+        if (currentPhase != GamePhase.Defend)
         {
             throw new InvalidOperationException(
-                $"Level_1 tutorial must begin in Defend phase, actual={PhaseManager.CurrentPhase}.");
+                $"Level_1 tutorial must begin in Defend phase, actual={currentPhase}.");
         }
         if (!DefendPhaseRuntime.IsTutorialTriggeredFirstDefenseWaiting)
             throw new InvalidOperationException("Level_1 tutorial began before DefendPhaseRuntime entered its triggered waiting state.");

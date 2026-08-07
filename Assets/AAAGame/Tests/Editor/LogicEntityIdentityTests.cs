@@ -29,6 +29,7 @@ public class LogicEntityIdentityTests
     {
         EntityRegistry.Clear();
         LevelTagRuntime.ClearActiveTags();
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(LogicEntityIdentityTests));
         LogicTimeControlService.BeginTimeline();
         LogicPhaseCommandService.BeginTimeline();
         LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
@@ -578,6 +579,34 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void LifecycleShutdown_AfterPhaseTimelineEnds_DoesNotLeakEntityIntoNextTimeline()
+    {
+        LogicEntityState previousTimelineHero = CreateConfiguredState("Unit_PreviousTimelineHero", true);
+        LogicTimeControlService.BeginFrame(1);
+        LogicEntityLifecycleService.ApplyFrame(1);
+
+        LogicPhaseCommandService.EndTimeline();
+        LogicEntityLifecycleService.EndTimeline();
+        LogicTimeControlService.EndTimeline();
+        try
+        {
+            LogicTimeControlService.BeginTimeline();
+            LogicPhaseCommandService.BeginTimeline();
+            LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
+            LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.BuildBeforeInvade);
+            LogicTimeControlService.BeginFrame(1);
+
+            Assert.DoesNotThrow(() => LogicPhaseCommandService.ApplyFrameForTests(1, _ => { }));
+        }
+        finally
+        {
+            previousTimelineHero.DeactivateRuntime(true);
+            if (!LogicEntityLifecycleService.IsActive)
+                LogicEntityLifecycleService.BeginTimeline();
+        }
+    }
+
+    [Test]
     public void BuildingViewShapeQueries_UseBoundFixedLogicStateInsteadOfViewTransform()
     {
         LogicEntityState state = CreateConfiguredState("Building_ViewShapeAuthority", false);
@@ -1016,6 +1045,26 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void InitializationPublish_CommitsFrameZeroStateWithoutRuntimeSpawnCommand()
+    {
+        LogicEntityState state = CreateConfiguredState("Unit_InitializationState", false);
+
+        LogicEntityLifecycleService.CommitPendingInitializationEntities();
+
+        Assert.IsTrue(state.IsSpawnCommitted);
+        Assert.AreEqual(1, LogicEntityLifecycleService.ActiveEntityCount);
+        Assert.AreSame(state, EntityRegistry.AllEntities[0]);
+        Assert.AreEqual(0, LogicEntityLifecycleService.Commands.Count);
+        Assert.AreEqual(0, LogicEntityLifecycleService.LastSequence);
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicEntityLifecycleService.ApplyFrame(1);
+
+        Assert.IsTrue(state.IsSpawnCommitted);
+        Assert.AreEqual(1, LogicEntityLifecycleService.ActiveEntityCount);
+    }
+
+    [Test]
     public void UnconfiguredSpawnFrame_RejectsBeforeAnyEntityCommits()
     {
         LogicEntityId first = LogicEntityLifecycleService.RequestSpawn();
@@ -1443,7 +1492,7 @@ public class LogicEntityIdentityTests
 
         var managerObject = new GameObject("GlobalBuffManager_ViewlessTech_Test");
         var manager = managerObject.AddComponent<GlobalBuffManager>();
-        var effect = ScriptableObject.CreateInstance<BuildingTechRuntimeEffectSO>();
+        var effect = new BuildingTechRuntimeEffect();
         BuildingCostModifierService.Clear();
         try
         {
@@ -1479,7 +1528,6 @@ public class LogicEntityIdentityTests
         finally
         {
             manager.ClearLevelRuntimeState();
-            UnityEngine.Object.DestroyImmediate(effect);
             UnityEngine.Object.DestroyImmediate(managerObject);
         }
     }
@@ -1615,7 +1663,7 @@ public class LogicEntityIdentityTests
 
         var managerObject = new GameObject("GlobalBuffManager_ViewlessPropertyTech_Test");
         var manager = managerObject.AddComponent<GlobalBuffManager>();
-        var effect = ScriptableObject.CreateInstance<BuildingTechRuntimeEffectSO>();
+        var effect = new BuildingTechRuntimeEffect();
         try
         {
             effect.Activate(new TechEffectContext
@@ -1645,7 +1693,6 @@ public class LogicEntityIdentityTests
         finally
         {
             manager.ClearLevelRuntimeState();
-            UnityEngine.Object.DestroyImmediate(effect);
             UnityEngine.Object.DestroyImmediate(managerObject);
         }
     }
@@ -1655,7 +1702,7 @@ public class LogicEntityIdentityTests
     {
         var managerObject = new GameObject("GlobalBuffManager_FutureViewlessPropertyTech_Test");
         var manager = managerObject.AddComponent<GlobalBuffManager>();
-        var effect = ScriptableObject.CreateInstance<BuildingTechRuntimeEffectSO>();
+        var effect = new BuildingTechRuntimeEffect();
         System.Reflection.MethodInfo subscribe = typeof(GlobalBuffManager).GetMethod(
             "SubscribeTechEffectCommands",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
@@ -1725,7 +1772,6 @@ public class LogicEntityIdentityTests
         finally
         {
             manager.ClearLevelRuntimeState();
-            UnityEngine.Object.DestroyImmediate(effect);
             UnityEngine.Object.DestroyImmediate(managerObject);
         }
     }

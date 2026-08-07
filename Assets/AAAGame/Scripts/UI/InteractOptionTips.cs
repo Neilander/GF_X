@@ -10,6 +10,7 @@ public partial class InteractOptionTips : UIFormBase
     [SerializeField] private Vector2 uiOffset = new Vector2(0, 80);
 
     private InteractionHost _target;
+    private InputManager _inputManager;
     private readonly List<OptionUnitBinding> _optionBindings = new();
 
     private sealed class OptionUnitBinding
@@ -34,6 +35,8 @@ public partial class InteractOptionTips : UIFormBase
         base.OnOpen(userData);
 
         _target = Params.Get(P_TargetHost) as InteractionHost;
+        _inputManager = GameEntry.GetComponent<InputManager>()
+            ?? throw new System.InvalidOperationException("InteractOptionTips requires InputManager.");
         if (_target != null)
         {
             AttachFollower(_target.GetPromptPosition());
@@ -49,6 +52,7 @@ public partial class InteractOptionTips : UIFormBase
     protected override void OnClose(bool isShutdown, object userData)
     {
         _optionBindings.Clear();
+        _inputManager = null;
         GF.Event.Unsubscribe(InteractionOptionTriggeredEventArgs.EventId, OnOptionTriggered);
         // GF.Event.Unsubscribe(ItemAmountChangedEventArgs.EventId, OnItemAmountChanged);
         GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnResourceAmountChanged);
@@ -104,20 +108,16 @@ public partial class InteractOptionTips : UIFormBase
             return;
 
         bool enabled = option.IsExecutable();
-        bool logicTimedHold = key.HasValue;
         interactOptionUnit.SetData(
             option.DisplayName,
             option.DisplayDesc,
             keyText,
             enabled,
-            logicTimedHold
-                ? null
-                : () =>
-                {
-                    if (_target != null)
-                        _target.TryExecute(option);
-                },
-            logicTimedHold);
+            () =>
+            {
+                if (_target != null)
+                    _target.TryExecute(option);
+            });
 
         _optionBindings.Add(new OptionUnitBinding
         {
@@ -200,10 +200,11 @@ public partial class InteractOptionTips : UIFormBase
             bool allowHold = binding.Option.IsVisible() && binding.Option.IsExecutable();
             if (binding.Key.HasValue)
             {
-                Fix64 progress = LogicInteractionHoldService.IsActive
-                    ? LogicInteractionHoldService.GetProgress(binding.Key.Value)
-                    : Fix64.Zero;
-                binding.Unit.SetLogicHoldProgress(allowHold, progress);
+                if (_inputManager == null)
+                    throw new System.InvalidOperationException("InteractOptionTips lost its InputManager while open.");
+                binding.Unit.SetHoldState(
+                    allowHold,
+                    _inputManager.IsInteractionPressed(binding.Key.Value));
             }
             else
             {

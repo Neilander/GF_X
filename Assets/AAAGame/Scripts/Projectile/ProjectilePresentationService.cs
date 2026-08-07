@@ -154,6 +154,8 @@ public static class ProjectilePresentationService
     public static void UpdateRenderFrame()
     {
         EnsureActive();
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Projectile presentation cannot update during a logic frame.");
         if (GF.Entity == null)
             throw new InvalidOperationException("ProjectilePresentationService.UpdateRenderFrame failed: GF.Entity is null.");
         if (s_Failure != null)
@@ -222,6 +224,7 @@ public static class ProjectilePresentationService
             throw new InvalidOperationException(
                 $"Projectile presentation {request.ProjectileId} cannot resolve its weapon: {request.WeaponProvider.WeaponLoadFailure}");
         }
+        request.WeaponProvider.EnsureWeaponPresentationLoaded();
         if (request.WeaponProvider.WeaponSO == null)
             return false;
         if (request.WeaponProvider.WeaponSO is not RangedWeaponSO rangedWeapon)

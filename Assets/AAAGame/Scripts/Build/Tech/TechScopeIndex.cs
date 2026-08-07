@@ -22,13 +22,9 @@ public class TechScopeIndex
         Build(rows);
     }
 
-    public static TechScopeIndex CreateFromCurrentDataTables()
+    public static TechScopeIndex CreateFromPreparedRuntimeData()
     {
-        var table = GF.DataTable?.GetDataTable<CharacterDataDetail>();
-        if (table == null)
-            throw new InvalidOperationException("CharacterDataDetail data table is required for TechScopeIndex.");
-
-        return new TechScopeIndex(table.GetAllDataRows());
+        return new TechScopeIndex(LogicRuntimeDataTableCache.CharacterRows);
     }
 
     public IReadOnlyCollection<string> GetAllCharacterKeys()

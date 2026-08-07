@@ -59,6 +59,8 @@ public partial class GeneralSetup : GameFrameworkComponent
         var lvData = LevelData.FromRow(lvRow);
         DataModelSetup(lvData);
         StageCheckpointRuntimeCoordinator.RestorePersistentDataBeforeLevelSpawn(lvData.Identifier);
+        GamePhase initialPhase = PhaseManager.CurrentPhase;
+        PhaseManager.InitializePhaseAuthorityOnGameStart(initialPhase);
         GameEntry.GetComponent<GameEndManager>().Init(lvData);
         LogSetupTiming("data-model-ready");
         LevelEntityFactory.ShowLevel(lvRow.PrefabPath);
@@ -153,9 +155,7 @@ public partial class GeneralSetup : GameFrameworkComponent
 
     public LevelTable GetLvRow(string lvIdentifier)
     {
-        var levelTable = GF.DataTable.GetDataTable<LevelTable>();
-        var levelRow = levelTable.GetDataRow(row => row.Identifier == lvIdentifier);
-        return levelRow;
+        return LogicRuntimeDataTableCache.GetLevelRequired(lvIdentifier);
     }
 
     private void OnGeneralShowEntitySuccess(object sender, GameEventArgs e)
@@ -262,10 +262,19 @@ public partial class GeneralSetup : GameFrameworkComponent
         string levelId = inGameData.lvData?.Identifier;
         if (string.IsNullOrWhiteSpace(levelId))
             throw new System.InvalidOperationException("GeneralSetup requires a stable level id for stage checkpoints.");
-        LogicEntityLifecycleService.PublishPendingInitializationEntities();
-        if (StageCheckpointRuntimeCoordinator.HasPendingRestore)
+        StageCheckpoint pending = StageCheckpointRuntimeCoordinator.HasPendingRestore
+            ? StageCheckpointRuntimeCoordinator.GetPendingRestoreForLevelSpawn(levelId)
+            : null;
+        GamePhase initialPhase = pending?.Phase ?? PhaseManager.CurrentPhase;
+        GamePhase authoritativePhase = LogicPhaseCommandService.GetRequiredCurrentPhase();
+        if (authoritativePhase != initialPhase)
         {
-            StageCheckpoint pending = StageCheckpointRuntimeCoordinator.GetPendingRestoreForLevelSpawn(levelId);
+            throw new System.InvalidOperationException(
+                $"GeneralSetup initial phase changed during level spawn. expected={initialPhase}, authority={authoritativePhase}.");
+        }
+        LogicEntityLifecycleService.CommitPendingInitializationEntities();
+        if (pending != null)
+        {
             GlobalBuffManager globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>()
                                                   ?? throw new InvalidOperationException(
                                                       "Stage checkpoint restore requires GlobalBuffManager.");

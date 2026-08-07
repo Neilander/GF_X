@@ -19,8 +19,7 @@ public class TechDataModel : DataModelBase
     protected override void OnCreate(RefParams userdata)
     {
         techDataDic = new();
-        var buildingTb = GF.DataTable.GetDataTable<BuildingTable>();
-        foreach (var row in buildingTb.GetAllDataRows())
+        foreach (BuildingTable row in LogicRuntimeDataTableCache.BuildingRows)
         {
             ImportTechFromBuildingDataRow(row);
         }

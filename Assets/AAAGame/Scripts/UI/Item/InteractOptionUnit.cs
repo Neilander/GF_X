@@ -12,8 +12,7 @@ public partial class InteractOptionUnit : UIItemBase
         string displayDesc,
         string key = null,
         bool enabled = true,
-        Action onHoldFull = null,
-        bool logicTimedHold = false)
+        Action onHoldFull = null)
     {
         if (varOptionName != null)
             varOptionName.text = displayName ?? string.Empty;
@@ -55,12 +54,11 @@ public partial class InteractOptionUnit : UIItemBase
 
         if (varFillProgress != null)
         {
-            varFillProgress.onFull = logicTimedHold ? null : onHoldFull;
-            varFillProgress.AllowHold = enabled && (onHoldFull != null || logicTimedHold);
+            varFillProgress.onFull = onHoldFull;
+            varFillProgress.AllowHold = enabled && onHoldFull != null;
             varFillProgress.SetExternalHolding(false);
-            varFillProgress.SetExternalLogicProgress(logicTimedHold, 0f);
             varFillProgress.ResetProgress();
-            varFillProgress.gameObject.SetActive(onHoldFull != null || logicTimedHold);
+            varFillProgress.gameObject.SetActive(onHoldFull != null);
         }
     }
 
@@ -75,12 +73,4 @@ public partial class InteractOptionUnit : UIItemBase
             varFillProgress.ResetProgress();
     }
 
-    public void SetLogicHoldProgress(bool allowHold, Fix64 progress)
-    {
-        if (varFillProgress == null)
-            return;
-
-        varFillProgress.AllowHold = allowHold;
-        varFillProgress.SetExternalLogicProgress(true, allowHold ? (float)progress : 0f);
-    }
 }

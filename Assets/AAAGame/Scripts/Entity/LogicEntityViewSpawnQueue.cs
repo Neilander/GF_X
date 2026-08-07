@@ -10,14 +10,27 @@ public static class LogicEntityViewSpawnQueue
     private const int MaxInFlightRequests = 4;
     private const int MaxDispatchesPerRenderFrame = 4;
 
+    private enum PendingViewKind
+    {
+        Soldier = 0,
+        Building = 1,
+        Hero = 2,
+    }
+
     private sealed class PendingView
     {
+        public readonly PendingViewKind Kind;
         public readonly string PrefabName;
         public readonly Const.EntityGroup EntityGroup;
         public readonly EntityParams Params;
 
-        public PendingView(string prefabName, Const.EntityGroup entityGroup, EntityParams entityParams)
+        public PendingView(
+            PendingViewKind kind,
+            string prefabName,
+            Const.EntityGroup entityGroup,
+            EntityParams entityParams)
         {
+            Kind = kind;
             PrefabName = prefabName;
             EntityGroup = entityGroup;
             Params = entityParams;
@@ -72,6 +85,8 @@ public static class LogicEntityViewSpawnQueue
     public static void EndTimeline()
     {
         EnsureActive();
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("LogicEntityViewSpawnQueue cannot end during a logic frame.");
         CancelAll("timeline end");
         GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnShowEntitySuccess);
         GF.Event.Unsubscribe(ShowEntityFailureEventArgs.EventId, OnShowEntityFailure);
@@ -82,26 +97,46 @@ public static class LogicEntityViewSpawnQueue
     public static void ResetForWorldTransition()
     {
         EnsureActive();
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("LogicEntityViewSpawnQueue cannot reset during a logic frame.");
         CancelAll("world transition");
         ClearMetrics();
     }
 
     public static int EnqueueSoldier(string prefabName, Const.EntityGroup entityGroup, EntityParams entityParams)
     {
+        return EnqueueView(PendingViewKind.Soldier, prefabName, entityGroup, entityParams);
+    }
+
+    public static int EnqueueHero(string prefabName, Const.EntityGroup entityGroup, EntityParams entityParams)
+    {
+        return EnqueueView(PendingViewKind.Hero, prefabName, entityGroup, entityParams);
+    }
+
+    public static int EnqueueBuilding(string prefabName, Const.EntityGroup entityGroup, EntityParams entityParams)
+    {
+        return EnqueueView(PendingViewKind.Building, prefabName, entityGroup, entityParams);
+    }
+
+    private static int EnqueueView(
+        PendingViewKind kind,
+        string prefabName,
+        Const.EntityGroup entityGroup,
+        EntityParams entityParams)
+    {
         EnsureActive();
         if (string.IsNullOrWhiteSpace(prefabName))
-            throw new ArgumentException("Soldier view prefab name is empty.", nameof(prefabName));
+            throw new ArgumentException($"{kind} view prefab name is empty.", nameof(prefabName));
         if (entityParams == null)
             throw new ArgumentNullException(nameof(entityParams));
         if (!entityParams.LogicEntityId.IsValid || entityParams.LogicEntityState == null)
-            throw new InvalidOperationException("Soldier view request has no configured logic entity.");
+            throw new InvalidOperationException($"{kind} view request has no configured logic entity.");
         if (entityParams.Id <= 0)
-            throw new InvalidOperationException("Soldier view request has an invalid framework entity id.");
+            throw new InvalidOperationException($"{kind} view request has an invalid framework entity id.");
 
-        if (s_Pending.Count == 0 && s_InFlight.Count == 0 && s_BatchRequested == 0)
-            s_BatchStartRenderFrame = Time.frameCount;
-
-        s_Pending.Enqueue(new PendingView(prefabName, entityGroup, entityParams));
+        if (s_BatchRequested == 0)
+            s_BatchStartRenderFrame = -1;
+        s_Pending.Enqueue(new PendingView(kind, prefabName, entityGroup, entityParams));
         s_BatchRequested++;
         return entityParams.Id;
     }
@@ -109,6 +144,8 @@ public static class LogicEntityViewSpawnQueue
 	public static void EnqueueHide(int viewId)
 	{
 		EnsureActive();
+		if (LogicFrameRuntime.IsExecutingFrame)
+			throw new InvalidOperationException("LogicEntityViewSpawnQueue cannot enqueue a hide during a logic frame.");
 		if (viewId <= 0)
 			throw new ArgumentOutOfRangeException(nameof(viewId));
 		if (!s_PendingHideViewIds.Add(viewId))
@@ -120,8 +157,12 @@ public static class LogicEntityViewSpawnQueue
     public static void UpdateRenderFrame()
     {
         EnsureActive();
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("LogicEntityViewSpawnQueue cannot update during a logic frame.");
         if (s_Failure != null)
             throw new InvalidOperationException(s_Failure);
+        if (s_BatchRequested > 0 && s_BatchStartRenderFrame < 0)
+            s_BatchStartRenderFrame = Time.frameCount;
 
 		DispatchPendingHides();
         CancelDespawnedRequests();
@@ -144,10 +185,33 @@ public static class LogicEntityViewSpawnQueue
             try
             {
                 long requestStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                int actualViewId = GF.Entity.ShowEntity<SoldierEntity>(
-                    request.PrefabName,
-                    request.EntityGroup,
-                    request.Params);
+                int actualViewId;
+                switch (request.Kind)
+                {
+                    case PendingViewKind.Hero:
+                        actualViewId = GF.Entity.ShowEntity<HeroEntity>(
+                            request.PrefabName,
+                            request.EntityGroup,
+                            request.Params);
+                        break;
+                    case PendingViewKind.Soldier:
+                        actualViewId = GF.Entity.ShowEntity<SoldierEntity>(
+                            request.PrefabName,
+                            request.EntityGroup,
+                            request.Params);
+                        break;
+                    case PendingViewKind.Building:
+                        actualViewId = GF.Entity.ShowEntity<BuildingEntity>(
+                            request.PrefabName,
+                            request.EntityGroup,
+                            request.Params);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(
+                            nameof(request.Kind),
+                            request.Kind,
+                            "Unknown pending entity view kind.");
+                }
                 UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
                     UnityGameFramework.Runtime.MainThreadPerfScope.EntityShowRequest,
                     System.Diagnostics.Stopwatch.GetTimestamp() - requestStartTicks);
@@ -303,7 +367,7 @@ public static class LogicEntityViewSpawnQueue
     private static void ClearMetrics()
     {
         s_Failure = null;
-        s_BatchStartRenderFrame = 0;
+        s_BatchStartRenderFrame = -1;
         s_BatchRequested = 0;
         s_BatchShown = 0;
         s_BatchCanceled = 0;

@@ -9,11 +9,11 @@ using UnityGameFramework.Runtime;
 /// </summary>
 public static class ClusterSpawnSystem
 {
-    private const float MaxHorizontalSnapDistance = 1.2f;
-    private const float FixedSpawnDistance = 0.7f;
-    private const float FixedEdgeClearance = 0.2f;
-    private const float MinAutoSpawnRadius = 0.8f;
-    private const float NearbyCenterSearchStep = 0.8f;
+    private static readonly Fix64 MaxHorizontalSnapDistance = Fix64.FromRaw(4916);
+    private static readonly Fix64 FixedSpawnDistance = Fix64.FromRaw(2868);
+    private static readonly Fix64 FixedEdgeClearance = Fix64.FromRaw(820);
+    private static readonly Fix64 MinAutoSpawnRadius = Fix64.FromRaw(3277);
+    private static readonly Fix64 NearbyCenterSearchStep = Fix64.FromRaw(3277);
     private const int NearbyCenterSearchRings = 7;
     private const int NearbyCenterSamplesPerRing = 12;
 
@@ -35,12 +35,12 @@ public static class ClusterSpawnSystem
     public static Fix64 CalculateAutoSpawnRadiusFixed(int count)
     {
         if (count <= 1)
-            return (Fix64)MinAutoSpawnRadius;
+            return MinAutoSpawnRadius;
 
-        Fix64 spawnDistance = (Fix64)FixedSpawnDistance;
+        Fix64 spawnDistance = FixedSpawnDistance;
         Fix64 radius = Fix64.Sqrt((Fix64)count) * spawnDistance * Fix64.FromRaw(2253)
                        + spawnDistance * Fix64.FromRaw(1434);
-        return Fix64.Max((Fix64)MinAutoSpawnRadius, radius);
+        return Fix64.Max(MinAutoSpawnRadius, radius);
     }
 
     /// <summary>
@@ -60,7 +60,7 @@ public static class ClusterSpawnSystem
         for (int i = 0; i < maxAttempts && fixedPositions.Count < count; i++)
         {
             FixVector2 candidate = GenerateDeterministicPointInCircleFixed(fixedCenter, fixedRadius, i, maxAttempts);
-            if (!TryFindLegalNavigationPointFixed(candidate, (Fix64)FixedEdgeClearance, 0, out FixVector2 spawnPos))
+            if (!TryFindLegalNavigationPointFixed(candidate, FixedEdgeClearance, 0, out FixVector2 spawnPos))
                 continue;
             if (OverlapsSpawnPosition(fixedPositions, spawnPos, fixedMinDistance))
                 continue;
@@ -255,7 +255,7 @@ public static class ClusterSpawnSystem
 
         if (!TryFindLegalNavigationPointFixed(
                 center,
-                (Fix64)FixedEdgeClearance,
+                FixedEdgeClearance,
                 agentTypeId,
                 out FixVector2 legalCenter))
         {
@@ -323,7 +323,7 @@ public static class ClusterSpawnSystem
             FixVector2 candidate = GenerateNearbyCenterCandidateFixed(fixedPreferredCenter, fixedRadius, i);
             if (!TryFindLegalNavigationPointFixed(
                     candidate,
-                    (Fix64)FixedEdgeClearance,
+                    FixedEdgeClearance,
                     agentTypeId,
                     out FixVector2 legalCenter))
             {
@@ -389,7 +389,7 @@ public static class ClusterSpawnSystem
             FixVector2 candidate = GenerateDeterministicPointInCircleFixed(legalCenter, radius, i, maxAttempts);
             if (!TryFindLegalNavigationPointFixed(
                     candidate,
-                    (Fix64)FixedEdgeClearance,
+                    FixedEdgeClearance,
                     agentTypeId,
                     out FixVector2 spawnPos))
             {
@@ -399,7 +399,7 @@ public static class ClusterSpawnSystem
             if (avoidExistingAgents && IsBlockedByExistingAgentFixed(spawnPos))
                 continue;
 
-            if (!OverlapsSpawnPosition(spawnPositions, spawnPos, (Fix64)FixedSpawnDistance))
+            if (!OverlapsSpawnPosition(spawnPositions, spawnPos, FixedSpawnDistance))
                 spawnPositions.Add(spawnPos);
         }
     }
@@ -413,7 +413,7 @@ public static class ClusterSpawnSystem
         return FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixed(
             candidate,
             agentTypeId,
-            (Fix64)MaxHorizontalSnapDistance,
+            MaxHorizontalSnapDistance,
             edgeClearance,
             out legalPoint);
     }
@@ -422,7 +422,7 @@ public static class ClusterSpawnSystem
     {
         return FlowFieldCrowdMovementSystem.IsPositionOccupiedByAgentFixed(
             position,
-            (Fix64)FixedSpawnDistance);
+            FixedSpawnDistance);
     }
 
     private static FixVector2 GenerateNearbyCenterCandidateFixed(FixVector2 center, Fix64 formationRadius, int index)
@@ -435,7 +435,7 @@ public static class ClusterSpawnSystem
         int ringIndex = adjusted % NearbyCenterSamplesPerRing;
         Fix64 angleOffset = (Fix64)ring * Fix64.FromRaw(1516);
         Fix64 angle = Fix64.PI * (Fix64)2 * (Fix64)ringIndex / (Fix64)NearbyCenterSamplesPerRing + angleOffset;
-        Fix64 distance = (Fix64)ring * Fix64.Max((Fix64)NearbyCenterSearchStep, formationRadius * Fix64.FromRaw(1844));
+        Fix64 distance = (Fix64)ring * Fix64.Max(NearbyCenterSearchStep, formationRadius * Fix64.FromRaw(1844));
         return center + new FixVector2(Fix64.Cos(angle) * distance, Fix64.Sin(angle) * distance);
     }
 

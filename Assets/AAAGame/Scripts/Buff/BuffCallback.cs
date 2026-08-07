@@ -445,7 +445,7 @@ public sealed class AmmoDepletedDeathBuff : BuffCallback, ILogicDeterministicSta
 
 public sealed class NearbyEnemyAttackLockBuff : BuffCallback, ICapability, ILogicDeterministicStateContributor
 {
-    private const float ScanIntervalSeconds = 0.1f;
+    private static readonly Fix64 ScanIntervalSeconds = Fix64.FromRaw(410);
 
     private readonly Fix64 m_Radius;
     private Fix64 m_ScanTimer;
@@ -463,7 +463,7 @@ public sealed class NearbyEnemyAttackLockBuff : BuffCallback, ICapability, ILogi
             return;
 
         m_ScanTimer += (Fix64)deltaTime;
-        if (m_ScanTimer < (Fix64)ScanIntervalSeconds)
+        if (m_ScanTimer < ScanIntervalSeconds)
             return;
 
         m_ScanTimer = Fix64.Zero;
@@ -549,7 +549,7 @@ public sealed class NearbyEnemyAttackLockBuff : BuffCallback, ICapability, ILogi
 
 public sealed class LateRiderChargeBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private const float ScanIntervalSeconds = 0.1f;
+    private static readonly Fix64 ScanIntervalSeconds = Fix64.FromRaw(410);
 
     private readonly Fix64 m_MinDistance;
     private readonly Fix64 m_MaxDistance;
@@ -595,7 +595,7 @@ public sealed class LateRiderChargeBuff : BuffCallback, ILogicDeterministicState
         }
 
         m_ScanTimer += (Fix64)deltaTime;
-        if (m_ScanTimer < (Fix64)ScanIntervalSeconds || m_CooldownTimer > Fix64.Zero)
+        if (m_ScanTimer < ScanIntervalSeconds || m_CooldownTimer > Fix64.Zero)
             return;
 
         m_ScanTimer = Fix64.Zero;

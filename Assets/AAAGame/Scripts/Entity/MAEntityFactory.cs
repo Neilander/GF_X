@@ -127,7 +127,7 @@ public static class MAEntityFactory
             unitLevel,
             LogicSkillFactoryKind.Player,
             configureParams);
-        int viewRequestId = GF.Entity.ShowEntity<HeroEntity>(prefabName, entityGroup, entityParams);
+        int viewRequestId = LogicEntityViewSpawnQueue.EnqueueHero(prefabName, entityGroup, entityParams);
         if (viewRequestId <= 0)
             throw new System.InvalidOperationException($"MAEntityFactory.ShowHeroFixed failed to request view. logicEntity={entityParams.LogicEntityId.Value}, prefab={prefabName}.");
         return entityParams.LogicEntityId;
@@ -157,7 +157,7 @@ public static class MAEntityFactory
             isGameEndConditionBuilding,
             isNavigationStaticBaked,
             currentInteractionFrameLifecycle);
-        int viewRequestId = GF.Entity.ShowEntity<BuildingEntity>(
+        int viewRequestId = LogicEntityViewSpawnQueue.EnqueueBuilding(
             buildingData.PrefabPath,
             Const.EntityGroup.Building,
             entityParams);

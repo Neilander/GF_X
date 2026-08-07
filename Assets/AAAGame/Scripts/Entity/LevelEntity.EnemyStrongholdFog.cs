@@ -154,6 +154,7 @@ public partial class LevelEntity
     private bool TryGetStrongholdPlaneY(Stronghold stronghold, out float planeY)
     {
         planeY = 0f;
+        string strongholdId = stronghold.strongholdData.StrongholdId;
         var presetPoints = GetComponentsInChildren<EntityPresetPoint>(true);
         bool hasValue = false;
 
@@ -163,11 +164,13 @@ public partial class LevelEntity
             if (point == null)
                 continue;
 
-            var pointStronghold = GetStrongholdAtWorldPosition(point.Position);
-            if (pointStronghold != stronghold)
+            Vector3 position = point.Position;
+            var positionFixed = new FixVector2((Fix64)position.x, (Fix64)position.z);
+            if (!LogicStrongholdMap.TryResolveStrongholdId(positionFixed, out string pointStrongholdId)
+                || !string.Equals(pointStrongholdId, strongholdId, StringComparison.Ordinal))
                 continue;
 
-            float pointY = point.Position.y;
+            float pointY = position.y;
             if (!hasValue || pointY > planeY)
             {
                 planeY = pointY;

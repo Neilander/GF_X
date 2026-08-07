@@ -40,8 +40,27 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
     private void OnEnable()
     {
         CancelPendingClearIfOwned();
-        if (_applyOnEnable && (Application.isPlaying || _applyInEditMode))
-            ApplyToFlowField();
+        if (!_applyOnEnable)
+            return;
+
+        bool isPlaying = Application.isPlaying;
+        if (!ShouldApplyOnEnable(isPlaying, _applyInEditMode, LogicFrameRuntime.IsActive))
+        {
+            if (isPlaying)
+            {
+                Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    this,
+                    "[FlowNavigationGridSource] Automatic runtime apply skipped because the logic runtime is not active. source={0} id={1}",
+                    name,
+                    GetInstanceID());
+            }
+
+            return;
+        }
+
+        ApplyToFlowField();
     }
 
     private void OnDisable()
@@ -54,6 +73,11 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
     {
         if (_applyInEditMode && isActiveAndEnabled)
             ApplyToFlowField();
+    }
+
+    private static bool ShouldApplyOnEnable(bool isPlaying, bool applyInEditMode, bool logicRuntimeActive)
+    {
+        return isPlaying ? logicRuntimeActive : applyInEditMode;
     }
 
     [ContextMenu("Apply To Flow Field")]

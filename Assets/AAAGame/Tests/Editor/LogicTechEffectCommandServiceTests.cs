@@ -168,6 +168,7 @@ public sealed class LogicTechEffectCommandServiceTests
 
     private static InGameDataModel GetOrCreateInGameDataModel()
     {
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(LogicTechEffectCommandServiceTests));
         FieldInfo dataModelField = typeof(GF).GetField("<DataModel>k__BackingField", BindingFlags.Static | BindingFlags.NonPublic);
         GameFramework.DataModelComponent current = dataModelField?.GetValue(null) as GameFramework.DataModelComponent;
         if (current == null)

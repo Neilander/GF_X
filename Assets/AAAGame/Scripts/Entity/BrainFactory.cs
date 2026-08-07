@@ -26,7 +26,7 @@ public static class BrainFactory
                 return soldierBrain;
 
             default:
-                return new PlayerBrain();
+                throw new System.InvalidOperationException($"BrainFactory.Create failed: unsupported BrainType {tp}.");
         }
     }
     

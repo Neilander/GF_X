@@ -153,24 +153,32 @@ public partial class InGameDataModel : DataModelBase
         return s_ActiveModel;
     }
 
+    private static InGameDataModel GetRequiredModel()
+    {
+        return GetModel()
+               ?? throw new InvalidOperationException(
+                   "InGameDataModel access requires an active runtime model.");
+    }
+
+    private static InGameDataModel GetRequiredValueModel()
+    {
+        InGameDataModel dataModel = GetRequiredModel();
+        if (dataModel.m_IngameValue == null)
+            throw new InvalidOperationException("InGameDataModel value storage is not initialized.");
+        return dataModel;
+    }
+
     public static int GetValue(IngameValueType type)
     {
-        var dataModel = GetModel();
-        if (dataModel == null || dataModel.m_IngameValue == null)
-            return 0;
-
-        return dataModel.m_IngameValue.TryGetValue(type, out var value) ? value : 0;
+        InGameDataModel dataModel = GetRequiredValueModel();
+        return dataModel.m_IngameValue.TryGetValue(type, out int value)
+            ? value
+            : throw new InvalidOperationException($"InGameDataModel value is missing. type={type}.");
     }
 
     public static void SetValue(IngameValueType type, int value, bool triggerEvent = true)
     {
-        var dataModel = GetModel();
-        if (dataModel == null)
-            return;
-
-        if (dataModel.m_IngameValue == null)
-            dataModel.m_IngameValue = new Dictionary<IngameValueType, int>();
-
+        InGameDataModel dataModel = GetRequiredValueModel();
         int oldValue = GetValue(type);
         dataModel.m_IngameValue[type] = value;
 
@@ -189,7 +197,8 @@ public partial class InGameDataModel : DataModelBase
             return false;
 
         if (targetValue > int.MaxValue)
-            targetValue = int.MaxValue;
+            throw new OverflowException(
+                $"InGameDataModel value overflow. type={type}, current={oldValue}, delta={delta}.");
 
         SetValue(type, (int)targetValue, triggerEvent);
         return true;
@@ -207,6 +216,8 @@ public partial class InGameDataModel : DataModelBase
 
     public static void UpdatePresentationEvents()
     {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("InGameDataModel presentation events cannot run during a logic frame.");
         if (s_PendingValuePresentation.Count == 0)
             return;
         if (s_ActiveModel == null)
@@ -244,11 +255,9 @@ public partial class InGameDataModel : DataModelBase
     public static int EnsureProductionBuildingCoinReserves(string buildingInstanceId, int? initialAmount = null)
     {
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
-            return 0;
+            throw new ArgumentException("Building instance id is required.", nameof(buildingInstanceId));
 
-        var dataModel = GetModel();
-        if (dataModel == null)
-            return 0;
+        InGameDataModel dataModel = GetRequiredValueModel();
 
         if (dataModel.m_ProductionBuildingCoinReservesByInstanceId.TryGetValue(buildingInstanceId, out int current))
             return current;
@@ -256,7 +265,7 @@ public partial class InGameDataModel : DataModelBase
         int defaultValue = dataModel.m_ResourcePointInitialAmount;
         int resolved = initialAmount.HasValue ? initialAmount.Value : defaultValue;
         resolved = LevelTagRuntime.ModifyResourcePointInitialAmount(resolved);
-        resolved = Mathf.Max(0, resolved);
+        resolved = Math.Max(0, resolved);
 
         dataModel.m_ProductionBuildingCoinReservesByInstanceId[buildingInstanceId] = resolved;
         return resolved;
@@ -265,11 +274,7 @@ public partial class InGameDataModel : DataModelBase
     public static int GetProductionBuildingCoinReserves(string buildingInstanceId)
     {
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
-            return 0;
-
-        var dataModel = GetModel();
-        if (dataModel == null)
-            return 0;
+            throw new ArgumentException("Building instance id is required.", nameof(buildingInstanceId));
 
         return EnsureProductionBuildingCoinReserves(buildingInstanceId);
     }
@@ -279,12 +284,10 @@ public partial class InGameDataModel : DataModelBase
         if (string.IsNullOrWhiteSpace(buildingInstanceId) || consumeAmount <= 0)
             return 0;
 
-        var dataModel = GetModel();
-        if (dataModel == null)
-            return 0;
+        InGameDataModel dataModel = GetRequiredValueModel();
 
         int current = EnsureProductionBuildingCoinReserves(buildingInstanceId);
-        int consumed = Mathf.Min(current, consumeAmount);
+        int consumed = Math.Min(current, consumeAmount);
         dataModel.m_ProductionBuildingCoinReservesByInstanceId[buildingInstanceId] = current - consumed;
         return consumed;
     }
@@ -294,13 +297,14 @@ public partial class InGameDataModel : DataModelBase
         if (string.IsNullOrWhiteSpace(buildingInstanceId) || cost <= 0)
             return;
 
-        var dataModel = GetModel();
-        if (dataModel == null)
-            return;
+        InGameDataModel dataModel = GetRequiredValueModel();
 
         dataModel.m_BuildingCostSpentByInstanceId.TryGetValue(buildingInstanceId, out int current);
         long total = (long)current + cost;
-        dataModel.m_BuildingCostSpentByInstanceId[buildingInstanceId] = total > int.MaxValue ? int.MaxValue : (int)total;
+        if (total > int.MaxValue)
+            throw new OverflowException(
+                $"Building cost history overflow. building={buildingInstanceId}, current={current}, added={cost}.");
+        dataModel.m_BuildingCostSpentByInstanceId[buildingInstanceId] = (int)total;
     }
 
     public static int GetBuildingCostSpent(string buildingInstanceId)
@@ -308,11 +312,11 @@ public partial class InGameDataModel : DataModelBase
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
             return 0;
 
-        var dataModel = GetModel();
-        if (dataModel == null)
-            return 0;
+        InGameDataModel dataModel = GetRequiredValueModel();
 
-        return dataModel.m_BuildingCostSpentByInstanceId.TryGetValue(buildingInstanceId, out int cost) ? Mathf.Max(0, cost) : 0;
+        return dataModel.m_BuildingCostSpentByInstanceId.TryGetValue(buildingInstanceId, out int cost)
+            ? Math.Max(0, cost)
+            : 0;
     }
 
     public static void EnsureBuildingCostSpentFromOriginalCosts(string buildingInstanceId, BuildingData buildingData)
@@ -327,9 +331,7 @@ public partial class InGameDataModel : DataModelBase
         if (originalCost <= 0)
             return;
 
-        var dataModel = GetModel();
-        if (dataModel == null)
-            return;
+        InGameDataModel dataModel = GetRequiredValueModel();
 
         dataModel.m_BuildingCostSpentByInstanceId[buildingInstanceId] = originalCost;
     }
@@ -339,9 +341,7 @@ public partial class InGameDataModel : DataModelBase
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
             return;
 
-        var dataModel = GetModel();
-        if (dataModel == null)
-            return;
+        InGameDataModel dataModel = GetRequiredValueModel();
 
         dataModel.m_BuildingCostSpentByInstanceId.Remove(buildingInstanceId);
     }
@@ -401,10 +401,7 @@ public partial class InGameDataModel : DataModelBase
 
     public static void RefreshCurrentSupplyFromFriendlyUnits(bool triggerEvent = true)
     {
-        var dataModel = GetModel();
-        if (dataModel == null)
-            return;
-
+        InGameDataModel dataModel = GetRequiredValueModel();
         dataModel.RefreshCurrentSupplyFromFriendlyUnitsInternal(triggerEvent);
     }
 
@@ -437,9 +434,7 @@ public partial class InGameDataModel : DataModelBase
         if (string.IsNullOrWhiteSpace(buildingContextKey))
             return results;
 
-        var dataModel = GetModel();
-        if (dataModel == null)
-            return results;
+        InGameDataModel dataModel = GetRequiredModel();
 
         foreach (var pair in dataModel.m_TechOwnerContextsById)
         {
@@ -458,8 +453,7 @@ public partial class InGameDataModel : DataModelBase
         if (string.IsNullOrWhiteSpace(techId) || ownerFactionId < 0)
             return false;
 
-        var dataModel = GetModel();
-        return dataModel != null && dataModel.HasUnlockedTechInFaction(techId, ownerFactionId);
+        return GetRequiredModel().HasUnlockedTechInFaction(techId, ownerFactionId);
     }
 
 
@@ -600,12 +594,16 @@ public partial class InGameDataModel : DataModelBase
 
         InGameDataModel dataModel = GetModel()
                                     ?? throw new InvalidOperationException("InGameDataModel deterministic state requires an active model.");
+        if (dataModel.m_IngameValue == null)
+            throw new InvalidOperationException("InGameDataModel deterministic state requires initialized value storage.");
         hasher.Add(0x494E47414D454441UL);
         for (int type = 0; type <= (int)IngameValueType.MaxSupply; type++)
         {
             var valueType = (IngameValueType)type;
             hasher.Add(type);
-            hasher.Add(dataModel.m_IngameValue != null && dataModel.m_IngameValue.TryGetValue(valueType, out int value) ? value : 0);
+            if (!dataModel.m_IngameValue.TryGetValue(valueType, out int value))
+                throw new InvalidOperationException($"InGameDataModel deterministic state is missing value. type={valueType}.");
+            hasher.Add(value);
         }
 
         s_DeterministicPrimaryIds.Clear();
@@ -687,26 +685,39 @@ public partial class InGameDataModel : DataModelBase
 
     public static IReadOnlyList<Stronghold> GetStrongholds()
     {
-        var dataModel = GetModel();
-        return dataModel != null ? dataModel.Strongholds : Array.Empty<Stronghold>();
+        return GetRequiredModel().Strongholds;
+    }
+
+    public static int GetTeamIdByFactionRequired(int factionId)
+    {
+        if (factionId < 0)
+            throw new ArgumentOutOfRangeException(nameof(factionId));
+
+        InGameDataModel dataModel = GetRequiredModel();
+        if (dataModel.Factions == null)
+            throw new InvalidOperationException("InGameDataModel faction storage is not initialized.");
+        if (!dataModel.Factions.TryGetValue(factionId, out Faction faction) || faction == null)
+            throw new InvalidOperationException($"InGameDataModel faction is missing. factionId={factionId}.");
+        if (faction.TeamID < 0)
+            throw new InvalidOperationException(
+                $"InGameDataModel faction has an invalid team id. factionId={factionId}, teamId={faction.TeamID}.");
+        return faction.TeamID;
     }
 
     public static void SetStrongholds(List<Stronghold> strongholds)
     {
-        var dataModel = GetModel();
-        if (dataModel == null)
-            return;
+        InGameDataModel dataModel = GetRequiredModel();
+        if (strongholds == null)
+            throw new ArgumentNullException(nameof(strongholds));
 
         dataModel.ClearStrongholdRuntimeDataInternal();
 
-        if (strongholds == null)
-            return;
-
         for (int i = 0; i < strongholds.Count; i++)
         {
-            var stronghold = strongholds[i];
-            if (stronghold == null)
-                continue;
+            Stronghold stronghold = strongholds[i]
+                                   ?? throw new ArgumentException(
+                                       $"Stronghold list contains null at index {i}.",
+                                       nameof(strongholds));
 
             stronghold.Buildings.Clear();
             dataModel.m_Strongholds.Add(stronghold);
@@ -715,9 +726,9 @@ public partial class InGameDataModel : DataModelBase
 
     public static void RegisterBuilding(BuildingEntity building)
     {
-        var dataModel = GetModel();
-        if (dataModel == null)
-            return;
+        InGameDataModel dataModel = GetRequiredModel();
+        if (building == null)
+            throw new ArgumentNullException(nameof(building));
 
         UnregisterBuilding(building);
 
@@ -749,9 +760,9 @@ public partial class InGameDataModel : DataModelBase
 
     public static void UnregisterBuilding(BuildingEntity building)
     {
-        var dataModel = GetModel();
-        if (dataModel == null)
-            return;
+        InGameDataModel dataModel = GetRequiredModel();
+        if (building == null)
+            throw new ArgumentNullException(nameof(building));
 
         Stronghold stronghold = building.CurrentStronghold;
         if (stronghold != null)
@@ -765,11 +776,7 @@ public partial class InGameDataModel : DataModelBase
 
     public static void ClearStrongholdRuntimeData()
     {
-        var dataModel = GetModel();
-        if (dataModel == null)
-            return;
-
-        dataModel.ClearStrongholdRuntimeDataInternal();
+        GetRequiredModel().ClearStrongholdRuntimeDataInternal();
     }
 
     private void ClearStrongholdRuntimeDataInternal()

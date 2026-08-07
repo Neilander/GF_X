@@ -154,16 +154,16 @@ namespace AAAGame.Card
             // 每个部队建筑生成对应的卡牌
             if (!UnitTypeHelper.TryParseUnitType(sourceBuilding.BuildingData.UnitID, out var unitType))
             {
-                Debug.LogWarning($"Skip army building '{sourceBuilding.BuildingData.Identifier}': invalid UnitID '{sourceBuilding.BuildingData.UnitID}'.");
-                return false;
+                throw new InvalidOperationException(
+                    $"Army building '{sourceBuilding.BuildingData.Identifier}' has invalid UnitID '{sourceBuilding.BuildingData.UnitID}'.");
             }
 
             int lv = sourceBuilding.BuildingData.Lv;
             ICardDataProvider cardData = FindCardData(unitType, lv);
             if (cardData == null)
             {
-                Debug.LogWarning($"[Card] No card configured for unit type '{unitType}' lv={lv}.");
-                return false;
+                throw new InvalidOperationException(
+                    $"No exact card is configured for unit type '{unitType}' at level {lv}.");
             }
 
             m_DeckCards.Add(new Card(cardData, sourceBuilding));
@@ -344,16 +344,13 @@ namespace AAAGame.Card
 
         /// <summary>
         /// 根据单位类型 + 建筑等级查找卡牌模板。
-        /// 优先精确匹配 (unitType, lv)；如果没找到，回退到该 unitType 下任意 lv 的第一张卡（避免完全没卡）。
+        /// 精确匹配单位类型和建筑等级。
         /// </summary>
         private ICardDataProvider FindCardData(UnitType unitType, int lv)
         {
             if (m_CardPool == null)
-            {
-                return null;
-            }
+                throw new InvalidOperationException("Card pool is not initialized.");
 
-            ICardDataProvider fallback = null;
             foreach (var card in m_CardPool)
             {
                 if (card == null || card.SoldierIndex != unitType)
@@ -362,21 +359,10 @@ namespace AAAGame.Card
                 }
 
                 if (card.RequiredLv == lv)
-                {
-                    return card; // 精确匹配
-                }
-
-                if (fallback == null)
-                {
-                    fallback = card; // 暂存同 unitType 的回退
-                }
+                    return card;
             }
 
-            if (fallback != null)
-            {
-                Debug.LogWarning($"[Card] Lv={lv} 没找到对应卡，回退到 unitType={unitType} 的第一张 (lv={fallback.RequiredLv})");
-            }
-            return fallback;
+            return null;
         }
 
         /// <summary>
@@ -510,6 +496,8 @@ namespace AAAGame.Card
 
         public void UpdatePresentationEvents()
         {
+            if (LogicFrameRuntime.IsExecutingFrame)
+                throw new InvalidOperationException("Card presentation events cannot run during a logic frame.");
             if (m_PendingPresentationEvents.Count == 0)
                 return;
             if (GF.Event == null)
@@ -641,7 +629,7 @@ namespace AAAGame.Card
             LogicCardPlacementInvalidReason placementReason = LogicCardPlacementAuthority.Evaluate(
                 selectedPosition,
                 spawnRadius,
-                PhaseManager.CurrentPhase);
+                LogicPhaseCommandService.GetRequiredCurrentPhase());
             if (placementReason != LogicCardPlacementInvalidReason.None)
             {
                 Log.Warning(
@@ -812,7 +800,7 @@ namespace AAAGame.Card
             LogicCardPlacementInvalidReason reason = LogicCardPlacementAuthority.Evaluate(
                 new FixVector2((Fix64)worldPosition.x, (Fix64)worldPosition.z),
                 Fix64.Zero,
-                PhaseManager.CurrentPhase);
+                LogicPhaseCommandService.GetRequiredCurrentPhase());
             return reason != LogicCardPlacementInvalidReason.None;
         }
 
@@ -842,7 +830,7 @@ namespace AAAGame.Card
 
         private void EnsurePresentationInitialized()
         {
-            if (LogicFrameRuntime.IsTicking)
+            if (LogicFrameRuntime.IsExecutingFrame)
                 throw new InvalidOperationException("Card presentation cannot initialize during a logic frame.");
             m_PlacementController ??= new CardPlacementController();
             m_EnemyBuildingForbiddenZoneController ??= new EnemyBuildingForbiddenZoneController();

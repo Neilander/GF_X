@@ -98,13 +98,9 @@ public static class SkillCompDeterministicStateUtility
         hasher.Add(action != null);
         if (action == null)
             return;
-        if (action.floats.Count != 0 || action.objects.Count != 0)
-            throw new System.InvalidOperationException($"Legacy action has unsupported float/object deterministic state. action={action.GetType().FullName} floats={action.floats.Count} objects={action.objects.Count}.");
-
         hasher.Add(action.GetType().FullName);
         hasher.Add(action.executeIndex);
         hasher.Add(action.elapsed.RawValue);
-        hasher.Add(action.duration.RawValue);
         hasher.Add(action.injectInfoAlready);
         hasher.Add(action.isRunning);
         hasher.Add(action.isInterrupted);

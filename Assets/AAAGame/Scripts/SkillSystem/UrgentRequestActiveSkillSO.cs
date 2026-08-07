@@ -5,7 +5,7 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "UrgentRequestActiveSkillSO", menuName = "Skills/Active/Urgent Request")]
 public sealed class UrgentRequestActiveSkillSO : TargetPositionActiveSkillSO
 {
-    private const float SpawnMinDistance = 0.7f;
+    private static readonly Fix64 SpawnMinDistance = Fix64.FromRaw(2868);
 
     protected override void ApplyAtPosition(IEntityContext caster, FixVector2 position, IReadOnlyList<ISelectable> selectedTargets)
     {
@@ -21,14 +21,14 @@ public sealed class UrgentRequestActiveSkillSO : TargetPositionActiveSkillSO
         if (count <= 0)
             throw new InvalidOperationException($"UrgentRequest count invalid. skillId={skillId}, count={count}");
 
-        float radius = ClusterSpawnSystem.CalculateAutoSpawnRadius(count);
+        Fix64 radius = ClusterSpawnSystem.CalculateAutoSpawnRadiusFixed(count);
         List<FixVector2> spawnPositions = new List<FixVector2>(count);
         int agentTypeId = ClusterSpawnSystem.ResolveAgentTypeId(UnitType.Unit_Intern);
         if (!ClusterSpawnSystem.TryGetSpawnPositionsFixed(
                 position,
                 count,
-                (Fix64)radius,
-                (Fix64)SpawnMinDistance,
+                radius,
+                SpawnMinDistance,
                 spawnPositions,
                 true,
                 agentTypeId))

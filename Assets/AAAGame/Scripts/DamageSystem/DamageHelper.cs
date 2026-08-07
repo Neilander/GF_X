@@ -168,15 +168,7 @@ public static class DamageHelper
         if (finalAmount < Fix64.Zero)
             finalAmount = Fix64.Zero;
 
-        // 适配 target 的 TakeDamage 签名。ITargetable 未暴露 TakeDamage，需要转成 IEntityContext / GeneralCreature。
-        if (target is IEntityContext ctx)
-        {
-            ctx.TakeDamage(finalAmount, modType, attacker);
-        }
-        else if (target is GeneralCreature gc)
-        {
-            gc.TakeDamage(finalAmount, modType, attacker);
-        }
+        target.TakeDamage(finalAmount, modType, attacker);
     }
 
     private static void AdvanceHitIndex(IEntityContext attacker)

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using GameFramework.DataTable;
 
 /// <summary>
 /// 从单位表读取种族到单位类型的映射。
@@ -11,7 +10,7 @@ public class ArchetypeUnitTypeMapper
 
     public ArchetypeUnitTypeMapper()
     {
-        BuildFromCurrentDataTables();
+        BuildFromPreparedRuntimeData();
     }
 
     public IReadOnlyCollection<UnitType> GetUnitTypes(Archetype archetype)
@@ -21,14 +20,12 @@ public class ArchetypeUnitTypeMapper
             : Array.Empty<UnitType>();
     }
 
-    private void BuildFromCurrentDataTables()
+    private void BuildFromPreparedRuntimeData()
     {
-        IDataTable<CharacterDataDetail> table = GF.DataTable?.GetDataTable<CharacterDataDetail>();
-        if (table == null)
-            return;
-
-        foreach (CharacterDataDetail row in table.GetAllDataRows())
+        IReadOnlyList<CharacterDataDetail> rows = LogicRuntimeDataTableCache.CharacterRows;
+        for (int i = 0; i < rows.Count; i++)
         {
+            CharacterDataDetail row = rows[i];
             if (row == null
                 || string.IsNullOrWhiteSpace(row.CharacterKey))
             {

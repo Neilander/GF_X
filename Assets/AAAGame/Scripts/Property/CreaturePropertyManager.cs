@@ -227,16 +227,7 @@ public sealed class CreaturePropertyManager : IDisposable
 
     private void LoadCharacterData(string creatureType)
     {
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
-        var rows = table.GetDataRows(r => r.CharacterKey == creatureType);
-        if (rows == null || rows.Length == 0)
-        {
-            GF.LogError($"缺少 CharacterDataDetail，CharacterKey={creatureType}");
-            _characterData = null;
-            return;
-        }
-
-        _characterData = rows[0];
+        _characterData = LogicRuntimeDataTableCache.GetCharacterRequired(creatureType);
     }
 
     #region CreateMainProperty

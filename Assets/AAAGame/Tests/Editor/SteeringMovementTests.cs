@@ -11,6 +11,8 @@ using System.Reflection;
 [TestFixture]
 public class SteeringMovementTests
 {
+    private LogicTestGroupMoveManagerAuthority m_GroupMoveAuthority;
+
     [SetUp]
     public void SetUp()
     {
@@ -31,19 +33,32 @@ public class SteeringMovementTests
         config.DeterministicFlowTileCommitQuota = 1_000_000;
         config.SharedGoalBuildOperationQuota = 1_000_000;
         FlowFieldCrowdMovementSystem.SetConfig(config);
+        m_GroupMoveAuthority = LogicTestGroupMoveManagerAuthority.Create(nameof(SteeringMovementTests));
         SetupCombatPhaseForTests();
+        if (LogicTimeControlService.IsActive || LogicPhaseCommandService.IsActive)
+            throw new InvalidOperationException("SteeringMovementTests requires inactive logic phase services at setup.");
+        LogicTimeControlService.BeginTimeline();
+        LogicPhaseCommandService.BeginTimeline();
+        LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
     }
 
     [TearDown]
     public void TearDown()
     {
         EntityRegistry.Clear();
+        if (LogicPhaseCommandService.IsActive)
+            LogicPhaseCommandService.EndTimeline();
+        if (LogicTimeControlService.IsActive)
+            LogicTimeControlService.EndTimeline();
+        m_GroupMoveAuthority?.Dispose();
+        m_GroupMoveAuthority = null;
         FlowFieldCrowdMovementSystem.ResetAll();
         FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
     }
 
     private static void SetupCombatPhaseForTests()
     {
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(SteeringMovementTests));
         var dataModelField = typeof(GF).GetField("<DataModel>k__BackingField", BindingFlags.Static | BindingFlags.NonPublic);
         var current = dataModelField?.GetValue(null) as GameFramework.DataModelComponent;
         if (current == null)
@@ -116,19 +131,23 @@ public class SteeringMovementTests
         AssertRaw(1229, friendly.FollowUpdateInterval, nameof(friendly.FollowUpdateInterval));
 
         var soldier = new SoldierAIBrain();
-        AssertRaw(6144, soldier.WeaponRange, nameof(soldier.WeaponRange));
         AssertRaw(40960, soldier.DetectEnemyRange, nameof(soldier.DetectEnemyRange));
         AssertRaw(94208, soldier.ChaseRange, nameof(soldier.ChaseRange));
         AssertRaw(6144, soldier.HomeArrivedRadius, nameof(soldier.HomeArrivedRadius));
         AssertRaw(2048, soldier.ReturnSpeedBonusPercent, nameof(soldier.ReturnSpeedBonusPercent));
         AssertRaw(820, soldier.ReturnHpRegenPercentPerSec, nameof(soldier.ReturnHpRegenPercentPerSec));
-        AssertRaw(2458, soldier.SoftReturnRatio, nameof(soldier.SoftReturnRatio));
+        Assert.IsNull(typeof(SoldierAIBrain).GetField("WeaponRange"));
+        Assert.IsNull(typeof(SoldierAIBrain).GetField("SoftReturnRatio"));
 
         AssertStaticRaw<SoldierAIBrain>("CombatApproachRangeSlackFixed", 328);
         AssertStaticRaw<SoldierAIBrain>("CombatApproachRingSpacingFixed", 2253);
         AssertStaticRaw<SoldierAIBrain>("CombatApproachOccupancyPaddingFixed", 1434);
-        AssertStaticRaw<SoldierAIBrain>("FallbackDeadZoneRange", 49152);
-        AssertStaticRaw<SoldierAIBrain>("FallbackInnerDeadZoneRange", 8192);
+        Assert.IsNull(typeof(SoldierAIBrain).GetField(
+            "FallbackDeadZoneRange",
+            BindingFlags.Static | BindingFlags.NonPublic));
+        Assert.IsNull(typeof(SoldierAIBrain).GetField(
+            "FallbackInnerDeadZoneRange",
+            BindingFlags.Static | BindingFlags.NonPublic));
 
         var directions = (FixVector2[])typeof(SoldierAIBrain)
             .GetField("StableDeadZoneDirections", BindingFlags.Static | BindingFlags.NonPublic)
@@ -296,6 +315,47 @@ public class SteeringMovementTests
 
     #region SoldierAIBrain 状态机
 
+    [Test]
+    public void Follow状态_缺少GroupMoveManager时明确报错()
+    {
+        m_GroupMoveAuthority.Detach();
+        Assert.IsFalse(GroupMoveManager.HasInstance, "测试前提：未装配 GroupMoveManager。");
+        var player = MakeSoldier(Vector3.zero);
+        var soldier = MakeSoldier(new Vector3(5f, 0f, 0f));
+        EntityRegistry.RegisterAsPlayer(player);
+        EntityRegistry.Register(soldier);
+
+        var brain = new SoldierAIBrain();
+        soldier.Brain = brain;
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime));
+
+        StringAssert.Contains("GroupMoveManager", exception.Message);
+    }
+
+    [Test]
+    public void Combat状态_缺少WeaponComp时明确报错()
+    {
+        var soldier = MakeSoldier(Vector3.zero);
+        soldier.WeaponComp = null;
+        var enemy = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        EntityRegistry.Register(soldier);
+        EntityRegistry.Register(enemy);
+        var targeting = new SimTargetingComp(soldier, new List<IEntityContext> { soldier, enemy });
+        targeting.Init(soldier);
+        targeting.CurrentTarget = enemy;
+        soldier.TargetComp = targeting;
+
+        var brain = new SoldierAIBrain();
+        soldier.Brain = brain;
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime));
+
+        StringAssert.Contains("WeaponComp", exception.Message);
+    }
+
     private SimEntityContext MakeSoldier(Vector3 pos, SideType side = SideType.PlayerSide)
     {
         var ctx = new SimEntityContext
@@ -305,6 +365,7 @@ public class SteeringMovementTests
             Alive = true
         };
         ctx.SetProperty(CreatureMainProperty.Speed, (Fix64)5f);
+        ctx.WeaponComp = CreateTestWeaponComp((Fix64)1.5f);
 
         var exec = new SimMoveExecutor();
         exec.Position = pos;
@@ -327,6 +388,25 @@ public class SteeringMovementTests
         ctx.BuffComp = buffComp;
 
         return ctx;
+    }
+
+    private static WeaponComp CreateTestWeaponComp(Fix64 worldRange)
+    {
+        var data = new WeaponData(
+            WeaponType.Melee,
+            Fix64.One,
+            Fix64.One,
+            DistanceUnitConverter.ConvertFromWorld(worldRange),
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.One,
+            Fix64.Zero,
+            Array.Empty<Fix64>());
+        return new WeaponComp(data.ToWeapon("SteeringMovementTests"));
     }
 
     [Test]
@@ -715,7 +795,6 @@ public class SteeringMovementTests
 
         var brain = new SoldierAIBrain();
         brain.DetectEnemyRange = (Fix64)6f;
-        brain.WeaponRange = (Fix64)1.5f;
         brain.Inject();
         soldier.Brain = brain;
 

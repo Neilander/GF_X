@@ -180,6 +180,129 @@ public sealed class SkillRuntimeDeterminismTests
         StringAssert.Contains("SyncActionPresentation", entityView);
     }
 
+    [Test]
+    public void SkillAuthorityDoesNotFallbackToSerializedFloatOrPresentationScale()
+    {
+        string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+        string activeSkill = File.ReadAllText(Path.Combine(
+            projectRoot,
+            "Assets/AAAGame/Scripts/SkillSystem/ActiveSkillSO.cs"));
+        string urgentRequest = File.ReadAllText(Path.Combine(
+            projectRoot,
+            "Assets/AAAGame/Scripts/SkillSystem/UrgentRequestActiveSkillSO.cs"));
+        string basicAction = File.ReadAllText(Path.Combine(
+            projectRoot,
+            "Assets/AAAGame/Scripts/ActionSystem/BasicAction.cs"));
+
+        StringAssert.DoesNotContain("return (Fix64)coolDownInterval", activeSkill);
+        StringAssert.DoesNotContain("(Fix64)radius", activeSkill);
+        StringAssert.DoesNotContain("(Fix64)posSelectInfo.selectScale.x", activeSkill);
+        StringAssert.Contains("posSelectInfo.selectionRadius = GetAreaRangeWorldFixed();", activeSkill);
+        StringAssert.Contains("CalculateAutoSpawnRadiusFixed(count)", urgentRequest);
+        StringAssert.DoesNotContain("(Fix64)radius", urgentRequest);
+        StringAssert.DoesNotContain("protected float duration", basicAction);
+        StringAssert.DoesNotContain("Dictionary<string, float>", basicAction);
+        StringAssert.DoesNotContain("Dictionary<string, UnityEngine.Object>", basicAction);
+    }
+
+    [Test]
+    public void SkillRuntimeSnapshot_DoesNotShareMutableSkillOrActionAssets()
+    {
+        ActiveSkillSO sourceSkill = ScriptableObject.CreateInstance<ActiveSkillSO>();
+        PositionSelectAction sourceAction = ScriptableObject.CreateInstance<PositionSelectAction>();
+        ActiveSkillSO snapshot = null;
+        try
+        {
+            sourceSkill.skillId = "Skill_A";
+            sourceSkill.banWhenOtherSkill = true;
+            sourceSkill.actions = new List<BasicAction> { sourceAction };
+            sourceAction.relatedTriggerString = "Cast_A";
+            typeof(PositionSelectAction).GetField(
+                    "posSelectPrefabName",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.SetValue(sourceAction, "Selector_A");
+
+            MethodInfo createSnapshot = typeof(ActiveSkillSO).GetMethod(
+                "CreateRuntimeSnapshot",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(createSnapshot);
+            snapshot = (ActiveSkillSO)createSnapshot.Invoke(sourceSkill, null);
+
+            sourceSkill.skillId = "Skill_B";
+            sourceSkill.banWhenOtherSkill = false;
+            sourceSkill.actions.Clear();
+            sourceAction.relatedTriggerString = "Cast_B";
+            typeof(PositionSelectAction).GetField(
+                    "posSelectPrefabName",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.SetValue(sourceAction, "Selector_B");
+
+            Assert.AreEqual("Skill_A", snapshot.skillId);
+            Assert.IsTrue(snapshot.banWhenOtherSkill);
+            Assert.AreEqual(1, snapshot.actions.Count);
+            Assert.AreNotSame(sourceAction, snapshot.actions[0]);
+            Assert.AreEqual("Cast_A", snapshot.actions[0].relatedTriggerString);
+            Assert.AreEqual(
+                "Selector_A",
+                ((PositionSelectAction)snapshot.actions[0]).SelectorPrefabName);
+        }
+        finally
+        {
+            if (snapshot != null)
+            {
+                if (snapshot.actions != null)
+                {
+                    for (int i = 0; i < snapshot.actions.Count; i++)
+                    {
+                        if (snapshot.actions[i] != null)
+                            UnityEngine.Object.DestroyImmediate(snapshot.actions[i]);
+                    }
+                }
+                UnityEngine.Object.DestroyImmediate(snapshot);
+            }
+            UnityEngine.Object.DestroyImmediate(sourceAction);
+            UnityEngine.Object.DestroyImmediate(sourceSkill);
+        }
+    }
+
+    [Test]
+    public void SkillRuntimeSnapshot_CannotBeCreatedInsideLogicFrame()
+    {
+        ActiveSkillSO sourceSkill = ScriptableObject.CreateInstance<ActiveSkillSO>();
+        try
+        {
+            LogicFrameRuntime.Begin();
+            LogicFrameRuntime.StartTimeline();
+            LogicFrameRuntime.BeginFrameExecution(1);
+            MethodInfo createSnapshot = typeof(ActiveSkillSO).GetMethod(
+                "CreateRuntimeSnapshot",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(createSnapshot);
+            TargetInvocationException exception = Assert.Throws<TargetInvocationException>(
+                () => createSnapshot.Invoke(sourceSkill, null));
+            Assert.IsInstanceOf<InvalidOperationException>(exception.InnerException);
+        }
+        finally
+        {
+            if (LogicFrameRuntime.IsExecutingFrame)
+                LogicFrameRuntime.EndFrameExecution(1);
+            if (LogicFrameRuntime.IsActive)
+                LogicFrameRuntime.End();
+            UnityEngine.Object.DestroyImmediate(sourceSkill);
+        }
+    }
+
+    [Test]
+    public void ClusterSpawnFixedRadiusPreservesAuthoredQuantization()
+    {
+        Assert.AreEqual(3277L, ClusterSpawnSystem.CalculateAutoSpawnRadiusFixed(1).RawValue);
+
+        Fix64 first = ClusterSpawnSystem.CalculateAutoSpawnRadiusFixed(8);
+        Fix64 repeated = ClusterSpawnSystem.CalculateAutoSpawnRadiusFixed(8);
+        Assert.AreEqual(first.RawValue, repeated.RawValue);
+        Assert.Greater(first.RawValue, 3277L);
+    }
+
     private ulong ComputeHash()
     {
         var hasher = new LogicStateHasher();

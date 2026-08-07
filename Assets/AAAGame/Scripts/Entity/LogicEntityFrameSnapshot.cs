@@ -236,7 +236,7 @@ public static class LogicEntityFrameSnapshotService
     public static void ResetForWorldTransition()
     {
         EnsureActive();
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("LogicEntityFrameSnapshotService.ResetForWorldTransition failed: a logic frame is running.");
         Current = null;
     }
@@ -244,7 +244,7 @@ public static class LogicEntityFrameSnapshotService
     public static void EndTimeline()
     {
         EnsureActive();
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("LogicEntityFrameSnapshotService.EndTimeline failed: a logic frame is running.");
 
         LogicFrameRuntime.Unregister(s_Listener);
@@ -345,7 +345,7 @@ public static class LogicEntityFrameReadExtensions
         if (self == null || target == null)
             return Fix64.FromRaw(long.MaxValue);
         if (!LogicFrameRuntime.IsTicking)
-            return (Fix64)self.DistanceToTargetSurface(target);
+            return target.CombatShape.DistanceToSurface(self.PositionFixed);
 
         return LogicEntityFrameSnapshotService.GetRequiredTargetSurfaceDistance(self, target);
     }

@@ -124,6 +124,32 @@ public sealed class LogicMovementRegionConstraintServiceTests
     }
 
     [Test]
+    public void AuthoredNonBinaryCellSize_DoesNotDriftAcrossDistantStrongholdBoundary()
+    {
+        LogicStrongholdMap.Clear();
+        const float authoredCellSize = 1.4f;
+        LogicStrongholdMap.InitializeFromAuthoredGrid(
+            0f,
+            0f,
+            1f,
+            0f,
+            0f,
+            1f,
+            authoredCellSize,
+            new[]
+            {
+                new LogicStrongholdCellDefinition("left", 46, 0, EntitySideHelper.PlayerFactionId),
+                new LogicStrongholdCellDefinition("right", 47, 0, EntitySideHelper.EnemyFactionId),
+            });
+
+        FixVector2 candidate = new FixVector2((Fix64)65.104f, Fix64.Zero);
+
+        Assert.IsTrue(LogicStrongholdMap.TryResolveStrongholdId(candidate, out string strongholdId));
+        Assert.AreEqual("right", strongholdId,
+            "The logic boundary must match the authored 46.5 * 1.4 world boundary instead of accumulating Q12 cell-size error.");
+    }
+
+    [Test]
     public void Build_Lv3EnemyStrongholdCorner_UsesUnitCollisionRadiusWithoutWallPadding()
     {
         LogicStrongholdMap.Clear();
@@ -361,6 +387,28 @@ public sealed class LogicMovementRegionConstraintServiceTests
                 hidden,
                 out LogicMovementRegionConstraintFailure enemyFailure));
         Assert.AreEqual(LogicMovementRegionConstraintFailure.None, enemyFailure);
+    }
+
+    [Test]
+    public void RunningLogicTimeline_RejectsPlayerMoveWhenFogAuthorityIsUnbound()
+    {
+        SimEntityContext player = CreateEntity(SideType.PlayerSide);
+        LogicFrameRuntime.Begin();
+        LogicFrameRuntime.StartTimeline();
+        try
+        {
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+                LogicMovementRegionConstraintService.ResolvePosition(
+                    player,
+                    StrongholdPoint(0),
+                    new FixVector2((Fix64)0.1f, Fix64.Zero),
+                    out _));
+            StringAssert.Contains("fog authority", exception.Message.ToLowerInvariant());
+        }
+        finally
+        {
+            LogicFrameRuntime.End();
+        }
     }
 
     [Test]

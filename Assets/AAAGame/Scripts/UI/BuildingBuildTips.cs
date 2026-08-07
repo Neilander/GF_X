@@ -747,17 +747,13 @@ public partial class BuildingBuildTips : UIFormBase
 
     private static int ResolveArmySupplyPerUnit(string unitId)
     {
-        if (string.IsNullOrWhiteSpace(unitId) || GF.DataTable == null)
+        if (string.IsNullOrWhiteSpace(unitId) || !LogicRuntimeDataTableCache.IsPrepared)
             return 0;
 
         if (s_ArmySupplyPerUnitCache.TryGetValue(unitId, out int cachedSupply))
             return cachedSupply;
 
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
-        if (table == null)
-            return 0;
-
-        foreach (CharacterDataDetail row in table.GetAllDataRows())
+        foreach (CharacterDataDetail row in LogicRuntimeDataTableCache.CharacterRows)
         {
             if (row == null || string.IsNullOrWhiteSpace(row.CharacterKey))
                 continue;

@@ -206,7 +206,7 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
         Vector3 currentPosition,
         Quaternion currentRotation)
     {
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
             throw new GameFrameworkException($"EntityBase render interpolation pose cannot update during a logic frame. entityId={Id}, type={GetType().FullName}.");
         m_PreviousLogicPosition = previousPosition;
         m_PreviousLogicRotation = previousRotation;

@@ -14,12 +14,10 @@ public static class LevelTagRuntime
     private static readonly List<string> s_DeterministicTagIdentifiers = new();
     private static readonly List<int> s_DeterministicHeroReviveEntityIds = new();
     private static readonly List<LevelTagTable> s_ResolvedActiveTags = new();
-    private static readonly Dictionary<string, CharacterDataDetail> s_CharacterDataByKey = new(StringComparer.Ordinal);
     private static readonly Comparison<LevelTagTable> s_ActiveTagComparison = CompareActiveTags;
     private static readonly Comparison<int> s_IntComparison = CompareInts;
     private static readonly Comparison<string> s_StringComparison = string.CompareOrdinal;
     private static bool s_ResolvedActiveTagsDirty = true;
-    private static bool s_CharacterDataIndexInitialized;
 
     private struct HeroReviveState
     {
@@ -65,8 +63,6 @@ public static class LevelTagRuntime
         s_HeroReviveStatesByEntityId.Clear();
         s_ResolvedActiveTags.Clear();
         s_ResolvedActiveTagsDirty = false;
-        s_CharacterDataByKey.Clear();
-        s_CharacterDataIndexInitialized = false;
     }
 
     public static void WriteDeterministicState(LogicStateHasher hasher)
@@ -799,15 +795,10 @@ public static class LevelTagRuntime
             return s_ResolvedActiveTags;
         }
 
-        var table = GF.DataTable != null ? GF.DataTable.GetDataTable<LevelTagTable>() : null;
-        if (table == null)
-            return s_ResolvedActiveTags;
-
-        foreach (LevelTagTable row in table.GetAllDataRows())
+        IReadOnlyList<LevelTagTable> rows = LogicRuntimeDataTableCache.LevelTagRows;
+        for (int i = 0; i < rows.Count; i++)
         {
-            if (row == null)
-                continue;
-
+            LevelTagTable row = rows[i];
             if (s_ActiveTagIds.Contains(row.Id) || s_ActiveTagIdentifiers.Contains(row.Identifier))
                 s_ResolvedActiveTags.Add(row);
         }
@@ -912,28 +903,9 @@ public static class LevelTagRuntime
 
     private static CharacterDataDetail FindCharacterData(string characterKey)
     {
-        if (string.IsNullOrWhiteSpace(characterKey) || GF.DataTable == null)
+        if (string.IsNullOrWhiteSpace(characterKey))
             return null;
-
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
-        if (table == null)
-            return null;
-        if (!s_CharacterDataIndexInitialized)
-        {
-            CharacterDataDetail[] rows = table.GetAllDataRows();
-            for (int i = 0; i < rows.Length; i++)
-            {
-                CharacterDataDetail row = rows[i]
-                                          ?? throw new InvalidOperationException($"Character data row is null. index={i}.");
-                if (string.IsNullOrWhiteSpace(row.CharacterKey))
-                    throw new InvalidOperationException($"Character data row has no key. id={row.Id}.");
-                s_CharacterDataByKey.Add(row.CharacterKey, row);
-            }
-            s_CharacterDataIndexInitialized = true;
-        }
-
-        s_CharacterDataByKey.TryGetValue(characterKey, out CharacterDataDetail result);
-        return result;
+        return LogicRuntimeDataTableCache.TryGetCharacter(characterKey, out CharacterDataDetail row) ? row : null;
     }
 
     private static void AddAttackMove(List<BuffCallback> modules, Fix64 attackPercent, Fix64 move)

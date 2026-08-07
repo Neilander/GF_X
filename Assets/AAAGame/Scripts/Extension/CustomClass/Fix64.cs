@@ -1048,7 +1048,7 @@ public struct FixVector2
 
     public static implicit operator FixVector2(UnityEngine.Vector3 v)
     {
-        return new FixVector2((Fix64)v.x, (Fix64)v.y);
+        return new FixVector2((Fix64)v.x, (Fix64)v.z);
     }
 
     public static implicit operator FixVector2(UnityEngine.Vector2 v)

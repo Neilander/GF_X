@@ -19,9 +19,13 @@
             DescKey = row.DescKey,
             InitResource = row.InitResource,
             StartPhase = row.StartPhase,
-            VictoryConditions = row.VictoryConditions,
+            VictoryConditions = row.VictoryConditions != null
+                ? (VictoryConditionType[])row.VictoryConditions.Clone()
+                : null,
             VictoryValue = row.VictoryValue,
-            LoseConditions = row.LoseConditions,
+            LoseConditions = row.LoseConditions != null
+                ? (FailConditionType[])row.LoseConditions.Clone()
+                : null,
             LoseValue = row.LoseValue
         };
     }

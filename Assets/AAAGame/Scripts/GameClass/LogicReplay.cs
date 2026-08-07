@@ -208,8 +208,8 @@ public sealed class LogicReplayFrameRecord
 
 public sealed class LogicReplayLog
 {
-    public const int CurrentProtocolVersion = 85;
-    public const string CurrentContentVersion = "Avenge-30Hz-v85";
+    public const int CurrentProtocolVersion = 91;
+    public const string CurrentContentVersion = "Avenge-30Hz-v91";
 
     internal LogicReplayLog(
         LogicTimeControlSnapshot initialTimeControlSnapshot,
@@ -262,6 +262,21 @@ public sealed class LogicReplayLog
     public ReadOnlyCollection<LogicInGameValueCommand> InGameValueCommands { get; }
     public ReadOnlyCollection<LogicEntityLifecycleCommand> LifecycleCommands { get; }
     public ReadOnlyCollection<LogicObstacleCommand> ObstacleCommands { get; }
+
+    public static void RequireCurrentVersion(int protocolVersion, string contentVersion)
+    {
+        if (protocolVersion != CurrentProtocolVersion)
+        {
+            throw new InvalidOperationException(
+                $"Logic replay protocol mismatch. expected={CurrentProtocolVersion}, actual={protocolVersion}.");
+        }
+
+        if (!string.Equals(contentVersion, CurrentContentVersion, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Logic replay content mismatch. expected='{CurrentContentVersion}', actual='{contentVersion}'.");
+        }
+    }
 }
 
 public sealed class LogicReplayRecorder
@@ -615,6 +630,7 @@ public sealed class LogicReplayInputSource
     public LogicReplayInputSource(LogicReplayLog log)
     {
         m_Log = log ?? throw new ArgumentNullException(nameof(log));
+        LogicReplayLog.RequireCurrentVersion(m_Log.ProtocolVersion, m_Log.ContentVersion);
     }
 
     public LogicInputFrame ReadFrame(ulong frameId)

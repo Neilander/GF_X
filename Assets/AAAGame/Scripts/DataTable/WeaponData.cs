@@ -52,7 +52,7 @@ public class WeaponData
         SplitDist = splitDist;
         ProjectileCount = projectileCount;
         AmmunitionCapacity = ammunitionCapacity;
-        UniqueValues = uniqueValues ?? Array.Empty<Fix64>();
+        UniqueValues = uniqueValues != null ? (Fix64[])uniqueValues.Clone() : Array.Empty<Fix64>();
     }
 
     public Weapon ToWeapon(string idPrefix, PropertyManager propertyManager = null)

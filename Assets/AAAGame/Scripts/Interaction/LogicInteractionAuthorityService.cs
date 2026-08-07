@@ -38,31 +38,21 @@ public static class LogicInteractionAuthorityService
             throw new InvalidOperationException("LogicInteractionAuthorityService.BeginTimeline failed: logic runtime is not active.");
         if (!LogicEntityFrameSnapshotService.IsActive)
             throw new InvalidOperationException("LogicInteractionAuthorityService.BeginTimeline failed: frame snapshot service is not active.");
-        if (!LogicInteractionHoldService.IsActive || !LogicInteractionTargetStateService.IsActive)
+        if (!LogicInteractionTargetStateService.IsActive)
             throw new InvalidOperationException("LogicInteractionAuthorityService.BeginTimeline failed: interaction dependencies are not active.");
 
         ClearState();
-        LogicInteractionHoldService.RegisterConsumer(CanExecuteInteraction, ExecuteInteraction);
-        try
-        {
-            LogicFrameRuntime.Register(s_Listener);
-            IsActive = true;
-        }
-        catch
-        {
-            LogicInteractionHoldService.UnregisterConsumer(CanExecuteInteraction, ExecuteInteraction);
-            throw;
-        }
+        LogicFrameRuntime.Register(s_Listener);
+        IsActive = true;
     }
 
     public static void EndTimeline()
     {
         EnsureActive();
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("LogicInteractionAuthorityService.EndTimeline failed: a logic frame is running.");
 
         LogicFrameRuntime.Unregister(s_Listener);
-        LogicInteractionHoldService.UnregisterConsumer(CanExecuteInteraction, ExecuteInteraction);
         ClearState();
         IsActive = false;
     }
@@ -72,7 +62,7 @@ public static class LogicInteractionAuthorityService
         EnsureActive();
         if (!LogicTimeControlService.IsPaused)
             throw new InvalidOperationException("LogicInteractionAuthorityService reset requires paused logic time.");
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("LogicInteractionAuthorityService reset cannot run during a logic Tick.");
 
         ClearState();
@@ -233,20 +223,6 @@ public static class LogicInteractionAuthorityService
             s_DistanceWeight,
             s_AngleWeight,
             out score);
-    }
-
-    private static bool CanExecuteInteraction(InputKey key)
-    {
-        return TryResolveBuilding(s_CurrentTargetId, out IBuildingLogicContext building)
-               && LogicInteractionOptionService.TryGetVisibleOption(building, key, out LogicInteractionOptionDescriptor option)
-               && LogicInteractionOptionService.IsExecutable(building, option);
-    }
-
-    private static bool ExecuteInteraction(InputKey key)
-    {
-        return TryResolveBuilding(s_CurrentTargetId, out IBuildingLogicContext building)
-               && LogicInteractionOptionService.TryGetVisibleOption(building, key, out LogicInteractionOptionDescriptor option)
-               && LogicInteractionOptionService.Execute(building, option);
     }
 
     private static bool TryResolveBuilding(LogicEntityId entityId, out IBuildingLogicContext building)

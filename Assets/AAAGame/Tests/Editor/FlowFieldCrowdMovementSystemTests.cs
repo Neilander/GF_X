@@ -11,22 +11,36 @@ using UnityEngine.TestTools;
 [SingleThreaded]
 public class FlowFieldCrowdMovementSystemTests
 {
+    private LogicTestGroupMoveManagerAuthority m_GroupMoveAuthority;
+
     [SetUp]
     public void SetUp()
     {
         EntityRegistry.Clear();
         SetupCombatPhaseForTests();
+        if (LogicTimeControlService.IsActive || LogicPhaseCommandService.IsActive)
+            throw new InvalidOperationException("FlowFieldCrowdMovementSystemTests requires inactive logic phase services at setup.");
+        LogicTimeControlService.BeginTimeline();
+        LogicPhaseCommandService.BeginTimeline();
+        LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
         FlowFieldCrowdMovementSystem.ResetAll();
         FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
         FlowFieldCrowdMovementSystem.ClearEditorTestClock();
         FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
         FlowFieldCrowdMovementSystem.SetConfig(CreateConfig());
+        m_GroupMoveAuthority = LogicTestGroupMoveManagerAuthority.Create(nameof(FlowFieldCrowdMovementSystemTests));
     }
 
     [TearDown]
     public void TearDown()
     {
         EntityRegistry.Clear();
+        if (LogicPhaseCommandService.IsActive)
+            LogicPhaseCommandService.EndTimeline();
+        if (LogicTimeControlService.IsActive)
+            LogicTimeControlService.EndTimeline();
+        m_GroupMoveAuthority?.Dispose();
+        m_GroupMoveAuthority = null;
         FlowFieldCrowdMovementSystem.ResetAll();
         FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
         FlowFieldCrowdMovementSystem.ClearEditorTestClock();
@@ -34,6 +48,7 @@ public class FlowFieldCrowdMovementSystemTests
 
     private static void SetupCombatPhaseForTests()
     {
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(FlowFieldCrowdMovementSystemTests));
         FieldInfo dataModelField = typeof(GF).GetField("<DataModel>k__BackingField", BindingFlags.Static | BindingFlags.NonPublic);
         GameFramework.DataModelComponent current = dataModelField?.GetValue(null) as GameFramework.DataModelComponent;
         if (current == null)
@@ -306,6 +321,20 @@ public class FlowFieldCrowdMovementSystemTests
             UnityEngine.Object.DestroyImmediate(sourceObject);
             UnityEngine.Object.DestroyImmediate(asset);
         }
+    }
+
+    [Test]
+    public void FlowNavigationGridSource_AutomaticRuntimeApply_RequiresActiveLogicRuntime()
+    {
+        MethodInfo shouldApply = typeof(FlowNavigationGridSource).GetMethod(
+            "ShouldApplyOnEnable",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.IsNotNull(shouldApply);
+
+        Assert.IsFalse((bool)shouldApply.Invoke(null, new object[] { true, false, false }));
+        Assert.IsTrue((bool)shouldApply.Invoke(null, new object[] { true, false, true }));
+        Assert.IsFalse((bool)shouldApply.Invoke(null, new object[] { false, false, true }));
+        Assert.IsTrue((bool)shouldApply.Invoke(null, new object[] { false, true, false }));
     }
 
     [Test]
@@ -1417,6 +1446,40 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.AreEqual(-1, secondOwner, "原方向离开且最小持有 Tick 到达后必须切给等待方向。");
         Assert.GreaterOrEqual(switchedFrame, 4);
         Assert.IsTrue(rightRecovered, "等待方向取得所有权后必须恢复 fixed velocity。");
+    }
+
+    [Test]
+    public void 多AgentType世界顺序不依赖AuthoredSource注册顺序()
+    {
+        const int lowerAgentType = 101;
+        const int higherAgentType = 202;
+        bool[] walkable = { true };
+        FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadius(lowerAgentType, 0.18f);
+        FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadius(higherAgentType, 0.18f);
+        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSources(new[]
+        {
+            new AuthoredNavigationSourceData(higherAgentType, 1, 1, 1f, Vector3.zero, walkable, null),
+            new AuthoredNavigationSourceData(lowerAgentType, 1, 1, 1f, Vector3.zero, walkable, null),
+        });
+
+        MethodInfo collectMethod = typeof(FlowFieldCrowdMovementSystem).GetMethod(
+            "CollectNavigationWorldAgentTypes",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(collectMethod);
+        var orderedTypes = (List<int>)collectMethod.Invoke(null, null);
+        CollectionAssert.AreEqual(new[] { lowerAgentType, higherAgentType }, orderedTypes);
+
+        FieldInfo defaultSourceField = typeof(FlowFieldCrowdMovementSystem).GetField(
+            "_testTerrainOverride",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(defaultSourceField);
+        object defaultSource = defaultSourceField.GetValue(null);
+        Assert.NotNull(defaultSource);
+        FieldInfo agentTypeField = defaultSource.GetType().GetField(
+            "AgentTypeId",
+            BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(agentTypeField);
+        Assert.AreEqual(lowerAgentType, (int)agentTypeField.GetValue(defaultSource));
     }
 
     [Test]
@@ -6030,7 +6093,6 @@ public class FlowFieldCrowdMovementSystemTests
         SoldierAIBrain brain = new SoldierAIBrain
         {
             DetectEnemyRange = (Fix64)40f,
-            WeaponRange = (Fix64)0.75f,
             ChaseRange = (Fix64)80f
         };
         chaser.Brain = brain;
@@ -8257,7 +8319,6 @@ public class FlowFieldCrowdMovementSystemTests
 
             brains[i] = new SoldierAIBrain();
             brains[i].DetectEnemyRange = (Fix64)32f;
-            brains[i].WeaponRange = (Fix64)0.75f;
             brains[i].SetBirthPositionFixed(interns[i].PositionFixed);
             brains[i].Inject();
             interns[i].Brain = brains[i];
@@ -8514,7 +8575,6 @@ public class FlowFieldCrowdMovementSystemTests
 
             SoldierAIBrain brain = new SoldierAIBrain();
             brain.DetectEnemyRange = (Fix64)34f;
-            brain.WeaponRange = (Fix64)0.75f;
             brain.SetBirthPositionFixed(chaser.PositionFixed);
             brain.Inject();
             chaser.Brain = brain;
@@ -8842,7 +8902,6 @@ public class FlowFieldCrowdMovementSystemTests
 
             SoldierAIBrain brain = new SoldierAIBrain();
             brain.DetectEnemyRange = (Fix64)34f;
-            brain.WeaponRange = (Fix64)0.75f;
             brain.ChaseRange = (Fix64)120f;
             brain.SetBirthPositionFixed(chaser.PositionFixed);
             brain.Inject();
@@ -10465,7 +10524,6 @@ public class FlowFieldCrowdMovementSystemTests
             SoldierAIBrain brain = new SoldierAIBrain
             {
                 DetectEnemyRange = (Fix64)40f,
-                WeaponRange = (Fix64)0.75f,
                 ChaseRange = (Fix64)80f
             };
             brain.SetBirthPositionFixed(chaser.PositionFixed);
@@ -10837,7 +10895,6 @@ public class FlowFieldCrowdMovementSystemTests
                 SoldierAIBrain brain = new SoldierAIBrain
                 {
                     DetectEnemyRange = (Fix64)40f,
-                    WeaponRange = (Fix64)0.75f,
                     ChaseRange = (Fix64)80f
                 };
                 brain.SetBirthPositionFixed(chaser.PositionFixed);
@@ -11958,7 +12015,7 @@ public class FlowFieldCrowdMovementSystemTests
         float heroSurfaceDistance = heroTarget != null ? chaser.DistanceToTargetSurface(heroTarget) : float.PositiveInfinity;
         float attackRange = chaser.WeaponComp != null
             ? (float)chaser.WeaponComp.AttackRange
-            : brain != null ? (float)brain.WeaponRange : float.NaN;
+            : float.NaN;
 
         diagnostics.Append("key=").Append(chaser.CharacterKey)
             .Append(",targetHero=").Append(ReferenceEquals(currentTarget, heroTarget))
@@ -14540,9 +14597,29 @@ public class FlowFieldCrowdMovementSystemTests
         };
         ctx.SetProperty(CreatureMainProperty.Speed, (Fix64)40f);
         ctx.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)10f);
+        ctx.WeaponComp = CreateTestWeaponComp((Fix64)0.75f);
         ctx.MoveExecutor = new SimMoveExecutor { Position = position };
         FlowFieldCrowdMovementSystem.RegisterAgentForEditorTest(ctx, 0.5f, agentTypeId);
         return ctx;
+    }
+
+    private static WeaponComp CreateTestWeaponComp(Fix64 worldRange)
+    {
+        var data = new WeaponData(
+            WeaponType.Melee,
+            Fix64.One,
+            Fix64.One,
+            DistanceUnitConverter.ConvertFromWorld(worldRange),
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.One,
+            Fix64.Zero,
+            Array.Empty<Fix64>());
+        return new WeaponComp(data.ToWeapon("FlowFieldCrowdMovementSystemTests"));
     }
 
     private static SimEntityContext CreateEntity(Vector3 position, bool isLeader, int agentTypeId, float radius)

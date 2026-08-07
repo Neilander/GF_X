@@ -98,7 +98,7 @@ namespace UnityGameFramework.Runtime
         LogicFrameCommands = 87,
         LogicFrameTick = 88,
         LogicFrameListenerCallbacks = 89,
-        LogicFramePhysicsSync = 90,
+        RenderFramePhysicsSync = 90,
         LogicFrameListenerSnapshot = 91,
         LogicEntityFrameSetup = 92,
         LogicEntityBaseAndBuffs = 93,

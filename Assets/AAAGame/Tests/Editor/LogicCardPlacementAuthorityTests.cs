@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using AAAGame.Card;
 using AAAGame.MiniMap.FOG3;
@@ -357,6 +358,14 @@ public sealed class LogicCardPlacementAuthorityTests
 
         Assert.IsTrue(map.IsExplored(3, 0));
         Assert.IsTrue(map.IsExplored(4, 0));
+    }
+
+    [Test]
+    public void LaunchScene_DisablesEnemyStrongholdHiddenVisionBlock()
+    {
+        string launchScene = File.ReadAllText("Assets/AAAGame/Scene/Launch.unity");
+
+        StringAssert.Contains("enableEnemyStrongholdHiddenVisionBlock: 0", launchScene);
     }
 
     [Test]

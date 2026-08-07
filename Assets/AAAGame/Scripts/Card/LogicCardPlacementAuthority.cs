@@ -306,7 +306,7 @@ namespace AAAGame.Card
             if (!TryWorldToCell(position, out int centerX, out int centerY))
                 return;
 
-            int range = DivideCeiling(radius.RawValue, s_MapData.CellSizeFixed.RawValue);
+            int range = s_MapData.GetCellRangeForRadius(radius);
             Fix64 radiusSquared = radius * radius;
             for (int y = centerY - range; y <= centerY + range; y++)
             {
@@ -337,7 +337,7 @@ namespace AAAGame.Card
             if (!TryWorldToCell(position, out int centerX, out int centerY))
                 return;
 
-            int range = DivideCeiling(radius.RawValue, s_MapData.CellSizeFixed.RawValue);
+            int range = s_MapData.GetCellRangeForRadius(radius);
             Fix64 radiusSquared = radius * radius;
             for (int y = centerY - range; y <= centerY + range; y++)
             {
@@ -463,16 +463,6 @@ namespace AAAGame.Card
             return IsLogicHero(entity) && entity is IHeroLogicContext hero && hero.IsGhostState;
         }
 
-        private static int DivideCeiling(long numerator, long denominator)
-        {
-            if (numerator <= 0 || denominator <= 0)
-                throw new ArgumentOutOfRangeException(nameof(numerator));
-            long result = checked((numerator + denominator - 1) / denominator);
-            if (result > int.MaxValue)
-                throw new OverflowException("Logic fog reveal range is outside Int32.");
-            return (int)result;
-        }
-
         private static int CompareShapes(LogicCombatShape left, LogicCombatShape right)
         {
             int result = left.Center.x.RawValue.CompareTo(right.Center.x.RawValue);
@@ -555,20 +545,33 @@ namespace AAAGame.Card
 
         public List<LevelEntry> Entries { get; private set; }
 
+        public static void PrepareRuntimeDependencies()
+        {
+            if (LogicFrameRuntime.IsExecutingFrame)
+                throw new InvalidOperationException("Card static forbidden-shape catalog cannot be prepared during a logic frame.");
+            if (s_Cached != null)
+                return;
+
+            TextAsset asset = Resources.Load<TextAsset>(ResourcePath);
+            if (asset == null)
+            {
+                throw new InvalidOperationException(
+                    $"Card static forbidden-shape catalog is missing at Resources/{ResourcePath}.json.");
+            }
+            List<LevelEntry> entries = JsonConvert.DeserializeObject<List<LevelEntry>>(asset.text);
+            if (entries == null)
+                throw new InvalidOperationException("Card static forbidden-shape catalog JSON did not contain an entry array.");
+            s_Cached = new CardStaticForbiddenShapeCatalog { Entries = entries };
+            s_Cached.EnsureIndex();
+        }
+
         public static CardStaticForbiddenShapeCatalog LoadRequired()
         {
             if (s_Cached == null)
             {
-                TextAsset asset = Resources.Load<TextAsset>(ResourcePath);
-                if (asset == null)
-                {
-                    throw new InvalidOperationException(
-                        $"Card static forbidden-shape catalog is missing at Resources/{ResourcePath}.json.");
-                }
-                List<LevelEntry> entries = JsonConvert.DeserializeObject<List<LevelEntry>>(asset.text);
-                if (entries == null)
-                    throw new InvalidOperationException("Card static forbidden-shape catalog JSON did not contain an entry array.");
-                s_Cached = new CardStaticForbiddenShapeCatalog { Entries = entries };
+                if (LogicFrameRuntime.IsExecutingFrame)
+                    throw new InvalidOperationException("Card static forbidden-shape catalog was not prepared before the logic frame.");
+                PrepareRuntimeDependencies();
             }
             s_Cached.EnsureIndex();
             return s_Cached;

@@ -8,23 +8,35 @@ public class DirectAtkCompTests
     [SetUp]
     public void SetUp()
     {
-        SetupCombatPhaseForTests();
         if (LogicFrameRuntime.IsActive)
-            LogicFrameRuntime.End();
+            throw new System.InvalidOperationException("DirectAtkCompTests requires an inactive logic runtime.");
+        if (LogicTimeControlService.IsActive || LogicPhaseCommandService.IsActive)
+            throw new System.InvalidOperationException("DirectAtkCompTests requires inactive logic timeline services.");
+
+        EntityRegistry.Clear();
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(DirectAtkCompTests));
         LogicFrameRuntime.Begin();
+        LogicTimeControlService.BeginTimeline();
+        LogicPhaseCommandService.BeginTimeline();
+        LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
         LogicFrameRuntime.StartTimeline();
     }
 
     [TearDown]
     public void TearDown()
     {
+        EntityRegistry.Clear();
+        if (LogicPhaseCommandService.IsActive)
+            LogicPhaseCommandService.EndTimeline();
+        if (LogicTimeControlService.IsActive)
+            LogicTimeControlService.EndTimeline();
         if (LogicFrameRuntime.IsActive)
             LogicFrameRuntime.End();
     }
 
     private static void StartAttack(DirectAtkComp atkComp)
     {
-atkComp.Attack(Fix64.Zero);
+        atkComp.Attack(Fix64.Zero);
     }
 
     private static void AdvanceFrames(DirectAtkComp atkComp, int frameCount)
@@ -32,7 +44,30 @@ atkComp.Attack(Fix64.Zero);
         for (int i = 0; i < frameCount; i++)
         {
             LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
-atkComp.Attack(Fix64.Zero);
+            atkComp.Attack(Fix64.Zero);
+        }
+    }
+
+    [Test]
+    public void InitInsideLogicFrame_DoesNotLoadPresentationWeaponAsset()
+    {
+        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        WeaponData weapon = MeleeWeapon();
+        attacker.WeaponComp = new WeaponComp(weapon.ToWeapon("PresentationBoundaryWeapon"));
+        var attack = new DirectAtkComp();
+
+        LogicFrameRuntime.BeginFrameExecution(1);
+        try
+        {
+            attack.Init(attacker);
+
+            Assert.IsNull(
+                attack.WeaponSO,
+                "Logic entity initialization must not synchronously load or inject a presentation ScriptableObject.");
+        }
+        finally
+        {
+            LogicFrameRuntime.EndFrameExecution(1);
         }
     }
 
@@ -53,51 +88,6 @@ atkComp.Attack(Fix64.Zero);
         }
     }
 
-    private static void SetupCombatPhaseForTests()
-    {
-        var dataModelField = typeof(GF).GetField("<DataModel>k__BackingField", BindingFlags.Static | BindingFlags.NonPublic);
-        var current = dataModelField?.GetValue(null) as GameFramework.DataModelComponent;
-        if (current == null)
-        {
-            var go = new GameObject("TestGF_DataModel");
-            current = go.AddComponent<GameFramework.DataModelComponent>();
-            dataModelField?.SetValue(null, current);
-        }
-
-        var dataModelsField = typeof(GameFramework.DataModelComponent).GetField("m_DataModels", BindingFlags.Instance | BindingFlags.NonPublic);
-        var dataModels = dataModelsField?.GetValue(current);
-        if (dataModelsField != null && (dataModels == null || dataModels.GetType() != dataModelsField.FieldType))
-        {
-            dataModels = System.Activator.CreateInstance(dataModelsField.FieldType);
-            dataModelsField.SetValue(current, dataModels);
-        }
-
-        var model = current.GetDataModel<InGameDataModel>();
-        if (model == null)
-        {
-            model = (InGameDataModel)System.Activator.CreateInstance(typeof(InGameDataModel), true);
-            var typeIdPairType = typeof(GameFramework.DataModelComponent).Assembly.GetType("TypeIdPair");
-            var pair = System.Activator.CreateInstance(typeIdPairType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
-                new object[] { typeof(InGameDataModel), 0 }, null);
-            var dict = dataModelsField.GetValue(current);
-            dict.GetType().GetMethod("Add").Invoke(dict, new[] { pair, model });
-        }
-
-        if (current.GetDataModel<InputModel>() == null)
-            current.CreateDataModel<InputModel>();
-
-        var phaseField = typeof(InGameDataModel).GetField("m_IngameValue", BindingFlags.Instance | BindingFlags.NonPublic);
-        var values = new Dictionary<IngameValueType, int>
-        {
-            [IngameValueType.Phase] = (int)GamePhase.Defend,
-            [IngameValueType.Day] = 1,
-            [IngameValueType.Coin] = 0,
-            [IngameValueType.CurrentSupply] = 0,
-            [IngameValueType.MaxSupply] = 0,
-        };
-        phaseField?.SetValue(model, values);
-    }
-
     private SimEntityContext CreateUnit(Vector3 pos, SideType side, float hp = 100f)
     {
         var ctx = new SimEntityContext
@@ -108,7 +98,51 @@ atkComp.Attack(Fix64.Zero);
         ctx.Health.Init((Fix64)hp);
         var executor = new SimMoveExecutor { Position = pos };
         ctx.MoveExecutor = executor;
+        EntityRegistry.Register(ctx);
         return ctx;
+    }
+
+    private static void EnsureInputModelForTests()
+    {
+        FieldInfo dataModelField = typeof(GF).GetField(
+            "<DataModel>k__BackingField",
+            BindingFlags.Static | BindingFlags.NonPublic)
+            ?? throw new System.InvalidOperationException("GF.DataModel backing field was not found.");
+        var dataModel = dataModelField.GetValue(null) as GameFramework.DataModelComponent;
+        if (dataModel == null)
+        {
+            var gameObject = new GameObject("DirectAtkCompTests_DataModel");
+            dataModel = gameObject.AddComponent<GameFramework.DataModelComponent>();
+            dataModelField.SetValue(null, dataModel);
+        }
+
+        FieldInfo dataModelsField = typeof(GameFramework.DataModelComponent).GetField(
+            "m_DataModels",
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new System.InvalidOperationException("DataModelComponent.m_DataModels was not found.");
+        object dataModels = dataModelsField.GetValue(dataModel);
+        if (dataModels == null || dataModels.GetType() != dataModelsField.FieldType)
+            dataModelsField.SetValue(dataModel, System.Activator.CreateInstance(dataModelsField.FieldType));
+
+        InputModel registeredModel = dataModel.GetDataModel<InputModel>();
+        if (registeredModel == null)
+        {
+            dataModel.CreateDataModel<InputModel>();
+            return;
+        }
+
+        FieldInfo activeModelField = typeof(InputModel).GetField(
+            "s_ActiveModel",
+            BindingFlags.Static | BindingFlags.NonPublic)
+            ?? throw new System.InvalidOperationException("InputModel.s_ActiveModel was not found.");
+        var activeModel = activeModelField.GetValue(null) as InputModel;
+        if (activeModel == null)
+        {
+            activeModelField.SetValue(null, registeredModel);
+            return;
+        }
+        if (!ReferenceEquals(activeModel, registeredModel))
+            throw new System.InvalidOperationException("Registered and active InputModel instances do not match.");
     }
 
     private WeaponData MeleeWeapon(float damage = 10f, float range = 150f,
@@ -203,6 +237,7 @@ atkComp.Attack((Fix64)999);
     [Test]
     public void 玩家英雄不产生手动攻击意图但有目标时仍会自动攻击()
     {
+        EnsureInputModelForTests();
         var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
         var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
         var targeting = new SimTargetingComp(attacker, new List<IEntityContext> { attacker, target })

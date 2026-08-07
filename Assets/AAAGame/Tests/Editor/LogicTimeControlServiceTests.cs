@@ -287,6 +287,47 @@ public sealed class LogicTimeControlServiceTests
     }
 
     [Test]
+    public void LevelSwitchPauseOwnership_NormalClose_ReleasesAuthorityToken()
+    {
+        var gameObject = new GameObject("LevelSwitchPauseOwnershipNormalCloseTest");
+        try
+        {
+            LevelSwitchUIForm form = gameObject.AddComponent<LevelSwitchUIForm>();
+            LogicTimeControlService.AcquirePause(LogicTimeControlSources.LevelSwitchUiPause);
+            SetLevelSwitchPauseOwnership(form, true);
+
+            InvokeLevelSwitchPauseOwnershipClose(form, false);
+
+            Assert.IsFalse(LogicTimeControlService.HasPause(LogicTimeControlSources.LevelSwitchUiPause));
+            Assert.IsFalse(GetLevelSwitchPauseOwnership(form));
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(gameObject);
+        }
+    }
+
+    [Test]
+    public void LevelSwitchPauseOwnership_FrameworkShutdown_DoesNotCommandEndedAuthority()
+    {
+        var gameObject = new GameObject("LevelSwitchPauseOwnershipFrameworkShutdownTest");
+        try
+        {
+            LevelSwitchUIForm form = gameObject.AddComponent<LevelSwitchUIForm>();
+            LogicTimeControlService.AcquirePause(LogicTimeControlSources.LevelSwitchUiPause);
+            SetLevelSwitchPauseOwnership(form, true);
+            LogicTimeControlService.EndTimeline();
+
+            Assert.DoesNotThrow(() => InvokeLevelSwitchPauseOwnershipClose(form, true));
+            Assert.IsFalse(GetLevelSwitchPauseOwnership(form));
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(gameObject);
+        }
+    }
+
+    [Test]
     public void SnapshotRestore_PreservesPendingCommandsAndStableSourceOrder()
     {
         LogicTimeControlService.SetBulletTimeScale(20, 5000);
@@ -353,5 +394,26 @@ public sealed class LogicTimeControlServiceTests
     {
         LogicTimeControlService.PrepareFrame(checked(LogicTimeControlService.CurrentFrame + 1));
         return LogicTimeControlService.SchedulerScale;
+    }
+
+    private static void InvokeLevelSwitchPauseOwnershipClose(LevelSwitchUIForm form, bool isShutdown)
+    {
+        typeof(LevelSwitchUIForm)
+            .GetMethod("RelinquishPauseOwnership", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .Invoke(form, new object[] { isShutdown });
+    }
+
+    private static void SetLevelSwitchPauseOwnership(LevelSwitchUIForm form, bool holdsPause)
+    {
+        typeof(LevelSwitchUIForm)
+            .GetField("m_HoldsLogicPause", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .SetValue(form, holdsPause);
+    }
+
+    private static bool GetLevelSwitchPauseOwnership(LevelSwitchUIForm form)
+    {
+        return (bool)typeof(LevelSwitchUIForm)
+            .GetField("m_HoldsLogicPause", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .GetValue(form);
     }
 }

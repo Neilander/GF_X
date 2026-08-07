@@ -16,7 +16,7 @@ public class GlobalBuffManager : GameFrameworkComponent
     private sealed class GlobalUnitBuffEntry
     {
         public string TechId;
-        public TechEffectSO Effect;
+        public ITechEffectRuntime Effect;
         public TechData TechData;
     }
 
@@ -25,7 +25,7 @@ public class GlobalBuffManager : GameFrameworkComponent
         public int OwnerFactionId;
         public string SourceBuildingInstanceId;
         public string TechId;
-        public TechEffectSO Effect;
+        public ITechEffectRuntime Effect;
         public TechData TechData;
         public Func<IBuildingLogicContext, bool> Matches;
         public Func<IBuildingLogicContext, string> ResolveTechId;
@@ -55,6 +55,7 @@ public class GlobalBuffManager : GameFrameworkComponent
     private readonly List<PersistentBuildingBuffRule> m_PersistentBuildingBuffRules = new();
     private readonly List<RuntimeArmyForceRule> m_RuntimeArmyForceRules = new();
     private readonly List<PersistentBuildingEntityBuffRule> m_PersistentBuildingEntityBuffRules = new();
+    private readonly List<int> m_PendingArmyCardPresentationFactions = new();
     private readonly List<int> m_DeterministicFactionIds = new();
     private readonly List<UnitType> m_DeterministicUnitTypes = new();
     private readonly List<GlobalUnitBuffEntry> m_DeterministicUnitBuffEntries = new();
@@ -67,10 +68,11 @@ public class GlobalBuffManager : GameFrameworkComponent
     private static readonly Comparison<PersistentBuildingBuffRule> s_PersistentBuildingBuffRuleComparison = ComparePersistentBuildingBuffRules;
     private static readonly Comparison<RuntimeArmyForceRule> s_RuntimeArmyForceRuleComparison = CompareRuntimeArmyForceRules;
     private static readonly Comparison<PersistentBuildingEntityBuffRule> s_PersistentBuildingEntityBuffRuleComparison = ComparePersistentBuildingEntityBuffRules;
-    private BuildingTechRuntimeEffectSO m_BuildingTechRuntimeEffect;
+    private BuildingTechRuntimeEffect m_BuildingTechRuntimeEffect;
 
     public TechScopeResolver ScopeResolver => m_TechScopeResolver;
     public static GlobalBuffManager Current => s_Current;
+    internal int PendingArmyCardPresentationFactionCount => m_PendingArmyCardPresentationFactions.Count;
 
     public static GlobalBuffManager RequireCurrent()
     {
@@ -102,6 +104,7 @@ public class GlobalBuffManager : GameFrameworkComponent
         RegisterCurrent();
         if (!TryInitializeScopeResolver())
             throw new InvalidOperationException("GlobalBuffManager.PrepareRuntimeDependencies failed: TechScopeResolver data tables are not ready.");
+        m_BuildingTechRuntimeEffect ??= new BuildingTechRuntimeEffect();
         SubscribeTechEffectCommands();
     }
 
@@ -279,6 +282,7 @@ public class GlobalBuffManager : GameFrameworkComponent
         m_PersistentBuildingBuffRules.Clear();
         m_RuntimeArmyForceRules.Clear();
         m_PersistentBuildingEntityBuffRules.Clear();
+        m_PendingArmyCardPresentationFactions.Clear();
         LogicBuildingExtraPropsStore.ClearAll();
         LogicProductionConditionState.ClearAll();
         BuildingCostModifierService.Clear();
@@ -321,8 +325,8 @@ public class GlobalBuffManager : GameFrameworkComponent
 
     private void ApplyTechEffect(LogicTechEffectCommand command)
     {
-        if (!TryInitializeScopeResolver())
-            throw new InvalidOperationException("GlobalBuffManager cannot apply a logic tech effect before TechScopeResolver is ready.");
+        if (m_TechScopeResolver == null)
+            throw new InvalidOperationException("GlobalBuffManager cannot apply a logic tech effect before runtime dependencies are prepared.");
 
         var techData = TechDataModel.GetTechData(command.TechId);
         if (techData == null)
@@ -391,10 +395,10 @@ public class GlobalBuffManager : GameFrameworkComponent
         if (m_TechScopeResolver != null)
             return true;
 
-        if (GF.DataTable?.GetDataTable<CharacterDataDetail>() == null)
+        if (!LogicRuntimeDataTableCache.IsPrepared)
             return false;
 
-        m_TechScopeIndex = TechScopeIndex.CreateFromCurrentDataTables();
+        m_TechScopeIndex = TechScopeIndex.CreateFromPreparedRuntimeData();
         m_TechScopeResolver = new TechScopeResolver(m_TechScopeIndex);
         return true;
     }
@@ -409,7 +413,7 @@ public class GlobalBuffManager : GameFrameworkComponent
         m_IsSubscribed = true;
     }
 
-    public void RegisterUnitBuff(UnitType unitType, int ownerFactionId, string techId, TechEffectSO effect, TechData techData)
+    public void RegisterUnitBuff(UnitType unitType, int ownerFactionId, string techId, ITechEffectRuntime effect, TechData techData)
     {
         if (string.IsNullOrWhiteSpace(techId) || effect == null || techData == null)
             return;
@@ -532,7 +536,7 @@ public class GlobalBuffManager : GameFrameworkComponent
         int ownerFactionId,
         string sourceBuildingInstanceId,
         string techId,
-        TechEffectSO effect,
+        ITechEffectRuntime effect,
         TechData techData,
         Func<IBuildingLogicContext, bool> matches,
         Func<IBuildingLogicContext, string> resolveTechId = null)
@@ -584,7 +588,7 @@ public class GlobalBuffManager : GameFrameworkComponent
             ResolveBonus = resolveBonus,
         });
 
-        NotifyArmyCardPropertiesChangedForCurrentBuildings(ownerFactionId);
+        QueueArmyCardPropertiesChangedForCurrentBuildings(ownerFactionId);
         DebugLog($"RegisterRuntimeArmyForceRule: techId={techId}, ownerFactionId={ownerFactionId}, sourceBuildingInstanceId={sourceBuildingInstanceId}");
     }
 
@@ -755,17 +759,44 @@ public class GlobalBuffManager : GameFrameworkComponent
         }
     }
 
-    private static void NotifyArmyCardPropertiesChangedForCurrentBuildings(int ownerFactionId)
+    private void QueueArmyCardPropertiesChangedForCurrentBuildings(int ownerFactionId)
     {
-        var dataModel = GF.DataModel?.GetDataModel<InGameDataModel>();
-        if (dataModel?.Buildings == null)
+        if (!m_PendingArmyCardPresentationFactions.Contains(ownerFactionId))
+            m_PendingArmyCardPresentationFactions.Add(ownerFactionId);
+    }
+
+    public void UpdatePresentation()
+    {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("GlobalBuffManager.UpdatePresentation cannot run during a logic frame.");
+        if (m_PendingArmyCardPresentationFactions.Count == 0)
             return;
 
-        foreach (BuildingEntity building in dataModel.Buildings)
+        m_PendingArmyCardPresentationFactions.Sort(s_IntComparison);
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int factionIndex = 0; factionIndex < m_PendingArmyCardPresentationFactions.Count; factionIndex++)
         {
-            if (building != null && building.OwnerFactionID == ownerFactionId && building.buildingData?.Type == BuilType.Army)
-                building.RaiseArmyCardPropertyChangedEventForTech();
+            int ownerFactionId = m_PendingArmyCardPresentationFactions[factionIndex];
+            for (int entityIndex = 0; entityIndex < entities.Count; entityIndex++)
+            {
+                if (entities[entityIndex] is not IBuildingLogicContext building
+                    || building.OwnerFactionId != ownerFactionId
+                    || building.BuildingData?.Type != BuilType.Army
+                    || !LogicEntityLifecycleService.TryGetBoundView(building.LogicEntityId, out MAEntity view))
+                {
+                    continue;
+                }
+
+                if (view is not BuildingEntity buildingView)
+                {
+                    throw new InvalidOperationException(
+                        $"Army building {building.LogicEntityId.Value} is bound to non-building view {view.GetType().Name}.");
+                }
+                buildingView.RaiseArmyCardPropertyChangedEventForTech();
+            }
         }
+
+        m_PendingArmyCardPresentationFactions.Clear();
     }
 
     private void ApplyPersistentBuildingUnitProviderBuffsToCurrentLogicBuildings(int ownerFactionId)
@@ -898,10 +929,10 @@ public class GlobalBuffManager : GameFrameworkComponent
         return result.Count > 0 ? result : null;
     }
 
-    private BuildingTechRuntimeEffectSO GetBuildingTechRuntimeEffect()
+    private BuildingTechRuntimeEffect GetBuildingTechRuntimeEffect()
     {
         if (m_BuildingTechRuntimeEffect == null)
-            m_BuildingTechRuntimeEffect = ScriptableObject.CreateInstance<BuildingTechRuntimeEffectSO>();
+            throw new InvalidOperationException("Building tech runtime was not prepared before a logic tech effect was applied.");
 
         return m_BuildingTechRuntimeEffect;
     }

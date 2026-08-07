@@ -580,7 +580,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public void CancelRunningSkills() => m_SkillComp?.CancelSkills();
     public Fix64 GetProperty(CreatureMainProperty prop) => RequireProperties().GetProperty(prop);
 
-    internal void ActivateRuntime()
+    internal void ActivateRuntime(bool currentLifecycleFrame = true)
     {
         if (!IsSpawnCommitted)
             throw new InvalidOperationException($"LogicEntityState.ActivateRuntime failed: entity {EntityId.Value} is not spawn-committed.");
@@ -599,7 +599,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         }
 
         if (IsBuildingEntity && BlocksLogicMovement && !IsNavigationStaticBaked)
-            ScheduleObstacleAdds(true);
+            ScheduleObstacleAdds(currentLifecycleFrame);
     }
 
     internal void ValidateReadyForSpawn()
@@ -635,8 +635,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
 
     internal void ShutdownRuntime()
     {
-        if (LogicPhaseCommandService.IsActive)
-            LogicPhaseCommandService.PhaseApplied -= OnLogicPhaseApplied;
+        LogicPhaseCommandService.PhaseApplied -= OnLogicPhaseApplied;
         m_SkillComp?.CancelSkills();
         m_BuffComp?.ShutDown();
         m_CreatureProperties?.Dispose();

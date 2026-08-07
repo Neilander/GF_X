@@ -10,7 +10,7 @@ public sealed class BuildingTechRuntimeDeterminismTests
     {
         var managerObject = new GameObject("BuildingTechRuntimeDeterminismTests_Manager");
         var manager = managerObject.AddComponent<GlobalBuffManager>();
-        var effect = ScriptableObject.CreateInstance<BuildingTechRuntimeEffectSO>();
+        var effect = new BuildingTechRuntimeEffect();
         try
         {
             var before = new LogicStateHasher();
@@ -46,7 +46,6 @@ public sealed class BuildingTechRuntimeDeterminismTests
         finally
         {
             effect.ClearRuntimeState();
-            Object.DestroyImmediate(effect);
             Object.DestroyImmediate(managerObject);
         }
     }

@@ -155,28 +155,21 @@ public sealed class BuildingLevelTechRoutingTests
     [Test]
     public void CurrentTable_AllGlobalRuntimeTechsHaveRuntimeRules()
     {
-        var runtimeEffect = ScriptableObject.CreateInstance<BuildingTechRuntimeEffectSO>();
-        try
+        var runtimeEffect = new BuildingTechRuntimeEffect();
+        foreach (BuildingTable row in LoadBuildingRows())
         {
-            foreach (BuildingTable row in LoadBuildingRows())
+            foreach (TechData techData in CreateTechData(row))
             {
-                foreach (TechData techData in CreateTechData(row))
+                if (techData.ScopeType == TechScopeType.Skill
+                    || BuildingLevelTechRouting.Resolve(techData, row.Type) != BuildingLevelTechRoute.GlobalRuntime)
                 {
-                    if (techData.ScopeType == TechScopeType.Skill
-                        || BuildingLevelTechRouting.Resolve(techData, row.Type) != BuildingLevelTechRoute.GlobalRuntime)
-                    {
-                        continue;
-                    }
-
-                    Assert.IsTrue(
-                        runtimeEffect.CanHandle(techData),
-                        $"Global runtime tech '{techData.Identifier}' from '{row.Identifier}' has no runtime rule.");
+                    continue;
                 }
+
+                Assert.IsTrue(
+                    runtimeEffect.CanHandle(techData),
+                    $"Global runtime tech '{techData.Identifier}' from '{row.Identifier}' has no runtime rule.");
             }
-        }
-        finally
-        {
-            UnityEngine.Object.DestroyImmediate(runtimeEffect);
         }
     }
 

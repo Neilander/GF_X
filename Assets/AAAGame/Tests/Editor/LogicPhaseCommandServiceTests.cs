@@ -8,6 +8,7 @@ public sealed class LogicPhaseCommandServiceTests
     [SetUp]
     public void SetUp()
     {
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(LogicPhaseCommandServiceTests));
         LogicTimeControlService.BeginTimeline();
         LogicPhaseCommandService.BeginTimeline();
         LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
@@ -23,11 +24,27 @@ public sealed class LogicPhaseCommandServiceTests
     }
 
     [Test]
+    public void SwitchToNextPhase_RejectsInvalidCurrentPhase()
+    {
+        System.Reflection.PropertyInfo currentPhaseProperty = typeof(LogicPhaseCommandService).GetProperty(
+            nameof(LogicPhaseCommandService.CurrentPhase),
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
+        Assert.NotNull(currentPhaseProperty);
+        currentPhaseProperty.SetValue(null, (GamePhase)int.MaxValue);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            PhaseManager.SwitchToNextPhase);
+
+        StringAssert.Contains("unsupported current phase", exception.Message);
+    }
+
+    [Test]
     public void Commands_ApplyOnExactFrameInSequenceOrder()
     {
         LogicPhaseCommand first = LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.BuildBeforeInvade);
         LogicPhaseCommand second = LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.Invade);
         var applied = new List<LogicPhaseCommand>();
+        var phasesSeenBySink = new List<GamePhase>();
         var transitions = new List<(GamePhase OldPhase, GamePhase NewPhase)>();
         LogicPhaseCommandService.PhaseApplied += RecordTransition;
         try
@@ -38,9 +55,18 @@ public sealed class LogicPhaseCommandServiceTests
             Assert.AreEqual(2UL, second.Sequence);
 
             LogicTimeControlService.BeginFrame(1);
-            LogicPhaseCommandService.ApplyFrameForTests(1, applied.Add);
+            LogicPhaseCommandService.ApplyFrameForTests(
+                1,
+                command =>
+                {
+                    applied.Add(command);
+                    phasesSeenBySink.Add(LogicPhaseCommandService.GetRequiredCurrentPhase());
+                });
 
             CollectionAssert.AreEqual(new[] { first.Sequence, second.Sequence }, new[] { applied[0].Sequence, applied[1].Sequence });
+            CollectionAssert.AreEqual(
+                new[] { GamePhase.BuildBeforeInvade, GamePhase.Invade },
+                phasesSeenBySink);
             Assert.AreEqual(GamePhase.Invade, LogicPhaseCommandService.CurrentPhase);
             Assert.AreEqual(0, LogicPhaseCommandService.PendingCount);
             CollectionAssert.AreEqual(
@@ -60,6 +86,21 @@ public sealed class LogicPhaseCommandServiceTests
         {
             transitions.Add((oldPhase, newPhase));
         }
+    }
+
+    [Test]
+    public void ApplyFrame_RollsBackAuthorityWhenPhaseEffectsFail()
+    {
+        LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.Invade);
+        LogicTimeControlService.BeginFrame(1);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            LogicPhaseCommandService.ApplyFrameForTests(
+                1,
+                _ => throw new InvalidOperationException("phase effect failed")));
+
+        Assert.AreEqual(GamePhase.Defend, LogicPhaseCommandService.GetRequiredCurrentPhase());
+        Assert.AreEqual(1, LogicPhaseCommandService.PendingCount);
     }
 
     [Test]
@@ -139,7 +180,7 @@ public sealed class LogicPhaseCommandServiceTests
         StringAssert.DoesNotContain("GameObject.FindObjectsOfType<EntityPresetPoint>", phaseSource);
         StringAssert.Contains("s_InvadeSpawnPointsConfigured", phaseSource);
         StringAssert.Contains("m_PendingUiPresentation.Enqueue", cardSetupSource);
-        StringAssert.Contains("LogicFrameRuntime.IsTicking", cardSetupSource);
+        StringAssert.Contains("LogicFrameRuntime.IsExecutingFrame", cardSetupSource);
         StringAssert.Contains("OpenCardUIImmediate", cardSetupSource);
     }
 
@@ -162,6 +203,12 @@ public sealed class LogicPhaseCommandServiceTests
         string dataModelSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
             scriptsRoot,
             "DataModel/InGameDataModel.cs"));
+        string generalSetupSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            scriptsRoot,
+            "UTManagers/GeneralSetup.cs"));
+        string phaseGuardSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            scriptsRoot,
+            "Buff/BuildingPhaseGuardBuff.cs"));
         string cardControllerSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
             scriptsRoot,
             "Card/Controller/CardSystemController.cs"));
@@ -188,6 +235,20 @@ public sealed class LogicPhaseCommandServiceTests
         string setValue = ExtractMethod(dataModelSource, "public static void SetValue", "public static bool TryModifyValue");
         StringAssert.DoesNotContain("GF.Event.Fire", setValue);
         StringAssert.Contains("QueueValuePresentation", setValue);
+
+        int initializePhase = generalSetupSource.IndexOf(
+            "PhaseManager.InitializePhaseAuthorityOnGameStart(initialPhase)",
+            StringComparison.Ordinal);
+        int showLevel = generalSetupSource.IndexOf(
+            "LevelEntityFactory.ShowLevel(lvRow.PrefabPath)",
+            StringComparison.Ordinal);
+        int commitEntities = generalSetupSource.IndexOf(
+            "LogicEntityLifecycleService.CommitPendingInitializationEntities()",
+            StringComparison.Ordinal);
+        Assert.That(initializePhase, Is.GreaterThanOrEqualTo(0));
+        Assert.That(showLevel, Is.GreaterThan(initializePhase));
+        Assert.That(commitEntities, Is.GreaterThan(initializePhase));
+        StringAssert.DoesNotContain("PhaseManager.CurrentPhase", phaseGuardSource);
 
         string cardDiscard = ExtractMethod(cardControllerSource, "private void ApplyDiscardCommand", "private void ApplyDiscardResourceReward");
         StringAssert.DoesNotContain("GF.Event.Fire", cardDiscard);

@@ -15,11 +15,15 @@ public static class BuildingLevelTechRouting
         if (techData == null)
             throw new ArgumentNullException(nameof(techData));
 
-        var table = GF.DataTable?.GetDataTable<BuildingTable>();
-        if (table == null)
-            throw new InvalidOperationException("Building level tech routing requires BuildingTable.");
-
-        BuildingTable sourceRow = table.GetDataRow(row => ContainsTech(row, techData.Identifier));
+        BuildingTable sourceRow = null;
+        var rows = LogicRuntimeDataTableCache.BuildingRows;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            if (!ContainsTech(rows[i], techData.Identifier))
+                continue;
+            sourceRow = rows[i];
+            break;
+        }
         if (sourceRow == null)
         {
             throw new InvalidOperationException(

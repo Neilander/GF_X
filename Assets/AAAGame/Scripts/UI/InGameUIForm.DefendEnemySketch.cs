@@ -1100,15 +1100,14 @@ public partial class InGameUIForm
             return cachedName;
 
         string fallbackName = unitType.ToString();
-        var table = GF.DataTable != null ? GF.DataTable.GetDataTable<CharacterDataDetail>() : null;
-        if (table == null)
+        if (!LogicRuntimeDataTableCache.IsPrepared)
         {
             m_DefendUnitDisplayNameCache[unitType] = fallbackName;
             return fallbackName;
         }
 
         string key = unitType.ToString();
-        foreach (CharacterDataDetail row in table.GetAllDataRows())
+        foreach (CharacterDataDetail row in LogicRuntimeDataTableCache.CharacterRows)
         {
             if (row == null || string.IsNullOrWhiteSpace(row.CharacterKey))
                 continue;

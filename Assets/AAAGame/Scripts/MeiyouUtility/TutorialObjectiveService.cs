@@ -115,6 +115,8 @@ public static class TutorialObjectiveService
 
     public static void PublishPendingPresentation(object sender)
     {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Tutorial objective presentation cannot run during a logic frame.");
         if (!s_PresentationDirty)
             return;
         if (GF.Event == null)

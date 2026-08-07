@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using GameFramework;
@@ -262,6 +262,43 @@ public sealed class LogicGameEndServiceTests
     }
 
     [Test]
+    public void DefendFallbackResolution_UsesLogicAuthorityWithoutGameEndManagerView()
+    {
+        LogicEntityState target = CreateBuilding("target-player", EntitySideHelper.PlayerFactionId, true);
+        LogicGameEndService.Initialize(CreateLevel(
+            Array.Empty<VictoryConditionType>(),
+            0,
+            new[] { FailConditionType.LoseSpecificBuildings },
+            0));
+        LogicGameEndService.RegisterInitialConditionBuilding(target.BuildingInstanceId, target.OwnerFactionId);
+        PublishEntities();
+        Assert.IsNull(GameEndManager.Current);
+
+        MethodInfo resolve = typeof(LogicUnitConfigurator).GetMethod(
+            "ResolveDefendFallbackTarget",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.IsNotNull(resolve);
+        var enemyState = new LogicEntityState(
+            new LogicEntityId(10001),
+            new LogicEntitySpawnDescriptor(
+                new FixVector2((Fix64)5, Fix64.Zero),
+                new FixVector2(Fix64.Zero, Fix64.One),
+                SideType.EnemySide,
+                "defend-enemy"));
+        var entityParams = new EntityParams
+        {
+            BrainType = BrainType.DefendEnemyAI,
+            Side = SideType.EnemySide,
+        };
+
+        IEntityContext resolved = (IEntityContext)resolve.Invoke(
+            null,
+            new object[] { enemyState, entityParams });
+
+        Assert.AreSame(target, resolved);
+    }
+
+    [Test]
     public void InvalidRegistrationAndMissingTargetFailLoudly()
     {
         LogicGameEndService.Initialize(CreateLevel(
@@ -321,7 +358,7 @@ public sealed class LogicGameEndServiceTests
 
     private static void PublishEntities()
     {
-        LogicEntityLifecycleService.PublishPendingInitializationEntities();
+        LogicEntityLifecycleService.CommitPendingInitializationEntities();
     }
 
     private static LevelData CreateLevel(
@@ -367,6 +404,7 @@ public sealed class LogicGameEndServiceTests
 
     private static void EnsureInGameDataModel()
     {
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(LogicGameEndServiceTests));
         FieldInfo dataModelField = typeof(GF).GetField(
             "<DataModel>k__BackingField",
             BindingFlags.Static | BindingFlags.NonPublic);
@@ -405,7 +443,16 @@ public sealed class LogicGameEndServiceTests
 
         typeof(InGameDataModel)
             .GetField("m_IngameValue", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?.SetValue(model, new Dictionary<IngameValueType, int>());
+            ?.SetValue(
+                model,
+                new Dictionary<IngameValueType, int>
+                {
+                    [IngameValueType.Phase] = (int)GamePhase.Defend,
+                    [IngameValueType.Day] = 1,
+                    [IngameValueType.Coin] = 0,
+                    [IngameValueType.CurrentSupply] = 0,
+                    [IngameValueType.MaxSupply] = 0,
+                });
     }
 
     private sealed class ObservedAttackComp : IAtkComp

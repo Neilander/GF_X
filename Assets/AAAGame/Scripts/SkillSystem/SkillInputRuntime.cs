@@ -52,7 +52,7 @@ public static class SkillInputRuntime
 
     public static bool CanUseActiveSkillsInCurrentPhase()
     {
-        GamePhase phase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
+        GamePhase phase = LogicPhaseCommandService.GetRequiredCurrentPhase();
         return !InGameDataModel.IsBuildPhase(phase);
     }
 }

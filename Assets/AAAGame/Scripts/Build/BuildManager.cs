@@ -41,8 +41,8 @@ public class BuildManager : GameFrameworkComponent
         if (owner.OwnerFactionId != 0)
             return false;
 
-        var inGameData = GF.DataModel.GetDataModel<InGameDataModel>();
-        if (inGameData == null || !InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase)))
+        if (!InGameDataModel.HasActiveModel
+            || !InGameDataModel.IsBuildPhase(LogicPhaseCommandService.GetRequiredCurrentPhase()))
             return false;
 
         if (string.IsNullOrWhiteSpace(buildBuildingId))
@@ -213,7 +213,13 @@ public class BuildManager : GameFrameworkComponent
             m_BaseMilestoneTechService.ReduceForDemolishedBase(owner.BuildingData, owner.BuildingInstanceId);
             int supplyCapacity = CalculateBaseSupplyCapacity(owner.BuildingData, owner.OwnerFactionId);
             if (supplyCapacity > 0)
-                InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, -supplyCapacity, true);
+            {
+                if (!InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, -supplyCapacity, true))
+                {
+                    throw new InvalidOperationException(
+                        $"Base demolition supply capacity exceeds authoritative max supply. building={owner.BuildingInstanceId}, amount={supplyCapacity}.");
+                }
+            }
 
             InvalidateUnlockedArchetypeCache();
         }
@@ -239,7 +245,7 @@ public class BuildManager : GameFrameworkComponent
             return false;
         }
 
-        return InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase));
+        return InGameDataModel.IsBuildPhase(LogicPhaseCommandService.GetRequiredCurrentPhase());
     }
 
     public int CalculateRecycleRefund(IBuildingLogicContext owner)
@@ -629,17 +635,15 @@ public class BuildManager : GameFrameworkComponent
         if (m_Lv0ConstructCandidatesByArchetype.Count > 0)
             return;
 
-        var charDataDetailTb = GF.DataTable.GetDataTable<CharacterDataDetail>();
-
         foreach (var data in BuildingDataModel.GetAllBuildingData())
         {
             if (data == null || data.Lv != 1 || data.Arche == Archetype.None)
                 continue;
 
             // 移除尚未配备 unit prefab 的兵营在建造列表中的展示。
-            if (data.Type == BuilType.Army && !string.IsNullOrWhiteSpace(data.UnitID) && charDataDetailTb != null)
+            if (data.Type == BuilType.Army && !string.IsNullOrWhiteSpace(data.UnitID))
             {
-                var charRow = charDataDetailTb.GetDataRow(r => r.CharacterKey == data.UnitID);
+                LogicRuntimeDataTableCache.TryGetCharacter(data.UnitID, out CharacterDataDetail charRow);
                 if (charRow == null || string.IsNullOrWhiteSpace(charRow.PrefabPath))
                 {
                     continue;
@@ -727,7 +731,11 @@ public class BuildManager : GameFrameworkComponent
         if (deltaSupply > int.MaxValue)
             deltaSupply = int.MaxValue;
 
-        InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, (int)deltaSupply, true);
+        if (!InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, (int)deltaSupply, true))
+        {
+            throw new InvalidOperationException(
+                $"Base construction supply capacity could not be committed. ownerFaction={ownerFactionId}, delta={deltaSupply}.");
+        }
     }
     protected override void Awake()
     {
@@ -746,6 +754,8 @@ public class BuildManager : GameFrameworkComponent
 
     public void UpdatePresentation()
     {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("BuildManager presentation cannot run during a logic frame.");
         if (m_PendingPresentationAudio.Count == 0 || AudioManager.Instance == null)
             return;
 
@@ -849,7 +859,7 @@ public class BuildManager : GameFrameworkComponent
             return false;
         if (owner.BuildingData.Lv <= 0 || owner.BuildingData.Type == BuilType.Base)
             return false;
-        return InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase));
+        return InGameDataModel.IsBuildPhase(LogicPhaseCommandService.GetRequiredCurrentPhase());
     }
 
     private static void EnsureInteractionApplyWindow()
@@ -909,7 +919,13 @@ public class BuildManager : GameFrameworkComponent
         int supplyDelta = CalculateBaseSupplyCapacity(building.BuildingData, newFactionId)
                         - CalculateBaseSupplyCapacity(building.BuildingData, oldFactionId);
         if (supplyDelta != 0)
-            InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, supplyDelta, true);
+        {
+            if (!InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, supplyDelta, true))
+            {
+                throw new InvalidOperationException(
+                    $"Base ownership supply capacity could not be committed. building={building.BuildingInstanceId}, delta={supplyDelta}.");
+            }
+        }
     }
 
     private static int CalculateBaseSupplyCapacity(BuildingData buildingData, int ownerFactionId)

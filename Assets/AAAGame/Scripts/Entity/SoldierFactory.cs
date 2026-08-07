@@ -25,19 +25,26 @@ public static class SoldierFactory
     }
 
     /// <summary>
-    /// Remove all SoldierEntity in Creature group.
+    /// Request despawn for every authoritative non-hero soldier.
     /// </summary>
     public static void RemoveAllSoldiersInCreatureGroup()
     {
-        var creatureGroup = GF.Entity.GetEntityGroup(Const.EntityGroup.Creature.ToString());
-        var entities = creatureGroup.GetAllEntities();
-        for (int i = 0; i < entities.Length; i++)
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        var soldierIds = new List<LogicEntityId>();
+        for (int i = 0; i < entities.Count; i++)
         {
-            if (entities[i] is Entity entity && entity.Logic is SoldierEntity soldier)
-            {
-                RemoveSoldier(soldier);
-            }
+            IEntityContext entity = entities[i]
+                                    ?? throw new InvalidOperationException($"EntityRegistry contains a null entity at index {i}.");
+            if (!UnitTypeHelper.TryParseUnitType(entity.CharacterKey, out UnitType unitType)
+                || unitType == UnitType.Unit_Hero)
+                continue;
+
+            soldierIds.Add(entity.LogicEntityId);
         }
+
+        soldierIds.Sort((left, right) => left.Value.CompareTo(right.Value));
+        for (int i = 0; i < soldierIds.Count; i++)
+            LogicEntityLifecycleService.RequestDespawn(soldierIds[i]);
     }
 
     public static LogicEntityId ShowSoldierFixed(
@@ -122,15 +129,7 @@ public static class SoldierFactory
 
     private static CharacterDataDetail GetCharacterDataRow(string characterKey)
     {
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
-        if (table == null)
-            throw new InvalidOperationException("SoldierFactory.ShowSoldier failed: CharacterDataDetail data table is null.");
-
-        var row = table.GetDataRow(r => r.CharacterKey == characterKey);
-        if (row == null)
-            throw new InvalidOperationException($"SoldierFactory.ShowSoldier failed: CharacterDataDetail row not found. CharacterKey={characterKey}.");
-
-        return row;
+        return LogicRuntimeDataTableCache.GetCharacterRequired(characterKey);
     }
 
     private static Fix64 GetFirstUniqueValue(UnitType unitType)
@@ -443,12 +442,7 @@ public static class SoldierFactory
 
     private static BuildingTable FindArmyBuildingRow(UnitType unitType)
     {
-        var table = GF.DataTable.GetDataTable<BuildingTable>();
-        if (table == null)
-            throw new InvalidOperationException("SoldierFactory.ResolveArmyLevelTechModifiers failed: BuildingTable data table is null.");
-
-        string unitId = unitType.ToString();
-        return table.GetDataRow(r => r.Type == BuilType.Army && string.Equals(r.UnitID, unitId, StringComparison.Ordinal));
+        return LogicRuntimeDataTableCache.GetArmyBuilding(unitType);
     }
 
     private static Fix64 TechValue(Fix64[] values, int index, string techId)

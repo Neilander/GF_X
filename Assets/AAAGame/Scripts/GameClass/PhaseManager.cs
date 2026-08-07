@@ -9,8 +9,8 @@ public class PhaseManager : GameFrameworkComponent
     public static event Action<GamePhase, GamePhase> OnPhaseChanged;
     internal static event Action<GamePhase> PersistentStageCommitted;
 
-    private const float EnemyPresetClusterRadius = 3f;
-    private const float EnemyPresetClusterMinDistance = 1.2f;
+    private static readonly Fix64 EnemyPresetClusterRadius = Fix64.FromRaw(12288);
+    private static readonly Fix64 EnemyPresetClusterMinDistance = Fix64.FromRaw(4916);
     private const long PhaseStepWarnMs = 30;
     private const string EnemyProductionBuildingDailyResourceCostConfigKey = "EnemyProductionBuildingDailyResourceCost";
     private static readonly Queue<string> s_PendingPhaseSounds = new Queue<string>();
@@ -102,7 +102,7 @@ public class PhaseManager : GameFrameworkComponent
     {
         PrepareRuntimeDependencies();
         GamePhase currentPhase = CurrentPhase;
-        LogicPhaseCommandService.SetInitialPhase(currentPhase);
+        RequireInitializedPhaseAuthority(currentPhase);
         switch (currentPhase)
         {
             case GamePhase.BuildBeforeInvade:
@@ -131,14 +131,14 @@ public class PhaseManager : GameFrameworkComponent
         if (CurrentPhase != restoredPhase)
             throw new InvalidOperationException(
                 $"Restored phase mismatch. checkpoint={restoredPhase}, dataModel={CurrentPhase}.");
-        LogicPhaseCommandService.SetInitialPhase(restoredPhase);
+        RequireInitializedPhaseAuthority(restoredPhase);
         HandlePhaseTransition(restoredPhase, restoredPhase);
         Log.Debug($"Restored phase entered: {restoredPhase}");
     }
 
     public static void SwitchToNextPhase()
     {
-        GamePhase currentPhase = CurrentPhase;
+        GamePhase currentPhase = LogicPhaseCommandService.GetRequiredCurrentPhase();
         GamePhase nextPhase;
 
         switch (currentPhase)
@@ -156,8 +156,8 @@ public class PhaseManager : GameFrameworkComponent
                 nextPhase = GamePhase.BuildBeforeInvade;
                 break;
             default:
-                nextPhase = GamePhase.BuildBeforeInvade;
-                break;
+                throw new InvalidOperationException(
+                    $"PhaseManager.SwitchToNextPhase failed: unsupported current phase {currentPhase}.");
         }
 
         SwitchToPhase(nextPhase);
@@ -168,6 +168,16 @@ public class PhaseManager : GameFrameworkComponent
         LogicPhaseCommandService.ScheduleForNextFrame(phase);
     }
 
+    public static void InitializePhaseAuthorityOnGameStart(GamePhase phase)
+    {
+        if (CurrentPhase != phase)
+        {
+            throw new InvalidOperationException(
+                $"Initial phase authority mismatch. requested={phase}, dataModel={CurrentPhase}.");
+        }
+        LogicPhaseCommandService.SetInitialPhase(phase);
+    }
+
     internal static void ApplyScheduledPhase(GamePhase phase)
     {
         if (!LogicPhaseCommandService.IsApplyingFrame)
@@ -176,6 +186,8 @@ public class PhaseManager : GameFrameworkComponent
         RequireRuntimeDependencies();
 
         GamePhase oldPhase = CurrentPhase;
+        if (LogicPhaseCommandService.GetRequiredCurrentPhase() != phase)
+            throw new InvalidOperationException("Phase authority was not committed before applying phase effects.");
         if (oldPhase == phase)
         {
             return;
@@ -209,6 +221,16 @@ public class PhaseManager : GameFrameworkComponent
         Log.Debug($"Phase switched from {oldPhase} to {phase}");
     }
 
+    private static void RequireInitializedPhaseAuthority(GamePhase expectedPhase)
+    {
+        GamePhase logicPhase = LogicPhaseCommandService.GetRequiredCurrentPhase();
+        if (logicPhase != expectedPhase)
+        {
+            throw new InvalidOperationException(
+                $"Initial phase authority mismatch. expected={expectedPhase}, logic={logicPhase}.");
+        }
+    }
+
     private static void TryAdvanceDayOnBuildTransition(GamePhase oldPhase, GamePhase newPhase)
     {
         if (!InGameDataModel.IsBuildPhase(newPhase))
@@ -216,7 +238,8 @@ public class PhaseManager : GameFrameworkComponent
             return;
         }
 
-        InGameDataModel.TryModifyValue(IngameValueType.Day, 1);
+        if (!InGameDataModel.TryModifyValue(IngameValueType.Day, 1))
+            throw new InvalidOperationException("Phase day advancement could not be committed to InGameDataModel.");
         int currentDay = InGameDataModel.GetValue(IngameValueType.Day);
         Log.Debug($"Day advanced to {currentDay} when entering build phase {newPhase} from {oldPhase}");
     }
@@ -456,8 +479,8 @@ public class PhaseManager : GameFrameworkComponent
         {
             InvadeSpawnPlan plan = spawnPlans[i];
             var spawnWatch = Stopwatch.StartNew();
-            bool clusterSpawned = ClusterSpawnSystem.SpawnCluster(
-                new Vector3((float)plan.Position.x, 0f, (float)plan.Position.y),
+            bool clusterSpawned = ClusterSpawnSystem.SpawnClusterFixed(
+                plan.Position,
                 plan.Count,
                 EnemyPresetClusterRadius,
                 EnemyPresetClusterMinDistance,

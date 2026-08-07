@@ -66,28 +66,46 @@ public sealed class Fog3StageCheckpointTests
     public void FixedWorldToGrid_UsesOneBoundaryMappingForLogicAndPresentation()
     {
         var map = new Fog3MapData(new Fog3TerrainInfo(
-            2,
+            4,
             1,
             0.09f,
             new Vector3(10.08f, 0f, 5.04f),
-            new[] { true, true },
+            new[] { true, true, true, true },
             "FixedWorldToGridBoundary"));
-        FixVector2 origin = new FixVector2((Fix64)10.08f, (Fix64)5.04f);
-        Fix64 boundary = origin.x + map.CellSizeFixed;
-        map.MarkVisible(1, 0);
+        FixVector2 logicPosition = new FixVector2(
+            Fix64.FromRaw(42025),
+            (Fix64)5.04f);
+        Vector3 presentationPosition = new Vector3(
+            (float)logicPosition.x,
+            0f,
+            (float)logicPosition.y);
 
-        Assert.IsTrue(map.WorldToGrid(
-            new FixVector2(boundary - Fix64.FromRaw(1), origin.y),
-            out int leftX,
-            out int leftY));
-        Assert.AreEqual(0, leftX);
-        Assert.AreEqual(0, leftY);
+        Assert.IsTrue(map.WorldToGrid(logicPosition, out int logicX, out int logicY));
+        Assert.IsTrue(map.WorldToGrid(presentationPosition, out int presentationX, out int presentationY));
+        Assert.AreEqual(2, presentationX, "Authored float grid boundary fixture changed.");
+        Assert.AreEqual(presentationX, logicX);
+        Assert.AreEqual(presentationY, logicY);
+    }
 
-        FixVector2 onBoundary = new FixVector2(boundary, origin.y);
-        Assert.IsTrue(map.WorldToGrid(onBoundary, out int rightX, out int rightY));
-        Assert.AreEqual(1, rightX);
-        Assert.AreEqual(0, rightY);
-        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(onBoundary));
+    [Test]
+    public void WorldToGrid_UsesFloorDivisionForNegativeOffsets()
+    {
+        var map = new Fog3MapData(new Fog3TerrainInfo(
+            4,
+            1,
+            0.09f,
+            Vector3.zero,
+            new[] { true, true, true, true },
+            "WorldToGridNegativeOffset"));
+        FixVector2 logicPosition = new FixVector2(Fix64.FromRaw(-1), Fix64.Zero);
+        Vector3 presentationPosition = new Vector3((float)logicPosition.x, 0f, 0f);
+
+        Assert.IsFalse(map.WorldToGrid(logicPosition, out int logicX, out int logicY));
+        Assert.IsFalse(map.WorldToGrid(presentationPosition, out int presentationX, out int presentationY));
+        Assert.AreEqual(-1, logicX);
+        Assert.AreEqual(logicX, presentationX);
+        Assert.AreEqual(0, logicY);
+        Assert.AreEqual(logicY, presentationY);
     }
 
     [Test]

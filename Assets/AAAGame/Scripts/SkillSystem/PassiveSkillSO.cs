@@ -5,6 +5,17 @@ using UnityEngine;
 
 public abstract class PassiveSkillSO : SkillEffectSO
 {
+    internal PassiveSkillSO CreateRuntimeSnapshot()
+    {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Passive skill assets cannot be snapshotted during a logic frame.");
+
+        SkillRuntimeSnapshotValidation.ValidateReferenceFields(this);
+        PassiveSkillSO snapshot = Instantiate(this);
+        snapshot.hideFlags = HideFlags.HideAndDontSave;
+        return snapshot;
+    }
+
     public abstract void Apply(IEntityContext owner);
     public abstract void Remove(IEntityContext owner);
 
@@ -283,7 +294,7 @@ public sealed class SkillHigherHealthSplashBuff : BuffCallback
             return;
 
         Fix64 mainRatio = mainTarget.HealthValue / mainMax;
-        float radius = DistanceUnitConverter.ConvertToWorldFloat(m_Radius);
+        Fix64 radius = DistanceUnitConverter.ConvertToWorld(m_Radius);
         var all = EntityRegistry.AllEntities;
         m_ApplyingSplash = true;
         try
@@ -297,7 +308,7 @@ public sealed class SkillHigherHealthSplashBuff : BuffCallback
                     continue;
                 if (FixVector2.Distance(
                         candidate.LogicFramePositionFixed(),
-                        mainTarget.LogicFramePositionFixed()) > (Fix64)radius)
+                        mainTarget.LogicFramePositionFixed()) > radius)
                     continue;
 
                 Fix64 candidateMax = candidate.CreatureProperties.GetProperty(CreatureMainProperty.Health);

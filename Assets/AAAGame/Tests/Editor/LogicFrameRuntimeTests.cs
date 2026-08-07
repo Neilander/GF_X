@@ -84,6 +84,55 @@ public class LogicFrameRuntimeTests
     }
 
     [Test]
+    public void FrameExecutionScope_CoversPreTickTickAndPostTickWork()
+    {
+        bool observedExecutingDuringTick = false;
+        Register(new CallbackListener(() =>
+        {
+            Assert.IsTrue(LogicFrameRuntime.IsTicking);
+            observedExecutingDuringTick = LogicFrameRuntime.IsExecutingFrame;
+        }));
+
+        LogicFrameRuntime.BeginFrameExecution(1);
+        try
+        {
+            Assert.IsTrue(LogicFrameRuntime.IsExecutingFrame);
+            Assert.IsFalse(LogicFrameRuntime.IsTicking);
+            Assert.Throws<InvalidOperationException>(
+                () => LogicFrameRuntime.BeginFrameExecution(1));
+            Assert.Throws<InvalidOperationException>(LogicFrameRuntime.SyncPresentationPhysics);
+
+            LogicFrameRuntime.Tick(1);
+
+            Assert.IsTrue(observedExecutingDuringTick);
+            Assert.IsTrue(LogicFrameRuntime.IsExecutingFrame);
+            Assert.IsFalse(LogicFrameRuntime.IsTicking);
+        }
+        finally
+        {
+            LogicFrameRuntime.EndFrameExecution(1);
+        }
+
+        Assert.IsFalse(LogicFrameRuntime.IsExecutingFrame);
+    }
+
+    [Test]
+    public void FrameExecutionScope_RejectsMismatchedEndWithoutLosingOwner()
+    {
+        LogicFrameRuntime.BeginFrameExecution(1);
+        try
+        {
+            Assert.Throws<InvalidOperationException>(
+                () => LogicFrameRuntime.EndFrameExecution(2));
+            Assert.IsTrue(LogicFrameRuntime.IsExecutingFrame);
+        }
+        finally
+        {
+            LogicFrameRuntime.EndFrameExecution(1);
+        }
+    }
+
+    [Test]
     public void LegacyListeners_PreserveRegistrationOrder()
     {
         var ticks = new List<long>();
@@ -249,6 +298,14 @@ public class LogicFrameRuntimeTests
             entityBaseSource,
             Does.Not.Contain("OnLogicFrameUpdate((Fix64)elapseSeconds)"),
             "EntityBase must not advance logic from EntityLogic.OnUpdate render delta.");
+
+        string punchBagSource = File.ReadAllText(
+            Path.Combine(scriptsRoot, "Entity", "PunchBagEntity.cs"));
+        Assert.That(
+            punchBagSource,
+            Does.Not.Contain("ShouldRunLogicFrameUpdate => true"),
+            "A view-only legacy entity with no LogicEntityState must not register an empty logic tick.");
+        Assert.That(punchBagSource, Does.Not.Contain("OnLogicFrameUpdate("));
     }
 
     [Test]
@@ -342,6 +399,79 @@ public class LogicFrameRuntimeTests
     }
 
     [Test]
+    public void LogicOwnedStateChanges_QueuePresentationOutsideTheLogicTick()
+    {
+        string scriptsRoot = Path.Combine(Application.dataPath, "AAAGame", "Scripts");
+        string globalBuffManagerSource = File.ReadAllText(
+            Path.Combine(scriptsRoot, "Buff", "GlobalBuffManager.cs"));
+        Assert.That(
+            globalBuffManagerSource,
+            Does.Not.Contain("building.RaiseArmyCardPropertyChangedEventForTech();"),
+            "Tech application must not publish an army-card UI event from its logic apply frame.");
+
+        string levelEntitySource = File.ReadAllText(
+            Path.Combine(scriptsRoot, "Entity", "LevelEntity.cs"));
+        int captureStart = levelEntitySource.IndexOf(
+            "private void CaptureStronghold(",
+            StringComparison.Ordinal);
+        int captureEnd = levelEntitySource.IndexOf(
+            "private void FlushStrongholdCapturePresentation(",
+            captureStart,
+            StringComparison.Ordinal);
+        Assert.That(captureStart, Is.GreaterThanOrEqualTo(0));
+        Assert.That(captureEnd, Is.GreaterThan(captureStart));
+        string captureBody = levelEntitySource.Substring(captureStart, captureEnd - captureStart);
+        Assert.That(captureBody, Does.Not.Contain("GetStrongholdViewRequired("));
+        Assert.That(captureBody, Does.Not.Contain("TryGetBoundView("));
+        Assert.That(captureBody, Does.Not.Contain(".ChangeSide("));
+        Assert.That(captureBody, Does.Not.Contain(".BindStrongholdView("));
+        Assert.That(captureBody, Does.Not.Contain("stronghold.OwnerFactionId ="));
+        Assert.That(captureBody, Does.Not.Contain("PlayCaptureVfx("));
+        Assert.That(captureBody, Does.Not.Contain("RefreshEnemyStrongholdFogEffects("));
+
+        string runtimeProcedureSource = File.ReadAllText(
+            Path.Combine(scriptsRoot, "Procedures", "RuntimeProcedureBase.cs"));
+        Assert.That(
+            runtimeProcedureSource,
+            Does.Contain("LevelEntity.UpdateActivePresentation();"),
+            "The render-frame procedure must flush stronghold presentation after logic ticks complete.");
+        Assert.That(
+            runtimeProcedureSource,
+            Does.Contain("GlobalBuffManager.RequireCurrent().UpdatePresentation();"),
+            "The render-frame procedure must flush army-card presentation after logic ticks complete.");
+    }
+
+    [Test]
+    public void RuntimeArmyRule_QueuesPresentationDuringTickAndFlushesAfterTick()
+    {
+        var managerObject = new GameObject("GlobalBuffManager_PresentationBoundary_Test");
+        var manager = managerObject.AddComponent<GlobalBuffManager>();
+        Register(new CallbackListener(() =>
+        {
+            Assert.IsTrue(LogicFrameRuntime.IsTicking);
+            manager.RegisterRuntimeArmyForceRule(0, "building-a", "Tech_A", _ => Fix64.One);
+            Assert.AreEqual(1, manager.PendingArmyCardPresentationFactionCount);
+            Assert.Throws<InvalidOperationException>(manager.UpdatePresentation);
+            Assert.Throws<InvalidOperationException>(LogicFrameRuntime.SyncPresentationPhysics);
+        }));
+
+        try
+        {
+            LogicFrameRuntime.Tick(1);
+
+            Assert.IsFalse(LogicFrameRuntime.IsTicking);
+            Assert.AreEqual(1, manager.PendingArmyCardPresentationFactionCount);
+            manager.UpdatePresentation();
+            Assert.AreEqual(0, manager.PendingArmyCardPresentationFactionCount);
+        }
+        finally
+        {
+            manager.ClearLevelRuntimeState();
+            UnityEngine.Object.DestroyImmediate(managerObject);
+        }
+    }
+
+    [Test]
     public void DefendPhase_RebuildsWaveCacheAfterSpawnPointLevelInvalidation()
     {
         string scriptsRoot = Path.Combine(Application.dataPath, "AAAGame", "Scripts");
@@ -371,12 +501,27 @@ public class LogicFrameRuntimeTests
             runtimeSource,
             Does.Not.Contain("Physics.Simulate("),
             "Unity Physics is presentation-only and must not be advanced by the authoritative logic tick.");
+        int tickStart = runtimeSource.IndexOf("public static void Tick(ulong frame)", StringComparison.Ordinal);
+        int tickEnd = runtimeSource.IndexOf("public static void SyncPresentationPhysics()", tickStart, StringComparison.Ordinal);
+        Assert.That(tickStart, Is.GreaterThanOrEqualTo(0));
+        Assert.That(tickEnd, Is.GreaterThan(tickStart));
+        Assert.That(
+            runtimeSource.Substring(tickStart, tickEnd - tickStart),
+            Does.Not.Contain("Physics.SyncTransforms()"),
+            "Unity Physics transform synchronization belongs to the render frame, not each logic tick.");
+
+        string runtimeProcedureSource = File.ReadAllText(
+            Path.Combine(scriptsRoot, "Procedures", "RuntimeProcedureBase.cs"));
+        Assert.That(
+            runtimeProcedureSource,
+            Does.Contain("LogicFrameRuntime.SyncPresentationPhysics();"),
+            "Presentation physics must synchronize once after render-frame logic advancement.");
 
         string tutorialTriggerSource = File.ReadAllText(
             Path.Combine(scriptsRoot, "MeiyouUtility", "TutorialTriggerCollider.cs"));
         Assert.That(tutorialTriggerSource, Does.Not.Contain("OnTriggerEnter("));
-        Assert.That(tutorialTriggerSource, Does.Contain("ILogicFrameUpdate"));
-        Assert.That(tutorialTriggerSource, Does.Contain("player.PositionFixed"));
+        Assert.That(tutorialTriggerSource, Does.Not.Contain("ILogicFrameUpdate"));
+        Assert.That(tutorialTriggerSource, Does.Not.Contain("OnLogicFrameUpdate("));
     }
 
     private void Register(ILogicFrameUpdate listener)
@@ -417,6 +562,23 @@ public class LogicFrameRuntimeTests
         public void WriteDeterministicState(LogicStateHasher hasher)
         {
             hasher.Add(Value);
+        }
+    }
+
+    private sealed class CallbackListener : ILogicFrameUpdate
+    {
+        private readonly Action m_Callback;
+
+        public CallbackListener(Action callback)
+        {
+            m_Callback = callback ?? throw new ArgumentNullException(nameof(callback));
+        }
+
+        public int LogicFrameOrder => 0;
+
+        public void OnLogicFrameUpdate(Fix64 deltaTime)
+        {
+            m_Callback();
         }
     }
 

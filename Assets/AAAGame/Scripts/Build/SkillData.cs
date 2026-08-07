@@ -50,12 +50,14 @@ public class SkillData
         string spritePath)
     {
         Identifier = identifier;
-        Lv1UniqueValues = lv1UniqueValues;
+        Lv1UniqueValues = lv1UniqueValues != null ? (Fix64[])lv1UniqueValues.Clone() : null;
         Lv1CastDistance = lv1CastDistance;
         Lv1AreaRange = lv1AreaRange;
         Lv1Duration = lv1Duration;
         Lv1UsageCount = lv1UsageCount;
-        UpgradeIncrementUniqueValues = upgradeIncrementUniqueValues;
+        UpgradeIncrementUniqueValues = upgradeIncrementUniqueValues != null
+            ? (Fix64[])upgradeIncrementUniqueValues.Clone()
+            : null;
         UpgradeIncrementCastDistance = upgradeIncrementCastDistance;
         UpgradeIncrementAreaRange = upgradeIncrementAreaRange;
         UpgradeIncrementDuration = upgradeIncrementDuration;

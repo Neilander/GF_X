@@ -111,6 +111,8 @@ public static class ObjectiveDestinationService
 
     public static void PublishPendingPresentation()
     {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Objective destination presentation cannot run during a logic frame.");
         if (!s_PresentationDirty)
             return;
 

@@ -30,6 +30,12 @@ public readonly struct LogicEntityLifecycleCommand
 
 public static class LogicEntityLifecycleService
 {
+    private enum LifecyclePresentationKind
+    {
+        Activate = 0,
+        DeactivateAndHide = 1,
+    }
+
     private static readonly List<LogicEntityLifecycleCommand> s_Commands = new List<LogicEntityLifecycleCommand>();
     private static readonly ReadOnlyCollection<LogicEntityLifecycleCommand> s_ReadOnlyCommands = s_Commands.AsReadOnly();
     private static readonly HashSet<int> s_RequestedEntityIds = new HashSet<int>();
@@ -41,6 +47,9 @@ public static class LogicEntityLifecycleService
     private static readonly HashSet<int> s_DespawnCommittedEntityIds = new HashSet<int>();
     private static readonly List<int> s_DueDespawnEntityIds = new List<int>();
     private static readonly List<int> s_DueSpawnEntityIds = new List<int>();
+    private static readonly Dictionary<int, LifecyclePresentationKind> s_PendingPresentationByEntityId =
+        new Dictionary<int, LifecyclePresentationKind>();
+    private static readonly List<int> s_PendingPresentationEntityIds = new List<int>();
     private static ulong s_LastSequence;
 
     public static bool IsActive { get; private set; }
@@ -50,6 +59,7 @@ public static class LogicEntityLifecycleService
     public static int AuthorityEntityCount => s_RequestedEntityIds.Count - s_DespawnCommittedEntityIds.Count;
     public static int BoundViewCount => s_BoundViewIdsByEntityId.Count;
     public static int ActiveEntityCount => s_ActivatedEntityIds.Count;
+    internal static int PendingPresentationCount => s_PendingPresentationByEntityId.Count;
     public static IReadOnlyList<LogicEntityLifecycleCommand> Commands => s_ReadOnlyCommands;
     public static event Action<LogicEntityLifecycleCommand> CommandRecorded;
 
@@ -78,11 +88,15 @@ public static class LogicEntityLifecycleService
         s_DespawnCommittedEntityIds.Clear();
         s_DueDespawnEntityIds.Clear();
         s_DueSpawnEntityIds.Clear();
+        s_PendingPresentationByEntityId.Clear();
+        s_PendingPresentationEntityIds.Clear();
     }
 
     public static void EndTimeline()
     {
         EnsureActive();
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("LogicEntityLifecycleService.EndTimeline cannot run during a logic frame.");
         if (s_BoundViewIdsByEntityId.Count > 0)
             throw new InvalidOperationException($"LogicEntityLifecycleService.EndTimeline failed: {s_BoundViewIdsByEntityId.Count} entity views are still bound.");
 
@@ -98,6 +112,8 @@ public static class LogicEntityLifecycleService
         s_DespawnCommittedEntityIds.Clear();
         s_DueDespawnEntityIds.Clear();
         s_DueSpawnEntityIds.Clear();
+        s_PendingPresentationByEntityId.Clear();
+        s_PendingPresentationEntityIds.Clear();
         s_LastSequence = 0;
         LogicEntityStateStore.EndTimeline();
         LogicBuildingExtraPropsStore.ClearAll();
@@ -135,20 +151,58 @@ public static class LogicEntityLifecycleService
         return RequestSpawnCore(descriptor, configure, true, true);
     }
 
-    public static void PublishPendingInitializationEntities()
+    public static void CommitPendingInitializationEntities()
     {
         EnsureActive();
-        if (LogicTimeControlService.CurrentFrame != 0 || LogicFrameRuntime.IsTicking)
-            throw new InvalidOperationException("Pending initialization entities can only be published before the first logic frame.");
+        if (LogicTimeControlService.CurrentFrame != 0 || LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Pending initialization entities can only be committed before the first logic frame.");
+        if (IsApplyingFrame)
+            throw new InvalidOperationException("Pending initialization entities cannot be committed during lifecycle apply.");
 
         LogicEntityState[] pending = LogicEntityStateStore.CapturePendingSpawnStates();
         for (int i = 0; i < pending.Length; i++)
         {
             LogicEntityState state = pending[i];
-            if (state.IsPlayerEntity)
-                EntityRegistry.RegisterAsPlayer(state);
-            else
-                EntityRegistry.Register(state);
+            state.ValidateReadyForSpawn();
+            if (!s_SpawnFramesByEntityId.TryGetValue(state.EntityId.Value, out ulong effectiveFrame)
+                || effectiveFrame != 1)
+            {
+                throw new InvalidOperationException(
+                    $"Initialization entity has an invalid pending spawn frame. entity={state.EntityId.Value}, effective={effectiveFrame}.");
+            }
+        }
+
+        if (s_Commands.Count != pending.Length)
+        {
+            throw new InvalidOperationException(
+                $"Initialization lifecycle contains non-spawn commands. pending={pending.Length}, commands={s_Commands.Count}.");
+        }
+        for (int i = 0; i < s_Commands.Count; i++)
+        {
+            LogicEntityLifecycleCommand command = s_Commands[i];
+            if (command.Kind != LogicEntityLifecycleCommandKind.SpawnRequested
+                || command.EffectiveFrame != 1)
+            {
+                throw new InvalidOperationException(
+                    $"Initialization lifecycle command is invalid. sequence={command.Sequence}, kind={command.Kind}, effective={command.EffectiveFrame}.");
+            }
+        }
+
+        s_Commands.Clear();
+        s_SpawnFramesByEntityId.Clear();
+        s_LastSequence = 0;
+        for (int i = 0; i < pending.Length; i++)
+        {
+            LogicEntityState state = pending[i];
+            LogicEntityStateStore.CommitSpawn(state.EntityId);
+            state.ActivateRuntime(false);
+            if (s_BoundViewsByEntityId.ContainsKey(state.EntityId.Value))
+                s_PendingPresentationByEntityId[state.EntityId.Value] = LifecyclePresentationKind.Activate;
+            if (!s_ActivatedEntityIds.Add(state.EntityId.Value))
+            {
+                throw new InvalidOperationException(
+                    $"Initialization entity was already active. entity={state.EntityId.Value}.");
+            }
         }
     }
 
@@ -200,6 +254,8 @@ public static class LogicEntityLifecycleService
         EnsureActive();
         if (!LogicTimeControlService.IsPaused)
             throw new InvalidOperationException("LogicEntityLifecycleService.ResetForWorldTransition failed: logic time is not paused.");
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("LogicEntityLifecycleService.ResetForWorldTransition failed: a logic frame is running.");
         if (IsApplyingFrame)
             throw new InvalidOperationException("LogicEntityLifecycleService.ResetForWorldTransition failed: a lifecycle frame is being applied.");
         if (s_BoundViewIdsByEntityId.Count > 0)
@@ -217,6 +273,8 @@ public static class LogicEntityLifecycleService
         s_DespawnCommittedEntityIds.Clear();
         s_DueDespawnEntityIds.Clear();
         s_DueSpawnEntityIds.Clear();
+        s_PendingPresentationByEntityId.Clear();
+        s_PendingPresentationEntityIds.Clear();
         s_LastSequence = 0;
         LogicEntityStateStore.ResetForWorldTransition();
         LogicBuildingExtraPropsStore.ClearAll();
@@ -241,6 +299,8 @@ public static class LogicEntityLifecycleService
 
     public static void BindView(LogicEntityId entityId, int viewEntityId, MAEntity view)
     {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("LogicEntityLifecycleService.BindView cannot run during a logic frame.");
         EnsureKnownEntity(entityId, nameof(BindView));
         if (viewEntityId <= 0)
             throw new ArgumentOutOfRangeException(nameof(viewEntityId), viewEntityId, "View entity id must be positive.");
@@ -323,6 +383,8 @@ public static class LogicEntityLifecycleService
 
     public static void UnbindView(LogicEntityId entityId, int viewEntityId)
     {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("LogicEntityLifecycleService.UnbindView cannot run during a logic frame.");
         EnsureKnownEntity(entityId, nameof(UnbindView));
         if (!s_BoundViewIdsByEntityId.TryGetValue(entityId.Value, out int boundViewEntityId))
             throw new InvalidOperationException($"LogicEntityLifecycleService.UnbindView failed: entity {entityId.Value} is not bound.");
@@ -331,6 +393,7 @@ public static class LogicEntityLifecycleService
 
         s_BoundViewIdsByEntityId.Remove(entityId.Value);
         s_BoundViewsByEntityId.Remove(entityId.Value);
+        s_PendingPresentationByEntityId.Remove(entityId.Value);
         LogicEntityStateStore.UnbindView(entityId, viewEntityId);
         if (s_DespawnCommittedEntityIds.Contains(entityId.Value))
             RemoveDespawnedEntity(entityId);
@@ -401,13 +464,8 @@ public static class LogicEntityLifecycleService
                 throw new InvalidOperationException(
                     $"LogicEntityLifecycleService.ApplyFrame failed: despawn activation state changed unexpectedly. entity={entityId}.");
             }
-            if (s_BoundViewsByEntityId.TryGetValue(entityId, out MAEntity view) && view != null)
-            {
-                view.DeactivateLogicParticipation();
-                if (view.Entity == null)
-                    throw new InvalidOperationException($"LogicEntityLifecycleService.ApplyFrame failed: despawn view has no framework entity. entity={entityId}.");
-				LogicEntityViewSpawnQueue.EnqueueHide(view.Entity.Id);
-            }
+            if (s_BoundViewsByEntityId.ContainsKey(entityId))
+                s_PendingPresentationByEntityId[entityId] = LifecyclePresentationKind.DeactivateAndHide;
             else
                 RemoveDespawnedEntity(logicEntityId);
         }
@@ -439,10 +497,59 @@ public static class LogicEntityLifecycleService
             LogicEntityStateStore.CommitSpawn(logicEntityId);
             LogicEntityState state = LogicEntityStateStore.GetRequired(logicEntityId);
             state.ActivateRuntime();
-            if (s_BoundViewsByEntityId.TryGetValue(entityId, out MAEntity view) && view != null)
-                view.ActivateLogicParticipation(frameId);
+            if (s_BoundViewsByEntityId.ContainsKey(entityId))
+                s_PendingPresentationByEntityId[entityId] = LifecyclePresentationKind.Activate;
             s_ActivatedEntityIds.Add(entityId);
         }
+    }
+
+    public static void UpdatePresentation()
+    {
+        EnsureActive();
+        if (IsApplyingFrame || LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("LogicEntityLifecycleService.UpdatePresentation cannot run during a logic frame.");
+        if (s_PendingPresentationByEntityId.Count == 0)
+            return;
+
+        s_PendingPresentationEntityIds.Clear();
+        foreach (int entityId in s_PendingPresentationByEntityId.Keys)
+            s_PendingPresentationEntityIds.Add(entityId);
+        s_PendingPresentationEntityIds.Sort();
+
+        for (int i = 0; i < s_PendingPresentationEntityIds.Count; i++)
+        {
+            int entityId = s_PendingPresentationEntityIds[i];
+            LifecyclePresentationKind kind = s_PendingPresentationByEntityId[entityId];
+            if (!s_BoundViewsByEntityId.TryGetValue(entityId, out MAEntity view) || view == null)
+            {
+                throw new InvalidOperationException(
+                    $"LogicEntityLifecycleService.UpdatePresentation lost bound view. entity={entityId}, kind={kind}.");
+            }
+
+            switch (kind)
+            {
+                case LifecyclePresentationKind.Activate:
+                    if (!s_ActivatedEntityIds.Contains(entityId))
+                        throw new InvalidOperationException($"Lifecycle activation presentation has inactive logic entity {entityId}.");
+                    view.ActivateLogicParticipation(LogicTimeControlService.CurrentFrame);
+                    break;
+                case LifecyclePresentationKind.DeactivateAndHide:
+                    if (!s_DespawnCommittedEntityIds.Contains(entityId) || s_ActivatedEntityIds.Contains(entityId))
+                        throw new InvalidOperationException($"Lifecycle deactivation presentation has active logic entity {entityId}.");
+                    if (view.IsLogicActive)
+                        view.DeactivateLogicParticipation();
+                    if (view.Entity == null)
+                        throw new InvalidOperationException($"Lifecycle deactivation view has no framework entity. entity={entityId}.");
+                    LogicEntityViewSpawnQueue.EnqueueHide(view.Entity.Id);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown lifecycle presentation kind.");
+            }
+
+            s_PendingPresentationByEntityId.Remove(entityId);
+        }
+
+        s_PendingPresentationEntityIds.Clear();
     }
 
     public static void ResetFrameTimelinePreservingEntities()
@@ -514,6 +621,8 @@ public static class LogicEntityLifecycleService
                 view.DeactivateLogicParticipation(true);
         }
         s_ActivatedEntityIds.Clear();
+        s_PendingPresentationByEntityId.Clear();
+        s_PendingPresentationEntityIds.Clear();
     }
 
     private static void Record(LogicEntityLifecycleCommandKind kind, LogicEntityId entityId, ulong effectiveFrame = 0)

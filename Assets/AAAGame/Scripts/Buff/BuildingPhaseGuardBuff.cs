@@ -68,9 +68,7 @@ public class BuildingPhaseGuardBuff : BuffCallback, ILogicDeterministicStateCont
         if (hostEntity is not IBuildingLogicContext building)
             throw new System.InvalidOperationException("BuildingPhaseGuardBuff requires a building logic context.");
 
-        GamePhase phase = LogicPhaseCommandService.IsInitialized
-            ? LogicPhaseCommandService.CurrentPhase
-            : PhaseManager.CurrentPhase;
+        GamePhase phase = LogicPhaseCommandService.GetRequiredCurrentPhase();
 
         bool isEnemyBuilding = building.OwnerFactionId == EntitySideHelper.EnemyFactionId;
         bool shouldProtect = isEnemyBuilding && phase != GamePhase.Invade;

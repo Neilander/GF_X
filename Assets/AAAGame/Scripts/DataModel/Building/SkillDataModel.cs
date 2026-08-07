@@ -18,8 +18,7 @@ public class SkillDataModel : DataModelBase
     protected override void OnCreate(RefParams userdata)
     {
         skillDataDic = new();
-        var skillTb = GF.DataTable.GetDataTable<SkillTable>();
-        foreach (var row in skillTb.GetAllDataRows())
+        foreach (SkillTable row in LogicRuntimeDataTableCache.SkillRows)
         {
             ImportSkillDataRow(row);
         }

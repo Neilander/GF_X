@@ -10,7 +10,6 @@ public partial class InputManager : GameFrameworkComponent
     private const double InputTimestampFutureToleranceSeconds = 1d;
 
     public InputState CurState => selfStateMachine.curState;
-    public LogicInputFrame CurrentLogicInputFrame => _model?.CurrentLogicFrame ?? LogicInputFrame.Empty;
 
     private InputModel _model;
     private InputSM selfStateMachine;
@@ -72,7 +71,6 @@ public partial class InputManager : GameFrameworkComponent
             _playerCancelAction.Enable();
 
         BindGameplayCallbacks();
-        LogicTimeControlService.Changed += OnLogicTimeControlChanged;
         _wasLogicPaused = LogicTimeControlService.IsActive && LogicTimeControlService.IsPaused;
     }
 
@@ -80,13 +78,13 @@ public partial class InputManager : GameFrameworkComponent
     {
         SkillCastPresentationService.Cancel();
         _inputTimestampCalibrated = false;
-        LogicTimeControlService.Changed -= OnLogicTimeControlChanged;
         UnbindGameplayCallbacks();
         CleanupUIFormControl();
     }
 
     private void Update()
     {
+        UpdateLogicPausePresentation();
         selfStateMachine.UpdateState();
         if (SkillCastPresentationService.IsAiming && WasCancelPressedThisFrame())
         {
@@ -200,6 +198,18 @@ public partial class InputManager : GameFrameworkComponent
         return _attackAction != null && _attackAction.IsPressed();
     }
 
+    public bool IsInteractionPressed(InputKey key)
+    {
+        InputAction action = key switch
+        {
+            InputKey.InteractionPrimary => _interactAction,
+            InputKey.InteractionSecondary => _interact2Action,
+            InputKey.InteractionTertiary => _interact3Action,
+            _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown interaction input key."),
+        };
+        return action != null && action.IsPressed();
+    }
+
     public Vector2 GetPointerScreenPosition()
     {
         if (_selectPositionAction == null)
@@ -218,9 +228,6 @@ public partial class InputManager : GameFrameworkComponent
             throw new InvalidOperationException("InputManager.BindGameplayCallbacks failed: callbacks are already bound.");
 
         BindAction(_moveAction);
-        BindAction(_interactAction);
-        BindAction(_interact2Action);
-        BindAction(_interact3Action);
         BindAction(_attackAction);
         BindAction(_skill1Action);
         BindAction(_skill2Action);
@@ -238,9 +245,6 @@ public partial class InputManager : GameFrameworkComponent
             return;
 
         UnbindAction(_moveAction);
-        UnbindAction(_interactAction);
-        UnbindAction(_interact2Action);
-        UnbindAction(_interact3Action);
         UnbindAction(_attackAction);
         UnbindAction(_skill1Action);
         UnbindAction(_skill2Action);
@@ -401,9 +405,6 @@ public partial class InputManager : GameFrameworkComponent
     private ulong CaptureHeldBits()
     {
         ulong heldBits = 0;
-        AddHeldBit(_interactAction, LogicInputButton.InteractionPrimary, ref heldBits);
-        AddHeldBit(_interact2Action, LogicInputButton.InteractionSecondary, ref heldBits);
-        AddHeldBit(_interact3Action, LogicInputButton.InteractionTertiary, ref heldBits);
         AddHeldBit(_attackAction, LogicInputButton.PlayerAttack, ref heldBits);
         return heldBits;
     }
@@ -416,10 +417,7 @@ public partial class InputManager : GameFrameworkComponent
 
     private bool TryResolveButton(InputAction action, out LogicInputButton button)
     {
-        if (action == _interactAction) button = LogicInputButton.InteractionPrimary;
-        else if (action == _interact2Action) button = LogicInputButton.InteractionSecondary;
-        else if (action == _interact3Action) button = LogicInputButton.InteractionTertiary;
-        else if (action == _attackAction) button = LogicInputButton.PlayerAttack;
+        if (action == _attackAction) button = LogicInputButton.PlayerAttack;
         else
         {
             button = default;
@@ -469,7 +467,7 @@ public partial class InputManager : GameFrameworkComponent
         }
     }
 
-    private void OnLogicTimeControlChanged()
+    private void UpdateLogicPausePresentation()
     {
         bool isPaused = LogicTimeControlService.IsActive && LogicTimeControlService.IsPaused;
         if (isPaused == _wasLogicPaused)

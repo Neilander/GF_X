@@ -195,7 +195,7 @@ public static class LogicProjectileService
         EnsureActive();
         if (snapshot == null)
             throw new ArgumentNullException(nameof(snapshot));
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("LogicProjectileService.RestoreSnapshot failed: a logic frame is running.");
 
         var entities = new Dictionary<int, IEntityContext>();
@@ -256,7 +256,7 @@ public static class LogicProjectileService
     public static void ResetForWorldTransition()
     {
         EnsureActive();
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("LogicProjectileService.ResetForWorldTransition failed: a logic frame is running.");
         ClearState();
     }
@@ -264,7 +264,7 @@ public static class LogicProjectileService
     public static void EndTimeline()
     {
         EnsureActive();
-        if (LogicFrameRuntime.IsTicking)
+        if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("LogicProjectileService.EndTimeline failed: a logic frame is running.");
         ClearState();
         IsActive = false;

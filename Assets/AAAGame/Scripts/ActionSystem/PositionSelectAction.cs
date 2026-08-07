@@ -6,7 +6,7 @@ using UnityEngine;
 public class PositionSelectAction : BasicAction
 {
     [Header("范围选择预制体")]
-    [SerializeField]protected string posSelectPrefabName;
+    [SerializeField] protected string posSelectPrefabName;
     //[SerializeField] protected Vector3 selectScale;
 
     public string SelectorPrefabName
@@ -99,6 +99,4 @@ public class PositionSelectActionInfo : ActionInfo
     //需要设置的数值
     public Fix64 radius;
     public Fix64 selectionRadius;
-    public Vector3 selectScale;
-
 }

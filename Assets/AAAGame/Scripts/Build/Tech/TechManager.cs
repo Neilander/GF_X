@@ -413,7 +413,7 @@ public class TechManager : GameFrameworkComponent
 
         if (!InGameDataModel.HasActiveModel)
             throw new InvalidOperationException("TechManager requires an active InGameDataModel.");
-        return InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase));
+        return InGameDataModel.IsBuildPhase(LogicPhaseCommandService.GetRequiredCurrentPhase());
     }
 
     private BuildManager RequireBuildManager()

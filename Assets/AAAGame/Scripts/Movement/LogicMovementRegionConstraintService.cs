@@ -287,9 +287,16 @@ public static class LogicMovementRegionConstraintService
 
     private static bool IsNonVisibleBlocked(FixVector2 position)
     {
-        return LogicCardPlacementAuthority.IsActive
-               && LogicCardPlacementAuthority.IsWorldBound
-               && !LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(position);
+        if (LogicCardPlacementAuthority.IsActive && LogicCardPlacementAuthority.IsWorldBound)
+            return !LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(position);
+
+        if (LogicFrameRuntime.IsTimelineRunning)
+        {
+            throw new InvalidOperationException(
+                "LogicMovementRegionConstraintService requires bound fog authority while the logic timeline is running.");
+        }
+
+        return false;
     }
 
     private static void EnsureActive()

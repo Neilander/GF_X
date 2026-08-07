@@ -48,10 +48,11 @@ public static class LogicStrongholdMap
     private static readonly List<string> s_DeterministicStrongholdIds = new List<string>();
     private static readonly Comparison<string> s_DeterministicStrongholdIdComparison =
         string.CompareOrdinal;
-    private static FixVector2 s_Origin;
+    private static long s_OriginXGridRaw;
+    private static long s_OriginZGridRaw;
     private static FixVector2 s_LocalXAxis;
     private static FixVector2 s_LocalZAxis;
-    private static Fix64 s_CellSize;
+    private static long s_CellSizeGridRaw;
     private static Fix64 s_Determinant;
     private static FixVector2 s_CollisionXAxis;
     private static FixVector2 s_CollisionZAxis;
@@ -72,10 +73,54 @@ public static class LogicStrongholdMap
         Fix64 cellSize,
         IReadOnlyList<LogicStrongholdCellDefinition> cells)
     {
+        InitializeCore(
+            NavigationGridFixedMath.Fix64ToGridRaw(origin.x),
+            NavigationGridFixedMath.Fix64ToGridRaw(origin.y),
+            localXAxis,
+            localZAxis,
+            NavigationGridFixedMath.Fix64ToGridRaw(cellSize),
+            cells);
+    }
+
+    public static void InitializeFromAuthoredGrid(
+        float originX,
+        float originZ,
+        float localXAxisX,
+        float localXAxisZ,
+        float localZAxisX,
+        float localZAxisZ,
+        float cellSize,
+        IReadOnlyList<LogicStrongholdCellDefinition> cells)
+    {
+        long localXAxisXGridRaw = NavigationGridFixedMath.FloatToGridRaw(localXAxisX);
+        long localXAxisZGridRaw = NavigationGridFixedMath.FloatToGridRaw(localXAxisZ);
+        long localZAxisXGridRaw = NavigationGridFixedMath.FloatToGridRaw(localZAxisX);
+        long localZAxisZGridRaw = NavigationGridFixedMath.FloatToGridRaw(localZAxisZ);
+        InitializeCore(
+            NavigationGridFixedMath.FloatToGridRaw(originX),
+            NavigationGridFixedMath.FloatToGridRaw(originZ),
+            new FixVector2(
+                RequireExactFixedAxis(localXAxisXGridRaw, nameof(localXAxisX)),
+                RequireExactFixedAxis(localXAxisZGridRaw, nameof(localXAxisZ))),
+            new FixVector2(
+                RequireExactFixedAxis(localZAxisXGridRaw, nameof(localZAxisX)),
+                RequireExactFixedAxis(localZAxisZGridRaw, nameof(localZAxisZ))),
+            NavigationGridFixedMath.FloatToGridRaw(cellSize),
+            cells);
+    }
+
+    private static void InitializeCore(
+        long originXGridRaw,
+        long originZGridRaw,
+        FixVector2 localXAxis,
+        FixVector2 localZAxis,
+        long cellSizeGridRaw,
+        IReadOnlyList<LogicStrongholdCellDefinition> cells)
+    {
         if (IsInitialized)
             throw new InvalidOperationException("LogicStrongholdMap is already initialized.");
-        if (cellSize <= Fix64.Zero)
-            throw new ArgumentOutOfRangeException(nameof(cellSize), cellSize.RawValue, "Stronghold map cell size must be positive.");
+        if (cellSizeGridRaw <= 0)
+            throw new ArgumentOutOfRangeException(nameof(cellSizeGridRaw), cellSizeGridRaw, "Stronghold map cell size must be positive.");
         if (cells == null)
             throw new ArgumentNullException(nameof(cells));
 
@@ -124,10 +169,11 @@ public static class LogicStrongholdMap
         s_OwnerFactionByStrongholdId.Clear();
         foreach (KeyValuePair<string, int> pair in ownerFactionByStrongholdId)
             s_OwnerFactionByStrongholdId.Add(pair.Key, pair.Value);
-        s_Origin = origin;
+        s_OriginXGridRaw = originXGridRaw;
+        s_OriginZGridRaw = originZGridRaw;
         s_LocalXAxis = localXAxis;
         s_LocalZAxis = localZAxis;
-        s_CellSize = cellSize;
+        s_CellSizeGridRaw = cellSizeGridRaw;
         s_Determinant = determinant;
         s_CollisionXAxis = collisionXAxis;
         s_CollisionZAxis = collisionZAxis;
@@ -138,10 +184,11 @@ public static class LogicStrongholdMap
         s_BlockedCellObstacleAllowedFactionId = 0;
         s_BlockedCellObstacles.Clear();
         s_AuthorityHash = ComputeAuthorityHash(
-            origin,
+            originXGridRaw,
+            originZGridRaw,
             localXAxis,
             localZAxis,
-            cellSize,
+            cellSizeGridRaw,
             ordered);
         IsInitialized = true;
     }
@@ -152,10 +199,11 @@ public static class LogicStrongholdMap
         s_OwnerFactionByStrongholdId.Clear();
         s_DeterministicCells.Clear();
         s_BlockedCellObstacles.Clear();
-        s_Origin = FixVector2.Zero;
+        s_OriginXGridRaw = 0;
+        s_OriginZGridRaw = 0;
         s_LocalXAxis = FixVector2.Zero;
         s_LocalZAxis = FixVector2.Zero;
-        s_CellSize = Fix64.Zero;
+        s_CellSizeGridRaw = 0;
         s_Determinant = Fix64.Zero;
         s_CollisionXAxis = FixVector2.Zero;
         s_CollisionZAxis = FixVector2.Zero;
@@ -172,11 +220,11 @@ public static class LogicStrongholdMap
     {
         EnsureInitialized();
 
-        FixVector2 delta = worldPosition - s_Origin;
+        FixVector2 delta = WorldDeltaFromAuthoredOrigin(worldPosition);
         Fix64 localX = (delta.x * s_LocalZAxis.y - delta.y * s_LocalZAxis.x) / s_Determinant;
         Fix64 localZ = (s_LocalXAxis.x * delta.y - s_LocalXAxis.y * delta.x) / s_Determinant;
-        int cellX = RoundToIntMidpointToEven(localX / s_CellSize);
-        int cellY = RoundToIntMidpointToEven(localZ / s_CellSize);
+        int cellX = RoundToIntMidpointToEven(localX, s_CellSizeGridRaw);
+        int cellY = RoundToIntMidpointToEven(localZ, s_CellSizeGridRaw);
         return s_StrongholdIdByCell.TryGetValue(new Cell(cellX, cellY), out strongholdId);
     }
 
@@ -321,9 +369,10 @@ public static class LogicStrongholdMap
         }
 
         s_BlockedCellObstacles.Clear();
+        Fix64 cellSize = NavigationGridFixedMath.GridRawToFix64(s_CellSizeGridRaw);
         FixVector2 halfExtents = new FixVector2(
-            s_CellSize * s_CollisionXAxisScale / (Fix64)2,
-            s_CellSize * s_CollisionZAxisScale / (Fix64)2);
+            cellSize * s_CollisionXAxisScale / (Fix64)2,
+            cellSize * s_CollisionZAxisScale / (Fix64)2);
         for (int i = 0; i < s_DeterministicCells.Count; i++)
         {
             Cell cell = s_DeterministicCells[i];
@@ -331,12 +380,16 @@ public static class LogicStrongholdMap
             if (s_OwnerFactionByStrongholdId[strongholdId] == allowedFactionId)
                 continue;
 
+            Fix64 localCellX = NavigationGridFixedMath.GridRawToFix64(
+                checked((long)cell.X * s_CellSizeGridRaw));
+            Fix64 localCellY = NavigationGridFixedMath.GridRawToFix64(
+                checked((long)cell.Y * s_CellSizeGridRaw));
             s_BlockedCellObstacles.Add(new LogicStaticCollisionObstacle(
                 i + 1,
                 LogicStaticCollisionObstacleKind.Box,
                 new FixVector2(
-                    (Fix64)cell.X * s_CellSize * s_CollisionXAxisScale,
-                    (Fix64)cell.Y * s_CellSize * s_CollisionZAxisScale),
+                    localCellX * s_CollisionXAxisScale,
+                    localCellY * s_CollisionZAxisScale),
                 halfExtents,
                 Fix64.Zero));
         }
@@ -347,7 +400,7 @@ public static class LogicStrongholdMap
 
     private static FixVector2 WorldToCollisionLocal(FixVector2 worldPosition)
     {
-        FixVector2 delta = worldPosition - s_Origin;
+        FixVector2 delta = WorldDeltaFromAuthoredOrigin(worldPosition);
         return new FixVector2(
             FixVector2.Dot(delta, s_CollisionXAxis),
             FixVector2.Dot(delta, s_CollisionZAxis));
@@ -355,9 +408,22 @@ public static class LogicStrongholdMap
 
     private static FixVector2 CollisionLocalToWorld(FixVector2 localPosition)
     {
-        return s_Origin
-               + s_CollisionXAxis * localPosition.x
-               + s_CollisionZAxis * localPosition.y;
+        FixVector2 offset = s_CollisionXAxis * localPosition.x
+                            + s_CollisionZAxis * localPosition.y;
+        return new FixVector2(
+            NavigationGridFixedMath.GridRawToFix64(
+                checked(s_OriginXGridRaw + NavigationGridFixedMath.Fix64ToGridRaw(offset.x))),
+            NavigationGridFixedMath.GridRawToFix64(
+                checked(s_OriginZGridRaw + NavigationGridFixedMath.Fix64ToGridRaw(offset.y))));
+    }
+
+    private static FixVector2 WorldDeltaFromAuthoredOrigin(FixVector2 worldPosition)
+    {
+        return new FixVector2(
+            NavigationGridFixedMath.GridRawToFix64(
+                checked(NavigationGridFixedMath.Fix64ToGridRaw(worldPosition.x) - s_OriginXGridRaw)),
+            NavigationGridFixedMath.GridRawToFix64(
+                checked(NavigationGridFixedMath.Fix64ToGridRaw(worldPosition.y) - s_OriginZGridRaw)));
     }
 
     public static void WriteDeterministicState(LogicStateHasher hasher)
@@ -384,21 +450,22 @@ public static class LogicStrongholdMap
     }
 
     private static ulong ComputeAuthorityHash(
-        FixVector2 origin,
+        long originXGridRaw,
+        long originZGridRaw,
         FixVector2 localXAxis,
         FixVector2 localZAxis,
-        Fix64 cellSize,
+        long cellSizeGridRaw,
         IReadOnlyList<LogicStrongholdCellDefinition> ordered)
     {
         var hasher = new LogicStateHasher();
         hasher.Add(0x5354524F4E474D50UL);
-        hasher.Add(origin.x.RawValue);
-        hasher.Add(origin.y.RawValue);
+        hasher.Add(originXGridRaw);
+        hasher.Add(originZGridRaw);
         hasher.Add(localXAxis.x.RawValue);
         hasher.Add(localXAxis.y.RawValue);
         hasher.Add(localZAxis.x.RawValue);
         hasher.Add(localZAxis.y.RawValue);
-        hasher.Add(cellSize.RawValue);
+        hasher.Add(cellSizeGridRaw);
         hasher.Add(ordered.Count);
         for (int i = 0; i < ordered.Count; i++)
         {
@@ -419,17 +486,31 @@ public static class LogicStrongholdMap
         return y != 0 ? y : string.CompareOrdinal(left.StrongholdId, right.StrongholdId);
     }
 
-    private static int RoundToIntMidpointToEven(Fix64 value)
+    private static int RoundToIntMidpointToEven(Fix64 localCoordinate, long cellSizeGridRaw)
     {
-        long whole = value.RawValue / Fix64.One.RawValue;
-        long remainder = value.RawValue % Fix64.One.RawValue;
+        long value = NavigationGridFixedMath.Fix64ToGridRaw(localCoordinate);
+        long whole = value / cellSizeGridRaw;
+        long remainder = value % cellSizeGridRaw;
         long absoluteRemainder = remainder < 0 ? -remainder : remainder;
-        long half = Fix64.One.RawValue / 2;
-        if (absoluteRemainder > half || (absoluteRemainder == half && (whole & 1L) != 0L))
+        long half = cellSizeGridRaw / 2;
+        bool exactHalf = (cellSizeGridRaw & 1L) == 0L && absoluteRemainder == half;
+        if (absoluteRemainder > half || (exactHalf && (whole & 1L) != 0L))
             whole += remainder < 0 ? -1L : 1L;
         if (whole < int.MinValue || whole > int.MaxValue)
-            throw new OverflowException($"LogicStrongholdMap grid coordinate is outside Int32. raw={value.RawValue}.");
+            throw new OverflowException($"LogicStrongholdMap grid coordinate is outside Int32. raw={value}.");
         return (int)whole;
+    }
+
+    private static Fix64 RequireExactFixedAxis(long gridRaw, string parameterName)
+    {
+        Fix64 value = NavigationGridFixedMath.GridRawToFix64(gridRaw);
+        if (NavigationGridFixedMath.Fix64ToGridRaw(value) != gridRaw)
+        {
+            throw new InvalidOperationException(
+                $"LogicStrongholdMap authored grid axis '{parameterName}' cannot be represented exactly by Fix64.");
+        }
+
+        return value;
     }
 
 }

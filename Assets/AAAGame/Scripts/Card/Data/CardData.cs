@@ -58,14 +58,10 @@ public class CardData : ScriptableObject
 
     private CharacterDataDetail ResolveCharacterRow()
     {
-        if (GF.DataTable == null)
+        if (!LogicRuntimeDataTableCache.IsPrepared)
             return null;
-
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
-        if (table == null)
-            return null;
-
-        string characterKey = m_SoldierIndex.ToString();
-        return table.GetDataRow(r => r.CharacterKey == characterKey);
+        return LogicRuntimeDataTableCache.TryGetCharacter(m_SoldierIndex.ToString(), out CharacterDataDetail row)
+            ? row
+            : null;
     }
 }

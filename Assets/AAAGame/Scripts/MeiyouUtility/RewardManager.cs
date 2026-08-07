@@ -111,6 +111,8 @@ public class RewardManager : GameFrameworkComponent
 
 	public void UpdatePresentation()
 	{
+		if (LogicFrameRuntime.IsExecutingFrame)
+			throw new InvalidOperationException("Reward presentation cannot run during a logic frame.");
 		if (m_PendingCoinFlyPresentation.Count == 0 || GF.UI == null)
 			return;
 		if (!TryGetPlayerPresentationPosition(out Vector3 playerPosition))
@@ -248,7 +250,7 @@ public class RewardManager : GameFrameworkComponent
 		int oldFactionId,
 		int newFactionId)
 	{
-		if ((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase) != GamePhase.Invade)
+		if (LogicPhaseCommandService.GetRequiredCurrentPhase() != GamePhase.Invade)
 			return;
 
 		if (oldFactionId == EntitySideHelper.PlayerFactionId || newFactionId != EntitySideHelper.PlayerFactionId)

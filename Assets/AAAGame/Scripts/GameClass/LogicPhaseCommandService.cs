@@ -42,6 +42,12 @@ public static class LogicPhaseCommandService
     public static event Action<LogicPhaseCommand> CommandRecorded;
     public static event Action<GamePhase, GamePhase> PhaseApplied;
 
+    public static GamePhase GetRequiredCurrentPhase()
+    {
+        EnsureReady();
+        return CurrentPhase;
+    }
+
     public static void BeginTimeline()
     {
         if (IsActive)
@@ -164,8 +170,16 @@ public static class LogicPhaseCommandService
             {
                 LogicPhaseCommand command = s_Due[i];
                 GamePhase oldPhase = CurrentPhase;
-                sink(command);
                 CurrentPhase = command.Phase;
+                try
+                {
+                    sink(command);
+                }
+                catch
+                {
+                    CurrentPhase = oldPhase;
+                    throw;
+                }
                 if (oldPhase != CurrentPhase)
                     PhaseApplied?.Invoke(oldPhase, CurrentPhase);
             }

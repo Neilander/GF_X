@@ -68,7 +68,6 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicTimeControlService.BeginTimeline();
         LogicInGameValueCommandService.BeginTimeline();
         LogicGameEndService.BeginTimeline();
-        LogicInteractionHoldService.BeginTimeline();
         LogicInteractionTargetStateService.BeginTimeline();
         LogicInteractionCommandService.BeginTimeline();
         LogicCardCommandService.BeginTimeline();
@@ -127,16 +126,23 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         }
 
         UpdateLogicFrames();
+        LogicFrameRuntime.SyncPresentationPhysics();
+        LogicEntityLifecycleService.UpdatePresentation();
+        LevelEntity.UpdateActivePresentation();
         LogicInteractionCommandService.UpdatePresentationEvents();
         InGameDataModel.UpdatePresentationEvents();
         SkillRuntimeDataModel.UpdatePresentationEvents();
         LogicTechEffectCommandService.UpdatePresentationEvents();
+        GlobalBuffManager.RequireCurrent().UpdatePresentation();
         BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
         if (buildManager != null)
             buildManager.UpdatePresentation();
         RewardManager rewardManager = GameEntry.GetComponent<RewardManager>();
         if (rewardManager != null)
             rewardManager.UpdatePresentation();
+        GameEndManager gameEndManager = GameEntry.GetComponent<GameEndManager>()
+                                        ?? throw new InvalidOperationException("RuntimeProcedureBase requires GameEndManager.");
+        gameEndManager.UpdatePresentation();
         TutorialManager tutorialManager = GameEntry.GetComponent<TutorialManager>();
         if (tutorialManager != null)
             tutorialManager.UpdatePresentation();
@@ -147,6 +153,8 @@ public abstract class RuntimeProcedureBase : ProcedureBase
 
     protected override void OnLeave(IFsm<IProcedureManager> procedureOwner, bool isShutdown)
     {
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("RuntimeProcedureBase cannot leave during a logic frame.");
 #if UNITY_EDITOR
         EditorApplication.pauseStateChanged -= OnEditorPauseStateChanged;
         m_EditorPauseNeedsClockRebase = false;
@@ -156,6 +164,9 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             StageCheckpointRuntimeCoordinator.EndSession();
         StageCheckpointRuntimeCoordinator.AbortPendingRestore();
         OnRuntimeShutdown();
+        LogicEntityLifecycleService.DeactivateAllForShutdown();
+        GF.Entity.HideAllLoadingEntities();
+        GF.Entity.HideAllLoadedEntities();
         m_RuntimeInitPipeline?.Shutdown();
         m_RuntimeInitPipeline = null;
         m_ProcedureOwner = null;
@@ -169,9 +180,6 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         }
         ProjectilePresentationService.EndTimeline();
         LogicEntityViewSpawnQueue.EndTimeline();
-        LogicEntityLifecycleService.DeactivateAllForShutdown();
-        GF.Entity.HideAllLoadingEntities();
-        GF.Entity.HideAllLoadedEntities();
         LogicObstacleCommandService.EndTimeline();
         LogicEntityLifecycleService.EndTimeline();
         LogicTechEffectCommandService.EndTimeline();
@@ -186,7 +194,6 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         MAEntityLogicFrameSystem.EndTimeline();
         LogicEntityFrameSnapshotService.EndTimeline();
         LogicPhaseCommandService.EndTimeline();
-        LogicInteractionHoldService.EndTimeline();
         LogicGameEndService.EndTimeline();
         LogicInGameValueCommandService.EndTimeline();
         LogicTimeControlService.EndTimeline();
@@ -392,7 +399,6 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                 LogicEntityLifecycleService.ActiveEntityCount,
                 LogicEntityIdAllocator.LastAllocatedValue);
             LogicEntityLifecycleService.DeactivateAllForShutdown();
-            LogicInteractionHoldService.ResetForWorldTransition();
             LogicInGameValueCommandService.ResetForWorldTransition();
             LogicGameEndService.ResetForWorldTransition();
             LogicInteractionTargetStateService.ResetForWorldTransition();
@@ -424,7 +430,6 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                 LogicReplayRuntime.EndRecording();
             }
             LogicTimeControlService.ResetFrameTimelinePreservingPauses();
-            LogicInteractionHoldService.ResetFrameTimeline();
             LogicInteractionCommandService.ResetFrameTimeline();
             LogicCardCommandService.ResetFrameTimeline();
             LogicCardPlacementAuthority.ResetFrameTimeline();
@@ -636,11 +641,13 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         double cutoffRealtime,
         out LogicInputFrame inputFrame)
     {
+        LogicFrameRuntime.BeginFrameExecution(frame);
+        try
+        {
         bool profile = MainThreadFrameProfiler.LoggingEnabled;
         long commandsStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         LogicTimeControlService.BeginFrame(frame);
         inputFrame = logicInputManager.SealLogicInputFrame(frame, cutoffRealtime);
-        LogicInteractionHoldService.ProcessFrame(inputFrame);
         LogicInGameValueCommandService.ApplyFrame(frame);
         if (LogicCardPlacementAuthority.IsWorldBound)
         {
@@ -694,6 +701,11 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             return LogicGameplayStateDigest.FromOpaqueHash(0);
 
         return LogicGameplayStateHasher.ComputeCurrentFrameDigest();
+        }
+        finally
+        {
+            LogicFrameRuntime.EndFrameExecution(frame);
+        }
     }
 
 #if UNITY_EDITOR

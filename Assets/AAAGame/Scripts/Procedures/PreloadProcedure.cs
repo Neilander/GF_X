@@ -75,6 +75,11 @@ public class PreloadProcedure : ProcedureBase
         if (loadedProgress >= totalProgress && smoothProgress >= 0.99f)
         {
             preloadAllCompleted = true;
+            BuildingCombatShapeCatalog.PrepareRuntimeDependencies();
+            BuildingLogicObstacleShapeCatalog.PrepareRuntimeDependencies();
+            AAAGame.Card.CardStaticForbiddenShapeCatalog.PrepareRuntimeDependencies();
+            TechTestSlotConfig.PrepareRuntimeDependencies();
+            UnitWeaponSOOverrideResolver.PrepareRuntimeMappings();
             AgentTypeHelper.PrepareRuntimeMappings();
             CriticalDamageUtility.PrepareRuntimeDependencies();
             FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
@@ -330,6 +335,7 @@ public class PreloadProcedure : ProcedureBase
         m_DataTablesCount--;
         if (m_DataTablesCount == 0)
         {
+            LogicRuntimeDataTableCache.PrepareRuntimeDependencies();
             InitializeGlobalTableCaches();
             GlobalBuffManager globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>()
                                                   ?? throw new GameFrameworkException(
