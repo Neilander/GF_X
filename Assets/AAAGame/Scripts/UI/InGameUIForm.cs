@@ -280,15 +280,15 @@ public partial class InGameUIForm : UIFormBase
             return;
         }
 
-        if (!TryGetCurrentFriendlyStronghold(out Stronghold stronghold))
+        IEntityContext player = EntityRegistry.Player
+            ?? throw new System.InvalidOperationException("Phase switch requires a registered player entity.");
+        if (TryGetCurrentEnemyStronghold(player.PositionFixed, out string strongholdId, out int ownerFactionId))
         {
             SideTipsManager sideTipsManager = GameEntry.GetComponent<SideTipsManager>()
                 ?? throw new System.InvalidOperationException("Phase switch requires SideTipsManager.");
             sideTipsManager.ShowTip("PhaseSwitchBlocked");
 
-            string strongholdId = stronghold?.strongholdData != null ? stronghold.strongholdData.StrongholdId : "none";
-            int ownerFactionId = stronghold != null ? stronghold.OwnerFactionId : -1;
-            Log.Info("[PhaseSwitch] Blocked switch: player is not in friendly stronghold. id={0}, ownerFaction={1}.", strongholdId, ownerFactionId);
+            Log.Info("[PhaseSwitch] Blocked switch: player is in enemy stronghold. id={0}, ownerFaction={1}.", strongholdId, ownerFactionId);
             return;
         }
 
@@ -320,17 +320,19 @@ public partial class InGameUIForm : UIFormBase
         m_PhaseSwitchHoldTrigger = null;
     }
 
-    private static bool TryGetCurrentFriendlyStronghold(out Stronghold stronghold)
+    internal static bool TryGetCurrentEnemyStronghold(
+        FixVector2 heroPosition,
+        out string strongholdId,
+        out int ownerFactionId)
     {
-        stronghold = null;
-
-        if (EntityRegistry.Player == null || LevelEntity.ActiveLevelEntity == null)
+        if (!LogicStrongholdMap.TryResolveStrongholdId(heroPosition, out strongholdId))
         {
+            ownerFactionId = -1;
             return false;
         }
 
-        stronghold = LevelEntity.GetStrongholdAtWorldPosition(EntityRegistry.Player.Position);
-        return stronghold != null && stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId;
+        ownerFactionId = LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId);
+        return ownerFactionId == EntitySideHelper.EnemyFactionId;
     }
 
     private void StartPhaseSwitchBlink()

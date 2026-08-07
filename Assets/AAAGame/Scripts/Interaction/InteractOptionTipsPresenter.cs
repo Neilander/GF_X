@@ -17,12 +17,14 @@ public class InteractOptionTipsPresenter : MonoBehaviour
     private int _buildTipsFormId = -1;
     private int _upgradeTipsFormId = -1;
     private int _infoTipsFormId = -1;
+    private InteractionHost _currentTarget;
 
     private void Awake()
     {
         if (_subscribed)
             return;
         GF.Event.Subscribe(InteractionFocusChangedEventArgs.EventId, OnFocusChanged);
+        GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
         _subscribed = true;
     }
 
@@ -34,6 +36,7 @@ public class InteractOptionTipsPresenter : MonoBehaviour
         try
         {
             GF.Event.Unsubscribe(InteractionFocusChangedEventArgs.EventId, OnFocusChanged);
+            GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
         }
         catch (GameFrameworkException)
         {
@@ -64,7 +67,33 @@ public class InteractOptionTipsPresenter : MonoBehaviour
         if (args == null)
             return;
 
-        if (args.Target == null)
+        _currentTarget = args.Target;
+        PresentTarget(_currentTarget);
+    }
+
+    private void OnTechUnlocked(object sender, GameEventArgs e)
+    {
+        TechUnlockedEventArgs args = e as TechUnlockedEventArgs
+                                     ?? throw new InvalidOperationException("Tech unlocked event payload is invalid.");
+        BuildingEntity building = ResolveTargetBuilding(_currentTarget);
+        if (building == null
+            || !string.Equals(
+                building.BuildingInstanceId,
+                args.SourceBuildingInstanceId,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        PresentTarget(_currentTarget);
+    }
+
+    private void PresentTarget(InteractionHost target)
+    {
+        if (target == null)
+            _currentTarget = null;
+
+        if (target == null)
         {
             CloseInteractTips();
             CloseBuildTips();
@@ -78,32 +107,32 @@ public class InteractOptionTipsPresenter : MonoBehaviour
             return;
         }
 
-        if (ShouldShowBuildTips(args.Target))
+        if (ShouldShowBuildTips(target))
         {
             CloseInteractTips();
             CloseUpgradeTips();
             CloseInfoTips();
             long buildTipsStartTicks = Stopwatch.GetTimestamp();
-            OpenOrUpdateBuildTips(args.Target);
+            OpenOrUpdateBuildTips(target);
             MainThreadFrameProfiler.Record(MainThreadPerfScope.InteractionBuildTipsRequest, Stopwatch.GetTimestamp() - buildTipsStartTicks);
             return;
         }
 
-        if (ShouldShowUpgradeTips(args.Target))
+        if (ShouldShowUpgradeTips(target))
         {
             CloseInteractTips();
             CloseBuildTips();
             CloseInfoTips();
-            OpenOrUpdateUpgradeTips(args.Target);
+            OpenOrUpdateUpgradeTips(target);
             return;
         }
 
-        if (ShouldShowInfoTips(args.Target))
+        if (ShouldShowInfoTips(target))
         {
             CloseInteractTips();
             CloseBuildTips();
             CloseUpgradeTips();
-            OpenOrUpdateInfoTips(args.Target);
+            OpenOrUpdateInfoTips(target);
             return;
         }
 
@@ -117,8 +146,8 @@ public class InteractOptionTipsPresenter : MonoBehaviour
             var logic = uiForm != null ? uiForm.Logic as InteractOptionTips : null;
             if (logic != null)
             {
-                Debug.Log($"[Interact Tips] Update tips target={args.Target.Transform.name}");
-                logic.ApplyTarget(args.Target);
+                Debug.Log($"[Interact Tips] Update tips target={target.Transform.name}");
+                logic.ApplyTarget(target);
                 return;
             }
 
@@ -128,9 +157,17 @@ public class InteractOptionTipsPresenter : MonoBehaviour
 
         var uiParams = UIParams.Create();
 
-        Debug.Log($"[Interact Tips] Open tips for target={args.Target.Transform.name}");
-        uiParams.Set(InteractOptionTips.P_TargetHost, args.Target);
+        Debug.Log($"[Interact Tips] Open tips for target={target.Transform.name}");
+        uiParams.Set(InteractOptionTips.P_TargetHost, target);
         _tipsFormId = GF.UI.OpenUIForm(UIViews.InteractOptionTips, uiParams);
+    }
+
+    private static BuildingEntity ResolveTargetBuilding(InteractionHost target)
+    {
+        if (target == null)
+            return null;
+
+        return target.Owner as BuildingEntity ?? target.GetComponent<BuildingEntity>();
     }
 
     private void OpenOrUpdateBuildTips(InteractionHost target)

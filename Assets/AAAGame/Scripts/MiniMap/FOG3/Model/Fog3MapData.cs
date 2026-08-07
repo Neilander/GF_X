@@ -85,6 +85,7 @@ namespace AAAGame.MiniMap.FOG3
         private readonly bool[] walkable;
         private readonly float[] currentVisibility;
         private readonly ulong terrainHash;
+        private readonly FixVector2 worldOriginFixed;
         private int exploredCellCount;
         private ulong explorationXorDigest;
         private ulong explorationSumDigest;
@@ -98,6 +99,10 @@ namespace AAAGame.MiniMap.FOG3
             Height = terrainInfo.Height;
             CellSize = terrainInfo.CellSize;
             WorldOrigin = terrainInfo.Origin;
+            CellSizeFixed = (Fix64)terrainInfo.CellSize;
+            worldOriginFixed = new FixVector2((Fix64)terrainInfo.Origin.x, (Fix64)terrainInfo.Origin.z);
+            if (CellSizeFixed <= Fix64.Zero)
+                throw new System.InvalidOperationException("Fog3MapData fixed cell size must be positive.");
 
             int length = Width * Height;
             explored = new bool[length];
@@ -110,6 +115,7 @@ namespace AAAGame.MiniMap.FOG3
         public int Width { get; }
         public int Height { get; }
         public float CellSize { get; }
+        public Fix64 CellSizeFixed { get; }
         public Vector3 WorldOrigin { get; }
         public bool IsDirty { get; private set; }
         public int ExploredCellCount => exploredCellCount;
@@ -128,8 +134,28 @@ namespace AAAGame.MiniMap.FOG3
 
         public void ClearCurrentVisibility()
         {
+            bool changed = false;
             for (int i = 0; i < currentVisibility.Length; i++)
+            {
+                changed |= currentVisibility[i] > 0f;
                 currentVisibility[i] = 0f;
+            }
+
+            if (changed)
+                IsDirty = true;
+        }
+
+        public void MarkVisible(int x, int y)
+        {
+            if (!IsValidCell(x, y))
+                throw new ArgumentOutOfRangeException(nameof(x), $"Fog visibility cell ({x},{y}) is outside {Width}x{Height}.");
+
+            int index = GetIndex(x, y);
+            if (!walkable[index] || currentVisibility[index] >= 1f)
+                return;
+
+            currentVisibility[index] = 1f;
+            IsDirty = true;
         }
 
         public void AddVisibility(int x, int y, float intensity)
@@ -288,11 +314,34 @@ namespace AAAGame.MiniMap.FOG3
             return IsValidCell(gridX, gridY);
         }
 
+        public bool WorldToGrid(FixVector2 worldPos, out int gridX, out int gridY)
+        {
+            FixVector2 localPos = worldPos - worldOriginFixed;
+            gridX = FloorToInt(localPos.x / CellSizeFixed);
+            gridY = FloorToInt(localPos.y / CellSizeFixed);
+            return IsValidCell(gridX, gridY);
+        }
+
         public Vector3 GridToWorldCenter(int gridX, int gridY)
         {
             float worldX = WorldOrigin.x + (gridX + 0.5f) * CellSize;
             float worldZ = WorldOrigin.z + (gridY + 0.5f) * CellSize;
             return new Vector3(worldX, WorldOrigin.y, worldZ);
+        }
+
+        public FixVector2 GetCellCenterFixed(int gridX, int gridY)
+        {
+            Fix64 half = Fix64.One / (Fix64)2;
+            return new FixVector2(
+                worldOriginFixed.x + ((Fix64)gridX + half) * CellSizeFixed,
+                worldOriginFixed.y + ((Fix64)gridY + half) * CellSizeFixed);
+        }
+
+        public Fog3CellState GetCellState(FixVector2 worldPos)
+        {
+            return WorldToGrid(worldPos, out int gridX, out int gridY)
+                ? GetCellState(gridX, gridY)
+                : Fog3CellState.Outside;
         }
 
         public bool IsPositionVisible(Vector3 worldPos)
@@ -370,6 +419,18 @@ namespace AAAGame.MiniMap.FOG3
         private int GetIndex(int x, int y)
         {
             return x + y * Width;
+        }
+
+        private static int FloorToInt(Fix64 value)
+        {
+            long raw = value.RawValue;
+            long one = Fix64.One.RawValue;
+            long result = raw / one;
+            if (raw < 0 && raw % one != 0)
+                result--;
+            if (result < int.MinValue || result > int.MaxValue)
+                throw new System.OverflowException($"Fog3 grid coordinate is outside Int32. raw={raw}.");
+            return (int)result;
         }
 
         private ulong ComputeTerrainHash()

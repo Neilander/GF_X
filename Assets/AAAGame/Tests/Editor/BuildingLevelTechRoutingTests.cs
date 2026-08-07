@@ -52,6 +52,63 @@ public sealed class BuildingLevelTechRoutingTests
     }
 
     [Test]
+    public void SequentialUpgradeTechs_AreAssignedByTargetLevel()
+    {
+        BuildingTable dutyRoom = FindBuildingRow("Buil_DutyRoom");
+
+        CollectionAssert.AreEqual(
+            new[] { "Tech_Buil_DutyRoom_Lv2" },
+            BuildingDataModel.ResolveUpgradeTechIDs(dutyRoom, 1));
+        CollectionAssert.AreEqual(
+            new[] { "Tech_Buil_DutyRoom_Lv3" },
+            BuildingDataModel.ResolveUpgradeTechIDs(dutyRoom, 2));
+    }
+
+    [Test]
+    public void BranchedUpgradeTechs_KeepTwoOptionsPerTargetLevel()
+    {
+        BuildingTable securityOffice = FindBuildingRow("Buil_SecurityOffice");
+
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "Tech_Buil_SecurityOffice_Lv2_Opt1",
+                "Tech_Buil_SecurityOffice_Lv2_Opt2",
+            },
+            BuildingDataModel.ResolveUpgradeTechIDs(securityOffice, 1));
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "Tech_Buil_SecurityOffice_Lv3_Opt1",
+                "Tech_Buil_SecurityOffice_Lv3_Opt2",
+            },
+            BuildingDataModel.ResolveUpgradeTechIDs(securityOffice, 2));
+    }
+
+    [Test]
+    public void CurrentTable_AllNonTechBuildingsExposeConfiguredUpgradeTechsAtLevelsOneAndTwo()
+    {
+        foreach (BuildingTable row in LoadBuildingRows())
+        {
+            if (row.Identifier.EndsWith("_Lv0", StringComparison.Ordinal) || row.Type == BuilType.Tech)
+                continue;
+
+            for (int level = 1; level <= 2; level++)
+            {
+                string[] techIds = BuildingDataModel.ResolveUpgradeTechIDs(row, level);
+                Assert.IsNotNull(techIds, $"{row.Identifier} level {level} has no upgrade tech array.");
+                Assert.IsNotEmpty(techIds, $"{row.Identifier} level {level} has no upgrade tech slots.");
+                for (int i = 0; i < techIds.Length; i++)
+                {
+                    Assert.IsFalse(
+                        string.IsNullOrWhiteSpace(techIds[i]),
+                        $"{row.Identifier} level {level} has an empty upgrade tech slot at index {i}.");
+                }
+            }
+        }
+    }
+
+    [Test]
     public void ParameterizedArmyLevelTech_UsesArmyUnitLevelSystem()
     {
         BuildingTable interviewRoom = FindBuildingRow("Buil_InterviewRoom");

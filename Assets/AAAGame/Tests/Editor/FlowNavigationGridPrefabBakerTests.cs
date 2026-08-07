@@ -10,6 +10,14 @@ public sealed class FlowNavigationGridPrefabBakerTests
     private const string TempFolder = "Assets/AAAGame/Tests/Editor/TempFlowNavigationGridPrefabBaker";
     private const string TempPrefabPath = TempFolder + "/Terrain.prefab";
     private const string TempAssetPath = TempFolder + "/FlowGrid.asset";
+    private const string LvTestPrefabPath = "Assets/AAAGame/Prefabs/Entity/Level/LvTest.prefab";
+
+    private static readonly string[] LvTestNavigationGridPaths =
+    {
+        "Assets/AAAGame/Tilemap/LvTest_FlowNavigationGrid_Small.asset",
+        "Assets/AAAGame/Tilemap/LvTest_FlowNavigationGrid_Medium.asset",
+        "Assets/AAAGame/Tilemap/LvTest_FlowNavigationGrid_Large.asset"
+    };
 
     [SetUp]
     public void SetUp()
@@ -50,6 +58,38 @@ public sealed class FlowNavigationGridPrefabBakerTests
         Assert.IsNotNull(asset);
         Assert.IsFalse(asset.IsCellWalkable(1, 1), "A cell with no full-footprint anchor outside the obstacle must be blocked.");
         Assert.IsTrue(asset.IsCellWalkable(0, 1), "Nearby cell outside the obstacle footprint should remain walkable.");
+    }
+
+    [Test]
+    public void LvTestPermanentNoCollisionTrapCenterIsWalkableForEveryMovementType()
+    {
+        GameObject levelPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(LvTestPrefabPath);
+        Assert.IsNotNull(levelPrefab, LvTestPrefabPath);
+
+        EntityPresetPoint trapPoint = null;
+        EntityPresetPoint[] points = levelPrefab.GetComponentsInChildren<EntityPresetPoint>(true);
+        for (int i = 0; i < points.Length; i++)
+        {
+            EntityPresetPoint point = points[i];
+            if (!string.Equals(point.Identifier, "Buil_Trap_Lv1", StringComparison.Ordinal))
+                continue;
+            Assert.IsNull(trapPoint, "LvTest must contain exactly one Buil_Trap_Lv1 preset point.");
+            trapPoint = point;
+        }
+
+        Assert.IsNotNull(trapPoint, "LvTest must contain a Buil_Trap_Lv1 preset point.");
+        Assert.IsTrue(BuildingAbilityIds.HasPermanentNoCollisionCapability(trapPoint.Identifier));
+        Vector3 trapPosition = trapPoint.Position;
+        for (int i = 0; i < LvTestNavigationGridPaths.Length; i++)
+        {
+            string gridPath = LvTestNavigationGridPaths[i];
+            FlowNavigationGridAsset grid = AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>(gridPath);
+            Assert.IsNotNull(grid, gridPath);
+            Assert.IsTrue(grid.WorldToCell(trapPosition, out int x, out int y),
+                $"Trap position {trapPosition} must be inside {gridPath}.");
+            Assert.IsTrue(grid.IsCellWalkable(x, y),
+                $"Permanent no-collision trap must not block {gridPath} at cell ({x},{y}).");
+        }
     }
 
     [Test]

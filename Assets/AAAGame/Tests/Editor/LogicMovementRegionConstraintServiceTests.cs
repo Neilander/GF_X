@@ -302,7 +302,7 @@ public sealed class LogicMovementRegionConstraintServiceTests
     }
 
     [Test]
-    public void Invade_PlayerMoveIntoUnexploredArea_IsAllowed()
+    public void Invade_PlayerMoveIntoNonVisibleArea_IsRejected()
     {
         LogicStrongholdMap.Clear();
         LogicCardPlacementAuthority.BeginTimeline();
@@ -318,17 +318,49 @@ public sealed class LogicMovementRegionConstraintServiceTests
 
         LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.Invade);
         LogicTimeControlService.BeginFrame(1);
+        LogicCardPlacementAuthority.ApplyFrame(1);
         LogicPhaseCommandService.ApplyFrameForTests(1, _ => { });
 
-        FixVector2 hidden = CellCenter(2);
+        FixVector2 visible = CellCenter(1);
+        Assert.IsTrue(LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(visible));
         Assert.AreEqual(
-            hidden,
+            visible,
             LogicMovementRegionConstraintService.ResolvePosition(
                 player,
                 player.PositionFixed,
+                visible,
+                out LogicMovementRegionConstraintFailure visibleFailure));
+        Assert.AreEqual(LogicMovementRegionConstraintFailure.None, visibleFailure);
+
+        FixVector2 hidden = CellCenter(2);
+        bool hiddenVisible = LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(hidden);
+        FixVector2 resolved = LogicMovementRegionConstraintService.ResolvePosition(
+            player,
+            player.PositionFixed,
+            hidden,
+            out LogicMovementRegionConstraintFailure hiddenFailure);
+
+        Assert.IsFalse(hiddenVisible);
+        Assert.AreEqual(
+            player.PositionFixed,
+            resolved,
+            $"A non-visible candidate must not be committed. start={player.PositionFixed}, candidate={hidden}, resolved={resolved}, failure={hiddenFailure}.");
+        Assert.AreEqual(LogicMovementRegionConstraintFailure.NotVisible, hiddenFailure);
+        Assert.IsFalse(LogicMovementRegionConstraintService.IsPositionAllowed(
+            player,
+            hidden,
+            out LogicMovementRegionConstraintFailure positionFailure));
+        Assert.AreEqual(LogicMovementRegionConstraintFailure.NotVisible, positionFailure);
+
+        SimEntityContext enemy = CreateEntity(SideType.EnemySide);
+        Assert.AreEqual(
+            hidden,
+            LogicMovementRegionConstraintService.ResolvePosition(
+                enemy,
+                enemy.PositionFixed,
                 hidden,
-                out LogicMovementRegionConstraintFailure hiddenFailure));
-        Assert.AreEqual(LogicMovementRegionConstraintFailure.None, hiddenFailure);
+                out LogicMovementRegionConstraintFailure enemyFailure));
+        Assert.AreEqual(LogicMovementRegionConstraintFailure.None, enemyFailure);
     }
 
     [Test]

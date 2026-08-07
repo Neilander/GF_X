@@ -79,6 +79,7 @@ namespace AAAGame.Card
         private Vector3 m_DrawRetargetOffset;
         private float m_DrawProgress;
         private float m_DrawRetargetStartProgress;
+        private int m_DrawTraceFramesAfterCompletion;
 
         private const int NormalSortingOrder = 0;
         private const int HoverSortingOrder = 20;
@@ -739,26 +740,32 @@ namespace AAAGame.Card
         }
 
         /// <summary>
-        /// 从屏幕位置移动到手牌区
+        /// 从世界坐标中的卡组位置移动到手牌区
         /// </summary>
-        public void MoveToHandFromScreenPosition(Vector3 startScreenPosition, float duration = 0.5f, Action onComplete = null)
+        public void MoveToHandFromWorldPosition(Vector3 startWorldPosition, float duration = 0.5f, Action onComplete = null)
         {
             if (m_CardModel == null)
             {
                 throw new InvalidOperationException("Cannot animate a hand card before it is initialized.");
             }
 
+            Transform cardParent = m_RectTransform.parent;
+            if (cardParent == null)
+            {
+                throw new InvalidOperationException("Cannot animate a hand card without a parent transform.");
+            }
+
             canvasGroup.blocksRaycasts = false;
-            RefreshOwningLayout();
 
             float safeDuration = Mathf.Max(0.01f, duration);
-            m_DrawStartPosition = startScreenPosition;
-            m_DrawTargetPosition = m_RectTransform.position;
+            m_DrawStartPosition = cardParent.InverseTransformPoint(startWorldPosition);
+            m_DrawTargetPosition = m_RectTransform.localPosition;
             m_DrawControlPosition = CalculateDrawControlPosition(m_DrawStartPosition, m_DrawTargetPosition);
             m_DrawRetargetOffset = Vector3.zero;
             m_DrawProgress = 0f;
             m_DrawRetargetStartProgress = 0f;
-            m_RectTransform.position = m_DrawStartPosition;
+            m_DrawTraceFramesAfterCompletion = 0;
+            m_RectTransform.localPosition = m_DrawStartPosition;
             transform.localScale = Vector3.one * drawStartScale;
             float signedStartRotation = Mathf.Sign(m_DrawTargetPosition.x - m_DrawStartPosition.x) * -drawStartRotation;
             transform.localRotation = Quaternion.Euler(0f, 0f, signedStartRotation);
@@ -778,7 +785,7 @@ namespace AAAGame.Card
                         position += m_DrawRetargetOffset * offsetWeight;
                     }
 
-                    m_RectTransform.position = position;
+                    m_RectTransform.localPosition = position;
                 })
                 .SetEase(Ease.OutSine)
                 .SetLink(gameObject)
@@ -818,8 +825,16 @@ namespace AAAGame.Card
                 return;
             }
 
-            Vector3 newTargetPosition = m_RectTransform.position;
-            m_RectTransform.position = m_SavedTweenPosition;
+            Vector3 newTargetPosition = m_RectTransform.localPosition;
+            m_RectTransform.localPosition = m_SavedTweenPosition;
+            Log.Info(
+                "[CardDrawFrame] retarget frame={0}, runtimeId={1}, position={2}, oldTarget={3}, newTarget={4}, progress={5:F4}.",
+                Time.frameCount,
+                m_CardModel.RuntimeId,
+                m_SavedTweenPosition,
+                m_DrawTargetPosition,
+                newTargetPosition,
+                m_DrawProgress);
             m_DrawTargetPosition = newTargetPosition;
             m_DrawControlPosition = CalculateDrawControlPosition(m_DrawStartPosition, m_DrawTargetPosition);
             m_DrawRetargetOffset = m_SavedTweenPosition - EvaluateDrawCurve(m_DrawProgress);
@@ -843,11 +858,12 @@ namespace AAAGame.Card
 
         private void CompleteDrawAnimation()
         {
-            m_RectTransform.position = m_DrawTargetPosition;
+            m_RectTransform.localPosition = m_DrawTargetPosition;
             transform.localScale = Vector3.one;
             transform.localRotation = Quaternion.identity;
             canvasGroup.blocksRaycasts = true;
             m_IsDrawing = false;
+            m_DrawTraceFramesAfterCompletion = 6;
             UpdateRenderPriority();
 
             Log.Info(
@@ -858,7 +874,31 @@ namespace AAAGame.Card
             Action onComplete = m_OnMoveToHandComplete;
             m_OnMoveToHandComplete = null;
             onComplete?.Invoke();
-            RefreshOwningLayout();
+        }
+
+        private void LateUpdate()
+        {
+            if (!m_IsDrawing && m_DrawTraceFramesAfterCompletion <= 0)
+            {
+                return;
+            }
+
+            Log.Info(
+                "[CardDrawFrame] sample frame={0}, runtimeId={1}, drawing={2}, position={3}, target={4}, scale={5:F4}, rotationZ={6:F3}, moveElapsed={7:F4}, scaleElapsed={8:F4}.",
+                Time.frameCount,
+                m_CardModel.RuntimeId,
+                m_IsDrawing,
+                m_RectTransform.localPosition,
+                m_DrawTargetPosition,
+                transform.localScale.x,
+                transform.localEulerAngles.z,
+                m_MoveTween != null && m_MoveTween.IsActive() ? m_MoveTween.Elapsed() : -1f,
+                m_ScaleTween != null && m_ScaleTween.IsActive() ? m_ScaleTween.Elapsed() : -1f);
+
+            if (!m_IsDrawing)
+            {
+                m_DrawTraceFramesAfterCompletion--;
+            }
         }
 
         private Vector3 m_SavedTweenPosition;
@@ -867,7 +907,7 @@ namespace AAAGame.Card
         {
             if (m_RectTransform != null && m_MoveTween != null && m_MoveTween.IsActive())
             {
-                m_SavedTweenPosition = m_RectTransform.position;
+                m_SavedTweenPosition = m_RectTransform.localPosition;
             }
         }
 

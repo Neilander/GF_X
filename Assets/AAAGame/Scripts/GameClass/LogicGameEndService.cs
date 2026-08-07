@@ -352,6 +352,7 @@ public static class LogicGameEndService
 
     private static void CompleteWin(VictoryConditionType condition)
     {
+        StopAllEntitiesForGameEnd();
         IsGameEnded = true;
         IsWin = true;
         s_VictoryCondition = condition;
@@ -360,10 +361,30 @@ public static class LogicGameEndService
 
     private static void CompleteFail(FailConditionType condition)
     {
+        StopAllEntitiesForGameEnd();
         IsGameEnded = true;
         IsWin = false;
         s_FailCondition = condition;
         GameEnded?.Invoke(LogicGameEndResult.CreateFail(condition));
+    }
+
+    private static void StopAllEntitiesForGameEnd()
+    {
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            IEntityContext entity = entities[i]
+                ?? throw new InvalidOperationException($"EntityRegistry contains null at index {i}.");
+            IAtkComp attack = entity.AtkComp
+                ?? throw new InvalidOperationException(
+                    $"Game end cannot stop entity {entity.LogicEntityId.Value}: attack component is missing.");
+            IMoveComp move = entity.MoveComp
+                ?? throw new InvalidOperationException(
+                    $"Game end cannot stop entity {entity.LogicEntityId.Value}: move component is missing.");
+
+            attack.InterruptAttack(AttackInterruptReason.Forced);
+            move.StopMove();
+        }
     }
 
     private static bool ContainsVictoryCondition(

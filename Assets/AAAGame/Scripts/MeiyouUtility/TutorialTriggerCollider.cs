@@ -59,12 +59,7 @@ public class TutorialTriggerCollider : MonoBehaviour, ILogicFrameUpdate, ILogicF
             return;
         }
 
-        TutorialManager manager = ResolveTutorialManager();
-        if (manager == null)
-        {
-            Log.Warning("[TutorialTrigger] TutorialManager is missing. trigger={0}.", name);
-            return;
-        }
+        TutorialManager manager = ResolveTutorialManagerRequired();
 
         if (!manager.NotifyTriggerEntered(triggerType, this))
             return;
@@ -121,18 +116,15 @@ public class TutorialTriggerCollider : MonoBehaviour, ILogicFrameUpdate, ILogicF
         halfExtents = new FixVector2((Fix64)bounds.extents.x, (Fix64)bounds.extents.z);
     }
 
-    private TutorialManager ResolveTutorialManager()
+    private TutorialManager ResolveTutorialManagerRequired()
     {
-        if (tutorialManager == null)
-        {
-            tutorialManager = GameEntry.GetComponent<TutorialManager>();
-            if (tutorialManager == null)
-            {
-                tutorialManager = FindObjectOfType<TutorialManager>();
-            }
-        }
+        if (tutorialManager != null)
+            return tutorialManager;
 
-        return tutorialManager;
+        tutorialManager = GameEntry.GetComponent<TutorialManager>();
+        return tutorialManager
+               ?? throw new System.InvalidOperationException(
+                   $"Tutorial trigger '{name}' requires the registered TutorialManager component.");
     }
 
 #if UNITY_EDITOR

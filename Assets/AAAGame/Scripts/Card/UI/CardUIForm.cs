@@ -5,6 +5,7 @@ using GameFramework.Event;
 using DG.Tweening;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using UnityGameFramework.Runtime;
 using CardFx = AAAGame.Card.UI;
@@ -61,12 +62,10 @@ namespace AAAGame.Card
         [SerializeField][InspectorName("连线弯曲高度")] private float targetingCurveHeight = 120f;
         [SerializeField][InspectorName("连线分段数")][Range(4, 64)] private int targetingCurveSegments = 24;
 
-        [Header("快捷键")]
-        [SerializeField] private KeyCode toggleUIKey = KeyCode.Tab;
-
         private readonly List<UIItemObject> m_HandCardItemObjects = new List<UIItemObject>();
         private readonly List<Vector3> m_PreviewSpawnPositions = new List<Vector3>();
         private readonly Queue<GameObject> m_PlayedCardSlotPlaceholders = new Queue<GameObject>();
+        private readonly InputAction[] m_CardHotkeyActions = new InputAction[4];
 
         private CardSystemController m_CardSystemController;
         private HandCardItem m_DraggingCard;
@@ -77,8 +76,6 @@ namespace AAAGame.Card
         private Sprite m_DefaultTrashBinSprite;
         private bool m_IsTrashBinOpen;
         private int m_PendingHandLayoutRefreshFrames;
-        private bool m_IsUIVisible = true;
-
         private Canvas m_FormCanvas;
         private RectTransform m_FormRectTransform;
         private Camera m_UICamera;
@@ -128,6 +125,7 @@ namespace AAAGame.Card
         protected override void OnOpen(object userData)
         {
             base.OnOpen(userData);
+            InitializeCardHotkeys();
 
             GF.Event.Subscribe(CardDrawnEventArgs.EventId, OnCardDrawn);
             GF.Event.Subscribe(CardPlayedEventArgs.EventId, OnCardPlayed);
@@ -193,11 +191,6 @@ namespace AAAGame.Card
         protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
         {
             base.OnUpdate(elapseSeconds, realElapseSeconds);
-
-            if (Input.GetKeyDown(toggleUIKey))
-            {
-                ToggleUIVisibility();
-            }
 
             HandleHotkeys();
             RefreshPendingHandLayout();
@@ -352,9 +345,9 @@ namespace AAAGame.Card
         private void OnPanelOpenAnimationComplete()
         {
             m_IsPanelOpening = false;
+            RefreshHandCards();
             m_IsPanelReady = true;
             Interactable = true;
-            RefreshHandCards();
         }
 
         private void CloseUIImmediately()
@@ -432,7 +425,7 @@ namespace AAAGame.Card
             if (playAnimation && cardDeckTransform != null)
             {
                 m_ActiveDrawAnimations++;
-                cardItem.MoveToHandFromScreenPosition(cardDeckTransform.position, cardMoveToHandDuration, () =>
+                cardItem.MoveToHandFromWorldPosition(cardDeckTransform.position, cardMoveToHandDuration, () =>
                 {
                     m_ActiveDrawAnimations = Mathf.Max(0, m_ActiveDrawAnimations - 1);
                 });
@@ -576,7 +569,7 @@ namespace AAAGame.Card
                 return;
             }
 
-            Vector2 mousePosition = Input.mousePosition;
+            Vector2 mousePosition = GetMouseScreenPosition();
             Camera uiCamera = GetUICamera();
             bool isOverDeck = RectTransformUtility.RectangleContainsScreenPoint(cardDeckTransform, mousePosition, uiCamera);
             bool isOverPanel = deckPreviewPanel.gameObject.activeSelf
@@ -589,6 +582,15 @@ namespace AAAGame.Card
             }
 
             HideDeckPreviewPanel();
+        }
+
+        private static Vector2 GetMouseScreenPosition()
+        {
+            Mouse mouse = Mouse.current;
+            if (mouse == null)
+                throw new InvalidOperationException("Card UI requires an active mouse device.");
+
+            return mouse.position.ReadValue();
         }
 
         private void ShowDeckPreviewPanel()
@@ -1018,30 +1020,26 @@ namespace AAAGame.Card
                 100f);
         }
 
-        private void ToggleUIVisibility()
+        private void InitializeCardHotkeys()
         {
-            m_IsUIVisible = !m_IsUIVisible;
-            gameObject.SetActive(m_IsUIVisible);
-            Log.Info(Utility.Text.Format("Card UI {0}", m_IsUIVisible ? "显示" : "隐藏"));
+            InputManager inputManager = GameEntry.GetComponent<InputManager>()
+                ?? throw new InvalidOperationException("Card UI requires InputManager.");
+            InputActionAsset actions = inputManager.playerInput?.actions
+                ?? throw new InvalidOperationException("Card UI requires PlayerInput actions.");
+
+            for (int i = 0; i < m_CardHotkeyActions.Length; i++)
+                m_CardHotkeyActions[i] = actions.FindAction($"Player/Card{i + 1}", true);
         }
 
         private void HandleHotkeys()
         {
-            if (Input.GetKeyDown(KeyCode.Alpha1))
+            for (int i = 0; i < m_CardHotkeyActions.Length; i++)
             {
-                PlayCardByIndex(0);
-            }
-            else if (Input.GetKeyDown(KeyCode.Alpha2))
-            {
-                PlayCardByIndex(1);
-            }
-            else if (Input.GetKeyDown(KeyCode.Alpha3))
-            {
-                PlayCardByIndex(2);
-            }
-            else if (Input.GetKeyDown(KeyCode.Alpha4))
-            {
-                PlayCardByIndex(3);
+                if (!m_CardHotkeyActions[i].WasPressedThisFrame())
+                    continue;
+
+                PlayCardByIndex(i);
+                return;
             }
         }
 
@@ -1193,16 +1191,15 @@ namespace AAAGame.Card
             {
                 CardModel discardedCardModel = cardItem.GetCardModel();
                 m_CardSystemController.CancelPlacement();
-                cardItem.OnDiscardSuccess(() =>
+                bool discarded = m_CardSystemController.DiscardCard(discardedCardModel);
+                if (!discarded)
                 {
-                    RemoveHandCardItemDirect(discardedCardModel);
-
-                    bool discarded = m_CardSystemController.DiscardCard(discardedCardModel);
-                    if (!discarded)
-                    {
-                        Log.Error("[CardUI] Failed to discard card in controller.");
-                    }
-                });
+                    cardItem.RestoreToHandLayoutImmediately();
+                    RefreshHandCardLayout();
+                    RequestDeferredHandLayoutRefresh();
+                    Log.Error("[CardUI] Failed to schedule discard command for the released card.");
+                    return false;
+                }
 
                 return true;
             }
@@ -1450,6 +1447,12 @@ namespace AAAGame.Card
                 return;
             }
 
+            // The opening completion synchronizes the current model once the panel is stationary.
+            if (!m_IsPanelReady)
+            {
+                return;
+            }
+
             CardDrawnEventArgs args = (CardDrawnEventArgs)e;
             if (ContainsCardItem(args.CardModel))
             {
@@ -1486,9 +1489,25 @@ namespace AAAGame.Card
             }
 
             CardDiscardedEventArgs args = (CardDiscardedEventArgs)e;
-            RemoveHandCardItem(args.CardModel, false);
+            HandCardItem cardItem = GetRequiredHandCardItem(args.CardModel);
+            cardItem.OnDiscardSuccess(() => RemoveHandCardItemDirect(args.CardModel));
             if (AudioManager.Instance != null)
                 AudioManager.Instance.Play("discardCard");
+        }
+
+        private HandCardItem GetRequiredHandCardItem(CardModel cardModel)
+        {
+            foreach (UIItemObject itemObject in m_HandCardItemObjects)
+            {
+                HandCardItem cardItem = itemObject != null
+                    ? itemObject.gameObject.GetComponent<HandCardItem>()
+                    : null;
+                if (cardItem != null && cardItem.GetCardModel() == cardModel)
+                    return cardItem;
+            }
+
+            throw new InvalidOperationException(
+                $"Card presentation item is missing for runtimeId={cardModel?.RuntimeId}.");
         }
 
         private void OnIngameValueChanged(object sender, GameEventArgs e)

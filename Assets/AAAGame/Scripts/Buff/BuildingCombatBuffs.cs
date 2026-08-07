@@ -24,6 +24,15 @@ public static class BuildingAbilityIds
         return buildingData?.Identifier != null
                && buildingData.Identifier.StartsWith(baseIdentifier, StringComparison.Ordinal);
     }
+
+    public static bool HasPermanentNoCollisionCapability(string identifier)
+    {
+        if (string.IsNullOrWhiteSpace(identifier))
+            throw new ArgumentException("Building identifier is empty.", nameof(identifier));
+
+        return identifier.StartsWith(Trap, StringComparison.Ordinal)
+               || identifier.StartsWith(RoseBush, StringComparison.Ordinal);
+    }
 }
 
 public sealed class BuildingInvincibleSourceBuff : BuffCallback
@@ -37,15 +46,20 @@ public sealed class BuildingInvincibleSourceBuff : BuffCallback
 
     public override void OnAdd()
     {
-        if (hostEntity == null)
-            throw new InvalidOperationException("BuildingInvincibleSourceBuff.OnAdd failed: hostEntity is null.");
+        if (hostEntity is not IBuildingLogicContext building)
+            throw new InvalidOperationException("BuildingInvincibleSourceBuff.OnAdd failed: host is not a building logic context.");
 
-        hostEntity.RegisterInvincibleSource(_sourceId);
+        building.SetPermanentInvincibilityByBuff(true);
+        building.RegisterInvincibleSource(_sourceId);
     }
 
     public override void OnRemove()
     {
-        hostEntity?.UnregisterInvincibleSource(_sourceId);
+        if (hostEntity is not IBuildingLogicContext building)
+            throw new InvalidOperationException("BuildingInvincibleSourceBuff.OnRemove failed: host is not a building logic context.");
+
+        building.UnregisterInvincibleSource(_sourceId);
+        building.SetPermanentInvincibilityByBuff(false);
     }
 }
 

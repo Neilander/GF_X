@@ -2006,6 +2006,8 @@ namespace AAAGame.Tools.Editor
                 EntityPresetPointData point = entityPoints[i];
                 if (point.pointType != EntityPresetPointType.Building)
                     continue;
+                if (BuildingAbilityIds.HasPermanentNoCollisionCapability(point.identifier))
+                    continue;
 
                 string prefabPath = ResolveBuildingPrefabAssetPath(point.identifier);
                 result.Add(new FlowNavigationGridPrefabBaker.StaticObstacleBakeInstance(prefabPath, point.localPosition, point.identifier));

@@ -120,16 +120,18 @@ public sealed class LogicMoveExecutorTests
     }
 
     [Test]
-    public void TutorialPresentation_DoesNotWriteMovementAuthorityOrUseInvadePhysXTrigger()
+    public void TutorialLogicDetection_OwnsMovementBoundaryWithoutPhysXTrigger()
     {
         string scriptsRoot = Path.Combine(Application.dataPath, "AAAGame/Scripts");
         string tutorialManager = File.ReadAllText(Path.Combine(scriptsRoot, "MeiyouUtility/TutorialManager.cs"));
         string tutorialTrigger = File.ReadAllText(Path.Combine(scriptsRoot, "MeiyouUtility/TutorialTriggerCollider.cs"));
         string runtime = File.ReadAllText(Path.Combine(scriptsRoot, "Procedures/RuntimeProcedureBase.cs"));
 
-        StringAssert.DoesNotContain("SetTutorialStrongholdBoundary", tutorialManager);
-        StringAssert.DoesNotContain("ClearTutorialStrongholdBoundary", tutorialManager);
+        StringAssert.Contains("LogicStrongholdMap.TryResolveStrongholdId", tutorialManager);
+        StringAssert.Contains("SetTutorialStrongholdBoundary", tutorialManager);
+        StringAssert.DoesNotContain("OnTriggerEnter", tutorialTrigger);
         StringAssert.Contains("triggerType == TutorialType.EnemyStronghold", tutorialTrigger);
+        StringAssert.DoesNotContain("FindObjectOfType<TutorialManager>", tutorialTrigger);
         StringAssert.Contains("LogicMovementRegionConstraintService.ApplyFrame(frame)", runtime);
     }
 
@@ -141,6 +143,11 @@ public sealed class LogicMoveExecutorTests
         string projectileView = File.ReadAllText(Path.Combine(scriptsRoot, "Projectile/Projectile.cs"));
         string productionAdapter = File.ReadAllText(Path.Combine(scriptsRoot, "GameClass/ProductionConditionManager.cs"));
         string inGameUi = File.ReadAllText(Path.Combine(scriptsRoot, "UI/InGameUIForm.cs"));
+        string moveExecutorView = File.ReadAllText(Path.Combine(scriptsRoot, "GeneralCreature/MoveExecutor.cs"));
+        string regionAuthority = File.ReadAllText(Path.Combine(scriptsRoot, "Movement/LogicMovementRegionConstraintService.cs"));
+        string fogAuthority = File.ReadAllText(Path.Combine(scriptsRoot, "Card/LogicCardPlacementAuthority.cs"));
+        string fogControllerView = File.ReadAllText(Path.Combine(scriptsRoot, "MiniMap/FOG3/Controller/Fog3Controller.cs"));
+        string fogManagerView = File.ReadAllText(Path.Combine(scriptsRoot, "MiniMap/FOG3/Fog3Manager.cs"));
 
         StringAssert.DoesNotContain("BeginConstructionEscape", buildingView);
         StringAssert.DoesNotContain("Physics.Overlap", buildingView);
@@ -159,6 +166,23 @@ public sealed class LogicMoveExecutorTests
         StringAssert.DoesNotContain("InGameDataModel.TryModifyValue(IngameValueType.Coin", inGameUi);
         StringAssert.DoesNotContain("InGameDataModel.TryModifyValue(IngameValueType.MaxSupply", inGameUi);
         StringAssert.Contains("LogicInGameValueCommandService.ScheduleDeltaForNextFrame", inGameUi);
+
+        StringAssert.DoesNotContain("Fog3Manager", moveExecutorView);
+        StringAssert.DoesNotContain("IsNonVisibleBlocked", moveExecutorView);
+        StringAssert.Contains("LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers", regionAuthority);
+        StringAssert.Contains("LogicMovementRegionConstraintFailure.NotVisible", regionAuthority);
+        StringAssert.Contains("RebuildVisibilityFromCurrentEntities", fogAuthority);
+        StringAssert.Contains("s_MapData.MarkVisible", fogAuthority);
+        StringAssert.Contains("hero.IsHeroEntity", fogAuthority);
+        StringAssert.DoesNotContain("entity is HeroEntity", fogAuthority);
+        StringAssert.Contains("PublishAuthoritativeVisibility", fogControllerView);
+        StringAssert.DoesNotContain("MapData.ClearCurrentVisibility", fogControllerView);
+        StringAssert.DoesNotContain("MapData.AddVisibility", fogControllerView);
+        StringAssert.DoesNotContain("Physics.Linecast", fogControllerView);
+        StringAssert.Contains("controller.PublishAuthoritativeVisibility", fogManagerView);
+        StringAssert.DoesNotContain("controller.UpdateVisibility", fogManagerView);
+        StringAssert.Contains("mapData.GetCellState(logicEntity.PositionFixed)", fogManagerView);
+        StringAssert.DoesNotContain("ResolveEntityFogCellState(mapData, entity.transform.position)", fogManagerView);
     }
 
     [Test]

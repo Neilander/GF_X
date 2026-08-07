@@ -186,6 +186,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public bool IsDisabled { get; private set; }
     public bool IsPhaseProtected { get; private set; }
     public bool IsPermanentStealth { get; private set; }
+    public bool IsPermanentlyInvincible { get; private set; }
     public bool HasPermanentNoAttackCapability { get; private set; }
     public bool BlocksLogicMovement { get; private set; }
     public bool IsGameEndConditionBuilding { get; private set; }
@@ -469,6 +470,13 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             return;
         IsPermanentStealth = enabled;
         PermanentStealthChanged?.Invoke(enabled);
+    }
+
+    public void SetPermanentInvincibilityByBuff(bool enabled)
+    {
+        if (!IsBuildingEntity)
+            throw new InvalidOperationException($"LogicEntityState.SetPermanentInvincibilityByBuff failed: entity {EntityId.Value} is not a building.");
+        IsPermanentlyInvincible = enabled;
     }
 
     public void SetPhaseProtectionByBuff(bool enabled)

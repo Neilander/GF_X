@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using AAAGame.Card;
 using AAAGame.MiniMap.FOG3;
 using NUnit.Framework;
@@ -75,7 +76,7 @@ public sealed class LogicCardPlacementAuthorityTests
         Assert.IsTrue(map.IsExplored(2, 2));
         Assert.AreEqual(
             LogicCardPlacementInvalidReason.None,
-            LogicCardPlacementAuthority.Evaluate(hero.PositionFixed, Fix64.Zero));
+            LogicCardPlacementAuthority.Evaluate(hero.PositionFixed, Fix64.Zero, GamePhase.Invade));
     }
 
     [Test]
@@ -89,11 +90,43 @@ public sealed class LogicCardPlacementAuthorityTests
             SideType.PlayerSide,
             false);
         EntityRegistry.RegisterAsPlayer(player);
+        LogicTimeControlService.BeginFrame(1);
+        LogicCardPlacementAuthority.ApplyFrame(1);
 
         Assert.IsTrue(LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(
             new FixVector2((Fix64)1.5f, (Fix64)0.5f)));
         Assert.IsFalse(LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(
             new FixVector2((Fix64)2.5f, (Fix64)0.5f)));
+    }
+
+    [Test]
+    public void GhostHero_IlluminatesExploredCellsWithoutRevealingHiddenCells()
+    {
+        Fog3MapData map = CreateMap(4, 1);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)3);
+        LogicEntityState hero = CreateUnit(
+            1,
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            SideType.PlayerSide,
+            true);
+        FieldInfo ghostStateField = typeof(LogicEntityState).GetField(
+            "<IsGhostState>k__BackingField",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(ghostStateField);
+        ghostStateField.SetValue(hero, true);
+        EntityRegistry.RegisterAsPlayer(hero);
+        map.MarkExplored(0, 0);
+        map.MarkExplored(1, 0);
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicCardPlacementAuthority.ApplyFrame(1);
+
+        Assert.IsTrue(LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(
+            new FixVector2((Fix64)1.5f, (Fix64)0.5f)));
+        Assert.IsFalse(LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(
+            new FixVector2((Fix64)2.5f, (Fix64)0.5f)));
+
+        Assert.IsFalse(map.IsExplored(2, 0));
     }
 
     [Test]
@@ -123,13 +156,13 @@ public sealed class LogicCardPlacementAuthorityTests
 
             LogicTimeControlService.BeginFrame(1);
             LogicCardPlacementAuthority.ApplyFrame(1);
-            controller.UpdateVisibility(0, 0f, 0f, false, false, false);
+            controller.PublishAuthoritativeVisibility(false);
             Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
 
             revealer.PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f);
             LogicTimeControlService.BeginFrame(2);
             LogicCardPlacementAuthority.ApplyFrame(2);
-            controller.UpdateVisibility(0, 0f, 0f, false, false, false);
+            controller.PublishAuthoritativeVisibility(false);
 
             Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(0, 0));
             Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(1, 0));
@@ -199,12 +232,14 @@ public sealed class LogicCardPlacementAuthorityTests
             LogicCardPlacementInvalidReason.StaticForbiddenArea,
             LogicCardPlacementAuthority.Evaluate(
                 new FixVector2((Fix64)1.5f, (Fix64)3),
-                (Fix64)0.5f));
+                (Fix64)0.5f,
+                GamePhase.Invade));
         Assert.AreEqual(
             LogicCardPlacementInvalidReason.None,
             LogicCardPlacementAuthority.Evaluate(
                 new FixVector2((Fix64)1.5f, (Fix64)3),
-                Fix64.FromRaw((Fix64.One / (Fix64)2).RawValue - 1)));
+                Fix64.FromRaw((Fix64.One / (Fix64)2).RawValue - 1),
+                GamePhase.Invade));
     }
 
     [Test]
@@ -234,12 +269,14 @@ public sealed class LogicCardPlacementAuthorityTests
             LogicCardPlacementInvalidReason.EnemyBuildingForbiddenArea,
             LogicCardPlacementAuthority.Evaluate(
                 new FixVector2((Fix64)10.5f, (Fix64)7),
-                (Fix64)0.5f));
+                (Fix64)0.5f,
+                GamePhase.Invade));
         Assert.AreEqual(
             LogicCardPlacementInvalidReason.None,
             LogicCardPlacementAuthority.Evaluate(
                 new FixVector2((Fix64)1, (Fix64)1),
-                Fix64.Zero));
+                Fix64.Zero,
+                GamePhase.Invade));
     }
 
     [Test]
@@ -290,6 +327,67 @@ public sealed class LogicCardPlacementAuthorityTests
         Assert.IsTrue(map.IsExplored(2, 0));
         Assert.IsFalse(map.IsExplored(3, 0));
         Assert.IsFalse(map.IsExplored(4, 0));
+    }
+
+    [Test]
+    public void RevealCircle_WhenEnemyStrongholdBlockIsDisabled_RevealsBeyondEnemyStronghold()
+    {
+        Fog3MapData map = CreateMap(5, 1);
+        LogicStrongholdMap.Initialize(
+            FixVector2.Zero,
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            Fix64.One,
+            new[]
+            {
+                new LogicStrongholdCellDefinition("enemy-stronghold", 1, 0, EntitySideHelper.EnemyFactionId),
+                new LogicStrongholdCellDefinition("enemy-stronghold", 2, 0, EntitySideHelper.EnemyFactionId),
+            });
+        LogicCardPlacementAuthority.BindWorldForTests(
+            map,
+            Array.Empty<LogicCombatShape>(),
+            (Fix64)5,
+            (Fix64)5,
+            (Fix64)5,
+            false);
+
+        LogicCardPlacementAuthority.RevealCircleForTests(
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            (Fix64)5);
+
+        Assert.IsTrue(map.IsExplored(3, 0));
+        Assert.IsTrue(map.IsExplored(4, 0));
+    }
+
+    [Test]
+    public void Evaluate_EnemyStrongholdIsForbiddenOnlyDuringDefendPhase()
+    {
+        Fog3MapData map = CreateMap(3, 1);
+        MarkAllExplored(map);
+        LogicStrongholdMap.Initialize(
+            FixVector2.Zero,
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            Fix64.One,
+            new[]
+            {
+                new LogicStrongholdCellDefinition("enemy-stronghold", 1, 0, EntitySideHelper.EnemyFactionId),
+            });
+        Bind(map, Array.Empty<LogicCombatShape>(), Fix64.One);
+        FixVector2 enemyStrongholdPosition = new FixVector2(Fix64.One, Fix64.Zero);
+
+        Assert.AreEqual(
+            LogicCardPlacementInvalidReason.None,
+            LogicCardPlacementAuthority.Evaluate(
+                enemyStrongholdPosition,
+                Fix64.Zero,
+                GamePhase.Invade));
+        Assert.AreEqual(
+            LogicCardPlacementInvalidReason.EnemyStrongholdForbiddenArea,
+            LogicCardPlacementAuthority.Evaluate(
+                enemyStrongholdPosition,
+                Fix64.Zero,
+                GamePhase.Defend));
     }
 
     [Test]

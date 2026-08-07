@@ -712,4 +712,3 @@ MonoBehaviour:
   areaMaterialOverlay: {fileID: 0}
   cardDeckTransform: {fileID: 7738495531804054913}
   cardMoveToHandDuration: 0.5
-  toggleUIKey: 9

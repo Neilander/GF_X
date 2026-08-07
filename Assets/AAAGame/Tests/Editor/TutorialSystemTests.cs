@@ -42,6 +42,42 @@ public sealed class TutorialSystemTests
     }
 
     [Test]
+    public void PhaseSwitchLocation_BlocksOnlyEnemyStronghold()
+    {
+        LogicStrongholdMap.Initialize(
+            FixVector2.Zero,
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            Fix64.One,
+            new[]
+            {
+                new LogicStrongholdCellDefinition("friendly", 0, 0, EntitySideHelper.PlayerFactionId),
+                new LogicStrongholdCellDefinition("enemy", 2, 0, EntitySideHelper.EnemyFactionId),
+            });
+        try
+        {
+            Assert.IsFalse(InGameUIForm.TryGetCurrentEnemyStronghold(
+                FixVector2.Zero,
+                out _,
+                out _));
+            Assert.IsFalse(InGameUIForm.TryGetCurrentEnemyStronghold(
+                new FixVector2((Fix64)1, Fix64.Zero),
+                out _,
+                out _));
+            Assert.IsTrue(InGameUIForm.TryGetCurrentEnemyStronghold(
+                new FixVector2((Fix64)2, Fix64.Zero),
+                out string strongholdId,
+                out int ownerFactionId));
+            Assert.AreEqual("enemy", strongholdId);
+            Assert.AreEqual(EntitySideHelper.EnemyFactionId, ownerFactionId);
+        }
+        finally
+        {
+            LogicStrongholdMap.Clear();
+        }
+    }
+
+    [Test]
     public void TutorialRules_ExposeOnlyAuthoredPhaseActions()
     {
         Assert.IsTrue(TutorialManager.IsPhaseSwitchGuidedStage(TutorialStage.AwaitFirstBuildPhase));

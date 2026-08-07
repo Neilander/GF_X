@@ -339,42 +339,35 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
     private void EnterReturning(IEntityContext self)
     {
+        ITargetingComp targetingComp = self.TargetComp
+            ?? throw new System.InvalidOperationException(
+                $"SoldierAIBrain cannot enter returning without a targeting component. entity={self.LogicEntityId.Value}.");
+        var buffComp = self.BuffComp
+            ?? throw new System.InvalidOperationException(
+                $"SoldierAIBrain cannot enter returning without a buff component. entity={self.LogicEntityId.Value}.");
+
+        var modules = new List<BuffCallback>
+        {
+            new PercentMoveSpeedBonusBuff(ReturnSpeedBonusPercent),
+            new HealOverTimeBuff(ReturnHpRegenPercentPerSec)
+        };
+        var buff = BuffData.Create(ReturningBuffId, Fix64.Zero, true, 1, modules);
+        if (!buffComp.AddBuff(buff, self))
+        {
+            throw new System.InvalidOperationException(
+                $"SoldierAIBrain failed to add the required returning buff. entity={self.LogicEntityId.Value}.");
+        }
+
         // 清掉攻击意图和路径，避免返航过程中残留目标干扰
         Attack = false;
         _awaitingTargetReplacement = false;
-        if (self.TargetComp != null)
-        {
-            self.TargetComp.CurrentTarget = null;
-            self.TargetComp.ClearAggro();
-        }
+        targetingComp.CurrentTarget = null;
+        targetingComp.ClearAggro();
         self.MoveComp?.StopMove();
 
-        if (self.TargetComp == null)
-            throw new System.InvalidOperationException(
-                $"SoldierAIBrain cannot enter returning without a targeting component. entity={self.LogicEntityId.Value}.");
-        self.LockComp(self.TargetComp, ReturningTargetingLocker);
+        self.LockComp(targetingComp, ReturningTargetingLocker);
         _returningTargetingOwner = self;
-        _returningTargetingComp = self.TargetComp;
-
-        // 挂复合 buff：百分比移速 + 持续回血
-        if (self.BuffComp != null)
-        {
-            var modules = new List<BuffCallback>
-            {
-                new PercentMoveSpeedBonusBuff(ReturnSpeedBonusPercent),
-                new HealOverTimeBuff(ReturnHpRegenPercentPerSec)
-            };
-            var buff = BuffData.Create(ReturningBuffId, Fix64.Zero, true, 1, modules);
-            bool added = self.BuffComp.AddBuff(buff, self);
-            UnityEngine.Debug.Log($"[Returning.AddBuff] host={self.CharacterKey} added={added} " +
-                                  $"buffCompType={self.BuffComp.GetType().Name} " +
-                                  $"speedPct={(float)ReturnSpeedBonusPercent} hpPct={(float)ReturnHpRegenPercentPerSec}");
-        }
-        else
-        {
-            UnityEngine.Debug.LogWarning($"[Returning] host={self.CharacterKey} buff 未挂载: " +
-                                         $"buffComp={self.BuffComp?.GetType().Name ?? "null"}");
-        }
+        _returningTargetingComp = targetingComp;
 
         State = SoldierState.Returning;
         if (GameDebugSettings.IsEnabled(DebugCategory.Brain))

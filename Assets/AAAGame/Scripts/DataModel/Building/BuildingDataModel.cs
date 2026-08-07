@@ -131,14 +131,38 @@ public class BuildingDataModel : DataModelBase
                                     row.UniqueValues,
                                     row.UnitID,
                                     ResolveProduction(row, lv),
-                                    lv == 3 ? null :
-                                    row.Type == BuilType.Base || row.Type == BuilType.Army || row.Type == BuilType.Def ?
-                                    lv == 1 ? new string[] { row.Tech1ID, row.Tech2ID } : new string[] { row.Tech3ID, row.Tech4ID } :
-                                    row.Type == BuilType.Prod ? lv == 1 ? new string[] { row.Tech1ID } : new string[] { row.Tech2ID } :
-                                    row.Type == BuilType.Tech ? new string[] { row.Tech1ID, row.Tech2ID, row.Tech3ID, row.Tech4ID } : null);
+                                    ResolveUpgradeTechIDs(row, lv));
                 buildingDataDic[building.Identifier] = building;
             }
         }
+    }
+
+    internal static string[] ResolveUpgradeTechIDs(BuildingTable row, int lv)
+    {
+        if (row == null)
+            throw new ArgumentNullException(nameof(row));
+        if (lv < 1 || lv > 3)
+            throw new ArgumentOutOfRangeException(nameof(lv), lv, "Building level must be between 1 and 3.");
+        if (lv == 3)
+            return null;
+
+        if (row.Type == BuilType.Tech)
+            return new[] { row.Tech1ID, row.Tech2ID, row.Tech3ID, row.Tech4ID };
+        if (row.Type == BuilType.Prod)
+            return lv == 1 ? new[] { row.Tech1ID } : new[] { row.Tech2ID };
+        if (row.Type != BuilType.Base && row.Type != BuilType.Army && row.Type != BuilType.Def)
+            return null;
+
+        bool usesBranchedOptions = !string.IsNullOrWhiteSpace(row.Tech3ID)
+                                   || !string.IsNullOrWhiteSpace(row.Tech4ID);
+        if (usesBranchedOptions)
+        {
+            return lv == 1
+                ? new[] { row.Tech1ID, row.Tech2ID }
+                : new[] { row.Tech3ID, row.Tech4ID };
+        }
+
+        return lv == 1 ? new[] { row.Tech1ID } : new[] { row.Tech2ID };
     }
 
     private static string ResolvePrefabPath(BuildingTable row, int lv)

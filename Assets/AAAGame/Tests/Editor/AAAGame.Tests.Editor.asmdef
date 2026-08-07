@@ -6,7 +6,9 @@
         "GameFramework",
         "UnityGameFramework.Runtime",
         "Builtin.Runtime",
-        "AAAGame.Tools.Editor"
+        "AAAGame.Tools.Editor",
+        "Unity.InputSystem",
+        "Unity.InputSystem.TestFramework"
     ],
     "includePlatforms": [
         "Editor"

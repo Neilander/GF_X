@@ -150,6 +150,7 @@ public static class LogicGameplayStateHasher
                 hasher.Add(building.OwnerFactionId);
                 hasher.Add(building.IsDisabled);
                 hasher.Add(building.IsPhaseProtected);
+                hasher.Add(building.IsPermanentlyInvincible);
                 hasher.Add(building.BlocksLogicMovement);
                 hasher.Add(building.GetArmyForceWithoutRuntimeRules());
                 hasher.Add(building.GetArmyForce());
@@ -278,6 +279,7 @@ public static class LogicGameplayStateHasher
             hasher.Add(state.IsGhostState);
             hasher.Add(state.SourceStrongholdId);
             hasher.Add(state.IsPermanentStealth);
+            hasher.Add(state.IsPermanentlyInvincible);
             hasher.Add(state.HasPermanentNoAttackCapability);
             hasher.Add(state.BlocksLogicMovement);
 

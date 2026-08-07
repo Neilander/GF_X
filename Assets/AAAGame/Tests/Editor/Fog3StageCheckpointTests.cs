@@ -1,5 +1,6 @@
 ﻿using AAAGame.MiniMap.FOG3;
 using NUnit.Framework;
+using AAAGame.Card;
 using System.Reflection;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -62,10 +63,60 @@ public sealed class Fog3StageCheckpointTests
     }
 
     [Test]
-    public void EntityRevealer_UsesLogicPositionAndLeavesExploredStateBehind()
+    public void FixedWorldToGrid_UsesOneBoundaryMappingForLogicAndPresentation()
     {
-        GameObject targetObject = new GameObject("Fog3EntityRevealerView");
+        var map = new Fog3MapData(new Fog3TerrainInfo(
+            2,
+            1,
+            0.09f,
+            new Vector3(10.08f, 0f, 5.04f),
+            new[] { true, true },
+            "FixedWorldToGridBoundary"));
+        FixVector2 origin = new FixVector2((Fix64)10.08f, (Fix64)5.04f);
+        Fix64 boundary = origin.x + map.CellSizeFixed;
+        map.MarkVisible(1, 0);
+
+        Assert.IsTrue(map.WorldToGrid(
+            new FixVector2(boundary - Fix64.FromRaw(1), origin.y),
+            out int leftX,
+            out int leftY));
+        Assert.AreEqual(0, leftX);
+        Assert.AreEqual(0, leftY);
+
+        FixVector2 onBoundary = new FixVector2(boundary, origin.y);
+        Assert.IsTrue(map.WorldToGrid(onBoundary, out int rightX, out int rightY));
+        Assert.AreEqual(1, rightX);
+        Assert.AreEqual(0, rightY);
+        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(onBoundary));
+    }
+
+    [Test]
+    public void Controller_PublishesAuthoritativeVisibilityWithoutRecalculatingIt()
+    {
+        var controller = new Fog3Controller();
+        controller.Initialize(CreateTerrainInfo(new[] { true, true, true, true, true, true }));
+        controller.MapData.MarkVisible(1, 0);
+        int publishedCount = 0;
+        controller.VisibilityUpdated += map =>
+        {
+            publishedCount++;
+            Assert.AreSame(controller.MapData, map);
+        };
+
+        controller.PublishAuthoritativeVisibility(false);
+
+        Assert.AreEqual(1, publishedCount);
+        Assert.AreEqual(Fog3CellState.Hidden, controller.MapData.GetCellState(0, 0));
+        Assert.AreEqual(Fog3CellState.Visible, controller.MapData.GetCellState(1, 0));
+        Assert.IsFalse(controller.MapData.IsDirty);
+    }
+
+    [Test]
+    public void AuthoritativeFog_UsesLogicPositionAndLeavesExploredStateBehind()
+    {
         EntityRegistry.Clear();
+        LogicTimeControlService.BeginTimeline();
+        LogicCardPlacementAuthority.BeginTimeline();
         try
         {
             var entity = new SimEntityContext
@@ -74,27 +125,32 @@ public sealed class Fog3StageCheckpointTests
                 Side = SideType.PlayerSide,
             };
             EntityRegistry.Register(entity);
-            targetObject.transform.position = new Vector3(2.5f, 0f, 0.5f);
 
-            var controller = new Fog3Controller();
-            controller.Initialize(CreateTerrainInfo(new[] { true, true, true, true, true, true }));
-            controller.RegisterRevealer(targetObject.transform, 0.49f, entity.LogicEntityId.Value, false);
-            controller.UpdateVisibility(0, 0f, 0f, false, false, false);
+            Fog3MapData map = new Fog3MapData(CreateTerrainInfo(new[] { true, true, true, true, true, true }));
+            LogicCardPlacementAuthority.BindWorldForTests(
+                map,
+                System.Array.Empty<LogicCombatShape>(),
+                (Fix64)0.49f,
+                (Fix64)0.49f,
+                (Fix64)0.49f);
+            LogicTimeControlService.BeginFrame(1);
+            LogicCardPlacementAuthority.ApplyFrame(1);
 
-            Assert.AreEqual(Fog3CellState.Visible, controller.MapData.GetCellState(0, 0));
-            Assert.AreEqual(Fog3CellState.Hidden, controller.MapData.GetCellState(2, 0));
+            Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
+            Assert.AreEqual(Fog3CellState.Hidden, map.GetCellState(2, 0));
 
-            controller.MapData.MarkExplored(0, 0);
             entity.PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f);
-            controller.UpdateVisibility(0, 0f, 0f, false, false, false);
+            LogicTimeControlService.BeginFrame(2);
+            LogicCardPlacementAuthority.ApplyFrame(2);
 
-            Assert.AreEqual(Fog3CellState.Explored, controller.MapData.GetCellState(0, 0));
-            Assert.AreEqual(Fog3CellState.Visible, controller.MapData.GetCellState(1, 0));
+            Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(0, 0));
+            Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(1, 0));
         }
         finally
         {
+            LogicCardPlacementAuthority.EndTimeline();
+            LogicTimeControlService.EndTimeline();
             EntityRegistry.Clear();
-            Object.DestroyImmediate(targetObject);
         }
     }
 
@@ -258,6 +314,84 @@ public sealed class Fog3StageCheckpointTests
                 Object.DestroyImmediate(managerObject);
             if (viewBound)
                 LogicEntityLifecycleService.UnbindView(entityId, 404);
+            EntityRegistry.Clear();
+            if (viewObject != null)
+                Object.DestroyImmediate(viewObject);
+            LogicEntityLifecycleService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    [Test]
+    public void EnemyPermanentStealth_RemainsHiddenInVisibleFogCellAndAfterFogReset()
+    {
+        GameObject managerObject = null;
+        GameObject viewObject = null;
+        LogicEntityId entityId = default;
+        bool viewBound = false;
+
+        EntityRegistry.Clear();
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        try
+        {
+            entityId = LogicEntityLifecycleService.RequestSpawn(new LogicEntitySpawnDescriptor(
+                FixVector2.Zero,
+                new FixVector2(Fix64.Zero, Fix64.One),
+                SideType.EnemySide,
+                "Buil_Trap_Lv1"));
+            LogicEntityState logicState = LogicEntityStateStore.GetRequired(entityId);
+            EntityRegistry.Register(logicState);
+
+            viewObject = new GameObject("Fog3EnemyPermanentStealthView");
+            Entity entityComponent = viewObject.AddComponent<Entity>();
+            BuildingEntity view = viewObject.AddComponent<BuildingEntity>();
+            MeshRenderer renderer = viewObject.AddComponent<MeshRenderer>();
+            FieldInfo entityIdField = typeof(Entity).GetField("m_Id", BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo entityField = typeof(EntityLogic).GetField("m_Entity", BindingFlags.Instance | BindingFlags.NonPublic);
+            PropertyInfo cachedEntityIdProperty = typeof(EntityBase).GetProperty(nameof(EntityBase.Id));
+            PropertyInfo logicEntityIdProperty = typeof(MAEntity).GetProperty(nameof(MAEntity.LogicEntityId));
+            Assert.NotNull(entityIdField);
+            Assert.NotNull(entityField);
+            Assert.NotNull(cachedEntityIdProperty);
+            Assert.NotNull(logicEntityIdProperty);
+            entityIdField.SetValue(entityComponent, 405);
+            entityField.SetValue(view, entityComponent);
+            cachedEntityIdProperty.SetValue(view, 405);
+            logicEntityIdProperty.SetValue(view, entityId);
+            view.OwnerFactionID = EntitySideHelper.EnemyFactionId;
+            view.SetPermanentStealthVisibility(true);
+            Assert.IsFalse(renderer.enabled);
+
+            LogicEntityLifecycleService.BindView(entityId, view.Id, view);
+            viewBound = true;
+
+            managerObject = new GameObject("Fog3EnemyPermanentStealthManager");
+            managerObject.SetActive(false);
+            Fog3Manager manager = managerObject.AddComponent<Fog3Manager>();
+            MethodInfo updateEnemyVisibility = typeof(Fog3Manager).GetMethod(
+                "UpdateEnemyVisibilityByFog",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo resetEnemyVisibility = typeof(Fog3Manager).GetMethod(
+                "ResetEnemyVisibilityStates",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(updateEnemyVisibility);
+            Assert.NotNull(resetEnemyVisibility);
+
+            Fog3MapData map = CreateMap(new[] { true, true, true, true, true, true });
+            map.AddVisibility(0, 0, 1f);
+            updateEnemyVisibility.Invoke(manager, new object[] { map });
+            Assert.IsFalse(renderer.enabled);
+
+            resetEnemyVisibility.Invoke(manager, null);
+            Assert.IsFalse(renderer.enabled);
+        }
+        finally
+        {
+            if (managerObject != null)
+                Object.DestroyImmediate(managerObject);
+            if (viewBound)
+                LogicEntityLifecycleService.UnbindView(entityId, 405);
             EntityRegistry.Clear();
             if (viewObject != null)
                 Object.DestroyImmediate(viewObject);

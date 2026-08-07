@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using AAAGame.Scripts.BuffSystem;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 /// <summary>
 /// Runtime battle value inspector for quick in-game verification.
@@ -35,20 +36,22 @@ public sealed class RuntimeEntityStatsOverlay : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(KeyCode.F8))
+        Keyboard keyboard = Keyboard.current;
+        if (keyboard?.f8Key.wasPressedThisFrame == true)
             m_Visible = !m_Visible;
 
         if (!m_Visible)
             return;
 
-        if (Input.GetMouseButtonDown(0))
+        Mouse mouse = Mouse.current;
+        if (mouse?.leftButton.wasPressedThisFrame == true)
         {
-            IEntityContext hovered = FindEntityUnderMouse();
+            IEntityContext hovered = FindEntityAtScreenPosition(mouse.position.ReadValue());
             if (hovered != null)
                 m_Selected = hovered;
         }
 
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (keyboard?.escapeKey.wasPressedThisFrame == true)
             m_Selected = null;
     }
 
@@ -68,7 +71,10 @@ public sealed class RuntimeEntityStatsOverlay : MonoBehaviour
     private void DrawWindow(int windowId)
     {
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
-        IEntityContext hovered = FindEntityUnderMouse();
+        Mouse mouse = Mouse.current;
+        IEntityContext hovered = mouse != null
+            ? FindEntityAtScreenPosition(mouse.position.ReadValue())
+            : null;
 
         GUILayout.BeginHorizontal();
         GUILayout.Label($"Entities: {CountValid(entities)}", GUILayout.Width(100f));
@@ -328,7 +334,7 @@ public sealed class RuntimeEntityStatsOverlay : MonoBehaviour
         }
     }
 
-    private IEntityContext FindEntityUnderMouse()
+    private IEntityContext FindEntityAtScreenPosition(Vector2 screenPosition)
     {
         Camera camera = Camera.main;
         if (camera == null)
@@ -338,7 +344,7 @@ public sealed class RuntimeEntityStatsOverlay : MonoBehaviour
         if (entities == null || entities.Count == 0)
             return null;
 
-        Vector3 mouse = Input.mousePosition;
+        Vector3 mouse = screenPosition;
         float bestDistance = PickRadiusPixels;
         IEntityContext best = null;
 

@@ -7,9 +7,6 @@ namespace AAAGame.MiniMap.FOG3
     public sealed class Fog3Controller
     {
         private readonly Dictionary<int, Fog3RevealerData> revealers = new Dictionary<int, Fog3RevealerData>();
-        private int[] enemyStrongholdMask;
-        private bool hasEnemyStrongholdMask;
-        private int enemyStrongholdMaskSignature = int.MinValue;
         private int nextRevealerId = 1;
 
         public event Action<Fog3MapData> VisibilityUpdated;
@@ -55,52 +52,14 @@ namespace AAAGame.MiniMap.FOG3
             return revealers.TryGetValue(revealerId, out revealer);
         }
 
-        public void UpdateVisibility(LayerMask occluderMask, float eyeHeight, float softEdgeWidth, bool globalLineOfSight, bool enableEnemyStrongholdHiddenVisionBlock, bool logPerformanceDiagnostics)
+        public void PublishAuthoritativeVisibility(bool logPerformanceDiagnostics)
         {
             if (MapData == null)
                 return;
 
             long updateStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            long strongholdTicks = 0L;
-            long clearTicks = 0L;
-            long revealTicks = 0L;
-            long eventTicks = 0L;
-            long markTicks = 0L;
-            int activeRevealers = 0;
-            int deadRevealerCount = 0;
-            if (enableEnemyStrongholdHiddenVisionBlock)
-            {
-                long strongholdStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                RefreshEnemyStrongholdMask();
-                strongholdTicks = System.Diagnostics.Stopwatch.GetTimestamp() - strongholdStartTicks;
-            }
-            else
-            {
-                hasEnemyStrongholdMask = false;
-            }
-
-            long clearStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            MapData.ClearCurrentVisibility();
-            clearTicks = System.Diagnostics.Stopwatch.GetTimestamp() - clearStartTicks;
-
-            foreach (KeyValuePair<int, Fog3RevealerData> pair in revealers)
-            {
-                Fog3RevealerData revealer = pair.Value;
-                if (!revealer.IsActive)
-                    continue;
-
-                activeRevealers++;
-                long revealStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                Reveal(revealer, occluderMask, eyeHeight, softEdgeWidth, globalLineOfSight || revealer.UseLineOfSight);
-                revealTicks += System.Diagnostics.Stopwatch.GetTimestamp() - revealStartTicks;
-            }
-
-            long eventStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             VisibilityUpdated?.Invoke(MapData);
-            eventTicks = System.Diagnostics.Stopwatch.GetTimestamp() - eventStartTicks;
-            long markStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             MapData.MarkClean();
-            markTicks = System.Diagnostics.Stopwatch.GetTimestamp() - markStartTicks;
 
             long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - updateStartTicks;
             double elapsedMs = elapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
@@ -110,16 +69,9 @@ namespace AAAGame.MiniMap.FOG3
                     LogType.Log,
                     LogOption.NoStacktrace,
                     null,
-                    "[FOG3Perf] visibility total={0:F3}ms revealers={1} active={2} dead={3} stronghold={4:F3}ms clear={5:F3}ms reveal={6:F3}ms event={7:F3}ms mark={8:F3}ms",
+                    "[FOG3Perf] authoritative visibility presentation={0:F3}ms revealers={1}",
                     elapsedMs,
-                    revealers.Count,
-                    activeRevealers,
-                    deadRevealerCount,
-                    strongholdTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
-                    clearTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
-                    revealTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
-                    eventTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
-                    markTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+                    revealers.Count);
             }
         }
 
@@ -182,54 +134,6 @@ namespace AAAGame.MiniMap.FOG3
             MapData?.ResetExploration();
         }
 
-        private void Reveal(Fog3RevealerData revealer, LayerMask occluderMask, float eyeHeight, float softEdgeWidth, bool useLineOfSight)
-        {
-            Vector3 position = ResolveRevealerPosition(revealer);
-            if (!MapData.WorldToGrid(position, out int centerX, out int centerY))
-                return;
-
-            int range = Mathf.CeilToInt(revealer.VisionRadius / MapData.CellSize);
-            float radius = revealer.VisionRadius;
-            float radiusSqr = radius * radius;
-            float innerRadius = Mathf.Max(0f, radius - softEdgeWidth);
-            float innerRadiusSqr = innerRadius * innerRadius;
-            Vector3 from = position + Vector3.up * eyeHeight;
-
-            for (int y = centerY - range; y <= centerY + range; y++)
-            {
-                for (int x = centerX - range; x <= centerX + range; x++)
-                {
-                    if (!MapData.IsValidCell(x, y) || !MapData.IsWalkable(x, y))
-                        continue;
-
-                    Vector3 cellCenter = MapData.GridToWorldCenter(x, y);
-                    Vector2 delta = new Vector2(cellCenter.x - position.x, cellCenter.z - position.z);
-                    float distSqr = delta.sqrMagnitude;
-                    if (distSqr > radiusSqr)
-                        continue;
-
-                    bool isHiddenTargetCell = !MapData.IsExplored(x, y);
-                    if (isHiddenTargetCell && !revealer.AllowRevealHidden)
-                        continue;
-
-                    if (isHiddenTargetCell && IsHiddenRevealBlockedByEnemyStronghold(centerX, centerY, x, y))
-                        continue;
-
-                    if (useLineOfSight && IsBlocked(from, cellCenter + Vector3.up * eyeHeight, occluderMask))
-                        continue;
-
-                    float intensity = 1f;
-                    if (softEdgeWidth > 0.01f && distSqr > innerRadiusSqr)
-                    {
-                        float distance = Mathf.Sqrt(distSqr);
-                        intensity = 1f - Mathf.InverseLerp(innerRadius, radius, distance);
-                    }
-
-                    MapData.AddVisibility(x, y, intensity);
-                }
-            }
-        }
-
         private static Vector3 ResolveRevealerPosition(Fog3RevealerData revealer)
         {
             if (revealer == null)
@@ -253,148 +157,5 @@ namespace AAAGame.MiniMap.FOG3
                 (float)entity.PositionFixed.y);
         }
 
-        private void RefreshEnemyStrongholdMask()
-        {
-            int width = MapData.Width;
-            int height = MapData.Height;
-            int mapLength = width * height;
-
-            if (enemyStrongholdMask == null || enemyStrongholdMask.Length != mapLength)
-                enemyStrongholdMask = new int[mapLength];
-            else
-                Array.Clear(enemyStrongholdMask, 0, mapLength);
-
-            hasEnemyStrongholdMask = false;
-
-            IReadOnlyList<Stronghold> strongholds = InGameDataModel.GetStrongholds();
-            if (strongholds == null || strongholds.Count == 0)
-            {
-                if (enemyStrongholdMaskSignature != 0)
-                {
-                    enemyStrongholdMaskSignature = 0;
-                    Debug.Log("[FOG3] Enemy stronghold vision blockers refreshed. strongholds=0, cells=0");
-                }
-
-                return;
-            }
-
-            int playerFactionId = EntitySideHelper.PlayerFactionId;
-            int enemyStrongholdId = 1;
-            int enemyStrongholdCount = 0;
-            int blockerCellCount = 0;
-            int outOfMapCellCount = 0;
-            int signature = 17;
-
-            for (int i = 0; i < strongholds.Count; i++)
-            {
-                Stronghold stronghold = strongholds[i];
-                if (stronghold == null
-                    || stronghold.OwnerFactionId == playerFactionId
-                    || stronghold.strongholdData == null
-                    || stronghold.strongholdData.RangeCells == null
-                    || stronghold.strongholdData.RangeCells.Count == 0)
-                {
-                    continue;
-                }
-
-                enemyStrongholdCount++;
-                string strongholdId = stronghold.strongholdData.StrongholdId;
-                signature = signature * 31 + stronghold.OwnerFactionId;
-                signature = signature * 31 + (strongholdId != null ? strongholdId.GetHashCode() : 0);
-                signature = signature * 31 + stronghold.strongholdData.RangeCells.Count;
-
-                foreach (Vector2 strongholdCell in stronghold.strongholdData.RangeCells)
-                {
-                    int x = Mathf.RoundToInt(strongholdCell.x);
-                    int y = Mathf.RoundToInt(strongholdCell.y);
-                    if (!MapData.IsValidCell(x, y))
-                    {
-                        outOfMapCellCount++;
-                        continue;
-                    }
-
-                    int index = x + y * width;
-                    if (enemyStrongholdMask[index] != 0)
-                        continue;
-
-                    enemyStrongholdMask[index] = enemyStrongholdId;
-                    blockerCellCount++;
-                }
-
-                enemyStrongholdId++;
-            }
-
-            hasEnemyStrongholdMask = blockerCellCount > 0;
-            signature = hasEnemyStrongholdMask ? signature * 31 + blockerCellCount : 0;
-            if (signature == enemyStrongholdMaskSignature)
-                return;
-
-            enemyStrongholdMaskSignature = signature;
-            Debug.Log($"[FOG3] Enemy stronghold vision blockers refreshed. strongholds={enemyStrongholdCount}, cells={blockerCellCount}");
-
-            if (enemyStrongholdCount > 0 && blockerCellCount == 0)
-                Debug.LogWarning($"[FOG3] Enemy stronghold blocker mapping produced zero cells. outOfMapCells={outOfMapCellCount}");
-        }
-
-        private bool IsHiddenRevealBlockedByEnemyStronghold(int fromX, int fromY, int targetX, int targetY)
-        {
-            if (!hasEnemyStrongholdMask || enemyStrongholdMask == null)
-                return false;
-
-            int x = fromX;
-            int y = fromY;
-            int dx = Mathf.Abs(targetX - fromX);
-            int dy = Mathf.Abs(targetY - fromY);
-            int stepX = fromX < targetX ? 1 : -1;
-            int stepY = fromY < targetY ? 1 : -1;
-            int error = dx - dy;
-
-            int activeStrongholdId = GetEnemyStrongholdId(x, y);
-
-            while (x != targetX || y != targetY)
-            {
-                int twiceError = error << 1;
-                if (twiceError > -dy)
-                {
-                    error -= dy;
-                    x += stepX;
-                }
-
-                if (twiceError < dx)
-                {
-                    error += dx;
-                    y += stepY;
-                }
-
-                int currentStrongholdId = GetEnemyStrongholdId(x, y);
-                if (activeStrongholdId > 0)
-                {
-                    if (currentStrongholdId != activeStrongholdId)
-                        return true;
-                }
-                else if (currentStrongholdId > 0)
-                {
-                    activeStrongholdId = currentStrongholdId;
-                }
-            }
-
-            return false;
-        }
-
-        private int GetEnemyStrongholdId(int x, int y)
-        {
-            if (!MapData.IsValidCell(x, y) || enemyStrongholdMask == null)
-                return 0;
-
-            return enemyStrongholdMask[x + y * MapData.Width];
-        }
-
-        private static bool IsBlocked(Vector3 from, Vector3 to, LayerMask occluderMask)
-        {
-            if (occluderMask.value == 0)
-                return false;
-
-            return Physics.Linecast(from, to, occluderMask, QueryTriggerInteraction.Ignore);
-        }
     }
 }

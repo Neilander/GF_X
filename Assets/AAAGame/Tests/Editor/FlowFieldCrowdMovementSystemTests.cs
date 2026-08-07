@@ -4383,6 +4383,102 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void HighSpeedAlternatingPortalCorridorDoesNotExposeSectorZigzag()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 12;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 60;
+        const int height = 36;
+        const float cellSize = 0.075f;
+        const float speed = 6.9f;
+        bool[] walkable = new bool[width * height];
+        Vector2Int[] walkableSectors =
+        {
+            new Vector2Int(0, 2),
+            new Vector2Int(0, 1),
+            new Vector2Int(1, 1),
+            new Vector2Int(2, 1),
+            new Vector2Int(2, 0),
+            new Vector2Int(3, 0),
+            new Vector2Int(4, 0)
+        };
+        for (int i = 0; i < walkableSectors.Length; i++)
+        {
+            int startX = walkableSectors[i].x * config.SectorSizeInCells;
+            int startY = walkableSectors[i].y * config.SectorSizeInCells;
+            for (int y = startY; y < startY + config.SectorSizeInCells; y++)
+            {
+                for (int x = startX; x < startX + config.SectorSizeInCells; x++)
+                    SetWalkable(walkable, width, x, y);
+            }
+        }
+
+        for (int x = 0; x < 6; x++)
+            walkable[x + 24 * width] = false;
+        for (int y = 12; y < 18; y++)
+            walkable[11 + y * width] = false;
+        for (int y = 18; y < 24; y++)
+            walkable[23 + y * width] = false;
+        for (int x = 30; x < 36; x++)
+            walkable[x + 12 * width] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, cellSize, Vector3.zero, walkable);
+        SimEntityContext ctx = CreateEntity(
+            new Vector3(cellSize * 3.5f, 0f, cellSize * 30.5f),
+            false,
+            0,
+            cellSize * 0.18f);
+        Vector3 goal = new Vector3(cellSize * 54.5f, 0f, cellSize * 6.5f);
+        Vector3 previousDirection = Vector3.zero;
+        int abruptTurns = 0;
+        int previousTurnSign = 0;
+        int previousTurnFrame = int.MinValue;
+        int rapidTurnSignAlternations = 0;
+        var trace = new System.Text.StringBuilder(4096);
+
+        for (int frame = 1; frame <= 30; frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, speed, out Vector3 velocity));
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+                ctx.LogicEntityId.Value,
+                out string diagnostic));
+            Vector3 direction = velocity.normalized;
+            if (previousDirection.sqrMagnitude > 0f)
+            {
+                if (Vector3.Dot(previousDirection, direction) < Mathf.Cos(20f * Mathf.Deg2Rad))
+                    abruptTurns++;
+                float turnCross = previousDirection.x * direction.z - previousDirection.z * direction.x;
+                int turnSign = turnCross > 0.05f ? 1 : turnCross < -0.05f ? -1 : 0;
+                if (turnSign != 0 && previousTurnSign != 0 && turnSign != previousTurnSign)
+                {
+                    if (frame - previousTurnFrame <= 2)
+                        rapidTurnSignAlternations++;
+                }
+                if (turnSign != 0)
+                {
+                    previousTurnSign = turnSign;
+                    previousTurnFrame = frame;
+                }
+            }
+            trace.Append("frame=").Append(frame)
+                .Append(" position=").Append(ctx.Position)
+                .Append(" velocity=").Append(velocity)
+                .Append(" diagnostic=").Append(diagnostic)
+                .AppendLine();
+            previousDirection = direction;
+            ctx.Position += velocity / 30f;
+            if ((goal - ctx.Position).sqrMagnitude <= speed * speed / 900f)
+                break;
+        }
+
+        Assert.LessOrEqual(rapidTurnSignAlternations, 1,
+            $"A portal corridor may contain real corners, but sector-local fields must not expose a rapid alternating zigzag. rapidAlternations={rapidTurnSignAlternations}, abrupt={abruptTurns}, position={ctx.Position}\n{trace}");
+    }
+
+    [Test]
     public void 高速单位沿双Lane边界移动时空间梯度不会逐帧翻转()
     {
         FlowFieldNavigationConfig config = CreateConfig();
@@ -6589,6 +6685,48 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void FarCombatSlotUsesMovingTargetAnchorOutsideLocalPlanningWindow()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 40;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 3.5f));
+        SimEntityContext target = CreateEntity(new Vector3(24.5f, 0f, 3.5f));
+        chaser.TargetComp = new SimTargetingComp(chaser, new List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+        Vector3 combatSlot = target.Position + new Vector3(0f, 0f, -2f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, combatSlot, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(
+            chaser.LogicEntityId.Value,
+            out int targetId,
+            out _,
+            out _,
+            out _,
+            out _,
+            out Vector3 stableGoal));
+        Assert.AreEqual(target.LogicEntityId.Value, targetId);
+        Assert.AreNotEqual(((Fix64)combatSlot.z).RawValue, ((Fix64)stableGoal.z).RawValue,
+            "Far path planning must use the moving-target anchor instead of rebuilding against the translated combat slot every tick.");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestLastFixedNavigationGoal(
+            chaser.LogicEntityId.Value,
+            out FixVector2 navigationGoal));
+        Assert.AreEqual(((Fix64)stableGoal.x).RawValue, navigationGoal.x.RawValue);
+        Assert.AreEqual(((Fix64)stableGoal.z).RawValue, navigationGoal.y.RawValue);
+    }
+
+    [Test]
     public void 远距离移动目标未跨完整Sector时保持共享路径锚点()
     {
         FlowFieldNavigationConfig config = CreateConfig();
@@ -7184,7 +7322,7 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void 长路径CurrentTile即使最终目标LOS清晰也沿正式Portal势推进()
+    public void 长路径CurrentTile正式提交后可沿可见PortalCorridorFunnel推进()
     {
         FlowFieldNavigationConfig config = CreateConfig();
         config.SectorSizeInCells = 8;
@@ -7212,7 +7350,8 @@ public class FlowFieldCrowdMovementSystemTests
             chaser.LogicEntityId.Value,
             out string diagnostic));
         StringAssert.Contains("/cached=True/", diagnostic);
-        StringAssert.Contains("/lastResult=direction=", diagnostic);
+        StringAssert.Contains("/lastResult=corridor-funnel ", diagnostic,
+            "完整 Portal corridor 可见时应由已提交 corridor 的 funnel 推进，不能伪装成无 corridor 的最终目标 LOS。");
 
         ProcessFlowTileBuildQueueUntilTileReady(0, 2);
         FlowFieldCrowdMovementSystem.SetEditorTestClock(512, 51.2f);
@@ -7220,8 +7359,8 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
             chaser.LogicEntityId.Value,
             out diagnostic));
-        StringAssert.Contains("/lastResult=direction=", diagnostic,
-            "Portal tile 提交后必须继续消费积分势梯度，不能被最终目标 LOS 或 Portal LOS 覆盖。");
+        StringAssert.Contains("/lastResult=corridor-funnel ", diagnostic,
+            "Portal tile 提交后，完整 corridor 可见时应保持 string-pulling 权威；局部积分势仅负责不可直达段。");
     }
 
     [Test]

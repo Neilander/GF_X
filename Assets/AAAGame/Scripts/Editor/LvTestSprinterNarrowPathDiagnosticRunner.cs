@@ -425,6 +425,8 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
     {
         private static readonly Fix64 s_TurnDotThreshold = Fix64.FromRaw(3849);
         private static readonly Fix64 s_LateralThreshold = Fix64.FromRaw(214);
+        private const ulong RapidAuthorityTurnWindowFrames = 2;
+        private const ulong RapidModelTurnWindowFrames = 6;
         private readonly IEntityContext _hero;
         private readonly Dictionary<int, Sample> _samples = new Dictionary<int, Sample>();
         private readonly StringBuilder _frameLog = new StringBuilder(131072);
@@ -453,9 +455,9 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
             {
                 foreach (Sample sample in _samples.Values)
                 {
-                    if (sample.AuthorityLateralAlternations >= 2
-                        || sample.ProposedLateralAlternations >= 2
-                        || sample.ModelTurnAlternations >= 2)
+                    if (sample.RapidAuthorityLateralAlternations > 0
+                        || sample.RapidProposedLateralAlternations > 0
+                        || sample.RapidModelTurnAlternations > 0)
                     {
                         return true;
                     }
@@ -494,14 +496,50 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                                 && brain.State == SoldierAIBrain.SoldierState.Combat
                                 && !(sprinter.AtkComp?.IsAttacking ?? false)
                                 && moving;
+                bool hasStableGoal = FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(
+                    sample.EntityId.Value,
+                    out int stableTargetId,
+                    out int stableRawX,
+                    out int stableRawY,
+                    out int stableX,
+                    out int stableY,
+                    out _);
+                bool corridorPursuing = pursuing && hasStableGoal;
+                sample.IsCorridorPursuit = corridorPursuing;
 
                 if (pursuing)
                 {
                     sample.PursuitFrames++;
                     CountTurn(sample.PreviousAuthorityForward, authorityForward, ref sample.AuthorityAbruptTurns);
                     CountTurn(sample.PreviousProposedForward, proposedForward, ref sample.ProposedAbruptTurns);
-                    CountLateralAlternation(toHero, authorityForward, ref sample.LastAuthorityLateralSign, ref sample.AuthorityLateralAlternations);
-                    CountLateralAlternation(toHero, proposedForward, ref sample.LastProposedLateralSign, ref sample.ProposedLateralAlternations);
+                    if (corridorPursuing)
+                    {
+                        CountLateralAlternation(
+                            frame,
+                            toHero,
+                            authorityForward,
+                            ref sample.LastAuthorityLateralSign,
+                            ref sample.LastAuthorityLateralAlternationFrame,
+                            ref sample.AuthorityLateralAlternations,
+                            ref sample.RapidAuthorityLateralAlternations);
+                        CountLateralAlternation(
+                            frame,
+                            toHero,
+                            proposedForward,
+                            ref sample.LastProposedLateralSign,
+                            ref sample.LastProposedLateralAlternationFrame,
+                            ref sample.ProposedLateralAlternations,
+                            ref sample.RapidProposedLateralAlternations);
+                    }
+                    else
+                    {
+                        ResetLateralWindow(
+                            ref sample.LastAuthorityLateralSign,
+                            ref sample.LastAuthorityLateralAlternationFrame);
+                        ResetLateralWindow(
+                            ref sample.LastProposedLateralSign,
+                            ref sample.LastProposedLateralAlternationFrame);
+                    }
 
                     if (proposedForward != FixVector2.Zero
                         && authorityForward != proposedForward
@@ -530,14 +568,7 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                 sample.PreviousNavigationTarget = navigationTarget;
 
                 FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(sample.EntityId.Value, out string flow);
-                string stableGoal = FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(
-                    sample.EntityId.Value,
-                    out int stableTargetId,
-                    out int stableRawX,
-                    out int stableRawY,
-                    out int stableX,
-                    out int stableY,
-                    out _)
+                string stableGoal = hasStableGoal
                     ? $"target={stableTargetId},raw=({stableRawX},{stableRawY}),active=({stableX},{stableY})"
                     : "unavailable";
                 string pathGoal = FlowFieldCrowdMovementSystem.TryGetEditorTestPathGoalCell(
@@ -606,15 +637,24 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                 Transform model = animatorTransform.childCount > 0 ? animatorTransform.GetChild(0) : animatorTransform;
                 Vector3 modelForward3 = model.forward;
                 FixVector2 modelForward = NormalizeOrZero(new FixVector2((Fix64)modelForward3.x, (Fix64)modelForward3.z));
-                if (sample.PreviousModelForward != FixVector2.Zero && modelForward != FixVector2.Zero)
+                if (sample.IsCorridorPursuit
+                    && sample.PreviousModelForward != FixVector2.Zero
+                    && modelForward != FixVector2.Zero)
                 {
                     Fix64 cross = Cross(sample.PreviousModelForward, modelForward);
                     int sign = SignBeyondThreshold(cross, s_LateralThreshold);
                     if (sign != 0 && sample.LastModelTurnSign != 0 && sign != sample.LastModelTurnSign)
                     {
                         sample.ModelTurnAlternations++;
+                        ulong frame = LogicFrameRuntime.CurrentFrame;
+                        if (sample.LastModelTurnAlternationFrame > 0
+                            && frame - sample.LastModelTurnAlternationFrame <= RapidModelTurnWindowFrames)
+                        {
+                            sample.RapidModelTurnAlternations++;
+                        }
+                        sample.LastModelTurnAlternationFrame = frame;
                         _frameLog.Append("MODEL_TURN_ALTERNATION logicFrame=")
-                            .Append(LogicFrameRuntime.CurrentFrame)
+                            .Append(frame)
                             .Append(" renderFrame=").Append(Time.frameCount)
                             .Append(" entity=").Append(sample.EntityId.Value)
                             .Append(" previousModelForwardRaw=").Append(Format(sample.PreviousModelForward))
@@ -625,6 +665,12 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                     }
                     if (sign != 0)
                         sample.LastModelTurnSign = sign;
+                }
+                else if (!sample.IsCorridorPursuit)
+                {
+                    ResetLateralWindow(
+                        ref sample.LastModelTurnSign,
+                        ref sample.LastModelTurnAlternationFrame);
                 }
                 sample.PreviousModelForward = modelForward;
             }
@@ -644,6 +690,9 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                     .Append(" authorityLateralAlternations=").Append(sample.AuthorityLateralAlternations)
                     .Append(" proposedLateralAlternations=").Append(sample.ProposedLateralAlternations)
                     .Append(" modelTurnAlternations=").Append(sample.ModelTurnAlternations)
+                    .Append(" rapidAuthorityLateralAlternations=").Append(sample.RapidAuthorityLateralAlternations)
+                    .Append(" rapidProposedLateralAlternations=").Append(sample.RapidProposedLateralAlternations)
+                    .Append(" rapidModelTurnAlternations=").Append(sample.RapidModelTurnAlternations)
                     .Append(" constraintDrivenFacingFrames=").Append(sample.ConstraintDrivenFacingFrames)
                     .Append(" pairCorrectionFrames=").Append(sample.PairCorrectionFrames)
                     .Append(" staticCorrectionFrames=").Append(sample.StaticCorrectionFrames)
@@ -680,18 +729,35 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
         }
 
         private static void CountLateralAlternation(
+            ulong frame,
             FixVector2 reference,
             FixVector2 direction,
             ref int previousSign,
-            ref int count)
+            ref ulong previousAlternationFrame,
+            ref int count,
+            ref int rapidCount)
         {
             if (reference == FixVector2.Zero || direction == FixVector2.Zero)
                 return;
             int sign = SignBeyondThreshold(Cross(reference, direction), s_LateralThreshold);
             if (sign != 0 && previousSign != 0 && sign != previousSign)
+            {
                 count++;
+                if (previousAlternationFrame > 0
+                    && frame - previousAlternationFrame <= RapidAuthorityTurnWindowFrames)
+                {
+                    rapidCount++;
+                }
+                previousAlternationFrame = frame;
+            }
             if (sign != 0)
                 previousSign = sign;
+        }
+
+        private static void ResetLateralWindow(ref int previousSign, ref ulong previousAlternationFrame)
+        {
+            previousSign = 0;
+            previousAlternationFrame = 0;
         }
 
         private static Fix64 Cross(FixVector2 left, FixVector2 right)
@@ -734,15 +800,22 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
             public FixVector2 PreviousModelForward;
             public FixVector2 PreviousNavigationTarget;
             public bool HasNavigationTarget;
+            public bool IsCorridorPursuit;
             public int LastAuthorityLateralSign;
             public int LastProposedLateralSign;
             public int LastModelTurnSign;
+            public ulong LastAuthorityLateralAlternationFrame;
+            public ulong LastProposedLateralAlternationFrame;
+            public ulong LastModelTurnAlternationFrame;
             public int PursuitFrames;
             public int AuthorityAbruptTurns;
             public int ProposedAbruptTurns;
             public int AuthorityLateralAlternations;
             public int ProposedLateralAlternations;
             public int ModelTurnAlternations;
+            public int RapidAuthorityLateralAlternations;
+            public int RapidProposedLateralAlternations;
+            public int RapidModelTurnAlternations;
             public int ConstraintDrivenFacingFrames;
             public int PairCorrectionFrames;
             public int StaticCorrectionFrames;

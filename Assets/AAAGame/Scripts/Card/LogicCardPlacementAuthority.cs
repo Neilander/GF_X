@@ -12,6 +12,7 @@ namespace AAAGame.Card
         Unexplored = 1,
         StaticForbiddenArea = 2,
         EnemyBuildingForbiddenArea = 3,
+        EnemyStrongholdForbiddenArea = 4,
     }
 
     public static class LogicCardPlacementAuthority
@@ -22,8 +23,6 @@ namespace AAAGame.Card
         private static readonly Fix64 s_EnemyBuildingBasePadding = (Fix64)3;
         private static readonly List<LogicCombatShape> s_StaticForbiddenShapes = new();
         private static Fog3MapData s_MapData;
-        private static FixVector2 s_MapOrigin;
-        private static Fix64 s_CellSize;
         private static Fix64 s_HeroVisionRadius;
         private static Fix64 s_UnitVisionRadius;
         private static Fix64 s_BuildingVisionRadius;
@@ -111,12 +110,13 @@ namespace AAAGame.Card
                     $"LogicCardPlacementAuthority.ApplyFrame requires contiguous frames. previous={LastAppliedFrame}, current={frameId}.");
             }
 
-            RevealFromCurrentEntities();
+            RebuildVisibilityFromCurrentEntities();
             LastAppliedFrame = frameId;
         }
 
-        private static void RevealFromCurrentEntities()
+        private static void RebuildVisibilityFromCurrentEntities()
         {
+            s_MapData.ClearCurrentVisibility();
             IList<IEntityContext> entities = EntityRegistry.AllEntities;
             bool hasGhostHero = HasPlayerGhostHero(entities);
             for (int i = 0; i < entities.Count; i++)
@@ -124,21 +124,46 @@ namespace AAAGame.Card
                 IEntityContext entity = entities[i];
                 if (entity == null)
                     throw new InvalidOperationException($"LogicCardPlacementAuthority found a null registry entity at index {i}.");
-                if (!TryGetRevealRadius(entity, hasGhostHero, out Fix64 radius))
+                if (!TryGetRevealRadius(entity, out Fix64 radius)
+                    || !CanRevealHidden(entity, hasGhostHero))
                     continue;
                 RevealCircle(entity.PositionFixed, radius);
             }
+
+            for (int i = 0; i < entities.Count; i++)
+            {
+                IEntityContext entity = entities[i];
+                if (entity == null)
+                    throw new InvalidOperationException($"LogicCardPlacementAuthority found a null registry entity at index {i}.");
+                if (!TryGetRevealRadius(entity, out Fix64 radius))
+                    continue;
+                AddCurrentVisibilityCircle(entity.PositionFixed, radius, CanRevealHidden(entity, hasGhostHero));
+            }
         }
 
-        public static LogicCardPlacementInvalidReason Evaluate(FixVector2 position, Fix64 placementRadius)
+        public static LogicCardPlacementInvalidReason Evaluate(
+            FixVector2 position,
+            Fix64 placementRadius,
+            GamePhase phase)
         {
             EnsureBound();
             if (placementRadius < Fix64.Zero)
                 throw new ArgumentOutOfRangeException(nameof(placementRadius));
+            if (!Enum.IsDefined(typeof(GamePhase), phase))
+                throw new ArgumentOutOfRangeException(nameof(phase), phase, "Unknown game phase.");
             if (!TryWorldToCell(position, out int cellX, out int cellY)
                 || !s_MapData.IsExplored(cellX, cellY))
             {
                 return LogicCardPlacementInvalidReason.Unexplored;
+            }
+
+            if (phase == GamePhase.Defend
+                && !LogicStrongholdMap.IsCircleClearOfForeignStrongholds(
+                    position,
+                    placementRadius,
+                    EntitySideHelper.PlayerFactionId))
+            {
+                return LogicCardPlacementInvalidReason.EnemyStrongholdForbiddenArea;
             }
 
             for (int i = 0; i < s_StaticForbiddenShapes.Count; i++)
@@ -173,36 +198,7 @@ namespace AAAGame.Card
         public static bool IsVisibleFromCurrentLogicRevealers(FixVector2 position)
         {
             EnsureBound();
-            if (!TryWorldToCell(position, out int targetX, out int targetY)
-                || !s_MapData.IsWalkable(targetX, targetY))
-            {
-                return false;
-            }
-
-            FixVector2 targetCenter = GetCellCenter(targetX, targetY);
-            IList<IEntityContext> entities = EntityRegistry.AllEntities;
-            bool hasGhostHero = HasPlayerGhostHero(entities);
-            for (int i = 0; i < entities.Count; i++)
-            {
-                IEntityContext entity = entities[i];
-                if (entity == null)
-                    throw new InvalidOperationException($"LogicCardPlacementAuthority found a null registry entity at index {i}.");
-                if (!TryGetRevealRadius(entity, hasGhostHero, out Fix64 radius))
-                    continue;
-                if (FixVector2.SqrMagnitude(targetCenter - entity.PositionFixed) > radius * radius)
-                    continue;
-                if (!TryWorldToCell(entity.PositionFixed, out int sourceX, out int sourceY))
-                    continue;
-                if (s_BlockHiddenRevealByEnemyStronghold
-                    && IsHiddenRevealBlockedByEnemyStronghold(sourceX, sourceY, targetX, targetY))
-                {
-                    continue;
-                }
-
-                return true;
-            }
-
-            return false;
+            return s_MapData.GetCellState(position) == Fog3CellState.Visible;
         }
 
         public static Fix64 ResolveEnemyBuildingPadding()
@@ -280,10 +276,6 @@ namespace AAAGame.Card
             }
 
             s_MapData = mapData;
-            s_MapOrigin = new FixVector2((Fix64)mapData.WorldOrigin.x, (Fix64)mapData.WorldOrigin.z);
-            s_CellSize = (Fix64)mapData.CellSize;
-            if (s_CellSize <= Fix64.Zero)
-                throw new InvalidOperationException("Logic card-placement fog cell size must be positive.");
             s_HeroVisionRadius = heroVisionRadius;
             s_UnitVisionRadius = unitVisionRadius;
             s_BuildingVisionRadius = buildingVisionRadius;
@@ -295,7 +287,7 @@ namespace AAAGame.Card
             s_StaticForbiddenHash = ComputeStaticForbiddenHash(s_StaticForbiddenShapes);
             LastAppliedFrame = LogicTimeControlService.CurrentFrame;
             if (LastAppliedFrame != 0)
-                RevealFromCurrentEntities();
+                RebuildVisibilityFromCurrentEntities();
         }
 
         private static Fix64 ResolveVisionRadius(string configKey)
@@ -314,7 +306,7 @@ namespace AAAGame.Card
             if (!TryWorldToCell(position, out int centerX, out int centerY))
                 return;
 
-            int range = DivideCeiling(radius.RawValue, s_CellSize.RawValue);
+            int range = DivideCeiling(radius.RawValue, s_MapData.CellSizeFixed.RawValue);
             Fix64 radiusSquared = radius * radius;
             for (int y = centerY - range; y <= centerY + range; y++)
             {
@@ -322,7 +314,7 @@ namespace AAAGame.Card
                 {
                     if (!s_MapData.IsWalkable(x, y))
                         continue;
-                    FixVector2 cellCenter = GetCellCenter(x, y);
+                    FixVector2 cellCenter = s_MapData.GetCellCenterFixed(x, y);
                     if (FixVector2.SqrMagnitude(cellCenter - position) > radiusSquared)
                         continue;
                     if (s_BlockHiddenRevealByEnemyStronghold
@@ -335,20 +327,46 @@ namespace AAAGame.Card
             }
         }
 
-        private static bool TryWorldToCell(FixVector2 position, out int x, out int y)
+        private static void AddCurrentVisibilityCircle(
+            FixVector2 position,
+            Fix64 radius,
+            bool canRevealHidden)
         {
-            FixVector2 local = position - s_MapOrigin;
-            x = FloorToInt(local.x / s_CellSize);
-            y = FloorToInt(local.y / s_CellSize);
-            return s_MapData.IsValidCell(x, y);
+            if (radius <= Fix64.Zero)
+                throw new ArgumentOutOfRangeException(nameof(radius));
+            if (!TryWorldToCell(position, out int centerX, out int centerY))
+                return;
+
+            int range = DivideCeiling(radius.RawValue, s_MapData.CellSizeFixed.RawValue);
+            Fix64 radiusSquared = radius * radius;
+            for (int y = centerY - range; y <= centerY + range; y++)
+            {
+                for (int x = centerX - range; x <= centerX + range; x++)
+                {
+                    if (!s_MapData.IsWalkable(x, y))
+                        continue;
+                    FixVector2 cellCenter = s_MapData.GetCellCenterFixed(x, y);
+                    if (FixVector2.SqrMagnitude(cellCenter - position) > radiusSquared)
+                        continue;
+
+                    bool targetExplored = s_MapData.IsExplored(x, y);
+                    if (!targetExplored && !canRevealHidden)
+                        continue;
+                    if (!targetExplored
+                        && s_BlockHiddenRevealByEnemyStronghold
+                        && IsHiddenRevealBlockedByEnemyStronghold(centerX, centerY, x, y))
+                    {
+                        continue;
+                    }
+
+                    s_MapData.MarkVisible(x, y);
+                }
+            }
         }
 
-        private static FixVector2 GetCellCenter(int x, int y)
+        private static bool TryWorldToCell(FixVector2 position, out int x, out int y)
         {
-            Fix64 half = Fix64.One / (Fix64)2;
-            return new FixVector2(
-                s_MapOrigin.x + ((Fix64)x + half) * s_CellSize,
-                s_MapOrigin.y + ((Fix64)y + half) * s_CellSize);
+            return s_MapData.WorldToGrid(position, out x, out y);
         }
 
         private static bool IsHiddenRevealBlockedByEnemyStronghold(int fromX, int fromY, int targetX, int targetY)
@@ -411,7 +429,7 @@ namespace AAAGame.Card
             return false;
         }
 
-        private static bool TryGetRevealRadius(IEntityContext entity, bool hasGhostHero, out Fix64 radius)
+        private static bool TryGetRevealRadius(IEntityContext entity, out Fix64 radius)
         {
             radius = Fix64.Zero;
             if (!entity.Alive || entity.Side != SideType.PlayerSide)
@@ -419,9 +437,6 @@ namespace AAAGame.Card
 
             bool isBuilding = entity.TryGetLogicBuilding(out _);
             bool isHero = IsLogicHero(entity);
-            if ((isHero && IsGhostHero(entity)) || (hasGhostHero && !isHero && !isBuilding))
-                return false;
-
             radius = isBuilding
                 ? s_BuildingVisionRadius
                 : isHero
@@ -430,26 +445,22 @@ namespace AAAGame.Card
             return true;
         }
 
+        private static bool CanRevealHidden(IEntityContext entity, bool hasGhostHero)
+        {
+            bool isHero = IsLogicHero(entity);
+            bool isBuilding = entity.TryGetLogicBuilding(out _);
+            return !(isHero && IsGhostHero(entity))
+                   && !(hasGhostHero && !isHero && !isBuilding);
+        }
+
         private static bool IsLogicHero(IEntityContext entity)
         {
-            return entity is LogicEntityState state ? state.IsHeroEntity : entity is HeroEntity;
+            return entity is IHeroLogicContext hero && hero.IsHeroEntity;
         }
 
         private static bool IsGhostHero(IEntityContext entity)
         {
             return IsLogicHero(entity) && entity is IHeroLogicContext hero && hero.IsGhostState;
-        }
-
-        private static int FloorToInt(Fix64 value)
-        {
-            long raw = value.RawValue;
-            long one = Fix64.One.RawValue;
-            long result = raw / one;
-            if (raw < 0 && raw % one != 0)
-                result--;
-            if (result < int.MinValue || result > int.MaxValue)
-                throw new OverflowException($"Logic fog grid coordinate is outside Int32. raw={raw}.");
-            return (int)result;
         }
 
         private static int DivideCeiling(long numerator, long denominator)
@@ -497,8 +508,6 @@ namespace AAAGame.Card
         private static void ClearWorld()
         {
             s_MapData = null;
-            s_MapOrigin = FixVector2.Zero;
-            s_CellSize = Fix64.Zero;
             s_HeroVisionRadius = Fix64.Zero;
             s_UnitVisionRadius = Fix64.Zero;
             s_BuildingVisionRadius = Fix64.Zero;

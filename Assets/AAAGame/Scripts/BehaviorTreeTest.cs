@@ -52,9 +52,6 @@ public class BehaviorTreeTest : MonoBehaviour
     {
         if (graph == null || graph.root == null) return;
 
-        if (Input.GetKeyDown(KeyCode.T))
-            selfTarget.TakeDamage((Fix64)1, HealthModifyType.reduce);
-
         context.position = transform.position;
 
         NodeState result = graph.root.Execute(context);

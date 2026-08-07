@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace AAAGame.Card
 {
@@ -11,7 +12,8 @@ namespace AAAGame.Card
         StaticForbiddenArea = 2,
         EnemyBuildingForbiddenArea = 3,
         NotOnGround = 4,
-        SpawnFailed = 5
+        SpawnFailed = 5,
+        EnemyStrongholdForbiddenArea = 6,
     }
 
     /// <summary>
@@ -188,7 +190,7 @@ namespace AAAGame.Card
                 return false;
             }
 
-            Vector2 screenPos = releaseScreenPosition ?? (Vector2)Input.mousePosition;
+            Vector2 screenPos = releaseScreenPosition ?? GetMouseScreenPosition();
             if (!TryGetGroundPositionAtScreenPoint(screenPos, out Vector3 releaseGroundPosition))
             {
                 Debug.Log("[Card] Cannot confirm placement: 松手时未命中 Ground.");
@@ -373,7 +375,16 @@ namespace AAAGame.Card
 
         private bool TryGetGroundPosition(out Vector3 groundPosition)
         {
-            return TryGetGroundPositionAtScreenPoint(Input.mousePosition, out groundPosition);
+            return TryGetGroundPositionAtScreenPoint(GetMouseScreenPosition(), out groundPosition);
+        }
+
+        private static Vector2 GetMouseScreenPosition()
+        {
+            Mouse mouse = Mouse.current;
+            if (mouse == null)
+                throw new InvalidOperationException("Card placement requires an active mouse device.");
+
+            return mouse.position.ReadValue();
         }
 
         private bool TryGetGroundPositionAtScreenPoint(Vector2 screenPosition, out Vector3 groundPosition)
@@ -434,7 +445,8 @@ namespace AAAGame.Card
                 : (Fix64)checkRadius;
             LogicCardPlacementInvalidReason logicReason = LogicCardPlacementAuthority.Evaluate(
                 new FixVector2((Fix64)position.x, (Fix64)position.z),
-                logicRadius);
+                logicRadius,
+                PhaseManager.CurrentPhase);
             if (logicReason != LogicCardPlacementInvalidReason.None)
                 return ConvertInvalidReason(logicReason);
 
@@ -456,6 +468,7 @@ namespace AAAGame.Card
                 LogicCardPlacementInvalidReason.Unexplored => CardPlacementInvalidReason.NotInExploredArea,
                 LogicCardPlacementInvalidReason.StaticForbiddenArea => CardPlacementInvalidReason.StaticForbiddenArea,
                 LogicCardPlacementInvalidReason.EnemyBuildingForbiddenArea => CardPlacementInvalidReason.EnemyBuildingForbiddenArea,
+                LogicCardPlacementInvalidReason.EnemyStrongholdForbiddenArea => CardPlacementInvalidReason.EnemyStrongholdForbiddenArea,
                 _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "Unknown logic card-placement reason."),
             };
         }
@@ -580,6 +593,12 @@ namespace AAAGame.Card
             if (invalidReason == CardPlacementInvalidReason.EnemyBuildingForbiddenArea)
             {
                 Debug.Log($"[Card] Cannot confirm placement: 命中敌方逻辑建筑禁区. pos={position}, radius={m_DetectionRadius:F2}");
+                return;
+            }
+
+            if (invalidReason == CardPlacementInvalidReason.EnemyStrongholdForbiddenArea)
+            {
+                Debug.Log($"[Card] Cannot confirm placement: 防御阶段命中敌方据点禁区. pos={position}, radius={m_DetectionRadius:F2}");
                 return;
             }
 

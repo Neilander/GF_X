@@ -640,7 +640,8 @@ namespace AAAGame.Card
             Fix64 spawnRadius = ClusterSpawnSystem.CalculateAutoSpawnRadiusFixed(soldierCount);
             LogicCardPlacementInvalidReason placementReason = LogicCardPlacementAuthority.Evaluate(
                 selectedPosition,
-                spawnRadius);
+                spawnRadius,
+                PhaseManager.CurrentPhase);
             if (placementReason != LogicCardPlacementInvalidReason.None)
             {
                 Log.Warning(
@@ -810,7 +811,8 @@ namespace AAAGame.Card
         {
             LogicCardPlacementInvalidReason reason = LogicCardPlacementAuthority.Evaluate(
                 new FixVector2((Fix64)worldPosition.x, (Fix64)worldPosition.z),
-                Fix64.Zero);
+                Fix64.Zero,
+                PhaseManager.CurrentPhase);
             return reason != LogicCardPlacementInvalidReason.None;
         }
 

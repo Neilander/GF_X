@@ -11,11 +11,6 @@ namespace AAAGame.MiniMap.FOG3.Editor
         private SerializedProperty playerSideUnitVisionRadius;
         private SerializedProperty buildingVisionRadius;
         private SerializedProperty autoRegisterPlayerSideEntities;
-        private SerializedProperty updateInterval;
-        private SerializedProperty softEdgeWidth;
-        private SerializedProperty useLineOfSight;
-        private SerializedProperty lineOfSightOccluderMask;
-        private SerializedProperty lineOfSightEyeHeight;
         private SerializedProperty enableEnemyStrongholdHiddenVisionBlock;
         private SerializedProperty createWorldOverlay;
         private SerializedProperty viewSettings;
@@ -63,11 +58,6 @@ namespace AAAGame.MiniMap.FOG3.Editor
             playerSideUnitVisionRadius = serializedObject.FindProperty("playerSideUnitVisionRadius");
             buildingVisionRadius = serializedObject.FindProperty("buildingVisionRadius");
             autoRegisterPlayerSideEntities = serializedObject.FindProperty("autoRegisterPlayerSideEntities");
-            updateInterval = serializedObject.FindProperty("updateInterval");
-            softEdgeWidth = serializedObject.FindProperty("softEdgeWidth");
-            useLineOfSight = serializedObject.FindProperty("useLineOfSight");
-            lineOfSightOccluderMask = serializedObject.FindProperty("lineOfSightOccluderMask");
-            lineOfSightEyeHeight = serializedObject.FindProperty("lineOfSightEyeHeight");
             enableEnemyStrongholdHiddenVisionBlock = serializedObject.FindProperty("enableEnemyStrongholdHiddenVisionBlock");
             createWorldOverlay = serializedObject.FindProperty("createWorldOverlay");
             viewSettings = serializedObject.FindProperty("viewSettings");
@@ -133,11 +123,6 @@ namespace AAAGame.MiniMap.FOG3.Editor
                 EditorGUILayout.PropertyField(playerSideUnitVisionRadius, new GUIContent("我方单位可视半径"));
                 EditorGUILayout.PropertyField(buildingVisionRadius, new GUIContent("我方建筑可视半径"));
                 EditorGUILayout.PropertyField(autoRegisterPlayerSideEntities, new GUIContent("自动注册我方实体"));
-                EditorGUILayout.PropertyField(updateInterval, new GUIContent("刷新间隔"));
-                EditorGUILayout.PropertyField(softEdgeWidth, new GUIContent("边缘柔化宽度"));
-                EditorGUILayout.PropertyField(useLineOfSight, new GUIContent("启用视线遮挡"));
-                DrawLayerMaskDropdown(lineOfSightOccluderMask, "视线遮挡层级");
-                EditorGUILayout.PropertyField(lineOfSightEyeHeight, new GUIContent("视线起点高度"));
                 EditorGUILayout.PropertyField(enableEnemyStrongholdHiddenVisionBlock, new GUIContent("启用敌方据点遮挡 hidden 扩散"));
                 EditorGUI.indentLevel--;
             }

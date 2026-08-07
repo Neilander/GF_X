@@ -173,5 +173,33 @@ public sealed class LogicCardCommandServiceTests
         StringAssert.Contains("m_PendingPresentationShutdown.Enqueue", cardSetupSource);
         StringAssert.Contains("GF.Event.Fire(this, CardPlayedEventArgs.Create", cardControllerSource);
         StringAssert.Contains("GF.Event.Fire(this, CardDiscardedEventArgs.Create", cardControllerSource);
+
+        int discardBranchStart = cardUiSource.IndexOf(
+            "if (isInTrash)",
+            StringComparison.Ordinal);
+        int handBranchStart = cardUiSource.IndexOf(
+            "bool isOverHand",
+            discardBranchStart,
+            StringComparison.Ordinal);
+        Assert.GreaterOrEqual(discardBranchStart, 0);
+        Assert.Greater(handBranchStart, discardBranchStart);
+        string discardBranch = cardUiSource.Substring(
+            discardBranchStart,
+            handBranchStart - discardBranchStart);
+        int scheduleDiscard = discardBranch.IndexOf(
+            "m_CardSystemController.DiscardCard(discardedCardModel)",
+            StringComparison.Ordinal);
+        Assert.GreaterOrEqual(
+            scheduleDiscard,
+            0,
+            "Trash release is the final discard confirmation and must schedule its logic command immediately.");
+        StringAssert.DoesNotContain(
+            "OnDiscardSuccess(",
+            discardBranch,
+            "Render-time discard animation callbacks must not choose the effective logic frame.");
+        StringAssert.Contains(
+            "cardItem.OnDiscardSuccess(() => RemoveHandCardItemDirect(args.CardModel))",
+            cardUiSource,
+            "Discard animation must start from the presentation event emitted after the logic command is applied.");
     }
 }

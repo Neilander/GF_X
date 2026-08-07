@@ -1,10 +1,12 @@
 using System;
+using AAAGame.Card;
 
 public enum LogicMovementRegionConstraintFailure
 {
     None = 0,
     EnemyStronghold = 1,
     TutorialStrongholdBoundary = 2,
+    NotVisible = 3,
 }
 
 public static class LogicMovementRegionConstraintService
@@ -147,6 +149,12 @@ public static class LogicMovementRegionConstraintService
             return frameStart;
         }
 
+        if (IsNonVisibleBlocked(candidate))
+        {
+            failure = LogicMovementRegionConstraintFailure.NotVisible;
+            return frameStart;
+        }
+
         candidate = ResolveEnemyStrongholdCollision(entity, frameStart, candidate, out bool strongholdConstrained);
         if (strongholdConstrained)
             failure = LogicMovementRegionConstraintFailure.EnemyStronghold;
@@ -170,6 +178,12 @@ public static class LogicMovementRegionConstraintService
         if (IsTutorialStrongholdBoundaryBlocked(position))
         {
             failure = LogicMovementRegionConstraintFailure.TutorialStrongholdBoundary;
+            return false;
+        }
+
+        if (IsNonVisibleBlocked(position))
+        {
+            failure = LogicMovementRegionConstraintFailure.NotVisible;
             return false;
         }
 
@@ -269,6 +283,13 @@ public static class LogicMovementRegionConstraintService
         LogicStrongholdMap.EnsureInitialized();
         return !LogicStrongholdMap.TryResolveStrongholdId(candidate, out string candidateStrongholdId)
                || !string.Equals(candidateStrongholdId, s_TutorialStrongholdId, StringComparison.Ordinal);
+    }
+
+    private static bool IsNonVisibleBlocked(FixVector2 position)
+    {
+        return LogicCardPlacementAuthority.IsActive
+               && LogicCardPlacementAuthority.IsWorldBound
+               && !LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(position);
     }
 
     private static void EnsureActive()

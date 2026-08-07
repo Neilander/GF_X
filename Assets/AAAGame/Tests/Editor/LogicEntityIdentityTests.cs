@@ -1811,6 +1811,65 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void StrongholdCaptureEligibility_IgnoresLivingPermanentInvincibleBuilding()
+    {
+        const string strongholdId = "stronghold-permanent-invincible";
+        LogicEntityState core = CreateConfiguredState("Building_CaptureCore", false);
+        core.ConfigureBuilding(
+            CreateTestBuildingData("Building_CaptureCore"),
+            "building-capture-core",
+            strongholdId,
+            EntitySideHelper.EnemyFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        LogicEntityState trap = CreateConfiguredState("Buil_Trap_Lv1", false);
+        trap.ConfigureBuilding(
+            CreateTestBuildingData("Buil_Trap_Lv1"),
+            "building-capture-trap",
+            strongholdId,
+            EntitySideHelper.EnemyFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        trap.BuffComp.AddBuff(
+            BuffData.Create(
+                "building-test-permanent-invincible",
+                Fix64.Zero,
+                true,
+                1,
+                new List<BuffCallback>
+                {
+                    new BuildingInvincibleSourceBuff("building-test-permanent-invincible-source"),
+                }),
+            trap);
+        ActivateRequestedState(core.EntityId, 1);
+
+        core.TakeDamage((Fix64)150, HealthModifyType.empty);
+
+        Assert.IsTrue(core.IsDisabled);
+        Assert.IsFalse(trap.IsDisabled);
+        Assert.IsTrue(trap.IsPermanentlyInvincible);
+        Assert.IsTrue(LevelEntity.CanCaptureStronghold(strongholdId));
+
+        LogicEntityState ordinaryBuilding = CreateConfiguredState("Building_CaptureBlocker", false);
+        ordinaryBuilding.ConfigureBuilding(
+            CreateTestBuildingData("Building_CaptureBlocker"),
+            "building-capture-blocker",
+            strongholdId,
+            EntitySideHelper.EnemyFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        ActivateRequestedState(ordinaryBuilding.EntityId, 2);
+
+        Assert.IsFalse(LevelEntity.CanCaptureStronghold(strongholdId));
+    }
+
+    [Test]
     public void DelayedIncomingDamage_DisableEventPreservesOriginalAttacker()
     {
         LogicEntityState state = CreateConfiguredState("Building_DelayedDisabledEvent", false);

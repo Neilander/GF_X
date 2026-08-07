@@ -4,7 +4,7 @@ using System.Collections.Generic;
 
 /// <summary>
 /// 实体上下文接口：组件和 Brain 通过此接口访问实体，而非直接依赖 MAEntity。
-/// 真实版由 MAEntity 实现（映射到 Transform/CharacterController 等），
+/// 真实逻辑由 LogicEntityState 实现，MAEntity 只代理读取并承载表现绑定；
 /// 测试版由 SimEntityContext 实现（纯数据，无 Unity 引擎依赖）。
 /// </summary>
 public interface IEntityContext : ITargetable
@@ -76,6 +76,7 @@ public interface IBuildingLogicContext : IEntityContext
     IReadOnlyList<LogicInteractionOptionDescriptor> InteractionOptions { get; }
     bool IsDisabled { get; }
     bool IsPhaseProtected { get; }
+    bool IsPermanentlyInvincible { get; }
     bool HasPermanentNoAttackCapability { get; }
     bool BlocksLogicMovement { get; }
     bool IsGameEndConditionBuilding { get; }
@@ -85,11 +86,13 @@ public interface IBuildingLogicContext : IEntityContext
     void RestoreBuildingToFullHealth();
     void SetCollisionBlockingByBuff(bool blocksMovement);
     void SetPermanentStealthByBuff(bool enabled);
+    void SetPermanentInvincibilityByBuff(bool enabled);
     void SetPhaseProtectionByBuff(bool enabled);
 }
 
 public interface IHeroLogicContext : IEntityContext
 {
+    bool IsHeroEntity { get; }
     bool IsGhostState { get; }
     void SetGhostStateByBuff(bool enabled);
     void RestoreFromGhostState();

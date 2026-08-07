@@ -55,6 +55,49 @@ public sealed class LogicGameEndServiceTests
     }
 
     [Test]
+    public void GameEnd_InterruptsAttacksAndStopsMovementBeforePublishingResult()
+    {
+        LogicEntityState target = CreateBuilding("target-enemy", EntitySideHelper.EnemyFactionId, true);
+        LogicEntityState combatant = CreateBuilding("combatant", EntitySideHelper.EnemyFactionId, false);
+        var attack = new ObservedAttackComp();
+        var move = new ObservedMoveComp();
+        combatant.SetAtkComp(attack);
+        combatant.SetMoveComp(move);
+        attack.Init(combatant);
+        move.Init(combatant);
+
+        LogicGameEndService.Initialize(CreateLevel(
+            new[] { VictoryConditionType.OccupySpecificBuildings },
+            0,
+            Array.Empty<FailConditionType>(),
+            0));
+        LogicGameEndService.RegisterInitialConditionBuilding(target.BuildingInstanceId, target.OwnerFactionId);
+        PublishEntities();
+
+        bool resultObservedAfterStop = false;
+        void ObserveResult(LogicGameEndResult _) =>
+            resultObservedAfterStop = !attack.IsAttacking && !move.IsMoving;
+        LogicGameEndService.GameEnded += ObserveResult;
+        try
+        {
+            target.SetOwnerFaction(EntitySideHelper.PlayerFactionId);
+            LogicTimeControlService.BeginFrame(1);
+            LogicGameEndService.ApplyFrame(1);
+        }
+        finally
+        {
+            LogicGameEndService.GameEnded -= ObserveResult;
+        }
+
+        Assert.IsFalse(attack.IsAttacking);
+        Assert.AreEqual(1, attack.InterruptCount);
+        Assert.AreEqual(AttackInterruptReason.Forced, attack.LastInterruptReason);
+        Assert.IsFalse(move.IsMoving);
+        Assert.AreEqual(1, move.StopCount);
+        Assert.IsTrue(resultObservedAfterStop);
+    }
+
+    [Test]
     public void ViewlessPlayerTargetDisabledOnExactLogicFrame_Fails()
     {
         LogicEntityState target = CreateBuilding("target-player", EntitySideHelper.PlayerFactionId, true);
@@ -142,6 +185,29 @@ public sealed class LogicGameEndServiceTests
         Assert.IsTrue(captured.HasValue);
         Assert.IsTrue(captured.Value.IsWin);
         Assert.AreEqual(VictoryConditionType.CompleteTutorial, captured.Value.VictoryCondition);
+    }
+
+    [Test]
+    public void RuntimeScheduler_StopsAfterGameEndWithoutPausingPresentationTime()
+    {
+        LevelData level = CreateLevel(
+            new[] { VictoryConditionType.CompleteTutorial },
+            0,
+            Array.Empty<FailConditionType>(),
+            0);
+        SetPrivate(level, nameof(LevelData.Identifier), "Lv_1");
+        LogicGameEndService.Initialize(level);
+        LogicGameEndService.CompleteScriptedWin(VictoryConditionType.CompleteTutorial);
+
+        MethodInfo prepareNextFrame = typeof(RuntimeProcedureBase).GetMethod(
+            "PrepareNextLogicFrame",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(prepareNextFrame);
+        double schedulerScale = (double)prepareNextFrame.Invoke(new ArenaProcedure(), null);
+
+        Assert.AreEqual(0d, schedulerScale);
+        Assert.IsFalse(LogicTimeControlService.IsPaused);
+        Assert.AreEqual(1f, LogicTimeControlService.AnimationScale);
     }
 
     [Test]
@@ -340,5 +406,47 @@ public sealed class LogicGameEndServiceTests
         typeof(InGameDataModel)
             .GetField("m_IngameValue", BindingFlags.Instance | BindingFlags.NonPublic)
             ?.SetValue(model, new Dictionary<IngameValueType, int>());
+    }
+
+    private sealed class ObservedAttackComp : IAtkComp
+    {
+        public bool IsAttacking { get; private set; } = true;
+        public int InterruptCount { get; private set; }
+        public AttackInterruptReason LastInterruptReason { get; private set; }
+
+        public void Init(IEntityContext ctx) { }
+        public void Attack(Fix64 deltaTime) { }
+
+        public void InterruptAttack(AttackInterruptReason reason = AttackInterruptReason.Forced)
+        {
+            IsAttacking = false;
+            InterruptCount++;
+            LastInterruptReason = reason;
+        }
+
+        public void ShutDown() { }
+        public void Resume() { }
+    }
+
+    private sealed class ObservedMoveComp : IMoveComp
+    {
+        public FixVector2 NavDirectionFixed => FixVector2.Zero;
+        public bool IsMoving { get; private set; } = true;
+        public int StopCount { get; private set; }
+
+        public void Init(IEntityContext ctx) { }
+        public void Move(Fix64 deltaTime) { }
+        public void MoveToFixed(FixVector2 destination) { }
+
+        public void StopMove()
+        {
+            IsMoving = false;
+            StopCount++;
+        }
+
+        public void CommitResolvedDisplacement(FixVector2 displacement) { }
+        public void SetNavTargetFixed(FixVector2 destination) { }
+        public void ShutDown() { }
+        public void Resume() { }
     }
 }

@@ -16,9 +16,6 @@ public class PunchBagEntity : GeneralCreature
     protected override void OnLogicFrameUpdate(Fix64 deltaTime)
     {
         base.OnLogicFrameUpdate(deltaTime);
-
-        //if(Input.GetKeyDown(KeyCode.T))
-        //animator.SetTrigger( "GetHit");
     }
 
 }

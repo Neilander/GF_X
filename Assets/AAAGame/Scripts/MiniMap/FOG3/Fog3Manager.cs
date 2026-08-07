@@ -28,18 +28,8 @@ namespace AAAGame.MiniMap.FOG3
         [SerializeField] private float buildingVisionRadius = 21f;
         [Tooltip("自动把 GF_X 里的我方实体注册为迷雾可视源。")]
         [SerializeField] private bool autoRegisterPlayerSideEntities = true;
-        [Tooltip("迷雾可视区域刷新间隔，单位秒。")]
-        [SerializeField] private float updateInterval = 0.08f;
-        [Tooltip("可视区域边缘柔化宽度。")]
-        [SerializeField] private float softEdgeWidth = 2f;
-        [Tooltip("是否启用射线遮挡视野。")]
-        [SerializeField] private bool useLineOfSight;
-        [Tooltip("视野射线遮挡检测使用的 Layer。")]
-        [SerializeField] private LayerMask lineOfSightOccluderMask;
-        [Tooltip("视野射线起点高度。")]
-        [SerializeField] private float lineOfSightEyeHeight = 1f;
         [Tooltip("是否启用敌方据点遮挡 hidden 区视野扩散。")]
-        [SerializeField] private bool enableEnemyStrongholdHiddenVisionBlock = true;
+        [SerializeField] private bool enableEnemyStrongholdHiddenVisionBlock;
 
         [Header("显示效果")]
         [Tooltip("是否创建场景中的世界空间迷雾遮罩。")]
@@ -85,7 +75,6 @@ namespace AAAGame.MiniMap.FOG3
         private float currentOverlayHeight;
         private float nextInitializeRetryTime;
         private bool missingTerrainLogged;
-        private float updateTimer;
         private bool visibilityRefreshPending;
         private int pendingVisibilityRefreshRequestCount;
         private float cloudHeightRefreshTimer;
@@ -459,14 +448,12 @@ namespace AAAGame.MiniMap.FOG3
                     }
                 }
 
-                updateTimer += Time.deltaTime;
-                if (!visibilityUpdatedThisFrame && (updateInterval <= 0f || updateTimer >= updateInterval))
+                if (!visibilityUpdatedThisFrame && controller.MapData.IsDirty)
                 {
-                    updateTimer = 0f;
                     long visibilityStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                     try
                     {
-                        controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight, enableEnemyStrongholdHiddenVisionBlock, logPerformanceDiagnostics);
+                        controller.PublishAuthoritativeVisibility(logPerformanceDiagnostics);
                     }
                     finally
                     {
@@ -1163,11 +1150,10 @@ namespace AAAGame.MiniMap.FOG3
             if (!isInitialized || controller == null || controller.MapData == null)
                 return;
 
-            updateTimer = 0f;
             long visibilityStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
-                controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight, enableEnemyStrongholdHiddenVisionBlock, logPerformanceDiagnostics);
+                controller.PublishAuthoritativeVisibility(logPerformanceDiagnostics);
             }
             finally
             {
@@ -1579,17 +1565,6 @@ namespace AAAGame.MiniMap.FOG3
             return TryReadVisionRadiusFromConfig(UnitVisionRadiusConfigKey, playerSideUnitVisionRadius, out radius);
         }
 
-        private static Fog3CellState ResolveEntityFogCellState(Fog3MapData mapData, Vector3 worldPosition)
-        {
-            if (mapData == null)
-                return Fog3CellState.Visible;
-
-            if (!mapData.WorldToGrid(worldPosition, out int gridX, out int gridY))
-                return Fog3CellState.Outside;
-
-            return mapData.GetCellState(gridX, gridY);
-        }
-
         private void UpdateEnemyVisibilityByFog(Fog3MapData mapData)
         {
             long enemyStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -1664,7 +1639,10 @@ namespace AAAGame.MiniMap.FOG3
                     updatedEnemyVisibilityIds.Add(entityId);
 
                     long resolveStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                    Fog3CellState cellState = ResolveEntityFogCellState(mapData, entity.transform.position);
+                    Fog3CellState cellState = entity is BuildingEntity stealthBuilding
+                                              && stealthBuilding.IsHiddenFromPlayerByStealth
+                        ? Fog3CellState.Hidden
+                        : mapData.GetCellState(logicEntity.PositionFixed);
                     resolveTicks += System.Diagnostics.Stopwatch.GetTimestamp() - resolveStartTicks;
                     Fog3CellState previousCellState = visibilityState.LastCellState;
                     if (previousCellState != cellState)
@@ -1940,11 +1918,22 @@ namespace AAAGame.MiniMap.FOG3
             if (state == null)
                 return;
 
-            if (state.Entity is BuildingEntity building && building.buildingData != null && building.buildingData.Lv == 0)
+            if (state.Entity is BuildingEntity building)
             {
-                building.RefreshLv0PhaseVisibility();
-                HealthBarComp.SetFogVisible(state.EntityId, false);
-                return;
+                if (building.buildingData != null && building.buildingData.Lv == 0)
+                {
+                    building.RefreshLv0PhaseVisibility();
+                    HealthBarComp.SetFogVisible(state.EntityId, false);
+                    return;
+                }
+
+                if (building.IsHiddenFromPlayerByStealth)
+                {
+                    SetRenderersEnabled(state.Renderers, false);
+                    SetAnimatorsEnabled(state.Animators, false);
+                    HealthBarComp.SetFogVisible(state.EntityId, false);
+                    return;
+                }
             }
 
             SetRenderersEnabled(state.Renderers, true);

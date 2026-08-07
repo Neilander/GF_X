@@ -43,9 +43,12 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         : throw new System.InvalidOperationException("BuildingEntity.IsPhaseProtected requires a bound logic state.");
     public bool IsHealthBarSuppressedByBuff => _healthBarSuppressedByBuff || _stealthHealthBarSuppressed;
     public bool IsHealthBarSuppressedByPhaseBuff => _healthBarSuppressedByBuff;
+    internal bool IsHiddenFromPlayerByStealth => _permanentStealthVisibility
+                                                   && OwnerFactionID != EntitySideHelper.PlayerFactionId;
     public bool HasPermanentNoAttackCapability => LogicState != null
         ? LogicState.HasPermanentNoAttackCapability
         : throw new System.InvalidOperationException("BuildingEntity.HasPermanentNoAttackCapability requires a bound logic state.");
+    bool IBuildingLogicContext.IsPermanentlyInvincible => LogicState.IsPermanentlyInvincible;
     BuildingData IBuildingLogicContext.BuildingData => LogicState.BuildingData;
     BuildingExtraProps IBuildingLogicContext.ProductionProps => LogicState.ProductionProps;
     string IBuildingLogicContext.StrongholdId => LogicState.StrongholdId;
@@ -292,6 +295,11 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     void IBuildingLogicContext.SetPermanentStealthByBuff(bool enabled)
     {
         throw ViewLogicMutationException(nameof(IBuildingLogicContext.SetPermanentStealthByBuff));
+    }
+
+    void IBuildingLogicContext.SetPermanentInvincibilityByBuff(bool enabled)
+    {
+        throw ViewLogicMutationException(nameof(IBuildingLogicContext.SetPermanentInvincibilityByBuff));
     }
 
     protected override void OnLogicPermanentStealthPresentation(bool enabled)

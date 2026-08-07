@@ -322,6 +322,10 @@ public class SteeringMovementTests
         targetingComp.Init(ctx);
         ctx.TargetComp = targetingComp;
 
+        var buffComp = new AAAGame.Scripts.BuffSystem.CharacterBuffComp();
+        buffComp.Init(ctx);
+        ctx.BuffComp = buffComp;
+
         return ctx;
     }
 
@@ -472,6 +476,32 @@ public class SteeringMovementTests
             () => brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime));
 
         StringAssert.Contains("has no birth position", exception.Message);
+    }
+
+    [Test]
+    public void 敌兵进入返航时缺少Buff组件明确报错()
+    {
+        var soldier = MakeSoldier(new Vector3(2f, 0f, 0f), SideType.EnemySide);
+        soldier.LogicEntityId = new LogicEntityId(101);
+        soldier.BuffComp = null;
+        EntityRegistry.Register(soldier);
+
+        var brain = new SoldierAIBrain
+        {
+            ChaseRange = (Fix64)1,
+            HomeArrivedRadius = (Fix64)0.1f,
+        };
+        brain.SetBirthPositionFixed(FixVector2.Zero);
+        soldier.Brain = brain;
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime));
+
+        StringAssert.Contains("without a buff component", exception.Message);
+        Assert.AreNotEqual(
+            SoldierAIBrain.SoldierState.Returning,
+            brain.State,
+            "缺少返航效果的敌兵不能伪装成已进入完整 Returning 状态");
     }
 
     [Test]

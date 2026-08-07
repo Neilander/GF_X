@@ -177,27 +177,6 @@ public partial class LevelEntity : EntityBase
         return m_RuntimeInitializationVersion == initVersion && activeLevelEntity == this;
     }
 
-    protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
-    {
-        base.OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
-
-#if UNITY_EDITOR
-        if (Input.GetKeyDown(KeyCode.T))
-        {
-            var sh = Strongholds != null && Strongholds.Count > 0 ? Strongholds[0] : null;
-            if (sh != null)
-            {
-                Debug.Log("[LevelEntity] 测试播放占领特效 (T)");
-                PlayCaptureVfx(sh);
-            }
-            else
-            {
-                Debug.LogWarning("[LevelEntity] 没有可用的 Stronghold 来测试占领特效");
-            }
-        }
-#endif
-    }
-
     private void SubscribeRuntimeLayerRules()
     {
         if (tileWorldCreatorManager == null)
@@ -417,7 +396,8 @@ public partial class LevelEntity : EntityBase
                             out var buildingInstanceId,
                             isGameEndConditionBuilding: point.IsGameEndConditionBuilding,
                             initialCoinReserves: initialCoinReserves,
-                            isNavigationStaticBaked: !point.IsTestSlot))
+                            isNavigationStaticBaked: !point.IsTestSlot
+                                                     && !BuildingAbilityIds.HasPermanentNoCollisionCapability(effectiveIdentifier)))
                     {
                         Log.Error("LevelEntity.SpawnPresetEntities failed: cannot build preset building '{0}'.", effectiveIdentifier);
                         break;
@@ -540,7 +520,8 @@ public partial class LevelEntity : EntityBase
                             out var buildingInstanceId,
                             isGameEndConditionBuilding: point.IsGameEndConditionBuilding,
                             initialCoinReserves: initialCoinReserves,
-                            isNavigationStaticBaked: !point.IsTestSlot))
+                            isNavigationStaticBaked: !point.IsTestSlot
+                                                     && !BuildingAbilityIds.HasPermanentNoCollisionCapability(effectiveIdentifier)))
                     {
                         Log.Error("LevelEntity.SpawnPresetEntities failed: cannot build preset building '{0}'.", effectiveIdentifier);
                         skippedCount++;
@@ -788,27 +769,36 @@ public partial class LevelEntity : EntityBase
         if (currentOwnerFactionId == captureFactionId)
             return;
 
+        if (!CanCaptureStronghold(disabledBuilding.StrongholdId))
+            return;
+
+        CaptureStronghold(disabledBuilding.StrongholdId, captureFactionId);
+    }
+
+    internal static bool CanCaptureStronghold(string strongholdId)
+    {
+        if (string.IsNullOrWhiteSpace(strongholdId))
+            throw new ArgumentException("Stronghold id is empty.", nameof(strongholdId));
+
         bool hasCapturableBuildings = false;
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
             if (!(entities[i] is IBuildingLogicContext building)
-                || !string.Equals(building.StrongholdId, disabledBuilding.StrongholdId, StringComparison.Ordinal)
+                || !string.Equals(building.StrongholdId, strongholdId, StringComparison.Ordinal)
                 || building.BuildingData == null
-                || building.BuildingData.Lv == 0)
+                || building.BuildingData.Lv == 0
+                || building.IsPermanentlyInvincible)
             {
                 continue;
             }
 
             hasCapturableBuildings = true;
             if (!building.IsDisabled)
-                return;
+                return false;
         }
 
-        if (!hasCapturableBuildings)
-            return;
-
-        CaptureStronghold(disabledBuilding.StrongholdId, captureFactionId);
+        return hasCapturableBuildings;
     }
 
     private void CaptureStronghold(string strongholdId, int newOwnerFactionId)

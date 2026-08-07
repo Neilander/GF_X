@@ -10448,6 +10448,211 @@ public static partial class FlowFieldCrowdMovementSystem
         return ClampFixedVelocity(velocity, speed);
     }
 
+    private static Fix64 ResolveFunnelTriangleArea2(
+        FixVector2 apex,
+        FixVector2 first,
+        FixVector2 second)
+    {
+        FixVector2 fromApexToFirst = first - apex;
+        FixVector2 fromApexToSecond = second - apex;
+        return fromApexToFirst.x * fromApexToSecond.y
+               - fromApexToFirst.y * fromApexToSecond.x;
+    }
+
+    private static void ResolvePortalFunnelSegmentFixed(
+        PathHandle handle,
+        int portalPathIndex,
+        out FixVector2 left,
+        out FixVector2 right)
+    {
+        if (handle?.SectorIds == null
+            || handle.PortalIds == null
+            || portalPathIndex < 0
+            || portalPathIndex >= handle.PortalIds.Length
+            || portalPathIndex + 1 >= handle.SectorIds.Length)
+        {
+            throw new InvalidOperationException(
+                $"ResolvePortalFunnelSegmentFixed failed: path index is invalid index={portalPathIndex}, handle={FormatPathHandle(handle)}.");
+        }
+
+        int currentSectorId = handle.SectorIds[portalPathIndex];
+        int downstreamSectorId = handle.SectorIds[portalPathIndex + 1];
+        PortalData portal = GetPortalById(_world, handle.PortalIds[portalPathIndex]);
+        if (GetOppositeSectorId(portal, currentSectorId) != downstreamSectorId)
+        {
+            throw new InvalidOperationException(
+                $"ResolvePortalFunnelSegmentFixed failed: portal does not connect path sectors portal={portal.PortalId}, current={currentSectorId}, downstream={downstreamSectorId}.");
+        }
+
+        Vector2Int[] currentCells = GetPortalCellsForSector(portal, currentSectorId);
+        Vector2Int[] downstreamCells = GetPortalCellsForSector(portal, downstreamSectorId);
+        if (currentCells.Length == 0 || currentCells.Length != downstreamCells.Length)
+        {
+            throw new InvalidOperationException(
+                $"ResolvePortalFunnelSegmentFixed failed: portal sides are invalid portal={portal.PortalId}, current={currentCells.Length}, downstream={downstreamCells.Length}.");
+        }
+
+        FixVector2 first = (_world.GridToWorldCenterFixed(currentCells[0].x, currentCells[0].y)
+                            + _world.GridToWorldCenterFixed(downstreamCells[0].x, downstreamCells[0].y))
+                           / (Fix64)2;
+        int lastIndex = currentCells.Length - 1;
+        FixVector2 last = (_world.GridToWorldCenterFixed(currentCells[lastIndex].x, currentCells[lastIndex].y)
+                           + _world.GridToWorldCenterFixed(downstreamCells[lastIndex].x, downstreamCells[lastIndex].y))
+                          / (Fix64)2;
+        FixVector2 travel = _world.GridToWorldCenterFixed(downstreamCells[0].x, downstreamCells[0].y)
+                            - _world.GridToWorldCenterFixed(currentCells[0].x, currentCells[0].y);
+        FixVector2 center = (first + last) / (Fix64)2;
+        if (ResolveFunnelTriangleArea2(FixVector2.Zero, travel, first - center) >= Fix64.Zero)
+        {
+            left = first;
+            right = last;
+        }
+        else
+        {
+            left = last;
+            right = first;
+        }
+    }
+
+    private static FixVector2 ResolvePortalCorridorFunnelTargetFixed(
+        PathHandle handle,
+        FixVector2 position,
+        bool currentPortalReached,
+        out int cornerPortalPathIndex)
+    {
+        if (handle == null
+            || handle.CurrentSectorIndex < 0
+            || handle.CurrentSectorIndex >= handle.SectorIds.Length)
+        {
+            throw new InvalidOperationException(
+                $"ResolvePortalCorridorFunnelTargetFixed failed: handle is invalid handle={FormatPathHandle(handle)}.");
+        }
+
+        FixVector2 apex = position;
+        FixVector2 funnelLeft = apex;
+        FixVector2 funnelRight = apex;
+        int portalStartPathIndex = handle.CurrentSectorIndex + (currentPortalReached ? 1 : 0);
+        int leftIndex = portalStartPathIndex;
+        int rightIndex = portalStartPathIndex;
+        for (int portalIndex = portalStartPathIndex; portalIndex <= handle.PortalIds.Length; portalIndex++)
+        {
+            FixVector2 portalLeft;
+            FixVector2 portalRight;
+            if (portalIndex == handle.PortalIds.Length)
+            {
+                portalLeft = _world.GridToWorldCenterFixed(handle.GoalX, handle.GoalY);
+                portalRight = portalLeft;
+            }
+            else
+            {
+                ResolvePortalFunnelSegmentFixed(handle, portalIndex, out portalLeft, out portalRight);
+            }
+
+            if (ResolveFunnelTriangleArea2(apex, funnelRight, portalRight) >= Fix64.Zero)
+            {
+                if (funnelRight == apex
+                    || ResolveFunnelTriangleArea2(apex, funnelLeft, portalRight) < Fix64.Zero)
+                {
+                    funnelRight = portalRight;
+                    rightIndex = portalIndex;
+                }
+                else
+                {
+                    cornerPortalPathIndex = leftIndex;
+                    return funnelLeft;
+                }
+            }
+
+            if (ResolveFunnelTriangleArea2(apex, funnelLeft, portalLeft) <= Fix64.Zero)
+            {
+                if (funnelLeft == apex
+                    || ResolveFunnelTriangleArea2(apex, funnelRight, portalLeft) > Fix64.Zero)
+                {
+                    funnelLeft = portalLeft;
+                    leftIndex = portalIndex;
+                }
+                else
+                {
+                    cornerPortalPathIndex = rightIndex;
+                    return funnelRight;
+                }
+            }
+        }
+
+        cornerPortalPathIndex = handle.PortalIds.Length;
+        return _world.GridToWorldCenterFixed(handle.GoalX, handle.GoalY);
+    }
+
+    private static bool TryResolvePortalCorridorFunnelVelocityFixed(
+        AgentRuntimeData agent,
+        PathHandle handle,
+        FixVector2 position,
+        Fix64 maxSpeed,
+        bool currentPortalReached,
+        out FixVector2 velocity,
+        out string diagnostic)
+    {
+        velocity = FixVector2.Zero;
+        diagnostic = null;
+        if (handle?.PortalIds == null
+            || handle.CurrentSectorIndex < 0
+            || handle.CurrentSectorIndex >= handle.PortalIds.Length)
+        {
+            return false;
+        }
+
+        FixVector2 target = ResolvePortalCorridorFunnelTargetFixed(
+            handle,
+            position,
+            currentPortalReached,
+            out int cornerPortalPathIndex);
+        FixVector2 displacement = target - position;
+        if (displacement == FixVector2.Zero)
+        {
+            diagnostic =
+                $"corridor-funnel-rejected reason=zero-displacement cornerPathIndex={cornerPortalPathIndex} " +
+                $"targetRaw=({target.x.RawValue},{target.y.RawValue})";
+            return false;
+        }
+        if (!HasFixedGridLineOfSight(_world, position, target, allowTargetSoftCost: true))
+        {
+            diagnostic =
+                $"corridor-funnel-rejected reason=grid-los-failed cornerPathIndex={cornerPortalPathIndex} " +
+                $"targetRaw=({target.x.RawValue},{target.y.RawValue})";
+            return false;
+        }
+        if (!LogicStaticCollisionShadowService.TrySolveFixed(
+                agent.AgentTypeId,
+                position,
+                displacement,
+                agent.RadiusFixed,
+                out LogicStaticCollisionShadowResult solveResult))
+        {
+            throw new InvalidOperationException(
+                $"TryResolvePortalCorridorFunnelVelocityFixed failed: static collision world is unavailable for agentType={agent.AgentTypeId}.");
+        }
+        if (!solveResult.SolveResult.Success)
+        {
+            throw new InvalidOperationException(
+                $"TryResolvePortalCorridorFunnelVelocityFixed failed: direct corridor query failed for agent={agent.Id}, failure={solveResult.SolveResult.Failure}.");
+        }
+        if (solveResult.SolveResult.ResolvedDisplacement != displacement)
+        {
+            diagnostic =
+                $"corridor-funnel-rejected reason=static-sweep-clipped cornerPathIndex={cornerPortalPathIndex} " +
+                $"targetRaw=({target.x.RawValue},{target.y.RawValue}) " +
+                $"desiredRaw=({displacement.x.RawValue},{displacement.y.RawValue}) " +
+                $"resolvedRaw=({solveResult.SolveResult.ResolvedDisplacement.x.RawValue},{solveResult.SolveResult.ResolvedDisplacement.y.RawValue})";
+            return false;
+        }
+
+        velocity = ScaleFixedDirectionToSpeed(displacement, maxSpeed);
+        diagnostic =
+            $"corridor-funnel currentPortalReached={currentPortalReached} cornerPathIndex={cornerPortalPathIndex} " +
+            $"targetRaw=({target.x.RawValue},{target.y.RawValue}) handle={FormatPathHandle(handle)}";
+        return true;
+    }
+
     private static FixVector2 ResolveDeterministicFlowVelocityFixed(
         IEntityContext self,
         AgentRuntimeData agent,
@@ -10630,6 +10835,23 @@ public static partial class FlowFieldCrowdMovementSystem
             recommendedPortalSlotIndexForDiagnostic = recommendedPortalSlotIndex;
             selectedPortalSlotIndexForDiagnostic = selectedPortalSlotIndex;
         }
+        string funnelDiagnostic = null;
+        if (goalKind == TileGoalKind.Portal && !hasPendingRuntimeDirty)
+        {
+            if (TryResolvePortalCorridorFunnelVelocityFixed(
+                    agent,
+                    handle,
+                    position,
+                    maxSpeed,
+                    IndexOfGoalCell(tile.GoalCells, worldX, worldY) >= 0,
+                    out FixVector2 funnelVelocity,
+                    out funnelDiagnostic))
+            {
+                nav.LastFixedFlowVelocity = funnelVelocity;
+                nav.LastFixedFlowResult = funnelDiagnostic;
+                return funnelVelocity;
+            }
+        }
         byte directionIndex = tile.DeterministicFlowDirectionIndices[localIndex];
         if (directionIndex == 0)
         {
@@ -10692,7 +10914,8 @@ public static partial class FlowFieldCrowdMovementSystem
             $"/cell=({worldX},{worldY})/cost={tile.DeterministicIntegrationCosts[localIndex]}" +
             $"/portalSlot={recommendedPortalSlotIndexForDiagnostic}:{selectedPortalSlotIndexForDiagnostic}" +
             $"/portalGoals={(goalKind == TileGoalKind.Portal ? FormatGoalCells(tile.GoalCells) : "n/a")}" +
-            $"/directStaticClear={directStaticClear}/directCostClear={directCostClear}";
+            $"/directStaticClear={directStaticClear}/directCostClear={directCostClear}" +
+            $"/funnel={(funnelDiagnostic ?? "not-evaluated")}";
         return result;
     }
 
@@ -24337,7 +24560,10 @@ public static partial class FlowFieldCrowdMovementSystem
             FixVector2 targetOffset = rawGoalPosition - currentTargetFramePosition;
             Fix64 currentTargetExtent = ResolveNavigationTargetExtentFixed(currentTarget);
             Fix64 targetMatchDistance = Fix64.Max(currentTargetExtent * Fix64.FromRaw(3072), Fix64.FromRaw(1434));
-            useRawGoal = FixVector2.SqrMagnitude(targetOffset) > targetMatchDistance * targetMatchDistance;
+            bool hasExplicitTargetGoal =
+                FixVector2.SqrMagnitude(targetOffset) > targetMatchDistance * targetMatchDistance;
+            useRawGoal = hasExplicitTargetGoal
+                         && ShouldUseExactMovingTargetGoalFixed(self, rawGoalPosition);
         }
 
         if (useRawGoal)
@@ -24493,6 +24719,21 @@ public static partial class FlowFieldCrowdMovementSystem
         goalY = anchor.ActiveGoalY;
         stableGoalPosition = anchor.ActiveGoalWorldFixed;
         return true;
+    }
+
+    private static bool ShouldUseExactMovingTargetGoalFixed(
+        IEntityContext self,
+        FixVector2 rawGoalPosition)
+    {
+        if (!_world.WorldToGridFixed(rawGoalPosition, out int rawGoalX, out int rawGoalY)
+            || !_world.TryGetSectorId(rawGoalX, rawGoalY, out _)
+            || !TryResolveStartCellForReachabilityFixed(self, out int startX, out int startY, out _))
+        {
+            return true;
+        }
+
+        int cellDistance = Math.Max(Math.Abs(startX - rawGoalX), Math.Abs(startY - rawGoalY));
+        return cellDistance <= checked(_world.SectorSizeInCells * 2);
     }
 
     private static bool TryResolveReachableNavigationPointCellFixed(

@@ -610,6 +610,9 @@ public abstract class RuntimeProcedureBase : ProcedureBase
 
     private double PrepareNextLogicFrame()
     {
+        if (LogicGameEndService.IsGameEnded)
+            return 0d;
+
         LogicTimeControlService.PrepareFrame(checked(m_LogicFrameClock.Frame + 1));
         return LogicTimeControlService.SchedulerScale;
     }

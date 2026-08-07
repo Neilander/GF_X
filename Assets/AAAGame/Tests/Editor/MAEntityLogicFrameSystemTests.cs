@@ -1,5 +1,7 @@
 ﻿using NUnit.Framework;
 
+using AAAGame.Card;
+using AAAGame.MiniMap.FOG3;
 using UnityEngine;
 
 [TestFixture]
@@ -1367,6 +1369,56 @@ public class MAEntityLogicFrameSystemTests
         {
             LogicStrongholdMap.Clear();
             LogicPhaseCommandService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    [Test]
+    public void MoveCommit_PlayerUnitCannotEnterNonVisibleArea()
+    {
+        LogicTimeControlService.BeginTimeline();
+        LogicCardPlacementAuthority.BeginTimeline();
+        var walkable = new bool[5];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        LogicCardPlacementAuthority.BindWorldForTests(
+            new Fog3MapData(new Fog3TerrainInfo(
+                5,
+                1,
+                1f,
+                Vector3.zero,
+                walkable,
+                "MAEntityLogicFrameSystemTests.NonVisibleMove")),
+            new LogicCombatShape[0],
+            Fix64.One,
+            Fix64.One,
+            Fix64.One);
+        var start = new FixVector2((Fix64)0.5f, (Fix64)0.5f);
+        var entity = new RegionConstraintProbeEntity
+        {
+            LogicEntityId = new LogicEntityId(7004),
+            Side = SideType.PlayerSide,
+            PositionFixed = start,
+            DesiredDisplacement = new FixVector2((Fix64)2, Fix64.Zero),
+        };
+        entity.SetProperty(
+            CreatureMainProperty.CollisionRadius,
+            DistanceUnitConverter.ConvertFromWorld(Fix64.One / (Fix64)4));
+        EntityRegistry.RegisterAsPlayer(entity);
+
+        try
+        {
+            LogicFrameRuntime.Tick(1);
+
+            Assert.AreEqual(start, entity.PositionFixed);
+            Assert.AreEqual(1, LogicAgentCollisionShadowService.LastRegionConstraintChangedCount);
+            Assert.AreEqual(
+                LogicMovementRegionConstraintFailure.NotVisible,
+                LogicAgentCollisionShadowService.LastStates[0].RegionConstraintFailure);
+        }
+        finally
+        {
+            LogicCardPlacementAuthority.EndTimeline();
             LogicTimeControlService.EndTimeline();
         }
     }
