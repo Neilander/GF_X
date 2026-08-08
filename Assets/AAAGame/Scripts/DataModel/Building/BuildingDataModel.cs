@@ -69,6 +69,37 @@ public class BuildingDataModel : DataModelBase
         return buildingDataModel.buildingDataDic.Values;
     }
 
+    public static string GetRequiredStartingBaseIdentifier(Archetype archetype)
+    {
+        return ResolveStartingBaseIdentifier(LogicRuntimeDataTableCache.BuildingRows, archetype);
+    }
+
+    internal static string ResolveStartingBaseIdentifier(IEnumerable<BuildingTable> rows, Archetype archetype)
+    {
+        if (rows == null)
+            throw new ArgumentNullException(nameof(rows));
+        if (archetype == Archetype.None || archetype == Archetype.Common)
+            throw new ArgumentOutOfRangeException(nameof(archetype), archetype, "Starting industry has no dedicated base building.");
+
+        string identifier = null;
+        foreach (BuildingTable row in rows)
+        {
+            if (row == null || row.Type != BuilType.Base || row.Archetype != archetype)
+                continue;
+            if (identifier != null)
+            {
+                throw new InvalidOperationException(
+                    $"Starting industry '{archetype}' has multiple base buildings: '{identifier}' and '{row.Identifier}'.");
+            }
+
+            identifier = row.Identifier;
+        }
+
+        if (identifier == null)
+            throw new InvalidOperationException($"Starting industry '{archetype}' has no base building in BuildingTable.");
+        return identifier + "_Lv1";
+    }
+
 
     public static string GetUpgradeID(string identifier)
     {

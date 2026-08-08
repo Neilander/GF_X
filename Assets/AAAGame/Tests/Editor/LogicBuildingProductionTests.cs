@@ -13,7 +13,7 @@ public sealed class LogicBuildingProductionTests
     public void SetUp()
     {
         LogicRuntimeDataTableCache.PrepareForEditorTests(
-            Array.Empty<CharacterDataDetail>(),
+            LoadCharacterRows(),
             LoadBuildingRows(),
             Array.Empty<LevelTagTable>());
         EnsureInGameDataModel();
@@ -171,6 +171,172 @@ public sealed class LogicBuildingProductionTests
         Assert.AreEqual(13, LogicBuildingProductionService.GetProduction(nursery));
     }
 
+    [Test]
+    public void ServiceDesk_OccupiedStrongholdsUseConfiguredStepAndCap()
+    {
+        InitializeStrongholds(
+            EntitySideHelper.PlayerFactionId,
+            EntitySideHelper.PlayerFactionId,
+            EntitySideHelper.PlayerFactionId,
+            EntitySideHelper.PlayerFactionId,
+            EntitySideHelper.EnemyFactionId);
+        LogicEntityState serviceDesk = CreateProductionBuilding(
+            "Buil_ServiceDesk_Lv1",
+            "production-service-desk-1",
+            10);
+
+        LogicBuildingProductionService.Refresh(serviceDesk);
+
+        Assert.AreEqual(ProductionType.ByOccupiedStrongholdCount, serviceDesk.ProductionProps.ProductionType);
+        Assert.AreEqual(4, serviceDesk.ProductionProps.ConditionCount);
+        Assert.AreEqual((Fix64)2, serviceDesk.ProductionProps.DynamicProduction);
+        Assert.AreEqual(12, LogicBuildingProductionService.GetProduction(serviceDesk));
+    }
+
+    [Test]
+    public void TrophyRack_UsesPreviousDayHeavyKillsAndConfiguredCap()
+    {
+        InitializeStrongholds(EntitySideHelper.PlayerFactionId);
+        LogicEntityState trophyRack = CreateProductionBuilding(
+            "Buil_TrophyRack_Lv1",
+            "production-trophy-rack-1",
+            10);
+        LogicEntityId first = CreateUnit("Unit_BoneButcher", SideType.EnemySide, "SH_0_1", FixVector2.Zero);
+        LogicEntityId second = CreateUnit("Unit_BoneButcher", SideType.EnemySide, "SH_0_1", FixVector2.Zero);
+        LogicEntityId third = CreateUnit("Unit_BoneButcher", SideType.EnemySide, "SH_0_1", FixVector2.Zero);
+        LogicTimeControlService.BeginFrame(2);
+        LogicEntityLifecycleService.ApplyFrame(2);
+        LogicProductionConditionState.RecordUnitDeath(LogicEntityStateStore.GetRequired(first));
+        LogicProductionConditionState.RecordUnitDeath(LogicEntityStateStore.GetRequired(second));
+        LogicProductionConditionState.RecordUnitDeath(LogicEntityStateStore.GetRequired(third));
+        InGameDataModel.SetValue(IngameValueType.Day, 2, false);
+
+        LogicBuildingProductionService.Refresh(trophyRack);
+
+        Assert.AreEqual(ProductionType.ByHeavyKillCount, trophyRack.ProductionProps.ProductionType);
+        Assert.AreEqual(3, trophyRack.ProductionProps.ConditionCount);
+        Assert.AreEqual((Fix64)2, trophyRack.ProductionProps.DynamicProduction);
+        Assert.AreEqual(12, LogicBuildingProductionService.GetProduction(trophyRack));
+    }
+
+    [Test]
+    public void ReceptionDesk_SnapshotsPreviousDaySurvivorsAtBuildBoundary()
+    {
+        InitializeStrongholds(EntitySideHelper.PlayerFactionId);
+        LogicEntityState receptionDesk = CreateProductionBuilding(
+            "Buil_ReceptionDesk_Lv1",
+            "production-reception-desk-1",
+            10);
+        for (int i = 0; i < 7; i++)
+            CreateUnit($"Unit_Test_{i}", SideType.PlayerSide, "SH_0_1", FixVector2.Zero);
+        LogicTimeControlService.BeginFrame(2);
+        LogicEntityLifecycleService.ApplyFrame(2);
+        InGameDataModel.SetValue(IngameValueType.Day, 2, false);
+
+        LogicBuildingProductionService.PrepareBuildPhase(true);
+
+        Assert.AreEqual(ProductionType.BySurvivorCount, receptionDesk.ProductionProps.ProductionType);
+        Assert.AreEqual(7, receptionDesk.ProductionProps.ConditionCount);
+        Assert.AreEqual((Fix64)2, receptionDesk.ProductionProps.DynamicProduction);
+        Assert.AreEqual(12, LogicBuildingProductionService.GetProduction(receptionDesk));
+    }
+
+    [Test]
+    public void InsuranceOffice_AccumulatesEachBuildBoundaryAndReleasesAfterPreviousDayDamage()
+    {
+        InitializeStrongholds(EntitySideHelper.PlayerFactionId);
+        LogicEntityState insurance = CreateProductionBuilding(
+            "Buil_InsuranceOffice_Lv1",
+            "production-insurance-1",
+            10);
+        InGameDataModel.SetValue(IngameValueType.Day, 2, false);
+
+        LogicBuildingProductionService.PrepareBuildPhase(true);
+
+        Assert.AreEqual(ProductionType.StoredUntilBuildingDamaged, insurance.ProductionProps.ProductionType);
+        Assert.AreEqual(10, insurance.ProductionProps.StoredProduction);
+        Assert.AreEqual(0, LogicBuildingProductionService.GetProduction(insurance));
+
+        insurance.TakeDamage(Fix64.One, HealthModifyType.reduce);
+        InGameDataModel.SetValue(IngameValueType.Day, 3, false);
+        LogicBuildingProductionService.PrepareBuildPhase(true);
+
+        Assert.AreEqual(20, insurance.ProductionProps.ConditionCount);
+        Assert.AreEqual(20, insurance.ProductionProps.StoredProduction);
+        Assert.AreEqual(20, LogicBuildingProductionService.GetProduction(insurance));
+
+        InGameDataModel.EnsureProductionBuildingCoinReserves(insurance.BuildingInstanceId, 20);
+        Assert.AreEqual(20, LogicBuildingProductionService.GrantProduction(insurance));
+        Assert.AreEqual(0, insurance.ProductionProps.StoredProduction);
+        Assert.AreEqual(0, LogicBuildingProductionService.GetProduction(insurance));
+    }
+
+    [Test]
+    public void TicketBooth_ProducesOnlyOnConfiguredDayIntervalFromConstructionDay()
+    {
+        LogicEntityState ticketBooth = CreateProductionBuilding(
+            "Buil_TicketBooth_Lv1",
+            "production-ticket-booth-1",
+            10);
+
+        InGameDataModel.SetValue(IngameValueType.Day, 4, false);
+        LogicBuildingProductionService.Refresh(ticketBooth);
+        Assert.AreEqual(ProductionType.PeriodicOutput, ticketBooth.ProductionProps.ProductionType);
+        Assert.AreEqual(3, ticketBooth.ProductionProps.ConditionCount);
+        Assert.AreEqual(0, LogicBuildingProductionService.GetProduction(ticketBooth));
+
+        InGameDataModel.SetValue(IngameValueType.Day, 5, false);
+        LogicBuildingProductionService.Refresh(ticketBooth);
+        Assert.AreEqual(4, ticketBooth.ProductionProps.ConditionCount);
+        Assert.AreEqual(10, LogicBuildingProductionService.GetProduction(ticketBooth));
+    }
+
+    [Test]
+    public void MiningRig_DecreasesFromFirstSuccessfulProductionAndStopsAtConfiguredFloor()
+    {
+        InGameDataModel.SetValue(IngameValueType.Day, 3, false);
+        LogicEntityState miningRig = CreateProductionBuilding(
+            "Buil_MiningRig_Lv1",
+            "production-mining-rig-1",
+            10);
+        InGameDataModel.EnsureProductionBuildingCoinReserves(miningRig.BuildingInstanceId, 100);
+
+        Assert.AreEqual(10, LogicBuildingProductionService.GrantProduction(miningRig));
+        Assert.AreEqual(3, miningRig.ProductionProps.ProductionTraitFirstDay);
+        Assert.AreEqual(ProductionType.DecreasingOutput, miningRig.ProductionProps.ProductionType);
+
+        InGameDataModel.SetValue(IngameValueType.Day, 4, false);
+        LogicBuildingProductionService.Refresh(miningRig);
+        Assert.AreEqual(9, LogicBuildingProductionService.GetProduction(miningRig));
+
+        InGameDataModel.SetValue(IngameValueType.Day, 20, false);
+        LogicBuildingProductionService.Refresh(miningRig);
+        Assert.AreEqual(17, miningRig.ProductionProps.ConditionCount);
+        Assert.AreEqual(1, LogicBuildingProductionService.GetProduction(miningRig));
+    }
+
+    [Test]
+    public void Nursery_IncreasesOnlyAfterFirstSuccessfulProduction()
+    {
+        InGameDataModel.SetValue(IngameValueType.Day, 3, false);
+        LogicEntityState nursery = CreateProductionBuilding(
+            "Buil_Nursery_Lv1",
+            "production-nursery-first-grant",
+            10);
+        InGameDataModel.SetValue(IngameValueType.Day, 8, false);
+        LogicBuildingProductionService.Refresh(nursery);
+        Assert.AreEqual(10, LogicBuildingProductionService.GetProduction(nursery));
+
+        InGameDataModel.EnsureProductionBuildingCoinReserves(nursery.BuildingInstanceId, 100);
+        Assert.AreEqual(10, LogicBuildingProductionService.GrantProduction(nursery));
+        Assert.AreEqual(8, nursery.ProductionProps.ProductionTraitFirstDay);
+
+        InGameDataModel.SetValue(IngameValueType.Day, 10, false);
+        LogicBuildingProductionService.Refresh(nursery);
+        Assert.AreEqual(2, nursery.ProductionProps.ConditionCount);
+        Assert.AreEqual(12, LogicBuildingProductionService.GetProduction(nursery));
+    }
+
     private static LogicEntityState CreateProductionBuilding(
         string identifier,
         string buildingInstanceId,
@@ -215,7 +381,7 @@ public sealed class LogicBuildingProductionTests
                         (Fix64)100,
                         null,
                         Fix64.Zero,
-                        Array.Empty<Fix64>(),
+                        ResolveUniqueValues(identifier),
                         null,
                         production,
                         Array.Empty<string>()),
@@ -250,8 +416,9 @@ public sealed class LogicBuildingProductionTests
             descriptor,
             state =>
             {
+                LogicRuntimeDataTableCache.TryGetCharacter(characterKey, out CharacterDataDetail characterData);
                 state.Configure(
-                    null,
+                    characterData,
                     new CreaturePropertyManager(property =>
                         property == CreatureMainProperty.Health ? (Fix64)100 : Fix64.Zero),
                     0,
@@ -268,6 +435,30 @@ public sealed class LogicBuildingProductionTests
                 state.SetTargetingComp(targeting);
                 targeting.Init(state);
             });
+    }
+
+    private static void InitializeStrongholds(params int[] owners)
+    {
+        var cells = new LogicStrongholdCellDefinition[owners.Length];
+        for (int i = 0; i < owners.Length; i++)
+            cells[i] = new LogicStrongholdCellDefinition($"SH_{i}_1", i, 0, owners[i]);
+        LogicStrongholdMap.Initialize(
+            FixVector2.Zero,
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            Fix64.One,
+            cells);
+    }
+
+    private static Fix64[] ResolveUniqueValues(string levelIdentifier)
+    {
+        int levelIndex = levelIdentifier.LastIndexOf("_Lv", StringComparison.Ordinal);
+        string baseIdentifier = levelIndex > 0
+            ? levelIdentifier.Substring(0, levelIndex)
+            : levelIdentifier;
+        return LogicRuntimeDataTableCache.TryGetBuilding(baseIdentifier, out BuildingTable row)
+            ? row.UniqueValues
+            : Array.Empty<Fix64>();
     }
 
     private static void EnsureInGameDataModel()
@@ -344,6 +535,28 @@ public sealed class LogicBuildingProductionTests
             var row = new BuildingTable();
             if (!row.ParseDataRow(line, null))
                 throw new InvalidOperationException("Building table row could not be parsed for editor tests.");
+            rows.Add(row);
+        }
+
+        return rows.ToArray();
+    }
+
+    private static CharacterDataDetail[] LoadCharacterRows()
+    {
+        string path = System.IO.Path.Combine(
+            Application.dataPath,
+            "AAAGame/DataTable/CharacterDataDetail.txt");
+        if (!System.IO.File.Exists(path))
+            throw new System.IO.FileNotFoundException("Character data table was not found.", path);
+
+        var rows = new List<CharacterDataDetail>();
+        foreach (string line in System.IO.File.ReadAllLines(path))
+        {
+            if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#", StringComparison.Ordinal))
+                continue;
+            var row = new CharacterDataDetail();
+            if (!row.ParseDataRow(line, null))
+                throw new InvalidOperationException("Character data row could not be parsed for editor tests.");
             rows.Add(row);
         }
 

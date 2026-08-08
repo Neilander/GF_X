@@ -10,10 +10,11 @@ public readonly struct DirectAttackDeterministicState
         int attackCount,
         int activeWeaponIndex,
         bool hasSchedule,
-        ulong startFrame,
-        ulong hitFrame,
-        ulong recoveryEndFrame,
-        ulong readyFrame,
+        Fix64 attackElapsed,
+        Fix64 windUpEnd,
+        Fix64 recoveryEnd,
+        Fix64 intervalEnd,
+        ulong lastProgressFrame,
         bool hitCommitted,
         bool recoveryCommitted,
         bool hasAttackStartFrame,
@@ -26,10 +27,11 @@ public readonly struct DirectAttackDeterministicState
         AttackCount = attackCount;
         ActiveWeaponIndex = activeWeaponIndex;
         HasSchedule = hasSchedule;
-        StartFrame = startFrame;
-        HitFrame = hitFrame;
-        RecoveryEndFrame = recoveryEndFrame;
-        ReadyFrame = readyFrame;
+        AttackElapsed = attackElapsed;
+        WindUpEnd = windUpEnd;
+        RecoveryEnd = recoveryEnd;
+        IntervalEnd = intervalEnd;
+        LastProgressFrame = lastProgressFrame;
         HitCommitted = hitCommitted;
         RecoveryCommitted = recoveryCommitted;
         HasAttackStartFrame = hasAttackStartFrame;
@@ -43,10 +45,11 @@ public readonly struct DirectAttackDeterministicState
     public int AttackCount { get; }
     public int ActiveWeaponIndex { get; }
     public bool HasSchedule { get; }
-    public ulong StartFrame { get; }
-    public ulong HitFrame { get; }
-    public ulong RecoveryEndFrame { get; }
-    public ulong ReadyFrame { get; }
+    public Fix64 AttackElapsed { get; }
+    public Fix64 WindUpEnd { get; }
+    public Fix64 RecoveryEnd { get; }
+    public Fix64 IntervalEnd { get; }
+    public ulong LastProgressFrame { get; }
     public bool HitCommitted { get; }
     public bool RecoveryCommitted { get; }
     public bool HasAttackStartFrame { get; }
@@ -72,24 +75,6 @@ public readonly struct DirectAttackDeterministicState
 /// </summary>
 public class DirectAtkComp : IAtkComp
 {
-
-    private readonly struct AttackSchedule
-    {
-        public AttackSchedule(ulong startFrame, ulong hitFrame, ulong recoveryEndFrame, ulong readyFrame)
-        {
-            StartFrame = startFrame;
-            HitFrame = hitFrame;
-            RecoveryEndFrame = recoveryEndFrame;
-            ReadyFrame = readyFrame;
-        }
-
-        public ulong StartFrame { get; }
-        public ulong HitFrame { get; }
-        public ulong RecoveryEndFrame { get; }
-        public ulong ReadyFrame { get; }
-        public ulong NextAttackFrame => ReadyFrame > RecoveryEndFrame ? ReadyFrame : RecoveryEndFrame;
-    }
-
     public enum AtkState
     {
         Idle,
@@ -147,12 +132,28 @@ public class DirectAtkComp : IAtkComp
     public int AttackCount { get; private set; }
     public bool IsAttacking => State == AtkState.WindUp || State == AtkState.WindDown;
     public Fix64 CurrentWindUp => GetCurrentWindUp();
+    public Fix64 CurrentAttackProgress
+    {
+        get
+        {
+            if (_intervalEnd <= Fix64.Zero)
+                return _hasSchedule ? Fix64.One : Fix64.Zero;
+            Fix64 progress = _attackElapsed / _intervalEnd;
+            return progress < Fix64.One ? progress : Fix64.One;
+        }
+    }
+    public Fix64 CurrentAttackAnimationDuration => GetActiveWeapon().BaseWindUp + GetActiveWeapon().BaseWindDown;
+    public Fix64 CurrentAttackSpeedScale => GetCurrentAttackSpeedScale();
     public bool CurrentAttackUsesTrail => !WeaponTargetRules.UsesProjectileSimulation(GetActiveWeapon().Type);
     public int LastInterruptedAttackCount { get; private set; }
     public int LastSuccessfulMeleeImpactAttackCount { get; private set; }
 
-    private AttackSchedule _schedule;
     private bool _hasSchedule;
+    private Fix64 _attackElapsed;
+    private Fix64 _windUpEnd;
+    private Fix64 _recoveryEnd;
+    private Fix64 _intervalEnd;
+    private ulong _lastProgressFrame;
     private bool _hitCommitted;
     private bool _recoveryCommitted;
     private bool _hasAttackStartFrame;
@@ -178,10 +179,11 @@ public class DirectAtkComp : IAtkComp
             AttackCount,
             _activeWeaponIndex,
             _hasSchedule,
-            _hasSchedule ? _schedule.StartFrame : 0,
-            _hasSchedule ? _schedule.HitFrame : 0,
-            _hasSchedule ? _schedule.RecoveryEndFrame : 0,
-            _hasSchedule ? _schedule.ReadyFrame : 0,
+            _attackElapsed,
+            _windUpEnd,
+            _recoveryEnd,
+            _intervalEnd,
+            _lastProgressFrame,
             _hitCommitted,
             _recoveryCommitted,
             _hasAttackStartFrame,
@@ -200,10 +202,11 @@ public class DirectAtkComp : IAtkComp
         hasher.Add(AttackCount);
         hasher.Add(_activeWeaponIndex);
         hasher.Add(_hasSchedule);
-        hasher.Add(_hasSchedule ? _schedule.StartFrame : 0);
-        hasher.Add(_hasSchedule ? _schedule.HitFrame : 0);
-        hasher.Add(_hasSchedule ? _schedule.RecoveryEndFrame : 0);
-        hasher.Add(_hasSchedule ? _schedule.ReadyFrame : 0);
+        hasher.Add(_attackElapsed.RawValue);
+        hasher.Add(_windUpEnd.RawValue);
+        hasher.Add(_recoveryEnd.RawValue);
+        hasher.Add(_intervalEnd.RawValue);
+        hasher.Add(_lastProgressFrame);
         hasher.Add(_hitCommitted);
         hasher.Add(_recoveryCommitted);
         hasher.Add(_hasAttackStartFrame);
@@ -230,8 +233,12 @@ public class DirectAtkComp : IAtkComp
             throw new InvalidOperationException($"DirectAtkComp.RestoreDeterministicState failed: weapon index {snapshot.ActiveWeaponIndex} is invalid.");
         if (!snapshot.HasSchedule && snapshot.State != AtkState.Idle)
             throw new InvalidOperationException($"DirectAtkComp.RestoreDeterministicState failed: state {snapshot.State} has no schedule.");
-        if (snapshot.HasSchedule && snapshot.ReadyFrame < snapshot.StartFrame)
-            throw new InvalidOperationException("DirectAtkComp.RestoreDeterministicState failed: attack schedule is invalid.");
+        if (snapshot.HasSchedule
+            && (snapshot.AttackElapsed < Fix64.Zero
+                || snapshot.WindUpEnd < Fix64.Zero
+                || snapshot.RecoveryEnd < snapshot.WindUpEnd
+                || snapshot.IntervalEnd < snapshot.RecoveryEnd))
+            throw new InvalidOperationException("DirectAtkComp.RestoreDeterministicState failed: attack progress is invalid.");
 
         var targetsById = new Dictionary<int, IEntityContext>();
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
@@ -266,9 +273,11 @@ public class DirectAtkComp : IAtkComp
         State = snapshot.State;
         AttackCount = snapshot.AttackCount;
         _hasSchedule = snapshot.HasSchedule;
-        _schedule = snapshot.HasSchedule
-            ? new AttackSchedule(snapshot.StartFrame, snapshot.HitFrame, snapshot.RecoveryEndFrame, snapshot.ReadyFrame)
-            : default;
+        _attackElapsed = snapshot.AttackElapsed;
+        _windUpEnd = snapshot.WindUpEnd;
+        _recoveryEnd = snapshot.RecoveryEnd;
+        _intervalEnd = snapshot.IntervalEnd;
+        _lastProgressFrame = snapshot.LastProgressFrame;
         _hitCommitted = snapshot.HitCommitted;
         _recoveryCommitted = snapshot.RecoveryCommitted;
         _hasAttackStartFrame = snapshot.HasAttackStartFrame;
@@ -418,23 +427,37 @@ public void Attack(Fix64 deltaTime)
         {
             TryStartAttack(currentFrame);
             if (_hasSchedule)
-                AdvanceAttackSchedule(currentFrame, false);
+                AdvanceAttackProgress(currentFrame, false);
             return;
         }
 
-        AdvanceAttackSchedule(currentFrame, true);
+        AdvanceAttackProgress(currentFrame, true);
     }
 
-    private void AdvanceAttackSchedule(ulong currentFrame, bool allowRestart)
+    private void AdvanceAttackProgress(ulong currentFrame, bool allowRestart)
     {
-        if (!_hitCommitted && currentFrame >= _schedule.HitFrame)
+        if (currentFrame < _lastProgressFrame)
+        {
+            throw new InvalidOperationException(
+                $"DirectAtkComp attack progress moved backwards. previous={_lastProgressFrame}, current={currentFrame}.");
+        }
+
+        if (currentFrame > _lastProgressFrame)
+        {
+            ulong elapsedFrames = currentFrame - _lastProgressFrame;
+            Fix64 attackSpeedScale = GetCurrentAttackSpeedScale();
+            _attackElapsed += attackSpeedScale * checked((long)elapsedFrames);
+            _lastProgressFrame = currentFrame;
+        }
+
+        if (!_hitCommitted && _attackElapsed >= _windUpEnd)
         {
             _hitCommitted = true;
             DealDamage();
             EnterState(AtkState.WindDown);
         }
 
-        if (!_recoveryCommitted && currentFrame >= _schedule.RecoveryEndFrame)
+        if (!_recoveryCommitted && _attackElapsed >= _recoveryEnd)
         {
             _recoveryCommitted = true;
             ReleaseMovementLock();
@@ -442,7 +465,7 @@ public void Attack(Fix64 deltaTime)
             EnterState(AtkState.Cooldown);
         }
 
-        if (currentFrame < _schedule.NextAttackFrame)
+        if (_attackElapsed < _intervalEnd)
             return;
 
         EnterState(AtkState.Idle);
@@ -455,7 +478,7 @@ public void Attack(Fix64 deltaTime)
 
         TryStartAttack(currentFrame);
         if (_hasSchedule)
-            AdvanceAttackSchedule(currentFrame, false);
+            AdvanceAttackProgress(currentFrame, false);
     }
 
     private void ReleaseMovementLock()
@@ -467,40 +490,68 @@ public void Attack(Fix64 deltaTime)
         _movementLockedByThisAttack = false;
     }
 
-    private static ulong DurationToTicks(Fix64 duration)
+    private void InitializeAttackProgress(ulong startFrame, Weapon weapon)
     {
-        if (duration <= Fix64.Zero)
-            return 0;
+        Fix64 baseInterval = weapon.BaseInterval;
+        Fix64 windUp = weapon.BaseWindUp;
+        Fix64 windDown = weapon.BaseWindDown;
+        if (baseInterval < Fix64.Zero || windUp < Fix64.Zero || windDown < Fix64.Zero)
+            throw new InvalidOperationException($"DirectAtkComp weapon timing must be non-negative. entity={_ctx.CharacterKey}.");
+        if (baseInterval == Fix64.Zero)
+        {
+            if (windUp != Fix64.Zero || windDown != Fix64.Zero)
+                throw new InvalidOperationException($"DirectAtkComp zero attack interval cannot contain wind-up or wind-down. entity={_ctx.CharacterKey}.");
 
-        // WeaponData still stores seconds. Convert once at attack start using integer raw data;
-        // the content migration can replace this compatibility boundary with authored tick counts.
-        long scaledRaw = checked(duration.RawValue * LogicFrameRuntime.FrameRate);
-        long roundedTicks = checked(scaledRaw + Fix64.One.RawValue / 2) / Fix64.One.RawValue;
-        return checked((ulong)roundedTicks);
-    }
+            _attackElapsed = Fix64.Zero;
+            _windUpEnd = Fix64.Zero;
+            _recoveryEnd = Fix64.Zero;
+            _intervalEnd = Fix64.Zero;
+        }
+        else
+        {
+            if (weapon.Interval <= Fix64.Zero)
+                throw new InvalidOperationException($"DirectAtkComp attack interval must be positive. entity={_ctx.CharacterKey}.");
+            Fix64 windUpEnd = DurationToProgressUnits(windUp);
+            Fix64 recoveryEnd = DurationToProgressUnits(windUp + windDown);
+            Fix64 intervalEnd = DurationToProgressUnits(baseInterval);
+            if (recoveryEnd > intervalEnd)
+            {
+                throw new InvalidOperationException(
+                    $"DirectAtkComp wind-up plus wind-down exceeds the attack interval. entity={_ctx.CharacterKey}, interval={(float)baseInterval}, windUp={(float)windUp}, windDown={(float)windDown}.");
+            }
 
-    private static ulong AddFrames(ulong frame, ulong durationTicks)
-    {
-        return checked(frame + durationTicks);
-    }
+            _attackElapsed = Fix64.Zero;
+            _windUpEnd = windUpEnd;
+            _recoveryEnd = recoveryEnd;
+            _intervalEnd = intervalEnd;
+        }
 
-    private static AttackSchedule CreateSchedule(ulong startFrame, Weapon weapon)
-    {
-        ulong windUpTicks = DurationToTicks(weapon.WindUp);
-        ulong windDownTicks = DurationToTicks(weapon.WindDown);
-        ulong intervalTicks = DurationToTicks(weapon.Interval);
-        ulong hitFrame = AddFrames(startFrame, windUpTicks);
-        ulong recoveryEndFrame = AddFrames(hitFrame, windDownTicks);
-        ulong readyFrame = AddFrames(startFrame, intervalTicks);
-        return new AttackSchedule(startFrame, hitFrame, recoveryEndFrame, readyFrame);
+        _lastProgressFrame = startFrame;
+        _hasSchedule = true;
+        _hitCommitted = false;
+        _recoveryCommitted = false;
     }
 
     private void ResetSchedule()
     {
-        _schedule = default;
         _hasSchedule = false;
+        _attackElapsed = Fix64.Zero;
+        _windUpEnd = Fix64.Zero;
+        _recoveryEnd = Fix64.Zero;
+        _intervalEnd = Fix64.Zero;
+        _lastProgressFrame = 0;
         _hitCommitted = false;
         _recoveryCommitted = false;
+    }
+
+    private static Fix64 DurationToProgressUnits(Fix64 duration)
+    {
+        if (duration <= Fix64.Zero)
+            return Fix64.Zero;
+
+        long scaledRaw = checked(duration.RawValue * LogicFrameRuntime.FrameRate);
+        long roundedTicks = checked(scaledRaw + Fix64.One.RawValue / 2) / Fix64.One.RawValue;
+        return (Fix64)roundedTicks;
     }
 
     /// <summary>
@@ -524,6 +575,16 @@ public void Attack(Fix64 deltaTime)
     private Fix64 GetCurrentWindUp()
     {
         return GetActiveWeapon().WindUp;
+    }
+
+    private Fix64 GetCurrentAttackSpeedScale()
+    {
+        Weapon weapon = GetActiveWeapon();
+        if (weapon.BaseInterval <= Fix64.Zero || weapon.Interval <= Fix64.Zero)
+            throw new InvalidOperationException($"DirectAtkComp cannot calculate attack animation speed from a non-positive interval. entity={_ctx.CharacterKey}.");
+        if (weapon.BaseInterval == weapon.Interval)
+            return Fix64.One;
+        return weapon.BaseInterval / weapon.Interval;
     }
 
     private Fix64 GetCurrentProjectileSpeed()
@@ -607,10 +668,7 @@ public void Attack(Fix64 deltaTime)
             return;
 
         _lockedTarget = _lockedTargets[0];
-        _schedule = CreateSchedule(currentFrame, activeWeapon);
-        _hasSchedule = true;
-        _hitCommitted = false;
-        _recoveryCommitted = false;
+        InitializeAttackProgress(currentFrame, activeWeapon);
         _hasAttackStartFrame = true;
         _lastAttackStartFrame = currentFrame;
         AttackCount++;
@@ -626,7 +684,7 @@ public void Attack(Fix64 deltaTime)
         {
             GameDebugSettings.Log(DebugCategory.Attack,
                 $"[{_ctx.CharacterKey}] → WindUp 第{AttackCount}次攻击 目标={target.CharacterKey} dist={(float)dist:F2} range={(float)range:F2} " +
-                $"frames={_schedule.StartFrame}/{_schedule.HitFrame}/{_schedule.RecoveryEndFrame}/{_schedule.ReadyFrame}");
+                $"progress=0/{(float)_windUpEnd:F4}/{(float)_recoveryEnd:F4}/{(float)_intervalEnd:F4}");
         }
     }
 

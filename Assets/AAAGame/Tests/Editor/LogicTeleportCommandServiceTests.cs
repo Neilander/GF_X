@@ -9,14 +9,20 @@ public sealed class LogicTeleportCommandServiceTests
     public void SetUp()
     {
         LogicTimeControlService.BeginTimeline();
+        LogicPhaseCommandService.BeginTimeline();
+        LogicPhaseCommandService.SetInitialPhase(GamePhase.BuildBeforeInvade);
         LogicTeleportCommandService.BeginTimeline();
+        LogicStrongholdMap.Clear();
     }
 
     [TearDown]
     public void TearDown()
     {
+        LogicStrongholdMap.Clear();
         if (LogicTeleportCommandService.IsActive)
             LogicTeleportCommandService.EndTimeline();
+        if (LogicPhaseCommandService.IsActive)
+            LogicPhaseCommandService.EndTimeline();
         if (LogicTimeControlService.IsActive)
             LogicTimeControlService.EndTimeline();
     }
@@ -76,6 +82,33 @@ public sealed class LogicTeleportCommandServiceTests
             new LogicEntityId(9),
             FixVector2.Zero,
             string.Empty));
+    }
+
+    [Test]
+    public void RuntimeApply_RejectsDestinationOutsideClaimedStronghold()
+    {
+        LogicStrongholdMap.Initialize(
+            FixVector2.Zero,
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            Fix64.One,
+            new[]
+            {
+                new LogicStrongholdCellDefinition("Stronghold_0", 0, 0, EntitySideHelper.PlayerFactionId),
+                new LogicStrongholdCellDefinition("Stronghold_1", 1, 0, EntitySideHelper.PlayerFactionId),
+            });
+        LogicTeleportCommandService.ScheduleForNextFrame(
+            new LogicEntityId(10),
+            new FixVector2(Fix64.One, Fix64.Zero),
+            "Stronghold_0");
+
+        LogicTimeControlService.BeginFrame(1);
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            LogicTeleportCommandService.ApplyFrame(1));
+
+        StringAssert.Contains("destination stronghold mismatch", exception.Message);
+        StringAssert.Contains("command=Stronghold_0", exception.Message);
+        StringAssert.Contains("actual=Stronghold_1", exception.Message);
     }
 
     private static ulong ComputeStateHash()

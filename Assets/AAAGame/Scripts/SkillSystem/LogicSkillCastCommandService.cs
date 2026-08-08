@@ -30,6 +30,11 @@ public interface ILogicSkillCastCommandConsumer
     void AcceptSkillCastCommand(LogicSkillCastCommand command);
 }
 
+public interface ILogicPausedSkillCastCommandConsumer
+{
+    void ResolvePausedSkillCastCommand();
+}
+
 public static class LogicSkillCastCommandService
 {
     private static readonly Comparison<LogicSkillCastCommand> s_CommandComparison = CompareCommands;
@@ -96,18 +101,107 @@ public static class LogicSkillCastCommandService
         if (HasPendingForCaster(casterId))
             throw new InvalidOperationException($"Skill cast command is already pending. caster={casterId.Value}.");
 
-        var command = new LogicSkillCastCommand(
+        return RecordCommand(
             checked(LogicTimeControlService.CurrentFrame + 1),
+            casterId,
+            slotIndex,
+            requestedWorldPosition,
+            true);
+    }
+
+    public static LogicSkillCastCommand Submit(
+        LogicEntityId casterId,
+        int slotIndex,
+        FixVector2 requestedWorldPosition)
+    {
+        if (!LogicPausedOperationService.CanResolveImmediately)
+            return ScheduleForNextFrame(casterId, slotIndex, requestedWorldPosition);
+
+        return SubmitImmediate(casterId, slotIndex, requestedWorldPosition, ApplyRuntimeCommand);
+    }
+
+    private static LogicSkillCastCommand SubmitImmediate(
+        LogicEntityId casterId,
+        int slotIndex,
+        FixVector2 requestedWorldPosition,
+        Action<LogicSkillCastCommand> sink)
+    {
+        return LogicPausedOperationService.Execute(() =>
+        {
+            LogicSkillCastCommand command = RecordCommand(
+                LogicTimeControlService.CurrentFrame,
+                casterId,
+                slotIndex,
+                requestedWorldPosition,
+                false);
+            ApplyImmediate(command, sink);
+            return command;
+        });
+    }
+
+    private static LogicSkillCastCommand RecordCommand(
+        ulong effectiveFrame,
+        LogicEntityId casterId,
+        int slotIndex,
+        FixVector2 requestedWorldPosition,
+        bool pending)
+    {
+        EnsureActive();
+        if (!casterId.IsValid)
+            throw new ArgumentException("Skill cast command requires a valid caster id.", nameof(casterId));
+        if (slotIndex < 0 || slotIndex >= SkillInputRuntime.MaxSkillCount)
+            throw new ArgumentOutOfRangeException(nameof(slotIndex), slotIndex, "Invalid skill slot index.");
+        if (HasPendingForCaster(casterId))
+            throw new InvalidOperationException($"Skill cast command is already pending. caster={casterId.Value}.");
+
+        var command = new LogicSkillCastCommand(
+            effectiveFrame,
             checked(s_LastSequence + 1),
             casterId,
             slotIndex,
             requestedWorldPosition);
         s_LastSequence = command.Sequence;
-        s_Pending.Add(command);
+        if (pending)
+            s_Pending.Add(command);
         s_History.Add(command);
         CommandRecorded?.Invoke(command);
         return command;
     }
+
+    private static void ApplyImmediate(LogicSkillCastCommand command, Action<LogicSkillCastCommand> sink)
+    {
+        if (!LogicPausedOperationService.IsExecuting)
+            throw new InvalidOperationException("Immediate skill application requires a paused-operation settlement.");
+        if (sink == null)
+            throw new ArgumentNullException(nameof(sink));
+        if (IsApplyingFrame)
+            throw new InvalidOperationException("LogicSkillCastCommandService.ApplyImmediate failed: nested command application detected.");
+
+        IsApplyingFrame = true;
+        try
+        {
+            sink(command);
+            RecordApplied(command);
+            LastAppliedFrame = command.EffectiveFrame;
+        }
+        finally
+        {
+            IsApplyingFrame = false;
+        }
+    }
+
+#if UNITY_EDITOR
+    public static LogicSkillCastCommand SubmitForTests(
+        LogicEntityId casterId,
+        int slotIndex,
+        FixVector2 requestedWorldPosition,
+        Action<LogicSkillCastCommand> sink)
+    {
+        if (!LogicPausedOperationService.CanResolveImmediately)
+            return ScheduleForNextFrame(casterId, slotIndex, requestedWorldPosition);
+        return SubmitImmediate(casterId, slotIndex, requestedWorldPosition, sink);
+    }
+#endif
 
     public static void ApplyFrame(ulong frameId)
     {
@@ -217,6 +311,14 @@ public static class LogicSkillCastCommandService
                 $"Skill cast command caster has no command consumer. caster={command.CasterId.Value}, type={caster.GetType().FullName}.");
         }
         consumer.AcceptSkillCastCommand(command);
+        if (!LogicPausedOperationService.IsExecuting)
+            return;
+        if (consumer is not ILogicPausedSkillCastCommandConsumer pausedConsumer)
+        {
+            throw new InvalidOperationException(
+                $"Skill cast command consumer cannot resolve a paused cast. caster={command.CasterId.Value}, type={consumer.GetType().FullName}.");
+        }
+        pausedConsumer.ResolvePausedSkillCastCommand();
     }
 
     private static int CompareCommands(LogicSkillCastCommand left, LogicSkillCastCommand right) =>

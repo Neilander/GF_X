@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 
@@ -706,4 +706,7 @@ public static class LogicTimeControlSources
     public const int LevelSwitchUiPause = 1;
     public const int RuntimeLevelSwitchPause = 2;
     public const int LargeMapUiPause = 3;
+    public const int InGameUiPause = 4;
+    public const int SkillAimBulletTime = 5;
+    public const int CardPlacementBulletTime = 6;
 }

@@ -177,7 +177,7 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
             return;
         }
 
-        if (LogicFrameRuntime.IsTimelineRunning)
+        if (LogicFrameRuntime.IsTimelineRunning && !FlowFieldCrowdMovementSystem.IsRuntimeNavigationTransitionActive())
         {
             if (s_PendingClearSourceInstanceId != 0 && s_PendingClearSourceInstanceId != s_AppliedSourceInstanceId)
             {
@@ -192,6 +192,8 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
             return;
         }
 
+        LogicFrameRuntime.Ended -= HandleLogicRuntimeEnded;
+        s_PendingClearSourceInstanceId = 0;
         FlowFieldCrowdMovementSystem.ClearAuthoredNavigationSource();
         s_AppliedSourceInstanceId = 0;
         LogSourceLifecycle("clear-owned", CollectConfiguredGrids());

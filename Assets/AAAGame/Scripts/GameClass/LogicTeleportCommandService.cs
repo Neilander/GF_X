@@ -192,6 +192,12 @@ public static class LogicTeleportCommandService
             throw new InvalidOperationException($"Teleport command requires a build phase. phase={phase}.");
         if (LogicStrongholdMap.GetOwnerFactionIdRequired(command.StrongholdId) != EntitySideHelper.PlayerFactionId)
             throw new InvalidOperationException($"Teleport command destination stronghold is not player-owned. id={command.StrongholdId}.");
+        if (!LogicStrongholdMap.TryResolveStrongholdId(command.Destination, out string destinationStrongholdId)
+            || !string.Equals(destinationStrongholdId, command.StrongholdId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Teleport command destination stronghold mismatch. command={command.StrongholdId}, actual={destinationStrongholdId ?? "<none>"}, raw=({command.Destination.x.RawValue},{command.Destination.y.RawValue}).");
+        }
         if (!EntityRegistry.TryGet(command.EntityId, out IEntityContext entity) || !entity.Alive)
             throw new InvalidOperationException($"Teleport command entity is unavailable. entity={command.EntityId.Value}.");
         LogicEntityState state = entity as LogicEntityState

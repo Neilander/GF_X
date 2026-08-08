@@ -259,6 +259,71 @@ public sealed class LogicMigrationAuthorityBoundaryTests
     }
 
     [Test]
+    public void SupplyTracking_UsesPureLogicSpawnAndDespawnWithoutEntityViews()
+    {
+        InGameDataModel model = LogicTestInGameDataModelAuthority.Ensure(
+            GamePhase.Defend,
+            nameof(SupplyTracking_UsesPureLogicSpawnAndDespawnWithoutEntityViews));
+        FieldInfo subscribedField = typeof(InGameDataModel).GetField(
+            "m_SupplyEventsSubscribed",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        MethodInfo subscribeMethod = typeof(InGameDataModel).GetMethod(
+            "SubscribeSupplyTrackingEvents",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        MethodInfo unsubscribeMethod = typeof(InGameDataModel).GetMethod(
+            "UnsubscribeSupplyTrackingEvents",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        PropertyInfo characterDataProperty = typeof(SimEntityContext).GetProperty(
+            nameof(SimEntityContext.CharacterData));
+        Assert.NotNull(subscribedField);
+        Assert.NotNull(subscribeMethod);
+        Assert.NotNull(unsubscribeMethod);
+        Assert.NotNull(characterDataProperty);
+        MethodInfo characterDataSetter = characterDataProperty.GetSetMethod(true);
+        Assert.NotNull(characterDataSetter);
+
+        CharacterDataDetail[] rows = LoadCharacterRows();
+        CharacterDataDetail supplyRow = System.Array.Find(rows, row => row.Supply > 0);
+        Assert.NotNull(supplyRow, "Character data must contain at least one unit with positive supply.");
+        bool wasSubscribed = (bool)subscribedField.GetValue(model);
+        var friendly = new SimEntityContext
+        {
+            LogicEntityId = new LogicEntityId(71001),
+            Side = SideType.PlayerSide,
+        };
+        var enemy = new SimEntityContext
+        {
+            LogicEntityId = new LogicEntityId(71002),
+            Side = SideType.EnemySide,
+        };
+        characterDataSetter.Invoke(friendly, new object[] { supplyRow });
+        characterDataSetter.Invoke(enemy, new object[] { supplyRow });
+
+        try
+        {
+            subscribeMethod.Invoke(model, null);
+            Assert.IsFalse(typeof(UnityEngine.Object).IsAssignableFrom(friendly.GetType()));
+            Assert.IsFalse(typeof(UnityEngine.Object).IsAssignableFrom(enemy.GetType()));
+
+            EntityRegistry.Register(friendly);
+            Assert.AreEqual(supplyRow.Supply, InGameDataModel.GetCurrentSupply());
+
+            EntityRegistry.Register(enemy);
+            Assert.AreEqual(supplyRow.Supply, InGameDataModel.GetCurrentSupply());
+
+            EntityRegistry.Unregister(friendly);
+            Assert.AreEqual(0, InGameDataModel.GetCurrentSupply());
+        }
+        finally
+        {
+            EntityRegistry.Unregister(friendly);
+            EntityRegistry.Unregister(enemy);
+            if (!wasSubscribed && (bool)subscribedField.GetValue(model))
+                unsubscribeMethod.Invoke(model, null);
+        }
+    }
+
+    [Test]
     public void RuntimeShutdown_HidesViewsBeforeReleasingModelsAndEndingServices()
     {
         string procedureSource = ReadProjectSource("AAAGame/Scripts/Procedures/RuntimeProcedureBase.cs");

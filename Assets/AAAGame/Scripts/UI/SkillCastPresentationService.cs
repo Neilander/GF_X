@@ -1,9 +1,11 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 public static class SkillCastPresentationService
 {
+    private const int AimTimeScaleUnits = 2000;
+
     private static int s_Generation;
     private static int s_SlotIndex = -1;
     private static IEntityContext s_Caster;
@@ -13,6 +15,7 @@ public static class SkillCastPresentationService
     private static CylinderTargetSelector s_Selector;
     private static FixVector2 s_LastWorldPosition;
     private static bool s_HasWorldPosition;
+    private static bool s_OwnsBulletTime;
 
     public static bool IsAiming { get; private set; }
     public static event Action Changed;
@@ -116,6 +119,10 @@ public static class SkillCastPresentationService
         s_LastWorldPosition = caster.PositionFixed;
         s_HasWorldPosition = false;
         IsAiming = true;
+        LogicTimeControlService.SetBulletTimeScale(
+            LogicTimeControlSources.SkillAimBulletTime,
+            AimTimeScaleUnits);
+        s_OwnsBulletTime = true;
         Changed?.Invoke();
         presenter.ShowCastRange((float)descriptor.CastRadius);
     }
@@ -148,7 +155,7 @@ public static class SkillCastPresentationService
 
     public static void Cancel()
     {
-        if (!IsAiming && s_Selector == null && s_RangePresenter == null)
+        if (!IsAiming && s_Selector == null && s_RangePresenter == null && !s_OwnsBulletTime)
             return;
         Cleanup();
     }
@@ -192,7 +199,7 @@ public static class SkillCastPresentationService
     {
         if (caster == null || !caster.LogicEntityId.IsValid)
             throw new InvalidOperationException("Skill cast scheduling requires a valid caster.");
-        LogicSkillCastCommandService.ScheduleForNextFrame(
+        LogicSkillCastCommandService.Submit(
             caster.LogicEntityId,
             slotIndex,
             requestedWorldPosition);
@@ -238,6 +245,11 @@ public static class SkillCastPresentationService
     {
         IsAiming = false;
         s_Generation = checked(s_Generation + 1);
+        if (s_OwnsBulletTime)
+        {
+            LogicTimeControlService.RemoveBulletTimeScale(LogicTimeControlSources.SkillAimBulletTime);
+            s_OwnsBulletTime = false;
+        }
         if (s_Selector != null)
             GF.Entity.HideEntity(s_Selector.GetEntityID());
         s_RangePresenter?.HideCastRange();

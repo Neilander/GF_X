@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 /// <summary>
 /// 武器类型：近战、弹道投射物、即时远程（如扇形AOE）。
 /// </summary>
@@ -48,10 +48,13 @@ public class Weapon
 
     public Fix64 Atk => m_Stats[(int)WeaponStatId.Atk].Value;
     public Fix64 Interval => m_Stats[(int)WeaponStatId.Interval].Value;
+    public Fix64 BaseInterval => m_Stats[(int)WeaponStatId.Interval].Base;
     public Fix64 Range => m_Stats[(int)WeaponStatId.Range].Value;
     public Fix64 ProjectileSpeed => m_Stats[(int)WeaponStatId.ProjectileSpeed].Value;
     public Fix64 WindUp => m_Stats[(int)WeaponStatId.WindUp].Value;
     public Fix64 WindDown => m_Stats[(int)WeaponStatId.WindDown].Value;
+    public Fix64 BaseWindUp => m_Stats[(int)WeaponStatId.WindUp].Base;
+    public Fix64 BaseWindDown => m_Stats[(int)WeaponStatId.WindDown].Base;
     public Fix64 SplashRadius => m_Stats[(int)WeaponStatId.SplashRadius].Value;
     public Fix64 SplitAngle => m_Stats[(int)WeaponStatId.SplitAngle].Value;
     public Fix64 SplitDist => m_Stats[(int)WeaponStatId.SplitDist].Value;

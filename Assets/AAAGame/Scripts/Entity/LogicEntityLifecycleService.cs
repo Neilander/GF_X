@@ -238,7 +238,7 @@ public static class LogicEntityLifecycleService
         stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         if (!s_RequestedEntityIds.Add(entityId.Value))
             throw new InvalidOperationException($"LogicEntityLifecycleService.RequestSpawn failed: duplicate entity id {entityId.Value}.");
-        ulong effectiveFrame = currentInteractionFrame
+        ulong effectiveFrame = currentInteractionFrame || LogicPausedOperationService.IsExecuting
             ? LogicTimeControlService.CurrentFrame
             : checked(LogicTimeControlService.CurrentFrame + 1);
         s_SpawnFramesByEntityId.Add(entityId.Value, effectiveFrame);
@@ -410,6 +410,42 @@ public static class LogicEntityLifecycleService
 
         if (IsApplyingFrame)
             throw new InvalidOperationException("LogicEntityLifecycleService.ApplyFrame failed: nested lifecycle frame detected.");
+
+        IsApplyingFrame = true;
+        try
+        {
+            ApplyFrameCore(frameId);
+        }
+        finally
+        {
+            IsApplyingFrame = false;
+        }
+    }
+
+    public static void ApplyPausedOperation(ulong frameId, ulong firstSequenceExclusive)
+    {
+        EnsureActive();
+        if (!LogicPausedOperationService.IsExecuting)
+            throw new InvalidOperationException("LogicEntityLifecycleService.ApplyPausedOperation requires a paused-operation settlement.");
+        if (frameId != LogicTimeControlService.CurrentFrame)
+        {
+            throw new InvalidOperationException(
+                $"LogicEntityLifecycleService.ApplyPausedOperation failed: frame mismatch. time={LogicTimeControlService.CurrentFrame}, requested={frameId}.");
+        }
+        if (IsApplyingFrame)
+            throw new InvalidOperationException("LogicEntityLifecycleService.ApplyPausedOperation failed: nested lifecycle application detected.");
+
+        for (int i = 0; i < s_Commands.Count; i++)
+        {
+            LogicEntityLifecycleCommand command = s_Commands[i];
+            if (command.Sequence <= firstSequenceExclusive)
+                continue;
+            if (command.EffectiveFrame != frameId)
+            {
+                throw new InvalidOperationException(
+                    $"Paused operation produced a deferred lifecycle command. sequence={command.Sequence}, effective={command.EffectiveFrame}, frame={frameId}.");
+            }
+        }
 
         IsApplyingFrame = true;
         try

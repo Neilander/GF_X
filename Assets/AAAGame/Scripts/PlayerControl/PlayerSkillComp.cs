@@ -5,7 +5,8 @@ using UnityEngine;
 using System.Linq;
 
 public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
-    ILogicSkillCastCommandConsumer, ISkillCastPreviewProvider, ISkillActionPresentationProvider
+    ILogicSkillCastCommandConsumer, ILogicPausedSkillCastCommandConsumer,
+    ISkillCastPreviewProvider, ISkillActionPresentationProvider
 {
     private IEntityContext _entity;
     private bool m_HasPendingCast;
@@ -88,18 +89,7 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
         CoolDown(deltaTime);
         UpdateSkillRuntime();
 
-        if (!m_HasPendingCast)
-            return;
-
-        LogicSkillCastCommand command = m_PendingCast;
-        m_HasPendingCast = false;
-        m_PendingCast = default;
-        if (!CanExecuteSkillCast(command.SlotIndex))
-            return;
-
-        SkillSlot curSlot = _skillSlots[command.SlotIndex];
-        GF.Log("使用技能：" + (command.SlotIndex + 1));
-        StartASkill(curSlot, command.SlotIndex, command.RequestedWorldPosition);
+        TryStartPendingCast(out _);
 
     }
 
@@ -162,15 +152,49 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
                 slot.skill.TickSkill(slot.runInfo, deltaTime);
                 if (slot.runInfo.isFinished)
                 {
-                    slot.isTicking = false;
-                    slot.runInfo = null;
-                    slot.DirectUnlockAll();
-                    SkillCastState.EndCast();
-                    UnlockCompWhenEnd();
-
+                    CompleteSkill(slot);
                 }
             }
         }
+    }
+
+    public void ResolvePausedSkillCastCommand()
+    {
+        if (!LogicPausedOperationService.IsExecuting)
+            throw new System.InvalidOperationException("Paused skill resolution requires a paused-operation settlement.");
+        if (!TryStartPendingCast(out SkillSlot slot))
+            return;
+
+        slot.skill.TickSkill(slot.runInfo, Fix64.Zero);
+        if (slot.runInfo.isFinished)
+            CompleteSkill(slot);
+    }
+
+    private bool TryStartPendingCast(out SkillSlot startedSlot)
+    {
+        startedSlot = null;
+        if (!m_HasPendingCast)
+            return false;
+
+        LogicSkillCastCommand command = m_PendingCast;
+        m_HasPendingCast = false;
+        m_PendingCast = default;
+        if (!CanExecuteSkillCast(command.SlotIndex))
+            return false;
+
+        startedSlot = _skillSlots[command.SlotIndex];
+        GF.Log("使用技能：" + (command.SlotIndex + 1));
+        StartASkill(startedSlot, command.SlotIndex, command.RequestedWorldPosition);
+        return true;
+    }
+
+    private void CompleteSkill(SkillSlot slot)
+    {
+        slot.isTicking = false;
+        slot.runInfo = null;
+        slot.DirectUnlockAll();
+        SkillCastState.EndCast();
+        UnlockCompWhenEnd();
     }
 
     private void StartASkill(SkillSlot curSlot, int slotIndex, FixVector2 requestedWorldPosition)

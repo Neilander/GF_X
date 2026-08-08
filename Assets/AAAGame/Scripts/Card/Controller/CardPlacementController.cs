@@ -22,6 +22,7 @@ namespace AAAGame.Card
     /// </summary>
     public class CardPlacementController
     {
+        private const int PlacementTimeScaleUnits = 2000;
         private const float PreviewReuseInterval = 0.08f;
         private const int OverlapBufferSize = 32;
 
@@ -31,6 +32,7 @@ namespace AAAGame.Card
         private Vector3 m_CurrentPlacementPosition;
         private bool m_IsValidPlacement;
         private bool m_IsPlacing;
+        private bool m_OwnsBulletTime;
         private CardModel m_CurrentCardModel;
 
         private readonly List<Vector3> m_CachedPreviewSpawnPositions = new List<Vector3>();
@@ -88,6 +90,13 @@ namespace AAAGame.Card
             m_IsPlacing = true;
             m_CurrentCardModel = cardModel;
             ResetPreviewCache();
+            if (!m_OwnsBulletTime)
+            {
+                LogicTimeControlService.SetBulletTimeScale(
+                    LogicTimeControlSources.CardPlacementBulletTime,
+                    PlacementTimeScaleUnits);
+                m_OwnsBulletTime = true;
+            }
             Debug.Log("[Card] Card placement started.");
 
             OnPlacementStarted?.Invoke(cardModel);
@@ -273,6 +282,7 @@ namespace AAAGame.Card
         /// </summary>
         public void Shutdown()
         {
+            ReleaseBulletTime();
             m_IsPlacing = false;
             m_IsValidPlacement = false;
             m_CurrentCardModel = null;
@@ -281,10 +291,20 @@ namespace AAAGame.Card
 
         private void EndPlacement()
         {
+            ReleaseBulletTime();
             m_IsPlacing = false;
             m_IsValidPlacement = false;
             m_CurrentCardModel = null;
             ResetPreviewCache();
+        }
+
+        private void ReleaseBulletTime()
+        {
+            if (!m_OwnsBulletTime)
+                return;
+
+            LogicTimeControlService.RemoveBulletTimeScale(LogicTimeControlSources.CardPlacementBulletTime);
+            m_OwnsBulletTime = false;
         }
 
         private bool EvaluatePlacementPreview(Vector3 position, List<Vector3> previewSpawnPositions, out Vector3 resolvedPosition)

@@ -60,7 +60,6 @@ public class ObjectiveTable : DataRowBase
             index++;
             Identifier = columnStrings[index++];
             TextKey = columnStrings[index++];
-            index++;
 
             return true;
         }

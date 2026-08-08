@@ -79,6 +79,7 @@ public class MAEntity : CompCreature, IEntityContext
     private int _lastPresentedAttackCount = -1;
     private int _lastPresentedInterruptedAttackCount;
     private int _lastPresentedMeleeImpactAttackCount;
+    private readonly List<AnimatorClipInfo> _attackClipInfos = new List<AnimatorClipInfo>(2);
     private readonly SkillInfo[] _presentedSkillInfos = new SkillInfo[SkillInputRuntime.MaxSkillCount];
     private readonly int[] _presentedSkillActionIndices = new int[SkillInputRuntime.MaxSkillCount];
 	private readonly Queue<LogicPresentationEvent> _pendingLogicPresentationEvents = new();
@@ -744,6 +745,7 @@ public class MAEntity : CompCreature, IEntityContext
     {
         if (atkComp is not DirectAtkComp directAttack)
         {
+            _animationRatePresenter?.SetPerEntityScale(LogicTimeControlService.NormalScaleUnits);
             _lastPresentedAttackCount = -1;
             _lastPresentedInterruptedAttackCount = 0;
             _lastPresentedMeleeImpactAttackCount = 0;
@@ -756,6 +758,7 @@ public class MAEntity : CompCreature, IEntityContext
             _lastPresentedMeleeImpactAttackCount = directAttack.LastSuccessfulMeleeImpactAttackCount;
             if (!directAttack.IsAttacking)
             {
+                SyncAttackAnimationRate(directAttack);
                 _lastPresentedAttackCount = directAttack.AttackCount;
                 return;
             }
@@ -770,6 +773,8 @@ public class MAEntity : CompCreature, IEntityContext
         {
             _lastPresentedAttackCount = directAttack.AttackCount;
         }
+
+        SyncAttackAnimationRate(directAttack);
 
         if (directAttack.LastInterruptedAttackCount != _lastPresentedInterruptedAttackCount)
         {
@@ -856,6 +861,61 @@ public class MAEntity : CompCreature, IEntityContext
             animator.SetTrigger("Attack");
         if (playTrail)
             WeaponAttackTrailEffect.Play(this, Mathf.Max(0.08f, (float)windUp + 0.08f));
+    }
+
+    private void SyncAttackAnimationRate(DirectAtkComp directAttack)
+    {
+        if (_animationRatePresenter == null)
+            return;
+        if (!directAttack.IsAttacking)
+        {
+            _animationRatePresenter.SetPerEntityScale(LogicTimeControlService.NormalScaleUnits);
+            return;
+        }
+        if (!TryGetCurrentAttackClipLength(out float clipLength))
+            return;
+
+        Fix64 actionDuration = directAttack.CurrentAttackAnimationDuration;
+        if (actionDuration <= Fix64.Zero)
+        {
+            throw new InvalidOperationException(
+                $"MAEntity attack animation requires positive wind-up plus wind-down. entity={LogicEntityId.Value}.");
+        }
+
+        float attackScale = clipLength / (float)actionDuration * (float)directAttack.CurrentAttackSpeedScale;
+        if (float.IsNaN(attackScale) || float.IsInfinity(attackScale) || attackScale <= 0f)
+        {
+            throw new InvalidOperationException(
+                $"MAEntity calculated an invalid attack animation scale. entity={LogicEntityId.Value}, scale={attackScale}.");
+        }
+
+        int scaleUnits = Mathf.RoundToInt(attackScale * LogicTimeControlService.ScaleUnitsPerOne);
+        _animationRatePresenter.SetPerEntityScale(scaleUnits);
+    }
+
+    private bool TryGetCurrentAttackClipLength(out float clipLength)
+    {
+        clipLength = 0f;
+        for (int layer = 0; layer < animator.layerCount; layer++)
+        {
+            _attackClipInfos.Clear();
+            if (animator.IsInTransition(layer))
+                animator.GetNextAnimatorClipInfo(layer, _attackClipInfos);
+            else
+                animator.GetCurrentAnimatorClipInfo(layer, _attackClipInfos);
+
+            for (int i = 0; i < _attackClipInfos.Count; i++)
+            {
+                AnimationClip clip = _attackClipInfos[i].clip;
+                if (clip == null || clip.name.IndexOf("Attack", StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
+
+                clipLength = clip.length;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void PresentAttackInterrupted()

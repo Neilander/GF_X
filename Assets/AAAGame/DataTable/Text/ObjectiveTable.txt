@@ -1,34 +1,34 @@
-﻿#	行动目标定义表			i18n	
-#	ID		Identifier	TextKey	
-#	int		string	string	
-#		备注	代码内唯一标识	目标文本本地化键	
-	1	抵达目标地点	ReachDestination	Objective.ReachDestination	
-	2	建造指定势力三级基地	BuildFactionLevel3Core	Objective.BuildFactionLevel3Core	
-	3	占领一定数量据点	CaptureStrongholdCount	Objective.CaptureStrongholdCount	
-	4	占领指定据点	CaptureSpecificStronghold	Objective.CaptureSpecificStronghold	
-	5	占领指定多个据点	CaptureSpecificStrongholds	Objective.CaptureSpecificStrongholds	
-	6	占领全部据点	CaptureAllStrongholds	Objective.CaptureAllStrongholds	
-	7	交付订单	DeliverOrderCount	Objective.DeliverOrderCount	
-	8	收集特殊资源	CollectSpecialResource	Objective.CollectSpecialResource	
-	9	收集一定资源	CollectResourceAmount	Objective.CollectResourceAmount	
-	10	研发一定数量科技	ResearchTechnologyCount	Objective.ResearchTechnologyCount	
-	11	研发终极科技	ResearchUltimateTechnology	Objective.ResearchUltimateTechnology	
-	12	存活一定天数	SurviveDays	Objective.SurviveDays	
-	13	击杀一定人口	KillEnemyPopulation	Objective.KillEnemyPopulation	
-	14	占领并守护地标	CaptureAndDefendLandmark	Objective.CaptureAndDefendLandmark	
-	15	拥有一定数量单位	OwnUnitCount	Objective.OwnUnitCount	
-	16	达到一定人口	ReachPopulation	Objective.ReachPopulation	
-	17	营救特定单位	RescueSpecificUnit	Objective.RescueSpecificUnit	
-	18	清除附近敌人	ClearNearbyEnemies	Objective.ClearNearbyEnemies	
-	19	击杀首领	KillBoss	Objective.KillBoss	
-	20	保护据点	ProtectStronghold	Objective.ProtectStronghold	
-	21	建造军事建筑	BuildMilitaryBuilding	Objective.BuildMilitaryBuilding	
-	22	建造防御建筑	BuildDefenseBuilding	Objective.BuildDefenseBuilding	
-	23	建造生产建筑	BuildProductionBuilding	Objective.BuildProductionBuilding	
-	24	建造科研建筑	BuildResearchBuilding	Objective.BuildResearchBuilding	
-	25	守住基地	DefendBase	Objective.DefendBase	
-	26	升级编程核心到三级	UpgradeCodingCoreLevel3	Objective.UpgradeCodingCoreLevel3	
-	27	拥有指定阵营军事建筑	OwnFactionMilitaryBuildingCount	Objective.OwnFactionMilitaryBuildingCount	
-	28	研发指定阵营科技	ResearchFactionTechnology	Objective.ResearchFactionTechnology	
-	29	拥有多种阵营单位	OwnDifferentFactionUnitTypes	Objective.OwnDifferentFactionUnitTypes	
-	30	据点内建造多种阵营建筑	BuildDifferentFactionBuildingsInStronghold	Objective.BuildDifferentFactionBuildingsInStronghold	
+#	行动目标定义表			i18n
+#	ID		Identifier	TextKey
+#	int		string	string
+#		备注	代码内唯一标识	目标文本本地化键
+	1	抵达目标地点	ReachDestination	Objective.ReachDestination
+	2	建造指定势力三级基地	BuildFactionLevel3Core	Objective.BuildFactionLevel3Core
+	3	占领一定数量据点	CaptureStrongholdCount	Objective.CaptureStrongholdCount
+	4	占领指定据点	CaptureSpecificStronghold	Objective.CaptureSpecificStronghold
+	5	占领指定多个据点	CaptureSpecificStrongholds	Objective.CaptureSpecificStrongholds
+	6	占领全部据点	CaptureAllStrongholds	Objective.CaptureAllStrongholds
+	7	交付订单	DeliverOrderCount	Objective.DeliverOrderCount
+	8	收集特殊资源	CollectSpecialResource	Objective.CollectSpecialResource
+	9	收集一定资源	CollectResourceAmount	Objective.CollectResourceAmount
+	10	研发一定数量科技	ResearchTechnologyCount	Objective.ResearchTechnologyCount
+	11	研发终极科技	ResearchUltimateTechnology	Objective.ResearchUltimateTechnology
+	12	存活一定天数	SurviveDays	Objective.SurviveDays
+	13	击杀一定人口	KillEnemyPopulation	Objective.KillEnemyPopulation
+	14	占领并守护地标	CaptureAndDefendLandmark	Objective.CaptureAndDefendLandmark
+	15	拥有一定数量单位	OwnUnitCount	Objective.OwnUnitCount
+	16	达到一定人口	ReachPopulation	Objective.ReachPopulation
+	17	营救特定单位	RescueSpecificUnit	Objective.RescueSpecificUnit
+	18	清除附近敌人	ClearNearbyEnemies	Objective.ClearNearbyEnemies
+	19	击杀首领	KillBoss	Objective.KillBoss
+	20	保护据点	ProtectStronghold	Objective.ProtectStronghold
+	21	建造军事建筑	BuildMilitaryBuilding	Objective.BuildMilitaryBuilding
+	22	建造防御建筑	BuildDefenseBuilding	Objective.BuildDefenseBuilding
+	23	建造生产建筑	BuildProductionBuilding	Objective.BuildProductionBuilding
+	24	建造科研建筑	BuildResearchBuilding	Objective.BuildResearchBuilding
+	25	守住基地	DefendBase	Objective.DefendBase
+	26	升级编程核心到三级	UpgradeCodingCoreLevel3	Objective.UpgradeCodingCoreLevel3
+	27	拥有指定阵营军事建筑	OwnFactionMilitaryBuildingCount	Objective.OwnFactionMilitaryBuildingCount
+	28	研发指定阵营科技	ResearchFactionTechnology	Objective.ResearchFactionTechnology
+	29	拥有多种阵营单位	OwnDifferentFactionUnitTypes	Objective.OwnDifferentFactionUnitTypes
+	30	据点内建造多种阵营建筑	BuildDifferentFactionBuildingsInStronghold	Objective.BuildDifferentFactionBuildingsInStronghold

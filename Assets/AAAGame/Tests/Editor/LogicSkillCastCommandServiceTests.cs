@@ -7,6 +7,13 @@ using UnityEngine;
 [TestFixture]
 public sealed class LogicSkillCastCommandServiceTests
 {
+    private sealed class LogicTickProbe : ILogicFrameUpdate
+    {
+        public int LogicFrameOrder => 0;
+        public int TickCount { get; private set; }
+        public void OnLogicFrameUpdate(Fix64 deltaTime) => TickCount++;
+    }
+
     private sealed class SkillPreviewProbe : ISkillComp, ISkillCastPreviewProvider
     {
         public bool CanRequestSkillCast(int slotIndex) => true;
@@ -80,6 +87,105 @@ public sealed class LogicSkillCastCommandServiceTests
     }
 
     [Test]
+    public void SubmitWhileInGameUiPaused_AppliesImmediatelyWithoutAdvancingOrRepeatingFrame()
+    {
+        var applied = new List<LogicSkillCastCommand>();
+        LogicTimeControlService.BeginFrame(1);
+        LogicEntityLifecycleService.ApplyFrame(1);
+        LogicTimeControlService.AcquirePause(LogicTimeControlSources.InGameUiPause);
+
+        LogicSkillCastCommand command = LogicSkillCastCommandService.SubmitForTests(
+            new LogicEntityId(17),
+            1,
+            new FixVector2((Fix64)6, (Fix64)7),
+            applied.Add);
+
+        Assert.AreEqual(1UL, LogicTimeControlService.CurrentFrame);
+        Assert.AreEqual(1UL, command.EffectiveFrame);
+        Assert.AreEqual(1, applied.Count);
+        Assert.AreEqual(0, LogicSkillCastCommandService.PendingCount);
+        Assert.AreEqual(1, LogicSkillCastCommandService.AppliedCount);
+
+        LogicTimeControlService.ReleasePause(LogicTimeControlSources.InGameUiPause);
+        LogicTimeControlService.BeginFrame(2);
+        LogicSkillCastCommandService.ApplyFrameForTests(2, applied.Add);
+        Assert.AreEqual(1, applied.Count);
+    }
+
+    [Test]
+    public void PausedSettlement_CommitsSpawnAtCurrentFrameWithoutTickingLogicRuntime()
+    {
+        LogicTimeControlService.BeginFrame(1);
+        LogicEntityLifecycleService.ApplyFrame(1);
+        LogicTimeControlService.AcquirePause(LogicTimeControlSources.InGameUiPause);
+        int activeBefore = LogicEntityLifecycleService.ActiveEntityCount;
+
+        LogicEntityId spawned = LogicPausedOperationService.Execute(() =>
+            LogicEntityLifecycleService.RequestConfiguredSpawn(
+                new LogicEntitySpawnDescriptor(
+                    new FixVector2((Fix64)2, (Fix64)3),
+                    new FixVector2(Fix64.One, Fix64.Zero),
+                    SideType.PlayerSide,
+                    "PausedSpawn_Test"),
+                ConfigureSpawnState));
+
+        Assert.AreEqual(1UL, LogicTimeControlService.CurrentFrame);
+        Assert.AreEqual(activeBefore + 1, LogicEntityLifecycleService.ActiveEntityCount);
+        Assert.IsTrue(LogicEntityStateStore.GetRequired(spawned).IsLogicActive);
+    }
+
+    [Test]
+    public void PausedSettlement_DoesNotTickRegisteredLogicListeners()
+    {
+        LogicFrameRuntime.Begin();
+        var probe = new LogicTickProbe();
+        LogicFrameRuntime.Register(probe);
+        LogicFrameRuntime.StartTimeline();
+        try
+        {
+            LogicFrameRuntime.Tick(1);
+            LogicTimeControlService.BeginFrame(1);
+            LogicEntityLifecycleService.ApplyFrame(1);
+            Assert.AreEqual(1, probe.TickCount);
+            LogicTimeControlService.AcquirePause(LogicTimeControlSources.InGameUiPause);
+
+            LogicPausedOperationService.Execute(() => 0);
+
+            Assert.AreEqual(1UL, LogicFrameRuntime.CurrentFrame);
+            Assert.AreEqual(1UL, LogicTimeControlService.CurrentFrame);
+            Assert.AreEqual(1, probe.TickCount);
+        }
+        finally
+        {
+            LogicFrameRuntime.Unregister(probe);
+            LogicFrameRuntime.End();
+        }
+    }
+
+    private static void ConfigureSpawnState(LogicEntityState state)
+    {
+        state.Configure(
+            null,
+            new CreaturePropertyManager(property =>
+                property == CreatureMainProperty.Health ? (Fix64)100 : Fix64.Zero),
+            0,
+            true,
+            null,
+            false,
+            false,
+            false);
+        var move = new NoMoveComp();
+        state.SetMoveComp(move);
+        move.Init(state);
+        var attack = new NoAtkComp();
+        state.SetAtkComp(attack);
+        attack.Init(state);
+        var targeting = new NoTargetingComp();
+        state.SetTargetingComp(targeting);
+        targeting.Init(state);
+    }
+
+    [Test]
     public void PendingAndAppliedStateIncludeFinalWorldPosition()
     {
         ulong initial = ComputeHash();
@@ -139,6 +245,11 @@ public sealed class LogicSkillCastCommandServiceTests
             : throw new InvalidOperationException("Aim caster has no preview provider.");
 
         BeginAimPresentation(2, caster, presenter, descriptor);
+        LogicTimeControlSnapshot aimingTime = LogicTimeControlService.CaptureSnapshot();
+        Assert.AreEqual(1, aimingTime.PendingTimeScaleCommands.Count);
+        Assert.AreEqual(TimeScaleCommandKind.SetBulletTimeScale, aimingTime.PendingTimeScaleCommands[0].Kind);
+        Assert.AreEqual(LogicTimeControlSources.SkillAimBulletTime, aimingTime.PendingTimeScaleCommands[0].SourceId);
+        Assert.AreEqual(2000, aimingTime.PendingTimeScaleCommands[0].ScaleUnits);
         SetAimWorldPosition(new FixVector2((Fix64)2, (Fix64)3));
         SetAimWorldPosition(new FixVector2((Fix64)4, (Fix64)5));
         SetAimWorldPosition(new FixVector2((Fix64)6, (Fix64)7));
@@ -158,6 +269,7 @@ public sealed class LogicSkillCastCommandServiceTests
             LogicSkillCastCommandService.History[0].RequestedWorldPosition);
         Assert.AreEqual(1, presenter.ShowCount);
         Assert.AreEqual(1, presenter.HideCount);
+        Assert.AreEqual(2, LogicTimeControlService.CaptureSnapshot().PendingTimeScaleCommands.Count);
 
         var applied = new List<LogicSkillCastCommand>();
         LogicTimeControlService.BeginFrame(1);
@@ -182,6 +294,10 @@ public sealed class LogicSkillCastCommandServiceTests
         Assert.AreEqual(0, LogicSkillCastCommandService.History.Count);
         Assert.AreEqual(1, presenter.ShowCount);
         Assert.AreEqual(1, presenter.HideCount);
+        LogicTimeControlSnapshot cancelledTime = LogicTimeControlService.CaptureSnapshot();
+        Assert.AreEqual(2, cancelledTime.PendingTimeScaleCommands.Count);
+        Assert.AreEqual(TimeScaleCommandKind.RemoveBulletTimeScale, cancelledTime.PendingTimeScaleCommands[1].Kind);
+        Assert.AreEqual(LogicTimeControlSources.SkillAimBulletTime, cancelledTime.PendingTimeScaleCommands[1].SourceId);
         AssertAimPresentationStateCleared();
     }
 

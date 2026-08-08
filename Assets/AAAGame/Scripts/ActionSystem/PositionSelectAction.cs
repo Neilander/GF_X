@@ -35,8 +35,8 @@ public class PositionSelectAction : BasicAction
 
     protected override void OnStart(ActionInfo info)
     {
-        if (!LogicFrameRuntime.IsTicking)
-            throw new System.InvalidOperationException("PositionSelectAction must start inside a logic frame.");
+        if (!LogicFrameRuntime.IsTicking && !LogicPausedOperationService.IsExecuting)
+            throw new System.InvalidOperationException("PositionSelectAction must start inside a logic frame or paused-operation settlement.");
         if (info.fatherInfo == null || !info.fatherInfo.hasRequestedWorldPosition)
             throw new System.InvalidOperationException("PositionSelectAction requires a final world position from a skill cast command.");
 

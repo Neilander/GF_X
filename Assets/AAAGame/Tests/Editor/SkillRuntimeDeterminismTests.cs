@@ -168,7 +168,7 @@ public sealed class SkillRuntimeDeterminismTests
         StringAssert.DoesNotContain("Physics.Raycast", positionAction);
         StringAssert.DoesNotContain("CylinderTargetSelector", positionAction);
         StringAssert.DoesNotContain("ICastRangePresenter", positionAction);
-        StringAssert.Contains("LogicSkillCastCommandService.ScheduleForNextFrame", presentation);
+        StringAssert.Contains("LogicSkillCastCommandService.Submit", presentation);
         StringAssert.DoesNotContain("LogicInputFrame", presentation);
         StringAssert.DoesNotContain("CurrentLogicFrame", presentation);
         StringAssert.DoesNotContain("CancelRunningSkills", inGameUi);

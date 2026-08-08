@@ -106,6 +106,25 @@ public sealed class CareerSystemsTests
         string gameConfig = File.ReadAllText(Path.Combine(Application.dataPath, "AAAGame/Config/GameConfig.txt"));
         StringAssert.Contains("OffsetRateRequiredForGrowthPoint", gameConfig);
         Assert.AreEqual(10, CareerConfigRuntime.OffsetPointThreshold);
+
+        List<BuildingTable> buildingRows = LoadRows<BuildingTable>("AAAGame/DataTable/Build/BuildingTable.txt");
+        Assert.AreEqual("Buil_ResearchCenter_Lv1",
+            BuildingDataModel.ResolveStartingBaseIdentifier(buildingRows, Archetype.Coding));
+        Assert.AreEqual("Buil_DreamPark_Lv1",
+            BuildingDataModel.ResolveStartingBaseIdentifier(buildingRows, Archetype.Sightseeing));
+        Assert.AreEqual("Buil_SortingCenter_Lv1",
+            BuildingDataModel.ResolveStartingBaseIdentifier(buildingRows, Archetype.Delivery));
+        Assert.AreEqual("Buil_FarmBase_Lv1",
+            BuildingDataModel.ResolveStartingBaseIdentifier(buildingRows, Archetype.Butchery));
+        foreach (Archetype archetype in Enum.GetValues(typeof(Archetype)))
+        {
+            if (archetype == Archetype.None || archetype == Archetype.Common)
+                continue;
+            Assert.DoesNotThrow(() => BuildingDataModel.ResolveStartingBaseIdentifier(buildingRows, archetype),
+                $"Starting industry '{archetype}' must have exactly one base building.");
+        }
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            BuildingDataModel.ResolveStartingBaseIdentifier(buildingRows, Archetype.Common));
     }
 
     [Test]
@@ -223,6 +242,21 @@ public sealed class CareerSystemsTests
         Assert.Throws<InvalidOperationException>(() => LevelTagRuntime.SetActiveTagIdentifiers(new[] { generatedTags[0].Identifier }));
         Assert.Throws<InvalidOperationException>(() =>
             CareerRunSettings.BeginRun("Lv_1", false, Archetype.Sightseeing));
+    }
+
+    [Test]
+    public void InitialCoreReplacement_RequiresPlayerGameEndBase()
+    {
+        Assert.IsTrue(LevelEntity.ShouldReplaceWithCareerStartingBase(
+            true, true, BuilType.Base, EntitySideHelper.PlayerFactionId));
+        Assert.IsFalse(LevelEntity.ShouldReplaceWithCareerStartingBase(
+            false, true, BuilType.Base, EntitySideHelper.PlayerFactionId));
+        Assert.IsFalse(LevelEntity.ShouldReplaceWithCareerStartingBase(
+            true, false, BuilType.Base, EntitySideHelper.PlayerFactionId));
+        Assert.IsFalse(LevelEntity.ShouldReplaceWithCareerStartingBase(
+            true, true, BuilType.Def, EntitySideHelper.PlayerFactionId));
+        Assert.IsFalse(LevelEntity.ShouldReplaceWithCareerStartingBase(
+            true, true, BuilType.Base, EntitySideHelper.EnemyFactionId));
     }
 
     private static CareerProgressDataModel CreateProgressModel()

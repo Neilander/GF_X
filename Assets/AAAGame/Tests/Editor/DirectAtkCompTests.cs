@@ -230,7 +230,13 @@ atkComp.Attack((Fix64)999);
 
         AdvanceFrames(atkComp, 6);
 
-        Assert.AreEqual(DirectAtkComp.AtkState.WindDown, atkComp.State, "前摇结束应进入后摇");
+        DirectAttackDeterministicState timing = atkComp.CaptureDeterministicState();
+        Assert.AreEqual(
+            DirectAtkComp.AtkState.WindDown,
+            atkComp.State,
+            $"前摇结束应进入后摇 elapsed={timing.AttackElapsed.RawValue} windUp={timing.WindUpEnd.RawValue} " +
+            $"recovery={timing.RecoveryEnd.RawValue} interval={timing.IntervalEnd.RawValue} " +
+            $"weaponBaseInterval={attacker.WeaponComp.Data.BaseInterval.RawValue} weaponInterval={attacker.WeaponComp.Data.Interval.RawValue}");
         Assert.AreEqual(70f, (float)target.Health.currentHealth, 0.01f, "目标应受到30点伤害");
     }
 
@@ -315,6 +321,48 @@ atkComp.Attack((Fix64)999);
         AdvanceFrames(atkComp, 1);
         Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State);
         Assert.AreEqual(2, atkComp.AttackCount);
+    }
+
+    [Test]
+    public void 攻击中途攻速变化会从下一逻辑帧实时改变攻击进度()
+    {
+        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
+        var targeting = new SimTargetingComp(attacker, new List<IEntityContext> { attacker, target })
+        {
+            AggroRangeFixed = (Fix64)10f
+        };
+        targeting.Init(attacker);
+        attacker.TargetComp = targeting;
+        attacker.Brain = new ScriptedBrain { Attack = true };
+
+        var moveComp = new SimMoveComp();
+        moveComp.Init(attacker);
+        attacker.MoveComp = moveComp;
+
+        Weapon weapon = MeleeWeapon(damage: 20f, windUp: 0.4f, windDown: 0.6f, interval: 1.5f)
+            .ToWeapon("RealtimeAttackSpeedWeapon");
+        attacker.WeaponComp = new WeaponComp(weapon);
+        var atkComp = new DirectAtkComp();
+        atkComp.Init(attacker);
+        attacker.AtkComp = atkComp;
+        targeting.UpdateTargeting(Fix64.One);
+
+        StartAttack(atkComp);
+        Assert.That((float)atkComp.CurrentAttackAnimationDuration, Is.EqualTo(1f).Within(0.001f));
+        AdvanceFrames(atkComp, 6);
+        Fix64 progressBeforeSpeedUp = atkComp.CurrentAttackProgress;
+        Assert.AreEqual(100f, (float)target.Health.currentHealth, 0.01f);
+
+        weapon.ApplyMultiplier(WeaponStatId.Interval, (Fix64)0.5f);
+        Assert.AreEqual((Fix64)2f, atkComp.CurrentAttackSpeedScale);
+        AdvanceFrames(atkComp, 1);
+        Fix64 acceleratedFrameProgress = atkComp.CurrentAttackProgress - progressBeforeSpeedUp;
+        Assert.That((float)acceleratedFrameProgress, Is.EqualTo(1f / 22.5f).Within(0.001f));
+
+        AdvanceFrames(atkComp, 2);
+        Assert.AreEqual(DirectAtkComp.AtkState.WindDown, atkComp.State);
+        Assert.AreEqual(80f, (float)target.Health.currentHealth, 0.01f);
     }
 
     [Test]

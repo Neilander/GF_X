@@ -28,6 +28,7 @@ public partial class InGameUIForm : UIFormBase
         InitializeMiniMap();
         InitializeDefendEnemySketch();
         InitializeSkills();
+        InitializeTimeControls();
         RefreshAll();
     }
 
@@ -40,6 +41,7 @@ public partial class InGameUIForm : UIFormBase
         UnbindButtons();
         ShutdownPhaseSwitchHold();
         ShutdownSkills();
+        ShutdownTimeControls();
         ShutdownMiniMap();
         ShutdownDefendEnemySketch();
         StopPhaseSwitchBlink();
@@ -52,6 +54,7 @@ public partial class InGameUIForm : UIFormBase
         base.OnUpdate(elapseSeconds, realElapseSeconds);
 
         InputManager inputManager = GameEntry.GetComponent<InputManager>();
+        TickTimeControls(inputManager);
         if (inputManager != null
             && inputManager.CurState == InputState.Game
             && inputManager.WasCancelPressedThisFrame())
@@ -193,6 +196,8 @@ public partial class InGameUIForm : UIFormBase
         switch (args.DataType)
         {
             case IngameValueType.Phase:
+                OnTimeControlPhaseChanged();
+                goto case IngameValueType.Day;
             case IngameValueType.Day:
             case IngameValueType.Coin:
             case IngameValueType.CurrentSupply:

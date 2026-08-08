@@ -52,6 +52,31 @@ public sealed class LogicCardCommandServiceTests
     }
 
     [Test]
+    public void SubmitWhileInGameUiPaused_AppliesImmediatelyWithoutAdvancingOrRepeatingFrame()
+    {
+        var applied = new List<LogicCardCommand>();
+        LogicTimeControlService.BeginFrame(1);
+        LogicTimeControlService.AcquirePause(LogicTimeControlSources.InGameUiPause);
+
+        LogicCardCommand command = LogicCardCommandService.SubmitForTests(
+            LogicCardCommandKind.Play,
+            31,
+            new FixVector2((Fix64)4, (Fix64)5),
+            applied.Add);
+
+        Assert.AreEqual(1UL, LogicTimeControlService.CurrentFrame);
+        Assert.AreEqual(1UL, command.EffectiveFrame);
+        Assert.AreEqual(1, applied.Count);
+        Assert.AreEqual(0, LogicCardCommandService.PendingCount);
+        Assert.AreEqual(1, LogicCardCommandService.AppliedCount);
+
+        LogicTimeControlService.ReleasePause(LogicTimeControlSources.InGameUiPause);
+        LogicTimeControlService.BeginFrame(2);
+        LogicCardCommandService.ApplyFrameForTests(2, applied.Add);
+        Assert.AreEqual(1, applied.Count);
+    }
+
+    [Test]
     public void ApplyFrame_RejectsMissedCommandFrame()
     {
         LogicCardCommandService.ScheduleDiscardForNextFrame(1);

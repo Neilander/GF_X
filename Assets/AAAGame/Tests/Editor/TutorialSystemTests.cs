@@ -260,8 +260,10 @@ public sealed class TutorialSystemTests
 
         string[] objectiveHeader = System.IO.File.ReadAllLines(
             "Assets/AAAGame/DataTable/Text/ObjectiveTable.txt")[0].Split('\t');
+        Assert.AreEqual(5, objectiveHeader.Length, "ObjectiveTable schema must contain exactly five columns.");
         Assert.AreEqual("i18n", objectiveHeader[4], "ObjectiveTable.TextKey must be scanned as localization.");
-        Assert.AreNotEqual("i18n", objectiveHeader[5], "ObjectiveTable trailing column must not be scanned as localization.");
+        for (int i = 0; i < objectiveHeader.Length - 1; i++)
+            Assert.AreNotEqual("i18n", objectiveHeader[i], $"ObjectiveTable column {i} must not be scanned as localization.");
     }
 
     private static string GetText(Component textComponent)

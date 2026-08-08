@@ -359,6 +359,7 @@ public partial class LevelEntity : EntityBase
                 Log.Error("LevelEntity.SpawnPresetEntities failed: invalid building identifier '{0}' at point '{1}'.", point.Identifier, point.name);
                 continue;
             }
+            effectiveIdentifier = ResolveCareerStartingBaseIdentifier(point, effectiveIdentifier);
 
             switch (point.PointType)
             {
@@ -477,6 +478,7 @@ public partial class LevelEntity : EntityBase
                 skippedCount++;
                 continue;
             }
+            effectiveIdentifier = ResolveCareerStartingBaseIdentifier(point, effectiveIdentifier);
 
             switch (point.PointType)
             {
@@ -583,6 +585,49 @@ public partial class LevelEntity : EntityBase
             heroSpawned,
             skippedCount,
             yieldCount);
+    }
+
+    private string ResolveCareerStartingBaseIdentifier(EntityPresetPoint point, string resolvedIdentifier)
+    {
+        if (!CareerRunSettings.HasActiveRun
+            || point.PointType != EntityPresetPointType.Building
+            || !point.IsGameEndConditionBuilding)
+            return resolvedIdentifier;
+
+        BuildingData authoredBuilding = BuildingDataModel.GetBuildingData(resolvedIdentifier)
+                                        ?? throw new InvalidOperationException(
+                                            $"Resolved preset building '{resolvedIdentifier}' is missing from BuildingDataModel.");
+        int ownerFactionId = ResolveOwnerFactionIdByPosition(point.Position);
+        if (!ShouldReplaceWithCareerStartingBase(
+                CareerRunSettings.HasActiveRun,
+                point.IsGameEndConditionBuilding,
+                authoredBuilding.Type,
+                ownerFactionId))
+        {
+            return resolvedIdentifier;
+        }
+
+        string startingBaseIdentifier = BuildingDataModel.GetRequiredStartingBaseIdentifier(CareerRunSettings.StartingArchetype);
+        Log.Info(
+            "[CareerRun] Replaced player initial core building. level={0}, point={1}, authored={2}, replacement={3}, archetype={4}.",
+            ChangeSceneProcedure.SelectedLevelIdentifier,
+            point.name,
+            resolvedIdentifier,
+            startingBaseIdentifier,
+            CareerRunSettings.StartingArchetype);
+        return startingBaseIdentifier;
+    }
+
+    internal static bool ShouldReplaceWithCareerStartingBase(
+        bool hasActiveRun,
+        bool isGameEndConditionBuilding,
+        BuilType buildingType,
+        int ownerFactionId)
+    {
+        return hasActiveRun
+               && isGameEndConditionBuilding
+               && buildingType == BuilType.Base
+               && ownerFactionId == EntitySideHelper.PlayerFactionId;
     }
 
     private int ResolveOwnerFactionIdByPosition(Vector3 position)

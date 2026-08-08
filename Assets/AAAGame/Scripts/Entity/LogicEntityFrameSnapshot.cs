@@ -263,8 +263,8 @@ public static class LogicEntityFrameSnapshotService
     private static void EnsureCurrentFrame()
     {
         EnsureActive();
-        if (!LogicFrameRuntime.IsTicking)
-            throw new InvalidOperationException("LogicEntityFrameSnapshotService read failed: no logic frame is running.");
+        if (!LogicFrameRuntime.IsTicking && !LogicPausedOperationService.IsExecuting)
+            throw new InvalidOperationException("LogicEntityFrameSnapshotService read failed: no logic operation is running.");
         if (Current == null || Current.FrameId != LogicFrameRuntime.CurrentFrame)
         {
             throw new InvalidOperationException(

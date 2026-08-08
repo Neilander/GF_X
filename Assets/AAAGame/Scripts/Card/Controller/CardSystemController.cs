@@ -556,7 +556,7 @@ namespace AAAGame.Card
                 return false;
             }
 
-            LogicCardCommandService.SchedulePlayForNextFrame(cardModel.RuntimeId, selectedPosition);
+            LogicCardCommandService.SubmitPlay(cardModel.RuntimeId, selectedPosition);
             m_EnemyBuildingForbiddenZoneController?.EndPlacement();
             return true;
         }
@@ -584,7 +584,7 @@ namespace AAAGame.Card
 
             if (!m_HandModel.Contains(cardModel))
                 return false;
-            LogicCardCommandService.ScheduleDiscardForNextFrame(cardModel.RuntimeId);
+            LogicCardCommandService.SubmitDiscard(cardModel.RuntimeId);
             return true;
         }
 

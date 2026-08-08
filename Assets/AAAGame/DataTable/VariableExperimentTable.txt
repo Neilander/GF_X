@@ -4,6 +4,6 @@
 #	行号	备注	原始生涯关卡	可选关卡配置（空则使用原关卡）	规则配置标识
 	1	第1关变量试验	Lv_1		VariableRule_OneHealthCoding
 	2	第2关变量试验	Lv_2	LvTest	VariableRule_VariantTerrain
-	3	第3关变量试验	Lv_3		VariableRule_Default
+	3	第3关变量试验	Lv_3		VariableRule_OneHealthCoding
 	4	第4关变量试验	Lv_4		VariableRule_Default
 	5	第5关变量试验	Lv_5		VariableRule_Default

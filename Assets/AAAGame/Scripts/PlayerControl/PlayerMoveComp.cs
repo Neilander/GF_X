@@ -40,7 +40,9 @@ public class PlayerMoveComp : IMoveComp
 
     public void StopMove()
     {
-        throw new System.NotImplementedException();
+        _isMoving = false;
+        _moveDirection = FixVector2.Zero;
+        _ctx?.MoveExecutor?.SetInputFixed(FixVector2.Zero);
     }
 
     public void Init(IEntityContext ctx)

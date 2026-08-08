@@ -874,15 +874,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
                 }
                 FixVector2 frameStartPosition = Position;
                 FixVector2 displacement = resolved - frameStartPosition;
-                FixVector2 facingDisplacement = displacement;
-                if (Alive && !IsBuildingEntity && CombatShape.Radius > Fix64.Zero)
-                {
-                    LogicAgentCollisionShadowState collisionState = LogicAgentCollisionShadowService.GetRequiredState(
-                        EntityId,
-                        LogicFrameRuntime.CurrentFrame);
-                    facingDisplacement -= collisionState.PairCorrection;
-                }
-                UpdateForwardForMoveCommit(frameStartPosition, facingDisplacement);
+                UpdateForwardForMoveCommit(frameStartPosition);
                 Position = resolved;
                 m_MoveComp.CommitResolvedDisplacement(displacement);
                 m_MoveExecutor.CommitPreparedLogicFrame(LogicFrameRuntime.CurrentFrame);
@@ -897,7 +889,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         m_NextPhase = (MAEntityLogicFramePhase)((int)phase + 1);
     }
 
-    private void UpdateForwardForMoveCommit(FixVector2 frameStartPosition, FixVector2 displacement)
+    private void UpdateForwardForMoveCommit(FixVector2 frameStartPosition)
     {
         if (IsBuildingEntity)
             return;
@@ -913,9 +905,10 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             }
         }
 
-        if (FixVector2.SqrMagnitude(displacement) > Fix64.Zero)
+        FixVector2 moveIntent = m_MoveComp?.NavDirectionFixed ?? FixVector2.Zero;
+        if (FixVector2.SqrMagnitude(moveIntent) > Fix64.Zero)
         {
-            Forward = displacement.GetNormalized();
+            Forward = moveIntent;
             return;
         }
 

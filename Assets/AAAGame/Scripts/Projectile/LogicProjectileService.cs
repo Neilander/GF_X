@@ -22,13 +22,17 @@ public readonly struct LogicProjectileDeterministicState
         LogicEntityId attackerId,
         LogicEntityId targetId,
         FixVector2 position,
-        Fix64 speed)
+        Fix64 speed,
+        FixVector2 lastAimPoint,
+        bool isTrackingTarget)
     {
         Id = id;
         AttackerId = attackerId;
         TargetId = targetId;
         Position = position;
         Speed = speed;
+        LastAimPoint = lastAimPoint;
+        IsTrackingTarget = isTrackingTarget;
     }
 
     public ulong Id { get; }
@@ -36,6 +40,8 @@ public readonly struct LogicProjectileDeterministicState
     public LogicEntityId TargetId { get; }
     public FixVector2 Position { get; }
     public Fix64 Speed { get; }
+    public FixVector2 LastAimPoint { get; }
+    public bool IsTrackingTarget { get; }
 }
 
 public sealed class LogicProjectileSnapshot
@@ -67,6 +73,8 @@ internal readonly struct LogicProjectileSnapshotEntry
         WeaponData weaponData,
         FixVector2 position,
         Fix64 speed,
+        FixVector2 lastAimPoint,
+        bool isTrackingTarget,
         bool viewReserved,
         bool viewBound,
         bool completed,
@@ -78,6 +86,8 @@ internal readonly struct LogicProjectileSnapshotEntry
         WeaponData = weaponData;
         Position = position;
         Speed = speed;
+        LastAimPoint = lastAimPoint;
+        IsTrackingTarget = isTrackingTarget;
         ViewReserved = viewReserved;
         ViewBound = viewBound;
         Completed = completed;
@@ -90,6 +100,8 @@ internal readonly struct LogicProjectileSnapshotEntry
     public WeaponData WeaponData { get; }
     public FixVector2 Position { get; }
     public Fix64 Speed { get; }
+    public FixVector2 LastAimPoint { get; }
+    public bool IsTrackingTarget { get; }
     public bool ViewReserved { get; }
     public bool ViewBound { get; }
     public bool Completed { get; }
@@ -103,9 +115,12 @@ public static class LogicProjectileService
         public ulong Id;
         public IEntityContext Attacker;
         public IEntityContext Target;
+        public LogicEntityId TargetId;
         public WeaponData WeaponData;
         public FixVector2 Position;
         public Fix64 Speed;
+        public FixVector2 LastAimPoint;
+        public bool IsTrackingTarget;
         public bool ViewReserved;
         public bool ViewBound;
         public bool Completed;
@@ -132,9 +147,11 @@ public static class LogicProjectileService
             result[i] = new LogicProjectileDeterministicState(
                 state.Id,
                 state.Attacker.LogicEntityId,
-                state.Target.LogicEntityId,
+                state.TargetId,
                 state.Position,
-                state.Speed);
+                state.Speed,
+                state.LastAimPoint,
+                state.IsTrackingTarget);
         }
         return result;
     }
@@ -150,14 +167,17 @@ public static class LogicProjectileService
         for (int i = 0; i < s_ActiveIds.Count; i++)
         {
             ProjectileState state = s_States[s_ActiveIds[i]];
-            if (state == null || state.Attacker == null || state.Target == null)
+            if (state == null || state.Attacker == null || !state.TargetId.IsValid)
                 throw new InvalidOperationException($"LogicProjectileService deterministic state is invalid. index={i}.");
             hasher.Add(state.Id);
             hasher.Add(state.Attacker.LogicEntityId.Value);
-            hasher.Add(state.Target.LogicEntityId.Value);
+            hasher.Add(state.TargetId.Value);
             hasher.Add(state.Position.x.RawValue);
             hasher.Add(state.Position.y.RawValue);
             hasher.Add(state.Speed.RawValue);
+            hasher.Add(state.LastAimPoint.x.RawValue);
+            hasher.Add(state.LastAimPoint.y.RawValue);
+            hasher.Add(state.IsTrackingTarget);
         }
     }
 
@@ -173,10 +193,12 @@ public static class LogicProjectileService
             entries[i] = new LogicProjectileSnapshotEntry(
                 state.Id,
                 state.Attacker.LogicEntityId,
-                state.Target.LogicEntityId,
+                state.TargetId,
                 CloneWeaponData(state.WeaponData),
                 state.Position,
                 state.Speed,
+                state.LastAimPoint,
+                state.IsTrackingTarget,
                 state.ViewReserved,
                 state.ViewBound,
                 state.Completed,
@@ -210,7 +232,8 @@ public static class LogicProjectileService
             LogicProjectileSnapshotEntry entry = snapshot.Entries[i];
             if (!entities.TryGetValue(entry.AttackerId.Value, out IEntityContext attacker))
                 throw new InvalidOperationException($"LogicProjectileService.RestoreSnapshot failed: attacker {entry.AttackerId.Value} is not registered.");
-            if (!entities.TryGetValue(entry.TargetId.Value, out IEntityContext target))
+            entities.TryGetValue(entry.TargetId.Value, out IEntityContext target);
+            if (entry.IsTrackingTarget && target == null)
                 throw new InvalidOperationException($"LogicProjectileService.RestoreSnapshot failed: target {entry.TargetId.Value} is not registered.");
             if (entry.Id == 0 || s_States.ContainsKey(entry.Id))
                 throw new InvalidOperationException($"LogicProjectileService.RestoreSnapshot failed: invalid or duplicate projectile id {entry.Id}.");
@@ -220,9 +243,12 @@ public static class LogicProjectileService
                 Id = entry.Id,
                 Attacker = attacker,
                 Target = target,
+                TargetId = entry.TargetId,
                 WeaponData = CloneWeaponData(entry.WeaponData),
                 Position = entry.Position,
                 Speed = entry.Speed,
+                LastAimPoint = entry.LastAimPoint,
+                IsTrackingTarget = entry.IsTrackingTarget,
                 ViewReserved = entry.ViewReserved,
                 ViewBound = entry.ViewBound,
                 Completed = entry.Completed,
@@ -289,14 +315,19 @@ public static class LogicProjectileService
             throw new InvalidOperationException($"LogicProjectileService.Submit failed: projectile speed must be positive. attacker={attacker.LogicEntityId.Value}.");
 
         ulong id = checked(++s_LastId);
+        LogicEntityFrameState targetState = LogicEntityFrameSnapshotService.Current.GetRequired(target);
+        FixVector2 startPosition = LogicEntityFrameSnapshotService.GetRequiredPosition(attacker);
         var state = new ProjectileState
         {
             Id = id,
             Attacker = attacker,
             Target = target,
+            TargetId = target.LogicEntityId,
             WeaponData = weaponData,
-            Position = LogicEntityFrameSnapshotService.GetRequiredPosition(attacker),
+            Position = startPosition,
             Speed = speed,
+            LastAimPoint = targetState.CombatShape.ClosestPoint(startPosition),
+            IsTrackingTarget = targetState.Alive,
         };
         s_States.Add(id, state);
         s_ActiveIds.Add(id);
@@ -318,21 +349,27 @@ public static class LogicProjectileService
         {
             ulong id = s_ActiveIds[i];
             ProjectileState state = s_States[id];
-            if (!snapshot.TryGet(state.Target.LogicEntityId, out LogicEntityFrameState targetState)
-                || !targetState.Alive)
+            if (state.IsTrackingTarget)
             {
-                Complete(state, false);
-                s_ActiveIds.RemoveAt(i);
-                continue;
+                if (snapshot.TryGet(state.TargetId, out LogicEntityFrameState targetState)
+                    && targetState.Alive)
+                {
+                    state.LastAimPoint = targetState.CombatShape.ClosestPoint(state.Position);
+                }
+                else
+                {
+                    state.IsTrackingTarget = false;
+                    state.Target = null;
+                }
             }
 
-            FixVector2 aimPoint = targetState.CombatShape.ClosestPoint(state.Position);
             Fix64 moveDistance = state.Speed * deltaTime;
-            state.Position = AdvanceToward(state.Position, aimPoint, moveDistance, out bool arrived);
+            state.Position = AdvanceToward(state.Position, state.LastAimPoint, moveDistance, out bool arrived);
             if (!arrived)
                 continue;
 
-            bool hit = WeaponTargetRules.IsValidTargetForWeapon(state.Attacker, state.Target, state.WeaponData.Type);
+            bool hit = state.IsTrackingTarget
+                       && WeaponTargetRules.IsValidTargetForWeapon(state.Attacker, state.Target, state.WeaponData.Type);
             if (hit)
                 ResolveHit(state);
             Complete(state, hit);

@@ -579,6 +579,82 @@ public class MAEntityLogicFrameSystemTests
     }
 
     [Test]
+    public void FireHqDeathSupplyTech_AcceptsTimedDeathFromBuffPhaseWithoutEntityView()
+    {
+        EnsureInGameDataModelForCombatTest();
+        GamePhase previousPhase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
+        InGameDataModel.SetPhase(GamePhase.Defend, false);
+        BeginDefendEntityTimeline();
+        var managerObject = new GameObject("GlobalBuffManager_TimedDeathTech_Test");
+        var manager = managerObject.AddComponent<GlobalBuffManager>();
+        var effect = new BuildingTechRuntimeEffect();
+        try
+        {
+            effect.Activate(new TechEffectContext
+            {
+                TechId = "Tech_Buil_FireHQ_Lv2_Opt2",
+                OwnerFactionId = EntitySideHelper.PlayerFactionId,
+                SourceBuildingInstanceId = "fire-hq-timed-death-source",
+                TechData = new TechData(
+                    "Tech_Buil_FireHQ_Lv2_Opt2",
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    0,
+                    new[] { (Fix64)10 },
+                    TechScopeType.Special,
+                    System.Array.Empty<string>(),
+                    System.Array.Empty<UnitSize>(),
+                    System.Array.Empty<UnitTag>(),
+                    System.Array.Empty<Archetype>(),
+                    string.Empty,
+                    false),
+                GlobalBuffManager = manager,
+            });
+            LogicEntityId unitId = LogicEntityLifecycleService.RequestConfiguredSpawn(
+                new LogicEntitySpawnDescriptor(
+                    FixVector2.Zero,
+                    new FixVector2(Fix64.One, Fix64.Zero),
+                    SideType.PlayerSide,
+                    "TimedDeathTechUnit"),
+                state =>
+                {
+                    state.Configure(
+                        null,
+                        new CreaturePropertyManager(property =>
+                            property == CreatureMainProperty.Health ? (Fix64)100 : Fix64.Zero),
+                        0,
+                        true,
+                        null,
+                        false);
+                    new NoMoveFactoryForTest().Configure(state);
+                    state.MoveExecutor.SetNavigationConstrained(false);
+                });
+            LogicEntityState unit = LogicEntityStateStore.GetRequired(unitId);
+            LogicEntityLifecycleService.CommitPendingInitializationEntities();
+            Assert.IsFalse(unit.HasBoundView);
+            Assert.IsTrue(unit.BuffComp.AddBuff(
+                TimedDeathBuff.CreateTimedDeath(LogicFrameRuntime.FixedDeltaTime),
+                unit));
+
+            Assert.DoesNotThrow(() => LogicFrameRuntime.Tick(1));
+
+            Assert.IsFalse(unit.Alive);
+            Assert.AreEqual(1, LogicDamageEventService.LastAppliedCount,
+                "TimedDeathBuff 必须在 Buff 阶段提交伤害，并在本帧 DamageResolve 阶段统一结算死亡。");
+        }
+        finally
+        {
+            effect.ClearRuntimeState();
+            manager.ClearLevelRuntimeState();
+            UnityEngine.Object.DestroyImmediate(managerObject);
+            EntityRegistry.Clear();
+            EndDefendEntityTimeline();
+            InGameDataModel.SetPhase(previousPhase, false);
+        }
+    }
+
+    [Test]
     public void BoundMAEntityView_BeforeFirstLogicFrameAndAfterTicksBuildsInterpolationFromLogicStateOnRender()
     {
         BeginLogicTimeWithVisibleFog();
@@ -1206,8 +1282,87 @@ public class MAEntityLogicFrameSystemTests
                 "用例必须产生会扭转模型的横向解叠量");
             Assert.Greater(facingDisplacement.x.RawValue, 0,
                 "剔除单位解叠后，主动移动意图必须仍然向前");
-            Assert.AreEqual(facingDisplacement.GetNormalized(), soldier.Forward,
-                "单位解叠是位置约束，不得成为角色主动朝向");
+            Assert.AreEqual(move.NavDirectionFixed, soldier.Forward,
+                "单位解叠是位置约束，角色朝向必须保留迁移前的导航意图语义");
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            EndLogicTimeWithVisibleFog();
+        }
+    }
+
+    [Test]
+    public void MoveCommit_StaticWallSlideDoesNotDriveFacingAwayFromNavigationIntent()
+    {
+        const int width = 8;
+        const int height = 8;
+        var walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            width,
+            height,
+            1f,
+            Vector3.zero,
+            walkable);
+        ProcessWorldBuildQueueUntilReady();
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            9101,
+            new FixVector2((Fix64)3.5f, (Fix64)3.5f),
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f));
+
+        Fix64 collisionRadius = Fix64.One / (Fix64)4;
+        FindStaticSlideCase(collisionRadius, out FixVector2 frameStart, out FixVector2 desiredDisplacement);
+
+        BeginLogicTimeWithVisibleFog();
+        LogicEntityLifecycleService.BeginTimeline();
+        try
+        {
+            FixVector2 intendedVelocity = desiredDisplacement / LogicFrameRuntime.FixedDeltaTime;
+            var move = new ProjectileRegressionApproachMoveComp(intendedVelocity)
+            {
+                Enabled = true,
+            };
+            LogicEntityId entityId = LogicEntityLifecycleService.RequestSpawn(
+                new LogicEntitySpawnDescriptor(
+                    frameStart,
+                    new FixVector2(Fix64.Zero, Fix64.One),
+                    SideType.EnemySide,
+                    "StaticSlideFacingTest"));
+            LogicEntityState soldier = LogicEntityStateStore.GetRequired(entityId);
+            soldier.Configure(
+                null,
+                new CreaturePropertyManager(property => property switch
+                {
+                    CreatureMainProperty.Health => (Fix64)100,
+                    CreatureMainProperty.CollisionRadius => DistanceUnitConverter.ConvertFromWorld(collisionRadius),
+                    CreatureMainProperty.WeightLevel => (Fix64)2,
+                    _ => Fix64.Zero,
+                }),
+                0,
+                false,
+                null,
+                false);
+            new NoMoveFactoryForTest().Configure(soldier);
+            soldier.SetMoveComp(move);
+            move.Init(soldier);
+            LogicEntityStateStore.CommitSpawn(entityId);
+            EntityRegistry.Register(soldier);
+
+            LogicFrameRuntime.Tick(1);
+
+            LogicAgentCollisionShadowState collision =
+                LogicAgentCollisionShadowService.GetRequiredState(soldier.LogicEntityId, 1);
+            FixVector2 committedDisplacement = collision.FinalResolvedPosition - frameStart;
+            Assert.AreNotEqual(FixVector2.Zero, collision.StaticCorrection,
+                "用例必须实际经过静态墙面投影");
+            Assert.AreNotEqual(desiredDisplacement.GetNormalized(), committedDisplacement.GetNormalized(),
+                "用例必须让静态投影改变本帧实际位移方向");
+            Assert.AreEqual(move.NavDirectionFixed, soldier.Forward,
+                "静态碰撞只解算位置，不能把墙面侧滑方向写回角色主动朝向");
         }
         finally
         {
@@ -1368,6 +1523,65 @@ public class MAEntityLogicFrameSystemTests
 
         Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestWorld());
         Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+    }
+
+    private static void FindStaticSlideCase(
+        Fix64 collisionRadius,
+        out FixVector2 frameStart,
+        out FixVector2 desiredDisplacement)
+    {
+        var directions = new[]
+        {
+            new FixVector2(Fix64.One, Fix64.One),
+            new FixVector2(Fix64.One, -Fix64.One),
+            new FixVector2(-Fix64.One, Fix64.One),
+            new FixVector2(-Fix64.One, -Fix64.One),
+        };
+        Fix64 displacementLength = Fix64.FromRaw(3072);
+
+        for (long yRaw = 4096; yRaw <= 28672; yRaw += 256)
+        {
+            for (long xRaw = 4096; xRaw <= 28672; xRaw += 256)
+            {
+                var start = new FixVector2(Fix64.FromRaw(xRaw), Fix64.FromRaw(yRaw));
+                if (!LogicStaticCollisionShadowService.TrySolveFixed(
+                        0,
+                        start,
+                        FixVector2.Zero,
+                        collisionRadius,
+                        out LogicStaticCollisionShadowResult startProbe)
+                    || !startProbe.SolveResult.Success
+                    || startProbe.SolveResult.StartedOverlapping)
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < directions.Length; i++)
+                {
+                    FixVector2 desired = directions[i].GetNormalized() * displacementLength;
+                    if (!LogicStaticCollisionShadowService.TrySolveFixed(
+                            0,
+                            start,
+                            desired,
+                            collisionRadius,
+                            out LogicStaticCollisionShadowResult solve)
+                        || !solve.SolveResult.Success
+                        || solve.SolveResult.StartedOverlapping
+                        || solve.SolveResult.ResolvedDisplacement == FixVector2.Zero
+                        || solve.SolveResult.ResolvedDisplacement == desired
+                        || solve.SolveResult.ResolvedDisplacement.GetNormalized() == desired.GetNormalized())
+                    {
+                        continue;
+                    }
+
+                    frameStart = start;
+                    desiredDisplacement = desired;
+                    return;
+                }
+            }
+        }
+
+        throw new System.InvalidOperationException("Failed to construct a deterministic static wall slide case.");
     }
 
     private static void ProcessRuntimeDirtyQueueUntilReady()

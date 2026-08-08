@@ -338,6 +338,48 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void FlowNavigationGridSource_RuntimeTransitionClearsStaleDeferredOwner()
+    {
+        FieldInfo appliedOwnerField = typeof(FlowNavigationGridSource).GetField(
+            "s_AppliedSourceInstanceId",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        FieldInfo pendingOwnerField = typeof(FlowNavigationGridSource).GetField(
+            "s_PendingClearSourceInstanceId",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        MethodInfo clearOwnedSource = typeof(FlowNavigationGridSource).GetMethod(
+            "ClearAppliedSourceIfOwned",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(appliedOwnerField);
+        Assert.IsNotNull(pendingOwnerField);
+        Assert.IsNotNull(clearOwnedSource);
+
+        GameObject sourceObject = new GameObject("RuntimeTransitionGridSourceTest");
+        FlowNavigationGridSource source = sourceObject.AddComponent<FlowNavigationGridSource>();
+        try
+        {
+            LogicFrameRuntime.Begin();
+            LogicFrameRuntime.StartTimeline();
+            FlowFieldCrowdMovementSystem.BeginRuntimeNavigationTransition();
+            appliedOwnerField.SetValue(null, source.GetInstanceID());
+            pendingOwnerField.SetValue(null, source.GetInstanceID() - 1);
+
+            Assert.DoesNotThrow(() => clearOwnedSource.Invoke(source, null));
+            Assert.AreEqual(0, appliedOwnerField.GetValue(null));
+            Assert.AreEqual(0, pendingOwnerField.GetValue(null));
+            Assert.IsFalse(FlowFieldCrowdMovementSystem.HasAuthoredNavigationSource());
+        }
+        finally
+        {
+            FlowFieldCrowdMovementSystem.ForceEndRuntimeNavigationTransition();
+            pendingOwnerField.SetValue(null, 0);
+            appliedOwnerField.SetValue(null, 0);
+            if (LogicFrameRuntime.IsActive)
+                LogicFrameRuntime.End();
+            UnityEngine.Object.DestroyImmediate(sourceObject);
+        }
+    }
+
+    [Test]
     public void 更新障碍位置必须同时重建旧Bounds和新Bounds()
     {
         const int width = 32;

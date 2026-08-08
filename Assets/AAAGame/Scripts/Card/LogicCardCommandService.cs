@@ -99,9 +99,41 @@ public static class LogicCardCommandService
         return ScheduleForNextFrame(LogicCardCommandKind.Play, cardRuntimeId, selectedPosition);
     }
 
+    public static LogicCardCommand SubmitPlay(ulong cardRuntimeId, FixVector2 selectedPosition)
+    {
+        return Submit(LogicCardCommandKind.Play, cardRuntimeId, selectedPosition, s_RuntimeSink);
+    }
+
     public static LogicCardCommand ScheduleDiscardForNextFrame(ulong cardRuntimeId)
     {
         return ScheduleForNextFrame(LogicCardCommandKind.Discard, cardRuntimeId, FixVector2.Zero);
+    }
+
+    public static LogicCardCommand SubmitDiscard(ulong cardRuntimeId)
+    {
+        return Submit(LogicCardCommandKind.Discard, cardRuntimeId, FixVector2.Zero, s_RuntimeSink);
+    }
+
+    private static LogicCardCommand Submit(
+        LogicCardCommandKind kind,
+        ulong cardRuntimeId,
+        FixVector2 selectedPosition,
+        Action<LogicCardCommand> sink)
+    {
+        if (!LogicPausedOperationService.CanResolveImmediately)
+            return ScheduleForNextFrame(kind, cardRuntimeId, selectedPosition);
+
+        return LogicPausedOperationService.Execute(() =>
+        {
+            LogicCardCommand command = RecordCommand(
+                LogicTimeControlService.CurrentFrame,
+                kind,
+                cardRuntimeId,
+                selectedPosition,
+                false);
+            ApplyImmediate(command, sink);
+            return command;
+        });
     }
 
     private static LogicCardCommand ScheduleForNextFrame(
@@ -120,18 +152,78 @@ public static class LogicCardCommandService
                 throw new InvalidOperationException($"Card {cardRuntimeId} already has a pending logic command.");
         }
 
-        var command = new LogicCardCommand(
+        return RecordCommand(
             checked(LogicTimeControlService.CurrentFrame + 1),
+            kind,
+            cardRuntimeId,
+            selectedPosition,
+            true);
+    }
+
+    private static LogicCardCommand RecordCommand(
+        ulong effectiveFrame,
+        LogicCardCommandKind kind,
+        ulong cardRuntimeId,
+        FixVector2 selectedPosition,
+        bool pending)
+    {
+        EnsureActive();
+        if (!Enum.IsDefined(typeof(LogicCardCommandKind), kind))
+            throw new ArgumentOutOfRangeException(nameof(kind));
+        if (cardRuntimeId == 0)
+            throw new ArgumentOutOfRangeException(nameof(cardRuntimeId));
+        for (int i = 0; i < s_Pending.Count; i++)
+        {
+            if (s_Pending[i].CardRuntimeId == cardRuntimeId)
+                throw new InvalidOperationException($"Card {cardRuntimeId} already has a pending logic command.");
+        }
+
+        var command = new LogicCardCommand(
+            effectiveFrame,
             checked(s_LastSequence + 1),
             kind,
             cardRuntimeId,
             selectedPosition);
         s_LastSequence = command.Sequence;
-        s_Pending.Add(command);
+        if (pending)
+            s_Pending.Add(command);
         s_History.Add(command);
         CommandRecorded?.Invoke(command);
         return command;
     }
+
+    private static void ApplyImmediate(LogicCardCommand command, Action<LogicCardCommand> sink)
+    {
+        if (!LogicPausedOperationService.IsExecuting)
+            throw new InvalidOperationException("Immediate card application requires a paused-operation settlement.");
+        if (sink == null)
+            throw new ArgumentNullException(nameof(sink));
+        if (IsApplyingFrame)
+            throw new InvalidOperationException("LogicCardCommandService.ApplyImmediate failed: nested command application detected.");
+
+        IsApplyingFrame = true;
+        try
+        {
+            sink(command);
+            RecordApplied(command);
+            LastAppliedFrame = command.EffectiveFrame;
+        }
+        finally
+        {
+            IsApplyingFrame = false;
+        }
+    }
+
+#if UNITY_EDITOR
+    public static LogicCardCommand SubmitForTests(
+        LogicCardCommandKind kind,
+        ulong cardRuntimeId,
+        FixVector2 selectedPosition,
+        Action<LogicCardCommand> sink)
+    {
+        return Submit(kind, cardRuntimeId, selectedPosition, sink);
+    }
+#endif
 
     public static void ApplyFrame(ulong frameId)
     {
