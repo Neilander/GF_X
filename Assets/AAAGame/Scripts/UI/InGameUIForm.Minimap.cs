@@ -179,6 +179,8 @@ public partial class InGameUIForm
             maskCanvas = varMiniMapMask.gameObject.AddComponent<Canvas>();
         maskCanvas.overrideSorting = true;
         maskCanvas.sortingOrder = SortOrder + MinimapMaskSortingOffset;
+        if (varMiniMapMask.GetComponent<GraphicRaycaster>() == null)
+            varMiniMapMask.gameObject.AddComponent<GraphicRaycaster>();
 
         varMiniMapMask.GetWorldCorners(m_MinimapMaskWorldCorners);
         Canvas canvas = targetParent.GetComponentInParent<Canvas>();

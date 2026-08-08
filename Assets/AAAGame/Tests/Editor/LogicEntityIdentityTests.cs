@@ -2148,6 +2148,28 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void EffectiveDamage_ExitsHeroOutOfCombatAndClearsSpeedBuffWithoutTarget()
+    {
+        LogicEntityState state = CreateConfiguredState("Hero_DamageOutOfCombat", true, (Fix64)10);
+        state.BuffComp.AddBuff(
+            BuffData.Create(
+                "hero_damage_out_of_combat_test",
+                Fix64.Zero,
+                true,
+                1,
+                new List<BuffCallback> { new HeroOutOfCombatMoveSpeedBuff() }),
+            state);
+        Assert.AreEqual((Fix64)20, state.GetProperty(CreatureMainProperty.Speed));
+
+        state.TakeDamage((Fix64)1, HealthModifyType.empty);
+        Assert.IsFalse(state.IsOutOfCombat, "有效受击必须立即退出脱战，即使当前没有可用目标。");
+
+        state.BuffComp.UpdateBuff(LogicFrameRuntime.FixedDeltaTime);
+
+        Assert.AreEqual((Fix64)10, state.GetProperty(CreatureMainProperty.Speed));
+    }
+
+    [Test]
     public void StateHostedBuildingPhaseGuard_ChangesProtectionOnEffectiveTick()
     {
         LogicEntityState state = CreateConfiguredState("Building_PhaseGuard", false);
@@ -2299,7 +2321,7 @@ public class LogicEntityIdentityTests
         }
     }
 
-    private static LogicEntityState CreateConfiguredState(string characterKey, bool isHero)
+    private static LogicEntityState CreateConfiguredState(string characterKey, bool isHero, Fix64? speed = null)
     {
         var descriptor = new LogicEntitySpawnDescriptor(
             FixVector2.Zero,
@@ -2313,7 +2335,8 @@ public class LogicEntityIdentityTests
                 state.Configure(
                     null,
                     new CreaturePropertyManager(property =>
-                        property == CreatureMainProperty.Health ? (Fix64)100 : Fix64.Zero),
+                    property == CreatureMainProperty.Health ? (Fix64)100
+                        : property == CreatureMainProperty.Speed && speed.HasValue ? speed.Value : Fix64.Zero),
                     0,
                     true,
                     null,

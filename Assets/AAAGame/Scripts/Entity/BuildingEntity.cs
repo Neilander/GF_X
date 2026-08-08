@@ -366,6 +366,11 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         throw ViewLogicMutationException(nameof(IBuildingLogicContext.SetOwnerFaction));
     }
 
+    void IBuildingLogicContext.SetGameEndConditionBuilding(bool enabled)
+    {
+        throw ViewLogicMutationException(nameof(IBuildingLogicContext.SetGameEndConditionBuilding));
+    }
+
     private void ApplyOwnerFactionPresentation(
         int oldFactionId,
         int ownerFactionId,
@@ -375,8 +380,9 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
             throw new System.ArgumentOutOfRangeException(nameof(ownerFactionId));
 
         OwnerFactionID = ownerFactionId;
+        IsGameEndConditionBuilding = LogicState.IsGameEndConditionBuilding;
         SyncSideFromFaction();
-        _minimapReportComponent?.SetSide(Side);
+        EnsureMinimapReportComponent();
         RefreshLv0PhaseVisibility();
         RefreshPermanentStealthVisibility();
 

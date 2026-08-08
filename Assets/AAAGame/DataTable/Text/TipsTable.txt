@@ -1,4 +1,4 @@
-#	侧边提示表						i18n
+#	侧边提示表			i18n	i18n		
 #	ID		Identifier	TitleKey	ContentKey	Icon	Duration
 #	int		string	string	string	string	float
 #		备注	代码内唯一标识	标题本地化键	内容本地化键	讲话人图标，空值默认为Narrator	存在时间，-1表示条件结束

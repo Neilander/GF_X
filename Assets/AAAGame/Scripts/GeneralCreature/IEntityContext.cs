@@ -83,6 +83,7 @@ public interface IBuildingLogicContext : IEntityContext
     bool IsNavigationStaticBaked { get; }
     event System.Action<int, int> OwnerFactionChanged;
     void SetOwnerFaction(int ownerFactionId);
+    void SetGameEndConditionBuilding(bool enabled);
     void RestoreBuildingToFullHealth();
     void SetCollisionBlockingByBuff(bool blocksMovement);
     void SetPermanentStealthByBuff(bool enabled);

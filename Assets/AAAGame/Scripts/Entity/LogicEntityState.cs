@@ -126,6 +126,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     private MAEntityLogicFramePhase m_NextPhase;
     private Fix64 m_CombatClock;
     private Fix64 m_OutOfCombatStart;
+    private Fix64 m_LastDamageCombatClock;
+    private bool m_HasDamageAtCombatClock;
     private bool m_CombatCapabilitiesLockedForDisabled;
     private bool m_CombatCapabilitiesLockedForGhost;
     private BuildingData m_BuildingData;
@@ -560,6 +562,12 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         SetBuildingOwnerFaction(
             ownerFactionId,
             EntitySideHelper.ToSide(EntityCombatTeamHelper.ResolveTeamIdByFaction(ownerFactionId)));
+    public void SetGameEndConditionBuilding(bool enabled)
+    {
+        if (!IsBuildingEntity)
+            throw new InvalidOperationException($"Entity {EntityId.Value} is not a building.");
+        IsGameEndConditionBuilding = enabled;
+    }
     public void SetUnitSide(SideType side)
     {
         if (IsBuildingEntity)
@@ -671,6 +679,9 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         if (IsBuildingEntity)
             LogicProductionConditionState.RecordBuildingDamaged(this);
         m_OutOfCombatStart = m_CombatClock;
+        m_LastDamageCombatClock = m_CombatClock;
+        m_HasDamageAtCombatClock = true;
+        IsOutOfCombat = false;
         m_TargetingComp?.NotifyDamageTaken(attacker);
         if (HealthValue <= Fix64.Zero)
         {
@@ -753,6 +764,12 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     {
         if (hasher == null)
             throw new ArgumentNullException(nameof(hasher));
+
+        hasher.Add(IsOutOfCombat);
+        hasher.Add(m_CombatClock.RawValue);
+        hasher.Add(m_OutOfCombatStart.RawValue);
+        hasher.Add(m_HasDamageAtCombatClock);
+        hasher.Add(m_LastDamageCombatClock.RawValue);
 
         m_DeterministicStringValues.Clear();
         foreach (string source in m_InvincibleSources)
@@ -925,7 +942,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     {
         bool outOfCombat = Alive
                            && !(m_TargetingComp?.CurrentTarget?.IsAttackTargetable() ?? false)
-                           && !(m_AtkComp?.IsAttacking ?? false);
+                           && !(m_AtkComp?.IsAttacking ?? false)
+                           && !(m_HasDamageAtCombatClock && m_LastDamageCombatClock == m_CombatClock);
         if (outOfCombat != IsOutOfCombat)
             m_OutOfCombatStart = m_CombatClock;
         IsOutOfCombat = outOfCombat;

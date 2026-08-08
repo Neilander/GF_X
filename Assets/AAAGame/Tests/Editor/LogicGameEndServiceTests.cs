@@ -44,7 +44,12 @@ public sealed class LogicGameEndServiceTests
         PublishEntities();
 
         target.SetOwnerFaction(EntitySideHelper.PlayerFactionId);
+        LogicGameEndService.ResolveCapturedEnemyTarget(target);
         Assert.IsFalse(LogicGameEndService.IsGameEnded);
+        Assert.IsFalse(target.IsGameEndConditionBuilding);
+        CollectionAssert.DoesNotContain(
+            LogicGameEndService.PlayerTargetBuildingInstanceIds,
+            target.BuildingInstanceId);
 
         LogicTimeControlService.BeginFrame(1);
         LogicGameEndService.ApplyFrame(1);
@@ -81,6 +86,7 @@ public sealed class LogicGameEndServiceTests
         try
         {
             target.SetOwnerFaction(EntitySideHelper.PlayerFactionId);
+            LogicGameEndService.ResolveCapturedEnemyTarget(target);
             LogicTimeControlService.BeginFrame(1);
             LogicGameEndService.ApplyFrame(1);
         }
@@ -122,6 +128,47 @@ public sealed class LogicGameEndServiceTests
     }
 
     [Test]
+    public void CapturedBuilding_JoinsPlayerTargetsOnlyWhenRegisteredAfterCapture()
+    {
+        LogicEntityState initialTarget = CreateBuilding("target-player-initial", EntitySideHelper.PlayerFactionId, true);
+        LogicEntityState capturedCore = CreateBuilding("captured-core", EntitySideHelper.EnemyFactionId, false);
+        LogicGameEndService.Initialize(CreateLevel(
+            Array.Empty<VictoryConditionType>(),
+            0,
+            new[] { FailConditionType.LoseSpecificBuildings },
+            0));
+        LogicGameEndService.RegisterInitialConditionBuilding(
+            initialTarget.BuildingInstanceId,
+            initialTarget.OwnerFactionId);
+        PublishEntities();
+
+        CollectionAssert.DoesNotContain(
+            LogicGameEndService.PlayerTargetBuildingInstanceIds,
+            capturedCore.BuildingInstanceId);
+        capturedCore.SetOwnerFaction(EntitySideHelper.PlayerFactionId);
+        Assert.Throws<InvalidOperationException>(() =>
+            LogicGameEndService.ResolveCapturedEnemyTarget(capturedCore));
+
+        LogicGameEndService.RegisterCapturedBuildingAsPlayerTarget(capturedCore);
+
+        Assert.IsTrue(capturedCore.IsGameEndConditionBuilding);
+        CollectionAssert.Contains(
+            LogicGameEndService.PlayerTargetBuildingInstanceIds,
+            capturedCore.BuildingInstanceId);
+
+        initialTarget.TakeDamage((Fix64)1000, HealthModifyType.empty);
+        LogicTimeControlService.BeginFrame(1);
+        LogicGameEndService.ApplyFrame(1);
+        Assert.IsFalse(LogicGameEndService.IsGameEnded);
+
+        capturedCore.TakeDamage((Fix64)1000, HealthModifyType.empty);
+        LogicTimeControlService.BeginFrame(2);
+        LogicGameEndService.ApplyFrame(2);
+        Assert.IsTrue(LogicGameEndService.IsGameEnded);
+        Assert.IsFalse(LogicGameEndService.IsWin);
+    }
+
+    [Test]
     public void RegisteringTargetsDoesNotEvaluateBeforeFirstCompleteTick()
     {
         LogicEntityState target = CreateBuilding("target-late", EntitySideHelper.EnemyFactionId, true);
@@ -133,6 +180,7 @@ public sealed class LogicGameEndServiceTests
         LogicGameEndService.RegisterInitialConditionBuilding(target.BuildingInstanceId, target.OwnerFactionId);
         PublishEntities();
         target.SetOwnerFaction(EntitySideHelper.PlayerFactionId);
+        LogicGameEndService.ResolveCapturedEnemyTarget(target);
 
         Assert.IsFalse(LogicGameEndService.IsGameEnded);
         LogicTimeControlService.BeginFrame(1);

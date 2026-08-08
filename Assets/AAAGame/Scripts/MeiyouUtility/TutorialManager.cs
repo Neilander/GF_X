@@ -573,16 +573,20 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         if (building == null)
             throw new ArgumentNullException(nameof(building));
         if (oldFactionId == EntitySideHelper.PlayerFactionId
-            || newFactionId != EntitySideHelper.PlayerFactionId
-            || !building.IsGameEndConditionBuilding)
+            || newFactionId != EntitySideHelper.PlayerFactionId)
         {
             return;
         }
+        BuildingData buildingData = building.BuildingData
+                                    ?? throw new InvalidOperationException("Captured tutorial building has no BuildingData.");
+        if (buildingData.Type != BuilType.Base)
+            return;
         if (!m_EnemyStrongholdIntroShown)
             throw new InvalidOperationException("Tutorial captured a stronghold before its authored enemy-stronghold trigger.");
         if (!string.Equals(building.StrongholdId, m_CapturedStrongholdId, StringComparison.Ordinal))
             throw new InvalidOperationException("Tutorial captured a different stronghold than the one introduced by its trigger.");
 
+        LogicGameEndService.RegisterCapturedBuildingAsPlayerTarget(building);
         m_CapturedCoreBuildingInstanceId = building.BuildingInstanceId;
         TutorialObjectiveService.SetStatus(GoalCapture, TutorialObjectiveStatus.Completed);
         CloseAllTips();

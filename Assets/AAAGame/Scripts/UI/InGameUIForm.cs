@@ -56,7 +56,10 @@ public partial class InGameUIForm : UIFormBase
             && inputManager.CurState == InputState.Game
             && inputManager.WasCancelPressedThisFrame())
         {
-            OpenLevelSwitch();
+            if (m_IsLargeMapOpen)
+                CloseLargeMap();
+            else
+                OpenLevelSwitch();
         }
 
         TickMiniMap(inputManager);

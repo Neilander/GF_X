@@ -556,6 +556,17 @@ namespace AAAGame.MiniMap.FOG3
             UpdateVisibilityImmediately();
         }
 
+        public void ResetForWorldTransition()
+        {
+            if (sceneRebuildCoroutine != null)
+            {
+                StopCoroutine(sceneRebuildCoroutine);
+                sceneRebuildCoroutine = null;
+            }
+
+            ClearRuntimeState(true);
+        }
+
         public int RegisterRevealer(
             Transform target,
             float visionRadius,

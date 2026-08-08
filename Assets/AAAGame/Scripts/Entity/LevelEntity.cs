@@ -862,7 +862,7 @@ public partial class LevelEntity : EntityBase
 
         if (capturedByPlayer)
         {
-            bool promotedCore = false;
+            bool resolvedConditionBuilding = false;
             for (int i = 0; i < entities.Count; i++)
             {
                 if (entities[i] is not IBuildingLogicContext building
@@ -872,10 +872,16 @@ public partial class LevelEntity : EntityBase
                     continue;
                 }
 
-                LogicGameEndService.PromoteCapturedConditionBuildingToPlayerTarget(building.BuildingInstanceId);
-                promotedCore = true;
+                if (LogicGameEndService.IsPlayerTargetBuilding(building.BuildingInstanceId))
+                {
+                    resolvedConditionBuilding = true;
+                    continue;
+                }
+
+                LogicGameEndService.ResolveCapturedEnemyTarget(building);
+                resolvedConditionBuilding = true;
             }
-            if (!promotedCore)
+            if (!resolvedConditionBuilding)
                 throw new InvalidOperationException($"Captured stronghold '{strongholdId}' has no game-end condition core building.");
         }
 

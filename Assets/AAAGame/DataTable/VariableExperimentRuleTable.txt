@@ -2,6 +2,6 @@
 #	ID		Identifier	NameKey	DescKey	ForcedArchetype	UniqueValues
 #	int		string	string	string	enum	Fix64[]
 #	行号	备注	稳定规则标识	本地化名称键	本地化描述键	强制初始行业或None	规则数值（索引含义由规则实现约定）
-	1		VariableRule_Default	VariableExperiment_Name_Default	VariableExperiment_Desc_Default	Archetype.None	0
-	2		VariableRule_OneHealthCoding	VariableExperiment_Name_OneHealthCoding	VariableExperiment_Desc_OneHealthCoding	Archetype.Coding	1
-	3		VariableRule_VariantTerrain	VariableExperiment_Name_VariantTerrain	VariableExperiment_Desc_VariantTerrain	Archetype.None	
+	1	无规则	VariableRule_Default	VariableExperiment_Name_Default	VariableExperiment_Desc_Default	Archetype.None	
+	2	所有单位生命上限固定为{0}，且初始行业固定为编程。	VariableRule_OneHealthCoding	VariableExperiment_Name_OneHealthCoding	VariableExperiment_Desc_OneHealthCoding	Archetype.Coding	1
+	3	使用试验地形进行挑战。	VariableRule_VariantTerrain	VariableExperiment_Name_VariantTerrain	VariableExperiment_Desc_VariantTerrain	Archetype.None	

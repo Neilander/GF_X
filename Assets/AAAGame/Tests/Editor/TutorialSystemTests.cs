@@ -182,7 +182,7 @@ public sealed class TutorialSystemTests
     }
 
     [Test]
-    public void Level1Prefab_HasOneCodingCoreMarkedAsGameEndCondition()
+    public void Level1Prefab_CodingCoreStartsOutsideGameEndConditions()
     {
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
             "Assets/AAAGame/Prefabs/Entity/Level/Level_1.prefab");
@@ -190,15 +190,24 @@ public sealed class TutorialSystemTests
 
         EntityPresetPoint[] points = prefab.GetComponentsInChildren<EntityPresetPoint>(true);
         int codingCoreCount = 0;
+        int initialConditionCount = 0;
         for (int i = 0; i < points.Length; i++)
         {
-            if (points[i].Identifier != "Buil_ResearchCenter_Lv1")
-                continue;
-            codingCoreCount++;
-            Assert.IsTrue(points[i].IsGameEndConditionBuilding);
+            if (points[i].IsGameEndConditionBuilding)
+            {
+                initialConditionCount++;
+                Assert.AreEqual("Buil_SouthernMoon_Lv1", points[i].Identifier);
+            }
+
+            if (points[i].Identifier == "Buil_ResearchCenter_Lv1")
+            {
+                codingCoreCount++;
+                Assert.IsFalse(points[i].IsGameEndConditionBuilding);
+            }
         }
 
         Assert.AreEqual(1, codingCoreCount);
+        Assert.AreEqual(1, initialConditionCount);
     }
 
     [Test]
@@ -238,6 +247,21 @@ public sealed class TutorialSystemTests
         {
             Object.DestroyImmediate(instance);
         }
+    }
+
+    [Test]
+    public void TutorialDataTables_MarkLocalizationKeyColumnsOnly()
+    {
+        string[] tipsHeader = System.IO.File.ReadAllLines(
+            "Assets/AAAGame/DataTable/Text/TipsTable.txt")[0].Split('\t');
+        Assert.AreEqual("i18n", tipsHeader[4], "TipsTable.TitleKey must be scanned as localization.");
+        Assert.AreEqual("i18n", tipsHeader[5], "TipsTable.ContentKey must be scanned as localization.");
+        Assert.AreNotEqual("i18n", tipsHeader[7], "TipsTable.Duration must not be scanned as localization.");
+
+        string[] objectiveHeader = System.IO.File.ReadAllLines(
+            "Assets/AAAGame/DataTable/Text/ObjectiveTable.txt")[0].Split('\t');
+        Assert.AreEqual("i18n", objectiveHeader[4], "ObjectiveTable.TextKey must be scanned as localization.");
+        Assert.AreNotEqual("i18n", objectiveHeader[5], "ObjectiveTable trailing column must not be scanned as localization.");
     }
 
     private static string GetText(Component textComponent)

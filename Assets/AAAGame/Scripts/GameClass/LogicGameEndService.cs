@@ -159,18 +159,59 @@ public static class LogicGameEndService
             out building);
     }
 
-    public static void PromoteCapturedConditionBuildingToPlayerTarget(string buildingInstanceId)
+    public static bool IsPlayerTargetBuilding(string buildingInstanceId)
     {
         EnsureInitialized();
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
             throw new ArgumentException("Building instance id is required.", nameof(buildingInstanceId));
-        if (!s_EnemyTargetBuildingInstanceIds.Contains(buildingInstanceId))
+        return s_PlayerTargetBuildingInstanceIds.Contains(buildingInstanceId);
+    }
+
+    public static void RegisterCapturedBuildingAsPlayerTarget(IBuildingLogicContext building)
+    {
+        EnsureInitialized();
+        if (building == null)
+            throw new ArgumentNullException(nameof(building));
+        if (building.OwnerFactionId != EntitySideHelper.PlayerFactionId)
+            throw new InvalidOperationException("Captured building must be player owned before target registration.");
+        if (string.IsNullOrWhiteSpace(building.BuildingInstanceId))
+            throw new InvalidOperationException("Captured building has no stable building instance id.");
+        if (building.IsGameEndConditionBuilding
+            || s_PlayerTargetBuildingInstanceIds.Contains(building.BuildingInstanceId)
+            || s_EnemyTargetBuildingInstanceIds.Contains(building.BuildingInstanceId))
         {
             throw new InvalidOperationException(
-                $"Captured condition building '{buildingInstanceId}' was not registered as an enemy target.");
+                $"Captured building '{building.BuildingInstanceId}' is already a game-end target.");
         }
-        if (!s_PlayerTargetBuildingInstanceIds.Add(buildingInstanceId))
-            throw new InvalidOperationException($"Captured condition building '{buildingInstanceId}' is already a player target.");
+
+        building.SetGameEndConditionBuilding(true);
+        if (!s_PlayerTargetBuildingInstanceIds.Add(building.BuildingInstanceId))
+            throw new InvalidOperationException($"Failed to register captured player target '{building.BuildingInstanceId}'.");
+    }
+
+    public static void ResolveCapturedEnemyTarget(IBuildingLogicContext building)
+    {
+        EnsureInitialized();
+        if (building == null)
+            throw new ArgumentNullException(nameof(building));
+        if (building.OwnerFactionId != EntitySideHelper.PlayerFactionId)
+            throw new InvalidOperationException("Captured enemy target must be player owned before resolution.");
+        if (string.IsNullOrWhiteSpace(building.BuildingInstanceId))
+            throw new InvalidOperationException("Captured enemy target has no stable building instance id.");
+        if (!building.IsGameEndConditionBuilding)
+            throw new InvalidOperationException($"Captured enemy target '{building.BuildingInstanceId}' is not a condition building.");
+        if (s_PlayerTargetBuildingInstanceIds.Contains(building.BuildingInstanceId))
+        {
+            throw new InvalidOperationException(
+                $"Captured enemy target '{building.BuildingInstanceId}' is already a player target.");
+        }
+        if (!s_EnemyTargetBuildingInstanceIds.Contains(building.BuildingInstanceId))
+        {
+            throw new InvalidOperationException(
+                $"Captured condition building '{building.BuildingInstanceId}' was not registered as an enemy target.");
+        }
+
+        building.SetGameEndConditionBuilding(false);
     }
 
     public static void CompleteScriptedWin(VictoryConditionType condition)
@@ -279,10 +320,12 @@ public static class LogicGameEndService
             {
                 continue;
             }
-            if (!building.IsGameEndConditionBuilding)
+            bool resolvedCapturedEnemyTarget = s_EnemyTargetBuildingInstanceIds.Contains(building.BuildingInstanceId)
+                                               && building.OwnerFactionId == EntitySideHelper.PlayerFactionId;
+            if (!building.IsGameEndConditionBuilding && !resolvedCapturedEnemyTarget)
             {
                 throw new InvalidOperationException(
-                    $"Registered target building '{building.BuildingInstanceId}' is not a logic game-end-condition building.");
+                    $"Registered target building '{building.BuildingInstanceId}' has an invalid condition state.");
             }
             if (!s_ResolvedTargets.TryAdd(building.BuildingInstanceId, building))
             {

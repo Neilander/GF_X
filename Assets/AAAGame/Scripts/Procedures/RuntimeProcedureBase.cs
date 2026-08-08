@@ -1,6 +1,7 @@
 ﻿using System;
 using AAAGame.Card;
 using AAAGame.MiniMap;
+using AAAGame.MiniMap.FOG3;
 using Stopwatch = System.Diagnostics.Stopwatch;
 using Cysharp.Threading.Tasks;
 using GameFramework.Fsm;
@@ -386,8 +387,6 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             if (StageCheckpointRuntimeCoordinator.IsActive)
                 StageCheckpointRuntimeCoordinator.EndSession();
             OnRuntimeShutdown();
-            m_RuntimeInitPipeline?.Shutdown();
-            m_RuntimeInitPipeline = null;
             m_LogicFrameClockStarted = false;
             LogicEntityViewSpawnQueue.ResetForWorldTransition();
             ProjectilePresentationService.ResetForWorldTransition();
@@ -416,6 +415,9 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             LogicTechEffectCommandService.ResetForWorldTransition();
             LogicObstacleCommandService.ResetForWorldTransition();
             GF.Entity.HideAllLoadingEntities();
+            if (previousLevel == null || !previousLevel.Available)
+                throw new InvalidOperationException("Runtime level world transition requires an available previous level.");
+            GF.Entity.HideEntitySafe(previousLevel);
             HideRuntimeEntitiesExceptLevel();
             LogicStrongholdMap.Clear();
             Log.Info(
@@ -425,6 +427,12 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                 LogicEntityLifecycleService.BoundViewCount,
                 LogicEntityLifecycleService.ActiveEntityCount,
                 LogicFrameRuntime.ListenerCount);
+            m_RuntimeInitPipeline?.Shutdown();
+            m_RuntimeInitPipeline = null;
+            Fog3Manager fog3Manager = Fog3Manager.Instance ?? GameEntry.GetComponent<Fog3Manager>();
+            if (fog3Manager == null)
+                throw new InvalidOperationException("Runtime level world transition requires Fog3Manager.");
+            fog3Manager.ResetForWorldTransition();
             LogicEntityLifecycleService.ResetForWorldTransition();
             LogicEntityFrameSnapshotService.ResetForWorldTransition();
             MAEntityLogicFrameSystem.ResetForWorldTransition();
@@ -457,11 +465,6 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             {
                 try
                 {
-                    if (previousLevel != null && previousLevel.Available)
-                    {
-                        GF.Entity.HideEntitySafe(previousLevel);
-                    }
-
                     LogicTimeControlService.ReleasePause(LogicTimeControlSources.RuntimeLevelSwitchPause);
                     runtimePauseHeld = false;
                     m_InPlaceLevelSwitchInProgress = false;
