@@ -1083,6 +1083,35 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void FixedGridLos_AuthoredPointZeroNineLongReverseRayTerminatesAtGoalCell()
+    {
+        const int width = 500;
+        const int height = 100;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            0,
+            width,
+            height,
+            0.09f,
+            new Vector3(10.08f, 0f, 41.04f),
+            walkable,
+            null,
+            null);
+        ProcessWorldBuildQueueUntilReady();
+
+        FixVector2 from = new FixVector2(Fix64.FromRaw(217404), Fix64.FromRaw(184984));
+        FixVector2 to = new FixVector2(Fix64.FromRaw(193573), Fix64.FromRaw(188745));
+        string diagnostic = FlowFieldCrowdMovementSystem.GetEditorTestOnlyFixedGridLineOfSightDiagnostic(from, to);
+        Assert.DoesNotThrow(() =>
+            Assert.IsTrue(
+                FlowFieldCrowdMovementSystem.HasEditorTestOnlyFixedGridLineOfSight(from, to),
+                $"The captured LvTest reverse ray crosses only walkable cells and must terminate at its authored goal cell. diagnostic={diagnostic}"));
+    }
+
+    [Test]
     public void FinalGoal直达时允许目标格SoftCost()
     {
         FlowFieldNavigationConfig config = CreateConfig();
@@ -4240,7 +4269,7 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void PortalSeed方向继承下游FinalTile切向且保持穿越法向()
+    public void PortalSeed存储方向继承下游切向但窄孔权威Funnel保留当前Portal()
     {
         FlowFieldNavigationConfig config = CreateConfig();
         config.SectorSizeInCells = 4;
@@ -4271,8 +4300,10 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out Vector3 velocity));
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(ctx.LogicEntityId.Value, out string diagnostic));
         Assert.Greater(velocity.x, 0.6f, $"站上 Portal seed 后权威速度必须继续穿越，velocity={velocity}, diagnostic={diagnostic}");
-        Assert.Greater(velocity.z, 0.6f, $"站上 Portal seed 后权威速度必须消费已提交切向，不能被 portal LOS 改回纯法向，velocity={velocity}, diagnostic={diagnostic}");
-        StringAssert.Contains("/lastResult=direction=", diagnostic, $"站上 Portal seed 后必须直接消费 deterministic tile direction，diagnostic={diagnostic}");
+        Assert.AreEqual(0f, velocity.z, 0.1f,
+            $"半径等于半格时单格 Portal 的收缩孔径只有中心点，权威速度必须纯法向穿越，velocity={velocity}, diagnostic={diagnostic}");
+        StringAssert.Contains("/lastResult=corridor-funnel portalLookahead=rejected cornerPathIndex=0", diagnostic,
+            $"站上 Portal seed 后 funnel 必须保留当前 Portal 作为几何约束，diagnostic={diagnostic}");
     }
 
     [Test]
@@ -5860,6 +5891,252 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.AreNotEqual(requested.x.RawValue, result.SolveResult.ResolvedDisplacement.x.RawValue);
         Assert.Less((float)(start.x + result.SolveResult.ResolvedDisplacement.x), 4f);
     }
+    [Test]
+    public void AuthoredPointZeroNineGrid_首次构建障碍必须封住Q32格心()
+    {
+        const int agentTypeId = 91001;
+        const int width = 512;
+        const int height = 3;
+        const int blockedX = 477;
+        const int blockedY = 1;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadiusFixed(agentTypeId, Fix64.FromRaw(1));
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            agentTypeId,
+            width,
+            height,
+            0.09f,
+            new Vector3(10.08f, 0f, 10.08f),
+            walkable);
+        FixVector2 blockedCenter = NavigationGridFixedMath.GridCellCenterFixed(
+            NavigationGridFixedMath.FloatToGridRaw(0.09f),
+            NavigationGridFixedMath.FloatToGridRaw(10.08f),
+            NavigationGridFixedMath.FloatToGridRaw(10.08f),
+            blockedX,
+            blockedY);
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            91002,
+            blockedCenter,
+            FixVector2.Zero);
+        ProcessWorldBuildQueueUntilReady();
+        Assert.IsFalse(
+            FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixed(
+                blockedCenter,
+                agentTypeId,
+                Fix64.Zero,
+                Fix64.Zero,
+                out _),
+            $"首次 world build 必须按 Q32 authored 格心封住动态障碍格。centerRaw=({blockedCenter.x.RawValue},{blockedCenter.y.RawValue}) cell=({blockedX},{blockedY})");
+    }
+    [Test]
+    public void AuthoredPointZeroNineGrid_RuntimeDirty障碍必须封住Q32格心()
+    {
+        const int agentTypeId = 91003;
+        const int width = 512;
+        const int height = 3;
+        const int blockedX = 477;
+        const int blockedY = 1;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadiusFixed(agentTypeId, Fix64.FromRaw(1));
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            agentTypeId,
+            width,
+            height,
+            0.09f,
+            new Vector3(10.08f, 0f, 10.08f),
+            walkable);
+        ProcessWorldBuildQueueUntilReady();
+        FixVector2 blockedCenter = FlowFieldCrowdMovementSystem.GetEditorTestGridToWorldCenterFixed(blockedX, blockedY);
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            91004,
+            blockedCenter,
+            FixVector2.Zero);
+        ProcessRuntimeDirtyQueueUntilReady(2);
+        Assert.IsFalse(
+            FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixed(
+                blockedCenter,
+                agentTypeId,
+                Fix64.Zero,
+                Fix64.Zero,
+                out _),
+            $"Runtime dirty 必须按 Q32 authored 格心封住动态障碍格。centerRaw=({blockedCenter.x.RawValue},{blockedCenter.y.RawValue}) cell=({blockedX},{blockedY})");
+    }
+
+    [Test]
+    public void AuthoredPointZeroNineGrid_空间梯度在Q12量化格心必须选择左侧采样列()
+    {
+        const int width = 8;
+        const int height = 4;
+        const int worldX = 2;
+        const int worldY = 1;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            width,
+            height,
+            0.09f,
+            new Vector3(10.08f, 0f, 10.08f),
+            walkable);
+        ProcessWorldBuildQueueUntilReady();
+        FixVector2 quantizedCenter = FlowFieldCrowdMovementSystem.GetEditorTestGridToWorldCenterFixed(worldX, worldY);
+
+        FlowFieldCrowdMovementSystem.GetEditorTestSpatialGradientSampleGridFixed(
+            quantizedCenter,
+            worldX,
+            worldY,
+            out int x0,
+            out int x1,
+            out _,
+            out _,
+            out Fix64 tx,
+            out _);
+
+        Assert.AreEqual(worldX - 1, x0);
+        Assert.AreEqual(worldX, x1);
+        Assert.Greater(tx.RawValue, Fix64.One.RawValue - 32, $"Q32 authored 格心左侧的 Q12 量化点应保持接近右端权重，txRaw={tx.RawValue} centerRaw={quantizedCenter.x.RawValue}");
+    }
+
+    [Test]
+    public void AuthoredPointZeroNineGrid_距离换算格数使用Q32权威CellSize()
+    {
+        long cellSizeGridRaw = NavigationGridFixedMath.FloatToGridRaw(0.09f);
+        Fix64 distance = Fix64.FromRaw(369);
+
+        Assert.AreEqual(2, NavigationGridFixedMath.DivideCeilingByCellSize(distance, cellSizeGridRaw));
+        Assert.AreEqual(4099, NavigationGridFixedMath.DivideByCellSize(distance, cellSizeGridRaw).RawValue);
+    }
+
+    [Test]
+    public void AuthoredPointZeroNineGrid_空间积分按Q32半格决定子步数()
+    {
+        const int width = 8;
+        const int height = 4;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            width,
+            height,
+            0.09f,
+            new Vector3(10.08f, 0f, 10.08f),
+            walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        Assert.AreEqual(
+            4,
+            FlowFieldCrowdMovementSystem.GetEditorTestSpatialIntegrationSubstepCount(Fix64.FromRaw(737)),
+            "travelRaw=737 尚未跨过 4 个 authored 半格，不能因 Q12 半格向下量化而多分一个积分子步。");
+    }
+
+    [Test]
+    public void AuthoredPointZeroNineGrid_墙边Cost按Q32格宽计算额外半径()
+    {
+        const int agentTypeId = 91005;
+        const int width = 9;
+        const int height = 5;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        walkable[4 + 2 * width] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadiusFixed(
+            agentTypeId,
+            Fix64.FromRaw(2048 + 369));
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            agentTypeId,
+            width,
+            height,
+            0.09f,
+            new Vector3(10.08f, 0f, 10.08f),
+            walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        Assert.AreEqual(3, FlowFieldCrowdMovementSystem.GetEditorTestWallCostAdjacentPenalty());
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(3, 2, out byte adjacentCost));
+        Assert.AreEqual(4, adjacentCost, "Q32 上略大于一格的额外半径必须提高最终相邻墙格 CostField，不能按 Q12 cellSize 误判成恰好一格。");
+    }
+
+    [Test]
+    public void AuthoredPointZeroNineGrid_远端GridCostStamp必须读取同列成本()
+    {
+        const int width = 515;
+        const int height = 1;
+        const int targetX = 513;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        byte[] costs = new byte[514];
+        for (int i = 0; i < costs.Length; i++)
+            costs[i] = 1;
+        costs[targetX - 1] = 7;
+        costs[targetX] = 13;
+
+        Vector3 origin = new Vector3(10.08f, 0f, 10.08f);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            width,
+            height,
+            0.09f,
+            origin,
+            walkable);
+        FlowFieldCrowdMovementSystem.RegisterGridCostStamp(
+            91006,
+            origin,
+            0.09f,
+            costs.Length,
+            1,
+            costs);
+        ProcessWorldBuildQueueUntilReady();
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(targetX, 0, out byte cost));
+        Assert.AreEqual(13, cost, "导航第 513 列格心必须映射到 stamp 第 513 列，不能因 Q12 累计漂移读取第 512 列。");
+    }
+
+    [Test]
+    public void Vector3合法点入口只做Fixed权威边界适配()
+    {
+        const int width = 8;
+        const int height = 3;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        walkable[2 + width] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            width,
+            height,
+            0.09f,
+            new Vector3(10.08f, 0f, 10.08f),
+            walkable);
+        ProcessWorldBuildQueueUntilReady();
+        FixVector2 candidateFixed = FlowFieldCrowdMovementSystem.GetEditorTestGridToWorldCenterFixed(2, 1);
+        Vector3 candidate = new Vector3((float)candidateFixed.x, 0f, (float)candidateFixed.y);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+            candidate,
+            0,
+            0.1f,
+            0f,
+            out Vector3 baseline));
+        FlowFieldCrowdMovementSystem.PerturbEditorTestWorldGridFloatShadows(
+            2f,
+            new Vector3(100f, 999f, -100f));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+            candidate,
+            0,
+            0.1f,
+            0f,
+            out Vector3 perturbed));
+
+        Assert.AreEqual(((Fix64)baseline.x).RawValue, ((Fix64)perturbed.x).RawValue);
+        Assert.AreEqual(((Fix64)baseline.z).RawValue, ((Fix64)perturbed.z).RawValue);
+    }
 
     [Test]
     public void StaticCollisionAuthority_冻结网格后FloatShadow不改变首次FixedSolve()
@@ -7381,6 +7658,103 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.AreEqual(1, crossedPathIndex, "跨过已提交 portal 后必须进入按最新目标重规划的后缀。");
         Assert.AreNotEqual(committedPortalId, crossedPortalId, "跨过 committed prefix 后不能继续把旧 portal 当作当前出口。");
         Assert.Greater(crossedVelocity.sqrMagnitude, 0.01f, "跨过 committed prefix 后必须继续追击最新目标。");
+    }
+
+    [Test]
+    public void PortalFunnel_ApertureCellPastCommittedSeedDoesNotSteerBackToPortalEndpoint()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 24;
+        const int height = 24;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        for (int x = 3; x < width; x++)
+        {
+            walkable[x + 7 * width] = false;
+            walkable[x + 8 * width] = false;
+        }
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext chaser = CreateEntity(new Vector3(1.5f, 0f, 1.5f));
+        SimEntityContext target = CreateEntity(new Vector3(20.5f, 0f, 20.5f));
+        chaser.TargetComp = new SimTargetingComp(chaser, new List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        const float speed = 30f;
+        const float deltaTime = 1f / 30f;
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, deltaTime);
+        Vector3 initialVelocity = ResolveDeterministicFlowVelocityAfterQueue(
+            chaser,
+            target.Position,
+            speed,
+            2,
+            out string initialDiagnostic);
+        Assert.Greater(initialVelocity.z, 0.1f, initialDiagnostic);
+
+        Vector3 previousVelocity = initialVelocity;
+        bool reachedCurrentPortalSeed = false;
+        bool seedConsumedCurrentPortal = false;
+        float minimumConsecutiveDot = float.PositiveInfinity;
+        string minimumDotDiagnostic = string.Empty;
+        string seedFunnelDiagnostic = string.Empty;
+        for (int frame = 3; frame < 32; frame++)
+        {
+            chaser.Position += previousVelocity * deltaTime;
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * deltaTime);
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(
+                chaser,
+                target.Position,
+                speed,
+                out Vector3 velocity));
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+                chaser.LogicEntityId.Value,
+                out string diagnostic));
+
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCurrentPathSegment(
+                chaser.LogicEntityId.Value,
+                out _,
+                out _,
+                out bool isOnCurrentPortalCell));
+            bool firstCurrentPortalSeed = !reachedCurrentPortalSeed
+                                          && isOnCurrentPortalCell;
+            reachedCurrentPortalSeed |= firstCurrentPortalSeed;
+            if (firstCurrentPortalSeed)
+            {
+                seedConsumedCurrentPortal = !diagnostic.Contains("portalLookahead=rejected", StringComparison.Ordinal);
+                seedFunnelDiagnostic =
+                    $"frame={frame}, position={chaser.Position}, previous={previousVelocity}, velocity={velocity}, flow={diagnostic}";
+            }
+            if (reachedCurrentPortalSeed
+                && previousVelocity.sqrMagnitude > 0.01f
+                && velocity.sqrMagnitude > 0.01f)
+            {
+                float dot = Vector3.Dot(previousVelocity.normalized, velocity.normalized);
+                if (dot < minimumConsecutiveDot)
+                {
+                    minimumConsecutiveDot = dot;
+                    minimumDotDiagnostic = diagnostic;
+                }
+            }
+
+            previousVelocity = velocity;
+        }
+
+        Assert.IsTrue(reachedCurrentPortalSeed, "The scenario must consume a current-side portal seed before validating the handoff.");
+        Assert.IsFalse(
+            seedConsumedCurrentPortal,
+            $"A current-side seed cell is not a portal-plane crossing; an invalid lookahead must retain the current safe-center portal. {seedFunnelDiagnostic}");
+        Assert.GreaterOrEqual(
+            minimumConsecutiveDot,
+            0f,
+            $"Reaching the current-side seed is not a portal-plane crossing; the next 30 Hz step must not leave the aperture tangentially and reverse. minDot={minimumConsecutiveDot}, diagnostic={minimumDotDiagnostic}");
     }
 
     [Test]

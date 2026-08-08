@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -12,6 +13,9 @@ namespace AAAGame.MiniMap
     {
         private const float CameraFrameAspect = 16f / 9f;
         private const float CameraFrameAdditionalScale = 1f / 2f;
+        private const float TeleportationMarkerSmallSize = 8f;
+        private const float TeleportationMarkerLargeSize = 18f;
+        private static readonly Color TeleportationMarkerColor = new Color(0.1f, 0.52f, 1f, 1f);
 
         [Header("UI 组件")]
         [SerializeField] private RectTransform minimapContainer;
@@ -78,6 +82,11 @@ namespace AAAGame.MiniMap
         private int terrainGridHeight;
         private float terrainCellSize = 1f;
         private RectTransform minimapContent;
+        private readonly List<TeleportationMarker> teleportationMarkers = new List<TeleportationMarker>();
+        private int teleportationMarkerLevelEntityId;
+        private bool teleportationMarkersInitialized;
+        private bool isLargeMap;
+        private Action<EntityPresetPoint> teleportationPointClicked;
 
         protected override void OnInit(object userData)
         {
@@ -114,6 +123,7 @@ namespace AAAGame.MiniMap
 
             TryBuildTerrainMap(true);
             RefreshMinimapFogOverlay(true, 0f);
+            RefreshTeleportationMarkers();
             Log.Info("[MinimapUI] MinimapUI initialized");
         }
 
@@ -127,6 +137,8 @@ namespace AAAGame.MiniMap
                 minimapManager.OnUnitsUpdated += HandleUnitsUpdated;
                 Log.Info("[MinimapUI] Subscribed to event");
             }
+
+            RefreshTeleportationMarkers();
         }
 
         protected override void OnClose(bool isShutdown, object userData)
@@ -171,6 +183,9 @@ namespace AAAGame.MiniMap
             terrainGridWidth = 0;
             terrainGridHeight = 0;
             terrainCellSize = 1f;
+            ClearTeleportationMarkers();
+            isLargeMap = false;
+            teleportationPointClicked = null;
         }
 
         protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
@@ -191,6 +206,26 @@ namespace AAAGame.MiniMap
             }
 
             RefreshMinimapFogOverlay(false, realElapseSeconds);
+            RefreshTeleportationMarkers();
+        }
+
+        public void RefreshLayout()
+        {
+            UpdateMinimapContentLayout();
+            RefreshTeleportationMarkerStates();
+            UpdateCameraViewFrame();
+        }
+
+        public void SetLargeMapState(bool largeMap, Action<EntityPresetPoint> pointClicked)
+        {
+            if (largeMap && pointClicked == null)
+                throw new ArgumentNullException(nameof(pointClicked));
+            if (!largeMap && pointClicked != null)
+                throw new ArgumentException("Closed minimap state cannot retain a teleportation callback.", nameof(pointClicked));
+
+            isLargeMap = largeMap;
+            teleportationPointClicked = pointClicked;
+            RefreshTeleportationMarkers();
         }
 
         private RectTransform GetMinimapContent()
@@ -708,6 +743,7 @@ namespace AAAGame.MiniMap
 
             SetCameraFrameAsLastSibling();
             SetTargetLocationIconsAsLastSibling();
+            SetTeleportationMarkersAsLastSibling();
         }
 
         private void SetCameraFrameAsLastSibling()
@@ -729,6 +765,135 @@ namespace AAAGame.MiniMap
                 if (unitVisuals.TryGetValue(unitId, out RectTransform targetIcon) && targetIcon != null)
                     targetIcon.SetAsLastSibling();
             }
+        }
+
+        private void RefreshTeleportationMarkers()
+        {
+            LevelEntity level = LevelEntity.ActiveLevelEntity;
+            if (level == null)
+            {
+                ClearTeleportationMarkers();
+                return;
+            }
+
+            int levelEntityId = level.GetInstanceID();
+            if (teleportationMarkerLevelEntityId != levelEntityId)
+            {
+                ClearTeleportationMarkers();
+                teleportationMarkerLevelEntityId = levelEntityId;
+            }
+
+            if (!level.IsRuntimeInitializationCompleted)
+                return;
+            if (!LogicStrongholdMap.IsInitialized)
+                throw new InvalidOperationException("MinimapUI cannot display teleportation points without an initialized LogicStrongholdMap.");
+
+            if (!teleportationMarkersInitialized)
+                CreateTeleportationMarkers(level);
+
+            RefreshTeleportationMarkerStates();
+        }
+
+        private void CreateTeleportationMarkers(LevelEntity level)
+        {
+            RectTransform content = GetMinimapContent()
+                ?? throw new InvalidOperationException("MinimapUI cannot create teleportation markers without minimap content.");
+            EntityPresetPoint[] points = level.GetComponentsInChildren<EntityPresetPoint>(true);
+            for (int i = 0; i < points.Length; i++)
+            {
+                EntityPresetPoint point = points[i];
+                if (point.PointType != EntityPresetPointType.Teleportation)
+                    continue;
+
+                string strongholdId = TeleportationPointService.GetStrongholdIdRequired(point);
+                var markerObject = new GameObject(
+                    $"TeleportationMarker_{point.name}",
+                    typeof(RectTransform),
+                    typeof(Image),
+                    typeof(Button));
+                markerObject.transform.SetParent(content, false);
+
+                RectTransform rect = markerObject.GetComponent<RectTransform>();
+                rect.anchorMin = new Vector2(0.5f, 0.5f);
+                rect.anchorMax = new Vector2(0.5f, 0.5f);
+                rect.pivot = new Vector2(0.5f, 0.5f);
+
+                Image image = markerObject.GetComponent<Image>();
+                image.color = TeleportationMarkerColor;
+
+                Button button = markerObject.GetComponent<Button>();
+                button.targetGraphic = image;
+                button.navigation = new Navigation { mode = Navigation.Mode.None };
+                EntityPresetPoint clickedPoint = point;
+                button.onClick.AddListener(() => HandleTeleportationMarkerClicked(clickedPoint));
+
+                teleportationMarkers.Add(new TeleportationMarker(point, strongholdId, rect, image, button));
+            }
+
+            Log.Info("[MinimapUI] Teleportation markers created. level={0}, count={1}.", level.name, teleportationMarkers.Count);
+            teleportationMarkersInitialized = true;
+        }
+
+        private void RefreshTeleportationMarkerStates()
+        {
+            if (teleportationMarkers.Count == 0 || !LogicStrongholdMap.IsInitialized)
+                return;
+
+            bool canTeleport = isLargeMap && InGameDataModel.IsBuildPhase(PhaseManager.CurrentPhase);
+            float size = isLargeMap ? TeleportationMarkerLargeSize : TeleportationMarkerSmallSize;
+            for (int i = 0; i < teleportationMarkers.Count; i++)
+            {
+                TeleportationMarker marker = teleportationMarkers[i];
+                bool isPlayerOwned = LogicStrongholdMap.GetOwnerFactionIdRequired(marker.StrongholdId)
+                                     == EntitySideHelper.PlayerFactionId;
+                bool isClickable = isPlayerOwned && canTeleport;
+                marker.Rect.gameObject.SetActive(isPlayerOwned);
+                marker.Button.interactable = isClickable;
+                marker.Image.raycastTarget = isClickable;
+                if (!isPlayerOwned)
+                    continue;
+
+                marker.Rect.sizeDelta = new Vector2(size, size);
+                marker.Rect.anchoredPosition = WorldToMinimapPosition(marker.Point.Position);
+            }
+
+            SetTeleportationMarkersAsLastSibling();
+        }
+
+        private void HandleTeleportationMarkerClicked(EntityPresetPoint point)
+        {
+            if (!isLargeMap || teleportationPointClicked == null)
+                throw new InvalidOperationException("Teleportation marker click requires an open large map.");
+            if (!InGameDataModel.IsBuildPhase(PhaseManager.CurrentPhase))
+                throw new InvalidOperationException($"Teleportation marker click requires a build phase. phase={PhaseManager.CurrentPhase}.");
+            if (!TeleportationPointService.IsPlayerOwned(point))
+                throw new InvalidOperationException($"Teleportation marker '{point.name}' is no longer player-owned.");
+
+            teleportationPointClicked(point);
+        }
+
+        private void SetTeleportationMarkersAsLastSibling()
+        {
+            for (int i = 0; i < teleportationMarkers.Count; i++)
+            {
+                RectTransform marker = teleportationMarkers[i].Rect;
+                if (marker != null)
+                    marker.SetAsLastSibling();
+            }
+        }
+
+        private void ClearTeleportationMarkers()
+        {
+            for (int i = 0; i < teleportationMarkers.Count; i++)
+            {
+                RectTransform marker = teleportationMarkers[i].Rect;
+                if (marker != null)
+                    Destroy(marker.gameObject);
+            }
+
+            teleportationMarkers.Clear();
+            teleportationMarkerLevelEntityId = 0;
+            teleportationMarkersInitialized = false;
         }
 
         private Vector2 WorldToMinimapPosition(Vector3 worldPos)
@@ -1130,6 +1295,29 @@ namespace AAAGame.MiniMap
         {
             terrainMapLevelEntityId = 0;
             TryBuildTerrainMap(true);
+        }
+
+        private sealed class TeleportationMarker
+        {
+            public TeleportationMarker(
+                EntityPresetPoint point,
+                string strongholdId,
+                RectTransform rect,
+                Image image,
+                Button button)
+            {
+                Point = point;
+                StrongholdId = strongholdId;
+                Rect = rect;
+                Image = image;
+                Button = button;
+            }
+
+            public EntityPresetPoint Point { get; }
+            public string StrongholdId { get; }
+            public RectTransform Rect { get; }
+            public Image Image { get; }
+            public Button Button { get; }
         }
 
     }

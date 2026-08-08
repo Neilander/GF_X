@@ -285,7 +285,9 @@ public static class LevelSelectionService
     private static bool IsSelectableLevelRow(LevelTable row)
     {
         return row != null
-               && (row.Id >= MinSelectableLevelId && row.Id <= MaxSelectableLevelId
+               && (CareerRunSettings.HasActiveRun
+                       && string.Equals(row.Identifier, CareerRunSettings.RuntimeLevelIdentifier, StringComparison.Ordinal)
+                   || row.Id >= MinSelectableLevelId && row.Id <= MaxSelectableLevelId
                    || string.Equals(row.Identifier, TestLevelIdentifier, StringComparison.Ordinal))
                && !string.IsNullOrWhiteSpace(row.Identifier)
                && !string.IsNullOrWhiteSpace(row.PrefabPath);

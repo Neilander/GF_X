@@ -59,6 +59,7 @@ public partial class InGameUIForm : UIFormBase
             OpenLevelSwitch();
         }
 
+        TickMiniMap(inputManager);
         TickDefendEnemySketch();
         TickSkillPresentation();
     }

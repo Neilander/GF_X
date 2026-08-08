@@ -208,6 +208,15 @@ public class LevelTable : DataRowBase
             private set;
         }
 
+        /// <summary>
+        /// Industry unlocked on first normal clear
+        /// </summary>
+        public Archetype UnlockArchetype
+        {
+            get;
+            private set;
+        }
+
         public override bool ParseDataRow(string dataRowString, object userData)
         {
             string[] columnStrings = dataRowString.Split(DataTableExtension.DataSplitSeparators);
@@ -240,6 +249,7 @@ public class LevelTable : DataRowBase
             Def8Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
             Def9Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
             Def10Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
+            UnlockArchetype = DataTableExtension.ParseEnum<Archetype>(columnStrings[index++]);
 
             return true;
         }
@@ -271,6 +281,7 @@ public class LevelTable : DataRowBase
                     Def8Enemies = binaryReader.ReadStringIntPairArray();
                     Def9Enemies = binaryReader.ReadStringIntPairArray();
                     Def10Enemies = binaryReader.ReadStringIntPairArray();
+                    UnlockArchetype = binaryReader.ReadEnum<Archetype>();
                 }
             }
 

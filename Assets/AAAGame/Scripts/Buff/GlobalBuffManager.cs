@@ -645,6 +645,9 @@ public class GlobalBuffManager : GameFrameworkComponent
             return null;
 
         var result = LevelTagRuntime.CreateBuildingBuffs(building) ?? new List<BuffData>();
+        List<BuffData> careerBuffs = CareerRuntimeEffects.CreateBuildingBuffs(building);
+        if (careerBuffs != null)
+            result.AddRange(careerBuffs);
         AddPersistentBuildingUnitProviderBuffs(result, building);
         return result.Count > 0 ? result : null;
     }
@@ -902,6 +905,9 @@ public class GlobalBuffManager : GameFrameworkComponent
     public List<BuffData> GetBuffs(UnitType unitType, int ownerFactionId)
     {
         var result = LevelTagRuntime.CreateUnitBuffs(unitType, ownerFactionId) ?? new List<BuffData>();
+        List<BuffData> careerBuffs = CareerRuntimeEffects.CreateUnitBuffs(unitType, ownerFactionId);
+        if (careerBuffs != null)
+            result.AddRange(careerBuffs);
         if (!m_UnitBuffsByFaction.TryGetValue(ownerFactionId, out var unitBuffsByType)
             || !unitBuffsByType.TryGetValue(unitType, out var entries)
             || entries == null

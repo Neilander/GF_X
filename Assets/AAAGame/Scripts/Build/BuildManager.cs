@@ -607,6 +607,14 @@ public class BuildManager : GameFrameworkComponent
                 arches.Add(arche);
         }
 
+        if (CareerRunSettings.HasActiveRun)
+        {
+            Archetype startingArchetype = CareerRunSettings.StartingArchetype;
+            if (startingArchetype == Archetype.None || startingArchetype == Archetype.Common)
+                throw new InvalidOperationException($"Active career run has invalid starting industry '{startingArchetype}'.");
+            arches.Add(startingArchetype);
+        }
+
         m_PlayerUnlockedBaseArchesCache = arches;
         return m_PlayerUnlockedBaseArchesCache;
     }

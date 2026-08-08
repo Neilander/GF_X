@@ -573,6 +573,18 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             sideChangeHandler.OnSideChanged(this, oldSide, side);
     }
     public void SetMoveComp(IMoveComp moveComp) => m_MoveComp = moveComp ?? throw new ArgumentNullException(nameof(moveComp));
+
+    internal void TeleportTo(FixVector2 destination)
+    {
+        if (!LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException($"LogicEntityState.TeleportTo must run during a logic frame. entity={EntityId.Value}.");
+        if (!IsLogicActive || !Alive)
+            throw new InvalidOperationException($"LogicEntityState.TeleportTo requires an active living entity. entity={EntityId.Value}.");
+
+        m_MoveComp.StopMove();
+        Position = destination;
+    }
+
     public void SetAtkComp(IAtkComp atkComp) => m_AtkComp = atkComp ?? throw new ArgumentNullException(nameof(atkComp));
     public void SetTargetingComp(ITargetingComp targetingComp) => m_TargetingComp = targetingComp ?? throw new ArgumentNullException(nameof(targetingComp));
     public void SetWeaponComp(WeaponComp weaponComp) => m_WeaponComp = weaponComp ?? throw new ArgumentNullException(nameof(weaponComp));

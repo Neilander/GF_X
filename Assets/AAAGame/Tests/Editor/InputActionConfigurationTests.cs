@@ -80,6 +80,26 @@ public sealed class InputActionConfigurationTests : InputTestFixture
         }
     }
 
+    [Test]
+    public void M_TriggersMapAction()
+    {
+        InputActionAsset actions = LoadActionsClone();
+        Keyboard keyboard = InputSystem.AddDevice<Keyboard>();
+
+        try
+        {
+            InputAction map = actions.FindAction("Player/Map", true);
+            map.Enable();
+
+            Press(keyboard.mKey);
+            Assert.That(map.WasPressedThisFrame(), Is.True);
+        }
+        finally
+        {
+            Object.DestroyImmediate(actions);
+        }
+    }
+
     private static InputActionAsset LoadActionsClone()
     {
         InputActionAsset source = AssetDatabase.LoadAssetAtPath<InputActionAsset>(InputActionsPath);

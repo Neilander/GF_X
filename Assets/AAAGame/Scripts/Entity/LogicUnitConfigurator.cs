@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using AAAGame.Scripts.Entity;
 using UnityGameFramework.Runtime;
@@ -28,6 +28,16 @@ public static class LogicUnitConfigurator
         stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         int unitLevel = Math.Max(1, Math.Min(3, entityParams.UnitLevel));
         var properties = new CreaturePropertyManager(characterData, unitLevel);
+        Fix64 variableMaxHealth = CareerRuntimeEffects.GetVariableUnitMaxHealth();
+        if (variableMaxHealth < Fix64.Zero)
+            throw new InvalidOperationException($"Variable experiment max health cannot be negative. raw={variableMaxHealth.RawValue}.");
+        if (variableMaxHealth > Fix64.Zero)
+        {
+            properties.UnsafeModifyAnyProperty(
+                nameof(CreatureMainProperty.Health),
+                PropertyClampModifier.Create(variableMaxHealth, variableMaxHealth, int.MaxValue),
+                true);
+        }
         int navigationAgentTypeId = AgentTypeHelper.ResolveNavAgentTypeId(characterData.Size);
         RecordPerf(MainThreadPerfScope.UnitConfigProperties, stageStartTicks);
         stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();

@@ -1,0 +1,15 @@
+#	局外成长表			i18n	i18n			
+#	ID		Identifier	NameKey	DescKey	EffectType	UniqueValues	LevelCosts
+#	int		string	string	string	enum	Fix64[]	int[]
+#	行号	备注	稳定标识	本地化名称键	本地化描述键	运行时效果	包含0级的数值	从当前等级提升一级的花费
+	1	英雄攻击+{0}%	HeroAttack	MetaGrowth_Name_HeroAttack	MetaGrowth_Desc_HeroAttack	MetaGrowthEffectType.HeroAttackPercent	0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+	2	英雄生命上限+{0}%	HeroHealth	MetaGrowth_Name_HeroHealth	MetaGrowth_Desc_HeroHealth	MetaGrowthEffectType.HeroHealthPercent	0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+	3	单位攻击+{0}%	UnitAttack	MetaGrowth_Name_UnitAttack	MetaGrowth_Desc_UnitAttack	MetaGrowthEffectType.UnitAttackPercent	0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+	4	单位生命上限+{0}%	UnitHealth	MetaGrowth_Name_UnitHealth	MetaGrowth_Desc_UnitHealth	MetaGrowthEffectType.UnitHealthPercent	0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+	5	建筑攻击+{0}%	BuildingAttack	MetaGrowth_Name_BuildingAttack	MetaGrowth_Desc_BuildingAttack	MetaGrowthEffectType.BuildingAttackPercent	0,2,4,6,8,10,12,14,16,18,20	1,1,1,1,1,1,1,1,1,1
+	6	建筑护甲+{0}	BuildingArmor	MetaGrowth_Name_BuildingArmor	MetaGrowth_Desc_BuildingArmor	MetaGrowthEffectType.BuildingArmor	0,1,2,3	4,4,4
+	7	建筑生命上限+{0}%	BuildingHealth	MetaGrowth_Name_BuildingHealth	MetaGrowth_Desc_BuildingHealth	MetaGrowthEffectType.BuildingHealthPercent	0,2,4,6,8,10,12,14,16,18,20	1,1,1,1,1,1,1,1,1,1
+	8	核心建筑升级花费-{0}	CoreUpgradeDiscount	MetaGrowth_Name_CoreUpgradeDiscount	MetaGrowth_Desc_CoreUpgradeDiscount	MetaGrowthEffectType.CoreUpgradeCostDiscount	0,1,2,3	4,4,4
+	9	每{0}天获得1橙髓	PeriodicOrange	MetaGrowth_Name_PeriodicOrange	MetaGrowth_Desc_PeriodicOrange	MetaGrowthEffectType.PeriodicOrangeDays	0,5,3,2,1	3,3,3,3
+	10	初始获得{0}橙髓	InitialOrange	MetaGrowth_Name_InitialOrange	MetaGrowth_Desc_InitialOrange	MetaGrowthEffectType.InitialOrange	0,1,2,3	4,4,4
+	11	初始频段+{0}	InitialFrequency	MetaGrowth_Name_InitialFrequency	MetaGrowth_Desc_InitialFrequency	MetaGrowthEffectType.InitialFrequency	0,1,2,3,4,5	2,2,2,2,2

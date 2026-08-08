@@ -26,6 +26,8 @@ public partial class LvEnterDialog : UIFormBase
     protected override void OnOpen(object userData)
     {
         base.OnOpen(userData);
+        CareerConfigRuntime.Prepare();
+        InitializeCareerEntryUI();
         m_MaxPositive = GF.Config.GetInt(MaxCountKey, 3);
         varReturnBtn.onClick.RemoveAllListeners();
         varReturnBtn.onClick.AddListener(OnClickClose);
@@ -43,6 +45,7 @@ public partial class LvEnterDialog : UIFormBase
         m_PositiveItems.Clear();
         m_NegativeItems.Clear();
         m_SelectedIds.Clear();
+        ShutdownCareerEntryUI();
         base.OnClose(isShutdown, userData);
     }
 
@@ -51,11 +54,8 @@ public partial class LvEnterDialog : UIFormBase
         var table = GF.DataTable.GetDataTable<LevelTagTable>();
         foreach (var row in table.GetAllDataRows())
         {
-            if (!string.IsNullOrEmpty(s_LevelIdentifier))
-            {
-                if (row.BelongLevelID != null && row.BelongLevelID.Length > 0 && !row.BelongLevelID.Contains(s_LevelIdentifier)) continue;
-                if (row.ExceptLevelID != null && row.ExceptLevelID.Contains(s_LevelIdentifier)) continue;
-            }
+            if (!CareerConfigRuntime.IsTagAvailableForLevel(row, s_LevelIdentifier))
+                continue;
 
             var item = SpawnItem<UIItemObject>(varLvTagItem,
                 row.IsPositiveTag ? varPositiveTagGrids : varNegativeTagGrids)
@@ -127,14 +127,34 @@ public partial class LvEnterDialog : UIFormBase
 
     private void OnEnterClick()
     {
-        LevelTagRuntime.SetActiveTagIds(m_SelectedIds);
+        string runtimeLevelIdentifier;
+        try
+        {
+            runtimeLevelIdentifier = CareerRunSettings.BeginRun(
+                s_LevelIdentifier,
+                m_IsVariableExperiment,
+                m_SelectedArchetype);
+        }
+        catch (System.Exception exception)
+        {
+            Log.Error("[LvEnterDialog] Career run selection is invalid. level={0}, error={1}", s_LevelIdentifier, exception.Message);
+            return;
+        }
+
+        if (m_IsVariableExperiment || CareerConfigRuntime.IsTutorialLevel(s_LevelIdentifier))
+            LevelTagRuntime.SetActiveTagIds(System.Array.Empty<int>());
+        else
+            LevelTagRuntime.SetActiveTagIds(m_SelectedIds);
         string error;
         bool ok = s_IsStartup
-            ? StartupLevelSelectProcedure.TryEnterLevel(s_LevelIdentifier, out error)
-            : LevelSelectionService.TryEnterLevelInPlace(s_LevelIdentifier, out error);
+            ? StartupLevelSelectProcedure.TryEnterLevel(runtimeLevelIdentifier, out error)
+            : LevelSelectionService.TryEnterLevelInPlace(runtimeLevelIdentifier, out error);
 
         if (!ok)
-            Log.Warning("[LvEnterDialog] Failed to enter level {0}: {1}", s_LevelIdentifier, error);
+        {
+            CareerRunSettings.CancelRun();
+            Log.Warning("[LvEnterDialog] Failed to enter level {0}: {1}", runtimeLevelIdentifier, error);
+        }
         else
             GF.UI.Close(this.UIForm);
     }

@@ -123,6 +123,82 @@ public sealed class LogicMigrationAuthorityBoundaryTests
     }
 
     [Test]
+    public void LvTestSprinterDiagnostic_DoesNotTreatOneCornerAndSameSideCorrectionAsOscillation()
+    {
+        Type diagnosticType = Type.GetType(
+            "LvTestSprinterNarrowPathDiagnosticRunner+SprinterProbe, AAAGame.Scripts.Editor",
+            throwOnError: true);
+        MethodInfo countMethod = diagnosticType.GetMethod(
+            "CountRapidRouteLateralAlternationsForTest",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        MethodInfo gateMethod = diagnosticType.GetMethod(
+            "HasRouteLateralOscillationForTest",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(countMethod);
+        Assert.NotNull(gateMethod);
+
+        var routeReferences = new[]
+        {
+            new FixVector2(Fix64.FromRaw(3736), Fix64.FromRaw(-1677)),
+            new FixVector2(Fix64.FromRaw(3745), Fix64.FromRaw(-1657)),
+            new FixVector2(Fix64.FromRaw(3782), Fix64.FromRaw(-1570)),
+        };
+        var observedDirections = new[]
+        {
+            new FixVector2(Fix64.FromRaw(4100), Fix64.FromRaw(-97)),
+            new FixVector2(Fix64.FromRaw(3627), Fix64.FromRaw(-1922)),
+            new FixVector2(Fix64.FromRaw(3789), Fix64.FromRaw(-1580)),
+        };
+
+        int rapidRouteAlternations = (int)countMethod.Invoke(
+            null,
+            new object[] { routeReferences, observedDirections });
+        Assert.AreEqual(
+            0,
+            rapidRouteAlternations,
+            "The captured 25-degree corridor corner followed by a 5-degree same-side correction is not a left-right route oscillation.");
+        Assert.IsFalse(
+            (bool)gateMethod.Invoke(null, new object[] { 0, 0, 1 }),
+            "A model angular-velocity sign change must remain diagnostic evidence, not override route authority by itself.");
+    }
+
+    [Test]
+    public void LvTestSprinterDiagnostic_RejectsRapidLeftRightLeftRouteCrossing()
+    {
+        Type diagnosticType = Type.GetType(
+            "LvTestSprinterNarrowPathDiagnosticRunner+SprinterProbe, AAAGame.Scripts.Editor",
+            throwOnError: true);
+        MethodInfo countMethod = diagnosticType.GetMethod(
+            "CountRapidRouteLateralAlternationsForTest",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        MethodInfo gateMethod = diagnosticType.GetMethod(
+            "HasRouteLateralOscillationForTest",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(countMethod);
+        Assert.NotNull(gateMethod);
+
+        var routeReferences = new[]
+        {
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.One, Fix64.Zero),
+        };
+        var oscillatingDirections = new[]
+        {
+            new FixVector2(Fix64.FromRaw(4017), Fix64.FromRaw(802)),
+            new FixVector2(Fix64.FromRaw(4017), Fix64.FromRaw(-802)),
+            new FixVector2(Fix64.FromRaw(4017), Fix64.FromRaw(802)),
+        };
+
+        int rapidRouteAlternations = (int)countMethod.Invoke(
+            null,
+            new object[] { routeReferences, oscillatingDirections });
+        Assert.AreEqual(1, rapidRouteAlternations);
+        Assert.IsTrue(
+            (bool)gateMethod.Invoke(null, new object[] { rapidRouteAlternations, 0, 0 }));
+    }
+
+    [Test]
     public void LogicEntityStatus_RejectsUnityViewLifetimeAsAuthority()
     {
         var viewObject = new GameObject("ViewLifetimeMustNotBeAuthority");

@@ -1962,8 +1962,11 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(stamp.Width);
         hasher.Add(stamp.Height);
         hasher.Add(stamp.CellSizeFixed.RawValue);
+        hasher.Add(stamp.CellSizeGridRaw);
         hasher.Add(stamp.OriginFixed.x.RawValue);
         hasher.Add(stamp.OriginFixed.y.RawValue);
+        hasher.Add(stamp.OriginXGridRaw);
+        hasher.Add(stamp.OriginZGridRaw);
         AddByteArray(hasher, stamp.Costs);
         return hasher.Hash;
     }

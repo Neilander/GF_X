@@ -45,7 +45,7 @@ public class EntityPresetPoint : MonoBehaviour
     }
 }
 
-public enum EntityPresetPointType { Unit, Hero, Building, DefendSpawn, Destination } //Spawn, Respawn, Patrol, Device
+public enum EntityPresetPointType { Unit, Hero, Building, DefendSpawn, Destination, Teleportation } //Spawn, Respawn, Patrol, Device
 
 #if UNITY_EDITOR
 static class EntityPresetPointEditorPreview
@@ -533,6 +533,7 @@ static class EntityPresetPointEditorPreview
                 return TryGetUnitPrefabAssetPath(point.Identifier, out prefabAssetPath);
 
             case EntityPresetPointType.Destination:
+            case EntityPresetPointType.Teleportation:
                 return false;
 
             default:

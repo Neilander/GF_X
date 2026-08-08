@@ -2258,7 +2258,10 @@ public static class BuildingCostModifierService
 
         int cost = Mathf.Max(0, buildingData.Cost);
         int discount = CalculateDiscount(strongholdId, ownerFactionId);
-        return LevelTagRuntime.ModifyBuildingCost(buildingData, Mathf.Max(0, cost - discount));
+        int careerDiscount = CareerRuntimeEffects.GetCoreUpgradeCostDiscount(buildingData, ownerFactionId);
+        return LevelTagRuntime.ModifyBuildingCost(
+            buildingData,
+            Mathf.Max(0, cost - discount - careerDiscount));
     }
 
     private static int CalculateDiscount(string strongholdId, int ownerFactionId)

@@ -705,4 +705,5 @@ public static class LogicTimeControlSources
 {
     public const int LevelSwitchUiPause = 1;
     public const int RuntimeLevelSwitchPause = 2;
+    public const int LargeMapUiPause = 3;
 }

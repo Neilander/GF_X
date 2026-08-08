@@ -206,6 +206,7 @@ public class RewardManager : GameFrameworkComponent
 		RewardManager manager = GetRuntimeManager()
 			?? throw new InvalidOperationException("Build phase reward requires RewardManager.");
 		manager.GrantBattlePhaseIncomeOnEnterBuild(previousPhase);
+		manager.GrantPeriodicCareerOrange(previousPhase);
 		manager.GrantBuildPhaseIncomeFromPlayerProdBuildings();
 	}
 
@@ -301,6 +302,16 @@ public class RewardManager : GameFrameworkComponent
 			return;
 
 		GrantCoin(GetRequiredPlayerLogicPosition(), coinAmount, "battle_to_build_income");
+	}
+
+	private void GrantPeriodicCareerOrange(GamePhase previousPhase)
+	{
+		if (previousPhase != GamePhase.Defend)
+			return;
+
+		int currentDay = Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
+		if (CareerRuntimeEffects.ShouldGrantPeriodicOrange(currentDay))
+			GrantCoin(GetRequiredPlayerLogicPosition(), 1, "career_periodic_orange");
 	}
 
 	private static int RoundFixedAwayFromZero(Fix64 value)

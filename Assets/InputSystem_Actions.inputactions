@@ -196,16 +196,7 @@
                     "initialStateCheck": false
                 },
                 {
-                    "name": "OpenTechTree",
-                    "type": "Button",
-                    "id": "d8a858ad-5c7a-4b6e-b24b-3f1f44a5ce04",
-                    "expectedControlType": "",
-                    "processors": "",
-                    "interactions": "",
-                    "initialStateCheck": false
-                },
-                {
-                    "name": "OpenMap",
+                    "name": "Map",
                     "type": "Button",
                     "id": "bbe273b0-8811-4c50-84f5-8350c43b2ad6",
                     "expectedControlType": "",
@@ -864,23 +855,12 @@
                 },
                 {
                     "name": "",
-                    "id": "cd8c16c2-4db0-4ed9-9c8b-95a1a2744313",
-                    "path": "<Keyboard>/#(T)",
+                    "id": "2024b888-bf71-4f0f-bd86-b377865c7317",
+                    "path": "<Keyboard>/m",
                     "interactions": "",
                     "processors": "",
                     "groups": ";Keyboard&Mouse",
-                    "action": "OpenTechTree",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
-                    "id": "2024b888-bf71-4f0f-bd86-b377865c7317",
-                    "path": "",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": "",
-                    "action": "OpenMap",
+                    "action": "Map",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },

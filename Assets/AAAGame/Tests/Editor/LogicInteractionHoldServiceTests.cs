@@ -58,6 +58,31 @@ public sealed class LogicInteractionHoldServiceTests
             frameCount);
     }
 
+    [TestCase(0, false, false, 0)]
+    [TestCase(0, false, true, 1)]
+    [TestCase(1, true, false, 0)]
+    [TestCase(1, false, false, 1)]
+    [TestCase(1, true, true, 1)]
+    public void UpgradeTargetTransition_PrefersSingleContinuouslyHeldBranchKey(
+        int rememberedIndex,
+        bool firstHeld,
+        bool secondHeld,
+        int expectedIndex)
+    {
+        var method = typeof(BuildingUpgradeTips).GetMethod(
+            "ResolveDefaultOptionIndex",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(method);
+
+        int actual = (int)method.Invoke(null, new object[]
+        {
+            rememberedIndex,
+            new[] { firstHeld, secondHeld },
+        });
+
+        Assert.AreEqual(expectedIndex, actual);
+    }
+
     [TestCase(30)]
     [TestCase(60)]
     [TestCase(120)]

@@ -18,6 +18,9 @@ MonoBehaviour:
   - CharacterDataDetail
   - LevelTable
   - LevelTagTable
+  - MetaGrowthTable
+  - VariableExperimentRuleTable
+  - VariableExperimentTable
   - Build/BuildingTable
   - Core/EntityGroupTable
   - Core/LanguagesTable

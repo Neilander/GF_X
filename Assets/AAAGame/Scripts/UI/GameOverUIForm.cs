@@ -13,6 +13,7 @@ public partial class GameOverUIForm : UIFormBase
         RefreshResultView();
         BindButtons();
         LevelSelectionService.LevelLoadCompleted += OnLevelLoadCompleted;
+        UnlockPresentationService.ShowPending(transform);
     }
 
     protected override void OnClose(bool isShutdown, object userData)

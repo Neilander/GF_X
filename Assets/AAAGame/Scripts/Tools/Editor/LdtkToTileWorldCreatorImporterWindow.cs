@@ -2463,6 +2463,11 @@ namespace AAAGame.Tools.Editor
 
                 identifier = destinationId.ToString(CultureInfo.InvariantCulture);
             }
+            else if (string.Equals(entityType, "Teleportation", StringComparison.OrdinalIgnoreCase))
+            {
+                pointType = EntityPresetPointType.Teleportation;
+                identifier = "Teleportation";
+            }
             else
             {
                 return false;
@@ -2771,6 +2776,7 @@ namespace AAAGame.Tools.Editor
             builder.AppendLine($"Entity units: {result.unitCount}");
             builder.AppendLine($"Entity defend spawns: {result.defendSpawnCount}");
             builder.AppendLine($"Entity destinations: {result.destinationCount}");
+            builder.AppendLine($"Entity teleportations: {result.teleportationCount}");
             return builder.ToString();
         }
 
@@ -2963,6 +2969,7 @@ namespace AAAGame.Tools.Editor
             public int unitCount;
             public int defendSpawnCount;
             public int destinationCount;
+            public int teleportationCount;
 
             public static EntityImportResult Skipped(string reason)
             {
@@ -2995,6 +3002,10 @@ namespace AAAGame.Tools.Editor
 
                     case EntityPresetPointType.Destination:
                         destinationCount++;
+                        break;
+
+                    case EntityPresetPointType.Teleportation:
+                        teleportationCount++;
                         break;
                 }
             }

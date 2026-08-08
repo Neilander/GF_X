@@ -455,9 +455,9 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
             {
                 foreach (Sample sample in _samples.Values)
                 {
-                    if (sample.RapidAuthorityLateralAlternations > 0
-                        || sample.RapidProposedLateralAlternations > 0
-                        || sample.RapidModelTurnAlternations > 0)
+                    if (HasRouteLateralOscillation(
+                            sample.RapidAuthorityLateralAlternations,
+                            sample.RapidProposedLateralAlternations))
                     {
                         return true;
                     }
@@ -491,6 +491,12 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                 FixVector2 proposedForward = NormalizeOrZero(proposedDisplacement);
                 FixVector2 authorityForward = sprinter.ForwardFixed;
                 FixVector2 toHero = NormalizeOrZero(_hero.PositionFixed - sprinter.PositionFixed);
+                FixVector2 navigationTarget = FixVector2.Zero;
+                bool hasNavigationTarget = sprinter.MoveComp is CharacterMoveComp move
+                                           && move.TryGetNavigationTargetFixed(out navigationTarget);
+                FixVector2 toNavigationTarget = hasNavigationTarget
+                    ? NormalizeOrZero(navigationTarget - sprinter.PositionFixed)
+                    : FixVector2.Zero;
                 bool moving = finalDisplacement != FixVector2.Zero;
                 bool pursuing = targetsHero
                                 && brain.State == SoldierAIBrain.SoldierState.Combat
@@ -516,7 +522,7 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                     {
                         CountLateralAlternation(
                             frame,
-                            toHero,
+                            toNavigationTarget,
                             authorityForward,
                             ref sample.LastAuthorityLateralSign,
                             ref sample.LastAuthorityLateralAlternationFrame,
@@ -524,7 +530,7 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                             ref sample.RapidAuthorityLateralAlternations);
                         CountLateralAlternation(
                             frame,
-                            toHero,
+                            toNavigationTarget,
                             proposedForward,
                             ref sample.LastProposedLateralSign,
                             ref sample.LastProposedLateralAlternationFrame,
@@ -555,9 +561,6 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                         sample.RegionCorrectionFrames++;
                 }
 
-                FixVector2 navigationTarget = FixVector2.Zero;
-                bool hasNavigationTarget = sprinter.MoveComp is CharacterMoveComp move
-                                           && move.TryGetNavigationTargetFixed(out navigationTarget);
                 if (hasNavigationTarget
                     && sample.HasNavigationTarget
                     && navigationTarget != sample.PreviousNavigationTarget)
@@ -611,6 +614,7 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                         .Append(" facingDispRaw=").Append(Format(constraintFacingDisplacement))
                         .Append(" forwardRaw=").Append(Format(authorityForward))
                         .Append(" toHeroRaw=").Append(Format(toHero))
+                        .Append(" toNavTargetRaw=").Append(Format(toNavigationTarget))
                         .Append(" navTargetRaw=").Append(hasNavigationTarget ? Format(navigationTarget) : "none")
                         .Append(" stableGoal={").Append(stableGoal).Append('}')
                         .Append(" pathGoal=").Append(pathGoal)
@@ -752,6 +756,55 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
             }
             if (sign != 0)
                 previousSign = sign;
+        }
+
+        internal static int CountRapidRouteLateralAlternationsForTest(
+            FixVector2[] references,
+            FixVector2[] directions)
+        {
+            if (references == null)
+                throw new ArgumentNullException(nameof(references));
+            if (directions == null)
+                throw new ArgumentNullException(nameof(directions));
+            if (references.Length != directions.Length)
+                throw new ArgumentException("Route references and directions must have the same sample count.");
+
+            int previousSign = 0;
+            ulong previousAlternationFrame = 0;
+            int count = 0;
+            int rapidCount = 0;
+            for (int i = 0; i < references.Length; i++)
+            {
+                CountLateralAlternation(
+                    checked((ulong)i + 1),
+                    NormalizeOrZero(references[i]),
+                    NormalizeOrZero(directions[i]),
+                    ref previousSign,
+                    ref previousAlternationFrame,
+                    ref count,
+                    ref rapidCount);
+            }
+
+            return rapidCount;
+        }
+
+        internal static bool HasRouteLateralOscillationForTest(
+            int rapidAuthorityLateralAlternations,
+            int rapidProposedLateralAlternations,
+            int rapidModelTurnAlternations)
+        {
+            _ = rapidModelTurnAlternations;
+            return HasRouteLateralOscillation(
+                rapidAuthorityLateralAlternations,
+                rapidProposedLateralAlternations);
+        }
+
+        private static bool HasRouteLateralOscillation(
+            int rapidAuthorityLateralAlternations,
+            int rapidProposedLateralAlternations)
+        {
+            return rapidAuthorityLateralAlternations > 0
+                   || rapidProposedLateralAlternations > 0;
         }
 
         private static void ResetLateralWindow(ref int previousSign, ref ulong previousAlternationFrame)

@@ -221,17 +221,43 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (m_UpgradeBindings.Count <= 0)
             return;
 
-        int selected = 0;
+        int remembered = 0;
         string rememberKey = GetSelectionMemoryKey();
         if (!string.IsNullOrWhiteSpace(rememberKey)
             && s_LastSelectedOptionByBuildingLevel.TryGetValue(rememberKey, out int last)
             && last >= 0
             && last < m_UpgradeBindings.Count)
         {
-            selected = last;
+            remembered = last;
         }
 
+        bool[] heldStates = new bool[m_UpgradeBindings.Count];
+        for (int i = 0; i < m_UpgradeBindings.Count; i++)
+            heldStates[i] = IsActionPressed(m_UpgradeBindings[i].ActionName);
+
+        int selected = ResolveDefaultOptionIndex(remembered, heldStates);
         SelectOption(selected, false);
+    }
+
+    private static int ResolveDefaultOptionIndex(int rememberedIndex, IReadOnlyList<bool> heldStates)
+    {
+        if (heldStates == null || heldStates.Count <= 0)
+            throw new ArgumentException("Upgrade option hold states must not be empty.", nameof(heldStates));
+        if (rememberedIndex < 0 || rememberedIndex >= heldStates.Count)
+            throw new ArgumentOutOfRangeException(nameof(rememberedIndex), rememberedIndex, "Remembered upgrade option is outside the available option range.");
+
+        int heldIndex = -1;
+        for (int i = 0; i < heldStates.Count; i++)
+        {
+            if (!heldStates[i])
+                continue;
+            if (heldIndex >= 0)
+                return rememberedIndex;
+
+            heldIndex = i;
+        }
+
+        return heldIndex >= 0 ? heldIndex : rememberedIndex;
     }
 
     private void SelectOption(int index, bool remember)

@@ -38,6 +38,13 @@ public static class LevelTagRuntime
             if (tagId > 0)
                 s_ActiveTagIds.Add(tagId);
         }
+        if (CareerRunSettings.HasActiveRun
+            && CareerConfigRuntime.IsTutorialLevel(CareerRunSettings.CareerLevelIdentifier)
+            && s_ActiveTagIds.Count > 0)
+        {
+            s_ActiveTagIds.Clear();
+            throw new InvalidOperationException("Tutorial level cannot use level tags.");
+        }
     }
 
     public static void SetActiveTagIdentifiers(IEnumerable<string> identifiers)
@@ -52,6 +59,13 @@ public static class LevelTagRuntime
         {
             if (!string.IsNullOrWhiteSpace(identifier))
                 s_ActiveTagIdentifiers.Add(identifier);
+        }
+        if (CareerRunSettings.HasActiveRun
+            && CareerConfigRuntime.IsTutorialLevel(CareerRunSettings.CareerLevelIdentifier)
+            && s_ActiveTagIdentifiers.Count > 0)
+        {
+            s_ActiveTagIdentifiers.Clear();
+            throw new InvalidOperationException("Tutorial level cannot use level tags.");
         }
     }
 

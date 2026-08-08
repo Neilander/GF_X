@@ -67,6 +67,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicFrameRuntime.Begin();
         LogicTimeControlService.BeginTimeline();
         LogicInGameValueCommandService.BeginTimeline();
+        LogicTeleportCommandService.BeginTimeline();
         LogicGameEndService.BeginTimeline();
         LogicInteractionTargetStateService.BeginTimeline();
         LogicInteractionCommandService.BeginTimeline();
@@ -196,6 +197,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicPhaseCommandService.EndTimeline();
         LogicGameEndService.EndTimeline();
         LogicInGameValueCommandService.EndTimeline();
+        LogicTeleportCommandService.EndTimeline();
         LogicTimeControlService.EndTimeline();
         LogicFrameRuntime.End();
         EndRuntimeResourceUnloadDeferral();
@@ -400,6 +402,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                 LogicEntityIdAllocator.LastAllocatedValue);
             LogicEntityLifecycleService.DeactivateAllForShutdown();
             LogicInGameValueCommandService.ResetForWorldTransition();
+            LogicTeleportCommandService.ResetForWorldTransition();
             LogicGameEndService.ResetForWorldTransition();
             LogicInteractionTargetStateService.ResetForWorldTransition();
             LogicInteractionAuthorityService.ResetForWorldTransition();
@@ -434,6 +437,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             LogicCardCommandService.ResetFrameTimeline();
             LogicCardPlacementAuthority.ResetFrameTimeline();
             LogicInGameValueCommandService.ResetFrameTimeline();
+            LogicTeleportCommandService.ResetFrameTimeline();
             LogicSkillSlotCommandService.ResetFrameTimeline();
             LogicSkillCastCommandService.ResetFrameTimeline();
             LogicTechEffectCommandService.ResetFrameTimeline();
@@ -649,6 +653,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicTimeControlService.BeginFrame(frame);
         inputFrame = logicInputManager.SealLogicInputFrame(frame, cutoffRealtime);
         LogicInGameValueCommandService.ApplyFrame(frame);
+        LogicTeleportCommandService.ApplyFrame(frame);
         if (LogicCardPlacementAuthority.IsWorldBound)
         {
             LogicCardPlacementAuthority.ApplyFrame(frame);

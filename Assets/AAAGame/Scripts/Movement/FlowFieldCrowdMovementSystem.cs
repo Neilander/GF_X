@@ -352,6 +352,17 @@ public static partial class FlowFieldCrowdMovementSystem
                 GridRawToFix64(checked(OriginZGridRaw + checked((long)y * CellSizeGridRaw) + CellSizeGridRaw / 2)));
         }
 
+        public FixVector2 GridToWorldGeometricCenterFixed(int x, int y)
+        {
+            ValidateAuthorityGridMetadata("NavigationWorld.GridToWorldGeometricCenterFixed");
+            return NavigationGridFixedMath.GridCellCenterFixed(
+                CellSizeGridRaw,
+                OriginXGridRaw,
+                OriginZGridRaw,
+                x,
+                y);
+        }
+
         public void GetGridCellBoundsFixed(int x, int y, out FixVector2 minimum, out FixVector2 maximum)
         {
             ValidateAuthorityGridMetadata("NavigationWorld.GetGridCellBoundsFixed");
@@ -1504,8 +1515,11 @@ public static partial class FlowFieldCrowdMovementSystem
         public int Height;
         public float CellSize;
         public Fix64 CellSizeFixed;
+        public long CellSizeGridRaw;
         public Vector3 Origin;
         public FixVector2 OriginFixed;
+        public long OriginXGridRaw;
+        public long OriginZGridRaw;
         public byte[] Costs;
         public ulong AuthorityContentHash;
     }
@@ -6199,6 +6213,22 @@ public static partial class FlowFieldCrowdMovementSystem
         return _world.GridToWorldCenterFixed(x, y);
     }
 
+    public static void GetEditorTestSpatialGradientSampleGridFixed(
+        FixVector2 position,
+        int worldX,
+        int worldY,
+        out int x0,
+        out int x1,
+        out int y0,
+        out int y1,
+        out Fix64 tx,
+        out Fix64 ty)
+    {
+        if (_world == null)
+            throw new InvalidOperationException("GetEditorTestSpatialGradientSampleGridFixed failed: world is unavailable.");
+        ResolveSpatialGradientSampleGridFixed(position, worldX, worldY, out x0, out x1, out y0, out y1, out tx, out ty);
+    }
+
     public static void PerturbEditorTestWorldAnchorFloatShadows(float xOffset, float zOffset)
     {
         if (_world?.CellNavAnchors == null)
@@ -7025,6 +7055,16 @@ public static partial class FlowFieldCrowdMovementSystem
         if (!TryEnsureWorldBuilt(ResolvePreferredAgentTypeId(0)) || _world == null)
             throw new InvalidOperationException("HasEditorTestOnlyFixedGridLineOfSight failed: navigation world is unavailable.");
         return HasFixedGridLineOfSight(_world, from, to, allowTargetSoftCost);
+    }
+
+    public static string GetEditorTestOnlyFixedGridLineOfSightDiagnostic(
+        FixVector2 from,
+        FixVector2 to,
+        bool allowTargetSoftCost = false)
+    {
+        if (!TryEnsureWorldBuilt(ResolvePreferredAgentTypeId(0)) || _world == null)
+            throw new InvalidOperationException("GetEditorTestOnlyFixedGridLineOfSightDiagnostic failed: navigation world is unavailable.");
+        return BuildFixedGridLineOfSightDecisionDiagnostic(_world, from, to, allowTargetSoftCost);
     }
 
     public static bool HasEditorTestOnlyCellCenterGridLineOfSight(
@@ -7910,6 +7950,20 @@ public static partial class FlowFieldCrowdMovementSystem
         return ResolveWallCostBlurRadiusCellsFixed(_world).RawValue;
     }
 
+    public static int GetEditorTestWallCostAdjacentPenalty()
+    {
+        if (_world == null)
+            throw new InvalidOperationException("GetEditorTestWallCostAdjacentPenalty failed: world is null.");
+        return ResolveWallCostAdjacentPenalty(_world);
+    }
+
+    public static int GetEditorTestSpatialIntegrationSubstepCount(Fix64 travelDistance)
+    {
+        if (_world == null)
+            throw new InvalidOperationException("GetEditorTestSpatialIntegrationSubstepCount failed: world is null.");
+        return ResolveSpatialIntegrationSubstepCount(travelDistance, _world.CellSizeGridRaw);
+    }
+
     public static bool TryGetEditorTestSectorClearCostState(int worldX, int worldY, out bool isClearCostField)
     {
         isClearCostField = false;
@@ -8198,13 +8252,20 @@ public static partial class FlowFieldCrowdMovementSystem
                 throw new InvalidOperationException($"RegisterGridCostStamp failed: cost must be in 1..254 at index={i}, cost={cost}.");
         }
 
-        Fix64 cellSizeFixed = (Fix64)cellSize;
-        if (cellSizeFixed <= Fix64.Zero)
-            throw new InvalidOperationException($"RegisterGridCostStamp failed: quantized cell size must be positive, raw={cellSizeFixed.RawValue}.");
-        FixVector2 originFixed = new FixVector2((Fix64)origin.x, (Fix64)origin.z);
+        long cellSizeGridRaw = NavigationGridFixedMath.FloatToGridRaw(cellSize);
+        if (cellSizeGridRaw <= 0)
+            throw new InvalidOperationException($"RegisterGridCostStamp failed: authored cell size must be positive, raw={cellSizeGridRaw}.");
+        long originXGridRaw = NavigationGridFixedMath.FloatToGridRaw(origin.x);
+        long originZGridRaw = NavigationGridFixedMath.FloatToGridRaw(origin.z);
+        long maximumXGridRaw = checked(originXGridRaw + checked((long)width * cellSizeGridRaw));
+        long maximumZGridRaw = checked(originZGridRaw + checked((long)height * cellSizeGridRaw));
+        Fix64 cellSizeFixed = NavigationGridFixedMath.GridRawToFix64(cellSizeGridRaw);
+        FixVector2 originFixed = new FixVector2(
+            NavigationGridFixedMath.GridRawToFix64Floor(originXGridRaw),
+            NavigationGridFixedMath.GridRawToFix64Floor(originZGridRaw));
         FixVector2 maximumFixed = new FixVector2(
-            originFixed.x + cellSizeFixed * (Fix64)width,
-            originFixed.y + cellSizeFixed * (Fix64)height);
+            NavigationGridFixedMath.GridRawToFix64Ceiling(maximumXGridRaw),
+            NavigationGridFixedMath.GridRawToFix64Ceiling(maximumZGridRaw));
         Vector3 quantizedOrigin = new Vector3((float)originFixed.x, origin.y, (float)originFixed.y);
         Vector3 size = new Vector3((float)(maximumFixed.x - originFixed.x), 0f, (float)(maximumFixed.y - originFixed.y));
         Bounds bounds = new Bounds(quantizedOrigin + size * 0.5f, size);
@@ -8220,8 +8281,11 @@ public static partial class FlowFieldCrowdMovementSystem
             Height = height,
             CellSize = (float)cellSizeFixed,
             CellSizeFixed = cellSizeFixed,
+            CellSizeGridRaw = cellSizeGridRaw,
             Origin = quantizedOrigin,
             OriginFixed = originFixed,
+            OriginXGridRaw = originXGridRaw,
+            OriginZGridRaw = originZGridRaw,
             Costs = (byte[])costs.Clone()
         });
         MarkRuntimeObstacleDirty(originFixed, maximumFixed);
@@ -8686,60 +8750,35 @@ public static partial class FlowFieldCrowdMovementSystem
         out Vector3 legalPoint)
     {
         legalPoint = Vector3.zero;
+        if (!IsFiniteVector3(candidate)
+            || float.IsNaN(maxSnapDistance)
+            || float.IsInfinity(maxSnapDistance)
+            || float.IsNaN(edgeClearance)
+            || float.IsInfinity(edgeClearance))
+        {
+            throw new ArgumentOutOfRangeException(nameof(candidate), "Navigation query values must be finite.");
+        }
         if (!TryGetCommittedNavigationQueryWorld(agentTypeId, allowSynchronousBuild: true, out NavigationWorld world))
             return false;
 
         bool includeRuntimeObstacleOverlay = HasPendingRuntimeDirty(_activeWorldState);
-        maxSnapDistance = Mathf.Max(0f, maxSnapDistance);
-        edgeClearance = ResolveNavigationQueryClearance(world, Mathf.Max(0f, edgeClearance));
-        if (world.WorldToGrid(candidate, out int cellX, out int cellY)
-            && world.IsWalkable(cellX, cellY)
-            && IsNavigationCellClear(world, cellX, cellY, edgeClearance, includeRuntimeObstacleOverlay))
+        if (!TryResolveLegalNavigationPointFixed(
+                world,
+                includeRuntimeObstacleOverlay,
+                new FixVector2((Fix64)candidate.x, (Fix64)candidate.z),
+                Fix64.Max(Fix64.Zero, (Fix64)maxSnapDistance),
+                Fix64.Max(Fix64.Zero, (Fix64)edgeClearance),
+                out FixVector2 legalPointFixed))
         {
-            legalPoint = new Vector3(candidate.x, world.GridToWorldCenter(cellX, cellY).y, candidate.z);
-            return true;
-        }
-
-        int searchRadius = Mathf.CeilToInt(maxSnapDistance / Mathf.Max(world.CellSize, 0.001f)) + 1;
-        float maxDistanceSq = maxSnapDistance * maxSnapDistance;
-        bool found = false;
-        float bestDistanceSq = float.PositiveInfinity;
-        int bestX = 0;
-        int bestY = 0;
-
-        int startX = cellX;
-        int startY = cellY;
-        if (startX < 0 || startX >= world.Width || startY < 0 || startY >= world.Height)
-        {
-            startX = Mathf.Clamp(Mathf.FloorToInt((candidate.x - world.Origin.x) / world.CellSize), 0, world.Width - 1);
-            startY = Mathf.Clamp(Mathf.FloorToInt((candidate.z - world.Origin.z) / world.CellSize), 0, world.Height - 1);
-        }
-
-        for (int y = startY - searchRadius; y <= startY + searchRadius; y++)
-        {
-            for (int x = startX - searchRadius; x <= startX + searchRadius; x++)
-            {
-                if (!world.IsWalkable(x, y) || !IsNavigationCellClear(world, x, y, edgeClearance, includeRuntimeObstacleOverlay))
-                    continue;
-
-                Vector3 center = world.GridToWorldCenter(x, y);
-                float dx = center.x - candidate.x;
-                float dz = center.z - candidate.z;
-                float distanceSq = dx * dx + dz * dz;
-                if (distanceSq > maxDistanceSq || distanceSq >= bestDistanceSq)
-                    continue;
-
-                bestDistanceSq = distanceSq;
-                bestX = x;
-                bestY = y;
-                found = true;
-            }
-        }
-
-        if (!found)
             return false;
+        }
 
-        legalPoint = world.GridToWorldCenter(bestX, bestY);
+        if (!world.WorldToGridFixed(legalPointFixed, out int legalX, out int legalY))
+            throw new InvalidOperationException($"Resolved legal navigation point is outside the committed grid. raw=({legalPointFixed.x.RawValue},{legalPointFixed.y.RawValue}).");
+        legalPoint = new Vector3(
+            (float)legalPointFixed.x,
+            world.GridToWorldCenter(legalX, legalY).y,
+            (float)legalPointFixed.y);
         return true;
     }
 
@@ -8806,8 +8845,9 @@ public static partial class FlowFieldCrowdMovementSystem
             return true;
         }
 
-        int searchRadius = checked((int)(long)Fix64.Ceiling(
-            maxSnapDistance / Fix64.Max(Fix64.FromRaw(5), world.CellSizeFixed)) + 1);
+        int searchRadius = checked(NavigationGridFixedMath.DivideCeilingByCellSize(
+            maxSnapDistance,
+            world.CellSizeGridRaw) + 1);
         Fix64 maxDistanceSq = maxSnapDistance * maxSnapDistance;
         bool found = false;
         Fix64 bestDistanceSq = Fix64.FromRaw(long.MaxValue);
@@ -10528,7 +10568,7 @@ public static partial class FlowFieldCrowdMovementSystem
     private static FixVector2 ResolvePortalCorridorFunnelTargetFixed(
         PathHandle handle,
         FixVector2 position,
-        bool currentPortalReached,
+        int portalStartPathIndex,
         out int cornerPortalPathIndex)
     {
         if (handle == null
@@ -10542,7 +10582,12 @@ public static partial class FlowFieldCrowdMovementSystem
         FixVector2 apex = position;
         FixVector2 funnelLeft = apex;
         FixVector2 funnelRight = apex;
-        int portalStartPathIndex = handle.CurrentSectorIndex + (currentPortalReached ? 1 : 0);
+        if (portalStartPathIndex < handle.CurrentSectorIndex
+            || portalStartPathIndex > handle.PortalIds.Length)
+        {
+            throw new InvalidOperationException(
+                $"ResolvePortalCorridorFunnelTargetFixed failed: start index is invalid start={portalStartPathIndex}, handle={FormatPathHandle(handle)}.");
+        }
         int leftIndex = portalStartPathIndex;
         int rightIndex = portalStartPathIndex;
         for (int portalIndex = portalStartPathIndex; portalIndex <= handle.PortalIds.Length; portalIndex++)
@@ -10594,6 +10639,53 @@ public static partial class FlowFieldCrowdMovementSystem
         return _world.GridToWorldCenterFixed(handle.GoalX, handle.GoalY);
     }
 
+    private static bool DoesPortalLookaheadRayCrossCurrentApertureFixed(
+        PathHandle handle,
+        FixVector2 position,
+        FixVector2 target)
+    {
+        int portalPathIndex = handle.CurrentSectorIndex;
+        ResolvePortalFunnelSegmentFixed(handle, portalPathIndex, out FixVector2 left, out FixVector2 right);
+        PortalData portal = GetPortalById(_world, handle.PortalIds[portalPathIndex]);
+        FixVector2 displacement = target - position;
+        int currentSectorId = handle.SectorIds[portalPathIndex];
+        int downstreamSectorId = handle.SectorIds[portalPathIndex + 1];
+        Vector2Int[] currentCells = GetPortalCellsForSector(portal, currentSectorId);
+        Vector2Int[] downstreamCells = GetPortalCellsForSector(portal, downstreamSectorId);
+        FixVector2 travel = _world.GridToWorldCenterFixed(downstreamCells[0].x, downstreamCells[0].y)
+                            - _world.GridToWorldCenterFixed(currentCells[0].x, currentCells[0].y);
+
+        Fix64 normalDisplacement = portal.IsVerticalBoundary ? displacement.x : displacement.y;
+        Fix64 normalTravel = portal.IsVerticalBoundary ? travel.x : travel.y;
+        if (normalDisplacement == Fix64.Zero || normalDisplacement * normalTravel <= Fix64.Zero)
+            return false;
+
+        Fix64 plane = portal.IsVerticalBoundary ? left.x : left.y;
+        Fix64 normalPosition = portal.IsVerticalBoundary ? position.x : position.y;
+        Fix64 planeDelta = plane - normalPosition;
+        if (normalDisplacement > Fix64.Zero)
+        {
+            if (planeDelta < Fix64.Zero || planeDelta > normalDisplacement)
+                return false;
+        }
+        else if (planeDelta > Fix64.Zero || planeDelta < normalDisplacement)
+        {
+            return false;
+        }
+
+        Fix64 tangentPosition = portal.IsVerticalBoundary ? position.y : position.x;
+        Fix64 tangentDisplacement = portal.IsVerticalBoundary ? displacement.y : displacement.x;
+        Fix64 leftTangent = portal.IsVerticalBoundary ? left.y : left.x;
+        Fix64 rightTangent = portal.IsVerticalBoundary ? right.y : right.x;
+        Fix64 intersectionNumerator = (tangentPosition - leftTangent) * normalDisplacement
+                                     + tangentDisplacement * planeDelta;
+        Fix64 rightNumerator = (rightTangent - leftTangent) * normalDisplacement;
+        Fix64 minimumNumerator = Fix64.Min(Fix64.Zero, rightNumerator);
+        Fix64 maximumNumerator = Fix64.Max(Fix64.Zero, rightNumerator);
+        return intersectionNumerator >= minimumNumerator
+               && intersectionNumerator <= maximumNumerator;
+    }
+
     private static bool TryResolvePortalCorridorFunnelVelocityFixed(
         AgentRuntimeData agent,
         PathHandle handle,
@@ -10612,23 +10704,52 @@ public static partial class FlowFieldCrowdMovementSystem
             return false;
         }
 
-        FixVector2 target = ResolvePortalCorridorFunnelTargetFixed(
-            handle,
-            position,
-            currentPortalReached,
-            out int cornerPortalPathIndex);
+        string portalLookahead = "not-requested";
+        FixVector2 target;
+        int cornerPortalPathIndex;
+        if (currentPortalReached)
+        {
+            FixVector2 lookaheadTarget = ResolvePortalCorridorFunnelTargetFixed(
+                handle,
+                position,
+                handle.CurrentSectorIndex + 1,
+                out int lookaheadCornerPortalPathIndex);
+            if (DoesPortalLookaheadRayCrossCurrentApertureFixed(handle, position, lookaheadTarget))
+            {
+                target = lookaheadTarget;
+                cornerPortalPathIndex = lookaheadCornerPortalPathIndex;
+                portalLookahead = "accepted";
+            }
+            else
+            {
+                target = ResolvePortalCorridorFunnelTargetFixed(
+                    handle,
+                    position,
+                    handle.CurrentSectorIndex,
+                    out cornerPortalPathIndex);
+                portalLookahead = "rejected";
+            }
+        }
+        else
+        {
+            target = ResolvePortalCorridorFunnelTargetFixed(
+                handle,
+                position,
+                handle.CurrentSectorIndex,
+                out cornerPortalPathIndex);
+        }
         FixVector2 displacement = target - position;
-        if (displacement == FixVector2.Zero)
+        if (FixVector2.SqrMagnitude(displacement) == Fix64.Zero)
         {
             diagnostic =
-                $"corridor-funnel-rejected reason=zero-displacement cornerPathIndex={cornerPortalPathIndex} " +
+                $"corridor-funnel-rejected reason=subresolution-displacement portalLookahead={portalLookahead} cornerPathIndex={cornerPortalPathIndex} " +
                 $"targetRaw=({target.x.RawValue},{target.y.RawValue})";
             return false;
         }
         if (!HasFixedGridLineOfSight(_world, position, target, allowTargetSoftCost: true))
         {
             diagnostic =
-                $"corridor-funnel-rejected reason=grid-los-failed cornerPathIndex={cornerPortalPathIndex} " +
+                $"corridor-funnel-rejected reason=grid-los-failed portalLookahead={portalLookahead} cornerPathIndex={cornerPortalPathIndex} " +
                 $"targetRaw=({target.x.RawValue},{target.y.RawValue})";
             return false;
         }
@@ -10650,7 +10771,7 @@ public static partial class FlowFieldCrowdMovementSystem
         if (solveResult.SolveResult.ResolvedDisplacement != displacement)
         {
             diagnostic =
-                $"corridor-funnel-rejected reason=static-sweep-clipped cornerPathIndex={cornerPortalPathIndex} " +
+                $"corridor-funnel-rejected reason=static-sweep-clipped portalLookahead={portalLookahead} cornerPathIndex={cornerPortalPathIndex} " +
                 $"targetRaw=({target.x.RawValue},{target.y.RawValue}) " +
                 $"desiredRaw=({displacement.x.RawValue},{displacement.y.RawValue}) " +
                 $"resolvedRaw=({solveResult.SolveResult.ResolvedDisplacement.x.RawValue},{solveResult.SolveResult.ResolvedDisplacement.y.RawValue})";
@@ -10659,7 +10780,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         velocity = ScaleFixedDirectionToSpeed(displacement, maxSpeed);
         diagnostic =
-            $"corridor-funnel currentPortalReached={currentPortalReached} cornerPathIndex={cornerPortalPathIndex} " +
+            $"corridor-funnel portalLookahead={portalLookahead} cornerPathIndex={cornerPortalPathIndex} " +
             $"targetRaw=({target.x.RawValue},{target.y.RawValue}) handle={FormatPathHandle(handle)}";
         return true;
     }
@@ -10847,14 +10968,17 @@ public static partial class FlowFieldCrowdMovementSystem
             selectedPortalSlotIndexForDiagnostic = selectedPortalSlotIndex;
         }
         string funnelDiagnostic = null;
-        if (goalKind == TileGoalKind.Portal && !hasPendingRuntimeDirty)
+        bool currentPortalReached = goalKind == TileGoalKind.Portal
+                                    && IndexOfGoalCell(tile.GoalCells, worldX, worldY) >= 0;
+        if (goalKind == TileGoalKind.Portal
+            && !hasPendingRuntimeDirty)
         {
             if (TryResolvePortalCorridorFunnelVelocityFixed(
                     agent,
                     handle,
                     position,
                     maxSpeed,
-                    IndexOfGoalCell(tile.GoalCells, worldX, worldY) >= 0,
+                    currentPortalReached,
                     out FixVector2 funnelVelocity,
                     out funnelDiagnostic))
             {
@@ -11113,40 +11237,41 @@ public static partial class FlowFieldCrowdMovementSystem
         out Fix64 tx,
         out Fix64 ty)
     {
-        _world.GetGridCellBoundsFixed(worldX, worldY, out FixVector2 minimum, out FixVector2 maximum);
-        Fix64 half = Fix64.FromRaw(2048);
-        FixVector2 center = new FixVector2(
-            minimum.x + (maximum.x - minimum.x) * half,
-            minimum.y + (maximum.y - minimum.y) * half);
-        Fix64 cellSize = _world.CellSizeFixed;
-        if (position.x >= center.x)
+        long positionXGridRaw = NavigationGridFixedMath.Fix64ToGridRaw(position.x);
+        long positionYGridRaw = NavigationGridFixedMath.Fix64ToGridRaw(position.y);
+        long centerXGridRaw = checked(_world.OriginXGridRaw + checked((long)worldX * _world.CellSizeGridRaw) + _world.CellSizeGridRaw / 2);
+        long centerYGridRaw = checked(_world.OriginZGridRaw + checked((long)worldY * _world.CellSizeGridRaw) + _world.CellSizeGridRaw / 2);
+        if (positionXGridRaw >= centerXGridRaw)
         {
             x0 = worldX;
             x1 = worldX + 1;
-            tx = (position.x - center.x) / cellSize;
+            tx = NavigationGridFixedMath.ResolveCellFraction(positionXGridRaw, centerXGridRaw, _world.CellSizeGridRaw);
         }
         else
         {
             x0 = worldX - 1;
             x1 = worldX;
-            tx = (position.x - (center.x - cellSize)) / cellSize;
+            tx = NavigationGridFixedMath.ResolveCellFraction(
+                positionXGridRaw,
+                checked(centerXGridRaw - _world.CellSizeGridRaw),
+                _world.CellSizeGridRaw);
         }
 
-        if (position.y >= center.y)
+        if (positionYGridRaw >= centerYGridRaw)
         {
             y0 = worldY;
             y1 = worldY + 1;
-            ty = (position.y - center.y) / cellSize;
+            ty = NavigationGridFixedMath.ResolveCellFraction(positionYGridRaw, centerYGridRaw, _world.CellSizeGridRaw);
         }
         else
         {
             y0 = worldY - 1;
             y1 = worldY;
-            ty = (position.y - (center.y - cellSize)) / cellSize;
+            ty = NavigationGridFixedMath.ResolveCellFraction(
+                positionYGridRaw,
+                checked(centerYGridRaw - _world.CellSizeGridRaw),
+                _world.CellSizeGridRaw);
         }
-
-        tx = Fix64.Clamp(tx, Fix64.Zero, Fix64.One);
-        ty = Fix64.Clamp(ty, Fix64.Zero, Fix64.One);
     }
 
     private static void AccumulateSpatialGradientSample(
@@ -11580,8 +11705,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         Fix64 deltaTime = LogicFrameRuntime.FixedDeltaTime;
         Fix64 travelDistance = maxSpeed * deltaTime;
-        Fix64 maximumSubstepDistance = _world.CellSizeFixed / (Fix64)2;
-        if (maximumSubstepDistance <= Fix64.Zero)
+        if (_world.CellSizeGridRaw <= 0)
             throw new InvalidOperationException("ResolveSpatiallyIntegratedFieldVelocityFixed failed: navigation cell size is not positive.");
         if (travelDistance <= Fix64.Zero)
         {
@@ -11591,12 +11715,9 @@ public static partial class FlowFieldCrowdMovementSystem
             return FixVector2.Zero;
         }
 
-        long travelRaw = travelDistance.RawValue;
-        long maximumSubstepRaw = maximumSubstepDistance.RawValue;
-        long substepCountLong = checked((travelRaw + maximumSubstepRaw - 1L) / maximumSubstepRaw);
-        if (substepCountLong <= 0L || substepCountLong > int.MaxValue)
-            throw new InvalidOperationException($"ResolveSpatiallyIntegratedFieldVelocityFixed failed: invalid substep count={substepCountLong}.");
-        substepCount = checked((int)substepCountLong);
+        substepCount = ResolveSpatialIntegrationSubstepCount(travelDistance, _world.CellSizeGridRaw);
+        if (substepCount <= 0)
+            throw new InvalidOperationException($"ResolveSpatiallyIntegratedFieldVelocityFixed failed: invalid substep count={substepCount}.");
 
         Fix64 substepDistance = travelDistance / (Fix64)substepCount;
         Fix64 half = Fix64.FromRaw(2048);
@@ -11781,6 +11902,14 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         return (integratedPosition - position) / deltaTime;
+    }
+
+    private static int ResolveSpatialIntegrationSubstepCount(Fix64 travelDistance, long cellSizeGridRaw)
+    {
+        int result = NavigationGridFixedMath.DivideCeilingByHalfCellSize(travelDistance, cellSizeGridRaw);
+        if (result <= 0)
+            throw new InvalidOperationException($"ResolveSpatialIntegrationSubstepCount failed: invalid result={result} travelRaw={travelDistance.RawValue} cellSizeGridRaw={cellSizeGridRaw}.");
+        return result;
     }
 
     private static bool IsDeterministicFinalGoalFieldMinimum(
@@ -15844,11 +15973,7 @@ public static partial class FlowFieldCrowdMovementSystem
             {
                 CircleObstacle circle = job.CircleObstacles[job.ObstacleCursor++];
                 BlockCellsByCircleFixed(
-                    world.WalkableMask,
-                    world.Width,
-                    world.Height,
-                    world.CellSizeFixed,
-                    world.OriginFixed,
+                    world,
                     circle.PositionFixed,
                     circle.RadiusFixed);
                 if (!forceComplete && IsBudgetExpired(deadlineTicks, job.ObstacleCursor))
@@ -15863,11 +15988,7 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             BoxObstacle box = job.BoxObstacles[job.ObstacleCursor++];
             BlockCellsByBoxFixed(
-                world.WalkableMask,
-                world.Width,
-                world.Height,
-                world.CellSizeFixed,
-                world.OriginFixed,
+                world,
                 box.CenterFixed,
                 ResolveBoxObstacleNavigationHalfExtentsFixed(world, box));
             if (!forceComplete && IsBudgetExpired(deadlineTicks, job.ObstacleCursor))
@@ -16422,34 +16543,31 @@ public static partial class FlowFieldCrowdMovementSystem
     }
 
     private static void BlockCellsByCircleFixed(
-        bool[] walkableMask,
-        int width,
-        int height,
-        Fix64 cellSize,
-        FixVector2 origin,
+        NavigationWorld world,
         FixVector2 center,
         Fix64 radius)
     {
-        if (walkableMask == null || walkableMask.Length != width * height)
+        if (world == null)
+            throw new InvalidOperationException("BlockCellsByCircleFixed failed: world is null.");
+        if (world.WalkableMask == null || world.WalkableMask.Length != world.Width * world.Height)
             throw new InvalidOperationException("BlockCellsByCircleFixed failed: invalid walkable mask.");
-        if (width <= 0 || height <= 0 || cellSize <= Fix64.Zero || radius < Fix64.Zero)
+        if (world.Width <= 0 || world.Height <= 0 || world.CellSizeGridRaw <= 0 || radius < Fix64.Zero)
             throw new ArgumentOutOfRangeException(nameof(radius), "BlockCellsByCircleFixed received invalid geometry.");
 
-        int minX = Mathf.Clamp(NavigationWorld.FloorDivRaw((center.x - radius - origin.x).RawValue, cellSize.RawValue), 0, width - 1);
-        int maxX = Mathf.Clamp(NavigationWorld.FloorDivRaw((center.x + radius - origin.x).RawValue, cellSize.RawValue), 0, width - 1);
-        int minY = Mathf.Clamp(NavigationWorld.FloorDivRaw((center.y - radius - origin.y).RawValue, cellSize.RawValue), 0, height - 1);
-        int maxY = Mathf.Clamp(NavigationWorld.FloorDivRaw((center.y + radius - origin.y).RawValue, cellSize.RawValue), 0, height - 1);
+        int minX = Mathf.Clamp(NavigationGridFixedMath.WorldToGridCell(center.x - radius, world.OriginXGridRaw, world.CellSizeGridRaw), 0, world.Width - 1);
+        int maxX = Mathf.Clamp(NavigationGridFixedMath.WorldToGridCell(center.x + radius, world.OriginXGridRaw, world.CellSizeGridRaw), 0, world.Width - 1);
+        int minY = Mathf.Clamp(NavigationGridFixedMath.WorldToGridCell(center.y - radius, world.OriginZGridRaw, world.CellSizeGridRaw), 0, world.Height - 1);
+        int maxY = Mathf.Clamp(NavigationGridFixedMath.WorldToGridCell(center.y + radius, world.OriginZGridRaw, world.CellSizeGridRaw), 0, world.Height - 1);
+        Fix64 cellSize = world.CellSizeFixed;
         Fix64 blockRadius = radius + cellSize * Fix64.FromRaw(1844);
         Fix64 blockRadiusSquared = blockRadius * blockRadius;
         for (int y = minY; y <= maxY; y++)
         {
             for (int x = minX; x <= maxX; x++)
             {
-                FixVector2 cellCenter = new FixVector2(
-                    origin.x + ((Fix64)x + Fix64.FromRaw(2048)) * cellSize,
-                    origin.y + ((Fix64)y + Fix64.FromRaw(2048)) * cellSize);
+                FixVector2 cellCenter = world.GridToWorldGeometricCenterFixed(x, y);
                 if (FixVector2.SqrMagnitude(cellCenter - center) <= blockRadiusSquared)
-                    walkableMask[x + y * width] = false;
+                    world.WalkableMask[x + y * world.Width] = false;
             }
         }
     }
@@ -16473,36 +16591,32 @@ public static partial class FlowFieldCrowdMovementSystem
     }
 
     private static void BlockCellsByBoxFixed(
-        bool[] walkableMask,
-        int width,
-        int height,
-        Fix64 cellSize,
-        FixVector2 origin,
+        NavigationWorld world,
         FixVector2 center,
         FixVector2 halfExtents)
     {
-        if (walkableMask == null || walkableMask.Length != width * height)
+        if (world == null)
+            throw new InvalidOperationException("BlockCellsByBoxFixed failed: world is null.");
+        if (world.WalkableMask == null || world.WalkableMask.Length != world.Width * world.Height)
             throw new InvalidOperationException("BlockCellsByBoxFixed failed: invalid walkable mask.");
-        if (width <= 0 || height <= 0 || cellSize <= Fix64.Zero
+        if (world.Width <= 0 || world.Height <= 0 || world.CellSizeGridRaw <= 0
             || halfExtents.x < Fix64.Zero || halfExtents.y < Fix64.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(halfExtents), "BlockCellsByBoxFixed received invalid geometry.");
         }
 
-        int minX = Mathf.Clamp(NavigationWorld.FloorDivRaw((center.x - halfExtents.x - origin.x).RawValue, cellSize.RawValue), 0, width - 1);
-        int maxX = Mathf.Clamp(NavigationWorld.FloorDivRaw((center.x + halfExtents.x - origin.x).RawValue, cellSize.RawValue), 0, width - 1);
-        int minY = Mathf.Clamp(NavigationWorld.FloorDivRaw((center.y - halfExtents.y - origin.y).RawValue, cellSize.RawValue), 0, height - 1);
-        int maxY = Mathf.Clamp(NavigationWorld.FloorDivRaw((center.y + halfExtents.y - origin.y).RawValue, cellSize.RawValue), 0, height - 1);
+        int minX = Mathf.Clamp(NavigationGridFixedMath.WorldToGridCell(center.x - halfExtents.x, world.OriginXGridRaw, world.CellSizeGridRaw), 0, world.Width - 1);
+        int maxX = Mathf.Clamp(NavigationGridFixedMath.WorldToGridCell(center.x + halfExtents.x, world.OriginXGridRaw, world.CellSizeGridRaw), 0, world.Width - 1);
+        int minY = Mathf.Clamp(NavigationGridFixedMath.WorldToGridCell(center.y - halfExtents.y, world.OriginZGridRaw, world.CellSizeGridRaw), 0, world.Height - 1);
+        int maxY = Mathf.Clamp(NavigationGridFixedMath.WorldToGridCell(center.y + halfExtents.y, world.OriginZGridRaw, world.CellSizeGridRaw), 0, world.Height - 1);
         for (int y = minY; y <= maxY; y++)
         {
             for (int x = minX; x <= maxX; x++)
             {
-                FixVector2 cellCenter = new FixVector2(
-                    origin.x + ((Fix64)x + Fix64.FromRaw(2048)) * cellSize,
-                    origin.y + ((Fix64)y + Fix64.FromRaw(2048)) * cellSize);
+                FixVector2 cellCenter = world.GridToWorldGeometricCenterFixed(x, y);
                 FixVector2 delta = cellCenter - center;
                 if (Fix64.Abs(delta.x) <= halfExtents.x && Fix64.Abs(delta.y) <= halfExtents.y)
-                    walkableMask[x + y * width] = false;
+                    world.WalkableMask[x + y * world.Width] = false;
             }
         }
     }
@@ -17803,12 +17917,11 @@ public static partial class FlowFieldCrowdMovementSystem
         if (sectorIds == null)
             throw new ArgumentNullException(nameof(sectorIds));
 
+        int rawMinX = NavigationGridFixedMath.WorldToGridCell(center.x - radius, world.OriginXGridRaw, world.CellSizeGridRaw);
+        int rawMaxX = NavigationGridFixedMath.WorldToGridCell(center.x + radius, world.OriginXGridRaw, world.CellSizeGridRaw);
+        int rawMinY = NavigationGridFixedMath.WorldToGridCell(center.y - radius, world.OriginZGridRaw, world.CellSizeGridRaw);
+        int rawMaxY = NavigationGridFixedMath.WorldToGridCell(center.y + radius, world.OriginZGridRaw, world.CellSizeGridRaw);
         Fix64 cellSize = world.CellSizeFixed;
-        FixVector2 origin = world.OriginFixed;
-        int rawMinX = NavigationWorld.FloorDivRaw((center.x - radius - origin.x).RawValue, cellSize.RawValue);
-        int rawMaxX = NavigationWorld.FloorDivRaw((center.x + radius - origin.x).RawValue, cellSize.RawValue);
-        int rawMinY = NavigationWorld.FloorDivRaw((center.y - radius - origin.y).RawValue, cellSize.RawValue);
-        int rawMaxY = NavigationWorld.FloorDivRaw((center.y + radius - origin.y).RawValue, cellSize.RawValue);
         Fix64 blockRadius = radius + cellSize * Fix64.FromRaw(1844);
         Fix64 blockRadiusSquared = blockRadius * blockRadius;
 
@@ -17826,9 +17939,7 @@ public static partial class FlowFieldCrowdMovementSystem
             {
                 for (int x = minX; x <= maxX; x++)
                 {
-                    FixVector2 cellCenter = new FixVector2(
-                        origin.x + ((Fix64)x + Fix64.FromRaw(2048)) * cellSize,
-                        origin.y + ((Fix64)y + Fix64.FromRaw(2048)) * cellSize);
+                    FixVector2 cellCenter = world.GridToWorldGeometricCenterFixed(x, y);
                     if (FixVector2.SqrMagnitude(cellCenter - center) <= blockRadiusSquared)
                         world.WalkableMask[x + y * world.Width] = false;
                 }
@@ -17847,12 +17958,10 @@ public static partial class FlowFieldCrowdMovementSystem
         if (sectorIds == null)
             throw new ArgumentNullException(nameof(sectorIds));
 
-        Fix64 cellSize = world.CellSizeFixed;
-        FixVector2 origin = world.OriginFixed;
-        int rawMinX = NavigationWorld.FloorDivRaw((center.x - halfExtents.x - origin.x).RawValue, cellSize.RawValue);
-        int rawMaxX = NavigationWorld.FloorDivRaw((center.x + halfExtents.x - origin.x).RawValue, cellSize.RawValue);
-        int rawMinY = NavigationWorld.FloorDivRaw((center.y - halfExtents.y - origin.y).RawValue, cellSize.RawValue);
-        int rawMaxY = NavigationWorld.FloorDivRaw((center.y + halfExtents.y - origin.y).RawValue, cellSize.RawValue);
+        int rawMinX = NavigationGridFixedMath.WorldToGridCell(center.x - halfExtents.x, world.OriginXGridRaw, world.CellSizeGridRaw);
+        int rawMaxX = NavigationGridFixedMath.WorldToGridCell(center.x + halfExtents.x, world.OriginXGridRaw, world.CellSizeGridRaw);
+        int rawMinY = NavigationGridFixedMath.WorldToGridCell(center.y - halfExtents.y, world.OriginZGridRaw, world.CellSizeGridRaw);
+        int rawMaxY = NavigationGridFixedMath.WorldToGridCell(center.y + halfExtents.y, world.OriginZGridRaw, world.CellSizeGridRaw);
         foreach (int sectorId in sectorIds)
         {
             SectorData sector = world.Sectors[sectorId];
@@ -17867,9 +17976,7 @@ public static partial class FlowFieldCrowdMovementSystem
             {
                 for (int x = minX; x <= maxX; x++)
                 {
-                    FixVector2 cellCenter = new FixVector2(
-                        origin.x + ((Fix64)x + Fix64.FromRaw(2048)) * cellSize,
-                        origin.y + ((Fix64)y + Fix64.FromRaw(2048)) * cellSize);
+                    FixVector2 cellCenter = world.GridToWorldGeometricCenterFixed(x, y);
                     FixVector2 delta = cellCenter - center;
                     if (Fix64.Abs(delta.x) <= halfExtents.x && Fix64.Abs(delta.y) <= halfExtents.y)
                         world.WalkableMask[x + y * world.Width] = false;
@@ -25955,14 +26062,12 @@ public static partial class FlowFieldCrowdMovementSystem
         if (world == null)
             throw new InvalidOperationException("TryResolveNearbyStartWalkableFixed failed: world is null.");
 
-        Fix64 cellSize = world.CellSizeFixed;
         Fix64 maxSnapDistance = ResolveNearbyStartMaxSnapDistanceFixed(
             world,
             IsRuntimeRasterOnlyBlockedCell(world, startX, startY));
         Fix64 bestDistanceSq = maxSnapDistance * maxSnapDistance;
         bool found = false;
-        long radiusRaw = checked((maxSnapDistance.RawValue + cellSize.RawValue - 1) / cellSize.RawValue);
-        int searchRadiusInCells = Math.Max(1, checked((int)radiusRaw));
+        int searchRadiusInCells = Math.Max(1, NavigationGridFixedMath.DivideCeilingByCellSize(maxSnapDistance, world.CellSizeGridRaw));
         for (int y = startY - searchRadiusInCells; y <= startY + searchRadiusInCells; y++)
         {
             for (int x = startX - searchRadiusInCells; x <= startX + searchRadiusInCells; x++)
@@ -25998,15 +26103,13 @@ public static partial class FlowFieldCrowdMovementSystem
         if (world == null)
             throw new InvalidOperationException("TryResolveNearbyStartWalkable failed: world is null.");
 
-        Fix64 cellSize = world.CellSizeFixed;
         Fix64 maxSnapDistance = ResolveNearbyStartMaxSnapDistanceFixed(
             world,
             IsRuntimeRasterOnlyBlockedCell(world, startX, startY));
         Fix64 bestDistanceSq = maxSnapDistance * maxSnapDistance;
         FixVector2 positionFixed = new FixVector2((Fix64)position.x, (Fix64)position.z);
         bool found = false;
-        long radiusRaw = checked((maxSnapDistance.RawValue + cellSize.RawValue - 1) / cellSize.RawValue);
-        int searchRadiusInCells = Math.Max(1, checked((int)radiusRaw));
+        int searchRadiusInCells = Math.Max(1, NavigationGridFixedMath.DivideCeilingByCellSize(maxSnapDistance, world.CellSizeGridRaw));
         for (int y = startY - searchRadiusInCells; y <= startY + searchRadiusInCells; y++)
         {
             for (int x = startX - searchRadiusInCells; x <= startX + searchRadiusInCells; x++)
@@ -26112,25 +26215,16 @@ public static partial class FlowFieldCrowdMovementSystem
         if (startX == goalX && startY == goalY)
             return true;
 
-        FixVector2 displacement = to - from;
-        Fix64 absoluteX = Fix64.Abs(displacement.x);
-        Fix64 absoluteY = Fix64.Abs(displacement.y);
-        int stepX = displacement.x > Fix64.Zero ? 1 : displacement.x < Fix64.Zero ? -1 : 0;
-        int stepY = displacement.y > Fix64.Zero ? 1 : displacement.y < Fix64.Zero ? -1 : 0;
-        Fix64 tDeltaX = stepX == 0 ? Fix64.Zero : world.CellSizeFixed / absoluteX;
-        Fix64 tDeltaY = stepY == 0 ? Fix64.Zero : world.CellSizeFixed / absoluteY;
-
-        world.GetGridCellBoundsFixed(startX, startY, out FixVector2 startMinimum, out FixVector2 startMaximum);
-        Fix64 tMaxX = stepX > 0
-            ? (startMaximum.x - from.x) / absoluteX
-            : stepX < 0
-                ? (from.x - startMinimum.x) / absoluteX
-                : Fix64.Zero;
-        Fix64 tMaxY = stepY > 0
-            ? (startMaximum.y - from.y) / absoluteY
-            : stepY < 0
-                ? (from.y - startMinimum.y) / absoluteY
-                : Fix64.Zero;
+        long fromXGridRaw = NavigationGridFixedMath.Fix64ToGridRaw(from.x);
+        long fromYGridRaw = NavigationGridFixedMath.Fix64ToGridRaw(from.y);
+        long toXGridRaw = NavigationGridFixedMath.Fix64ToGridRaw(to.x);
+        long toYGridRaw = NavigationGridFixedMath.Fix64ToGridRaw(to.y);
+        long displacementXGridRaw = checked(toXGridRaw - fromXGridRaw);
+        long displacementYGridRaw = checked(toYGridRaw - fromYGridRaw);
+        long absoluteXGridRaw = Math.Abs(displacementXGridRaw);
+        long absoluteYGridRaw = Math.Abs(displacementYGridRaw);
+        int stepX = Math.Sign(displacementXGridRaw);
+        int stepY = Math.Sign(displacementYGridRaw);
 
         int currentX = startX;
         int currentY = startY;
@@ -26140,7 +26234,21 @@ public static partial class FlowFieldCrowdMovementSystem
             if (currentX == goalX && currentY == goalY)
                 return true;
 
-            if (stepX != 0 && stepY != 0 && tMaxX == tMaxY)
+            int stepAxis = ResolveFixedGridRayStepAxis(
+                world,
+                fromXGridRaw,
+                fromYGridRaw,
+                absoluteXGridRaw,
+                absoluteYGridRaw,
+                currentX,
+                currentY,
+                goalX,
+                goalY,
+                stepX,
+                stepY,
+                out _,
+                out _);
+            if (stepAxis == 0)
             {
                 int sideX = currentX + stepX;
                 int sideY = currentY + stepY;
@@ -26154,22 +26262,18 @@ public static partial class FlowFieldCrowdMovementSystem
 
                 currentX = sideX;
                 currentY = sideY;
-                tMaxX += tDeltaX;
-                tMaxY += tDeltaY;
                 continue;
             }
 
             int nextX = currentX;
             int nextY = currentY;
-            if (stepY == 0 || (stepX != 0 && tMaxX < tMaxY))
+            if (stepAxis < 0)
             {
                 nextX += stepX;
-                tMaxX += tDeltaX;
             }
             else
             {
                 nextY += stepY;
-                tMaxY += tDeltaY;
             }
 
             if (!IsGridLineOfSightStepPassable(
@@ -26223,25 +26327,16 @@ public static partial class FlowFieldCrowdMovementSystem
         if (startX == goalX && startY == goalY)
             return "clear-same-cell";
 
-        FixVector2 displacement = to - from;
-        Fix64 absoluteX = Fix64.Abs(displacement.x);
-        Fix64 absoluteY = Fix64.Abs(displacement.y);
-        int stepX = displacement.x > Fix64.Zero ? 1 : displacement.x < Fix64.Zero ? -1 : 0;
-        int stepY = displacement.y > Fix64.Zero ? 1 : displacement.y < Fix64.Zero ? -1 : 0;
-        Fix64 tDeltaX = stepX == 0 ? Fix64.Zero : world.CellSizeFixed / absoluteX;
-        Fix64 tDeltaY = stepY == 0 ? Fix64.Zero : world.CellSizeFixed / absoluteY;
-
-        world.GetGridCellBoundsFixed(startX, startY, out FixVector2 startMinimum, out FixVector2 startMaximum);
-        Fix64 tMaxX = stepX > 0
-            ? (startMaximum.x - from.x) / absoluteX
-            : stepX < 0
-                ? (from.x - startMinimum.x) / absoluteX
-                : Fix64.Zero;
-        Fix64 tMaxY = stepY > 0
-            ? (startMaximum.y - from.y) / absoluteY
-            : stepY < 0
-                ? (from.y - startMinimum.y) / absoluteY
-                : Fix64.Zero;
+        long fromXGridRaw = NavigationGridFixedMath.Fix64ToGridRaw(from.x);
+        long fromYGridRaw = NavigationGridFixedMath.Fix64ToGridRaw(from.y);
+        long toXGridRaw = NavigationGridFixedMath.Fix64ToGridRaw(to.x);
+        long toYGridRaw = NavigationGridFixedMath.Fix64ToGridRaw(to.y);
+        long displacementXGridRaw = checked(toXGridRaw - fromXGridRaw);
+        long displacementYGridRaw = checked(toYGridRaw - fromYGridRaw);
+        long absoluteXGridRaw = Math.Abs(displacementXGridRaw);
+        long absoluteYGridRaw = Math.Abs(displacementYGridRaw);
+        int stepX = Math.Sign(displacementXGridRaw);
+        int stepY = Math.Sign(displacementYGridRaw);
 
         int currentX = startX;
         int currentY = startY;
@@ -26251,37 +26346,47 @@ public static partial class FlowFieldCrowdMovementSystem
             if (currentX == goalX && currentY == goalY)
                 return "clear";
 
-            if (stepX != 0 && stepY != 0 && tMaxX == tMaxY)
+            int stepAxis = ResolveFixedGridRayStepAxis(
+                world,
+                fromXGridRaw,
+                fromYGridRaw,
+                absoluteXGridRaw,
+                absoluteYGridRaw,
+                currentX,
+                currentY,
+                goalX,
+                goalY,
+                stepX,
+                stepY,
+                out long nextXBoundaryDistanceRaw,
+                out long nextYBoundaryDistanceRaw);
+            if (stepAxis == 0)
             {
                 int sideX = currentX + stepX;
                 int sideY = currentY + stepY;
                 if (!IsGridLineOfSightStepPassable(world, currentX, currentY, sideX, currentY, goalX, goalY, GridLineOfSightCostMode.DirectShortcut, allowTargetSoftCost, 1))
-                    return BuildFixedGridLineOfSightFailureDiagnostic(world, currentX, currentY, sideX, currentY, goalX, goalY, tMaxX, tMaxY, "corner-x");
+                    return BuildFixedGridLineOfSightFailureDiagnostic(world, currentX, currentY, sideX, currentY, goalX, goalY, nextXBoundaryDistanceRaw, nextYBoundaryDistanceRaw, "corner-x");
                 if (!IsGridLineOfSightStepPassable(world, currentX, currentY, currentX, sideY, goalX, goalY, GridLineOfSightCostMode.DirectShortcut, allowTargetSoftCost, 1))
-                    return BuildFixedGridLineOfSightFailureDiagnostic(world, currentX, currentY, currentX, sideY, goalX, goalY, tMaxX, tMaxY, "corner-y");
+                    return BuildFixedGridLineOfSightFailureDiagnostic(world, currentX, currentY, currentX, sideY, goalX, goalY, nextXBoundaryDistanceRaw, nextYBoundaryDistanceRaw, "corner-y");
                 if (!IsGridLineOfSightStepPassable(world, sideX, currentY, sideX, sideY, goalX, goalY, GridLineOfSightCostMode.DirectShortcut, allowTargetSoftCost, 1))
-                    return BuildFixedGridLineOfSightFailureDiagnostic(world, sideX, currentY, sideX, sideY, goalX, goalY, tMaxX, tMaxY, "corner-x-y");
+                    return BuildFixedGridLineOfSightFailureDiagnostic(world, sideX, currentY, sideX, sideY, goalX, goalY, nextXBoundaryDistanceRaw, nextYBoundaryDistanceRaw, "corner-x-y");
                 if (!IsGridLineOfSightStepPassable(world, currentX, sideY, sideX, sideY, goalX, goalY, GridLineOfSightCostMode.DirectShortcut, allowTargetSoftCost, 1))
-                    return BuildFixedGridLineOfSightFailureDiagnostic(world, currentX, sideY, sideX, sideY, goalX, goalY, tMaxX, tMaxY, "corner-y-x");
+                    return BuildFixedGridLineOfSightFailureDiagnostic(world, currentX, sideY, sideX, sideY, goalX, goalY, nextXBoundaryDistanceRaw, nextYBoundaryDistanceRaw, "corner-y-x");
 
                 currentX = sideX;
                 currentY = sideY;
-                tMaxX += tDeltaX;
-                tMaxY += tDeltaY;
                 continue;
             }
 
             int nextX = currentX;
             int nextY = currentY;
-            if (stepY == 0 || (stepX != 0 && tMaxX < tMaxY))
+            if (stepAxis < 0)
             {
                 nextX += stepX;
-                tMaxX += tDeltaX;
             }
             else
             {
                 nextY += stepY;
-                tMaxY += tDeltaY;
             }
 
             if (!IsGridLineOfSightStepPassable(
@@ -26304,8 +26409,8 @@ public static partial class FlowFieldCrowdMovementSystem
                     nextY,
                     goalX,
                     goalY,
-                    tMaxX,
-                    tMaxY,
+                    nextXBoundaryDistanceRaw,
+                    nextYBoundaryDistanceRaw,
                     "step");
             }
 
@@ -26316,6 +26421,106 @@ public static partial class FlowFieldCrowdMovementSystem
         return $"guard-exceeded start=({startX},{startY}) goal=({goalX},{goalY}) guard={guard}";
     }
 
+    private static int ResolveFixedGridRayStepAxis(
+        NavigationWorld world,
+        long fromXGridRaw,
+        long fromYGridRaw,
+        long absoluteXGridRaw,
+        long absoluteYGridRaw,
+        int currentX,
+        int currentY,
+        int goalX,
+        int goalY,
+        int stepX,
+        int stepY,
+        out long nextXBoundaryDistanceRaw,
+        out long nextYBoundaryDistanceRaw)
+    {
+        if (currentX == goalX)
+        {
+            nextXBoundaryDistanceRaw = -1;
+            nextYBoundaryDistanceRaw = ResolveFixedGridRayBoundaryDistanceRaw(
+                world.OriginZGridRaw, world.CellSizeGridRaw, currentY, stepY, fromYGridRaw);
+            return 1;
+        }
+        if (currentY == goalY)
+        {
+            nextXBoundaryDistanceRaw = ResolveFixedGridRayBoundaryDistanceRaw(
+                world.OriginXGridRaw, world.CellSizeGridRaw, currentX, stepX, fromXGridRaw);
+            nextYBoundaryDistanceRaw = -1;
+            return -1;
+        }
+
+        nextXBoundaryDistanceRaw = ResolveFixedGridRayBoundaryDistanceRaw(
+            world.OriginXGridRaw, world.CellSizeGridRaw, currentX, stepX, fromXGridRaw);
+        nextYBoundaryDistanceRaw = ResolveFixedGridRayBoundaryDistanceRaw(
+            world.OriginZGridRaw, world.CellSizeGridRaw, currentY, stepY, fromYGridRaw);
+        return CompareNonNegativeFractions(
+            nextXBoundaryDistanceRaw,
+            absoluteXGridRaw,
+            nextYBoundaryDistanceRaw,
+            absoluteYGridRaw);
+    }
+
+    private static long ResolveFixedGridRayBoundaryDistanceRaw(
+        long originGridRaw,
+        long cellSizeGridRaw,
+        int currentCell,
+        int step,
+        long fromGridRaw)
+    {
+        if (step == 0)
+            throw new InvalidOperationException("ResolveFixedGridRayBoundaryDistanceRaw failed: step is zero before reaching the goal cell.");
+
+        long boundaryGridRaw = step > 0
+            ? checked(originGridRaw + checked((long)(currentCell + 1) * cellSizeGridRaw))
+            : checked(originGridRaw + checked((long)currentCell * cellSizeGridRaw));
+        long distanceGridRaw = step > 0
+            ? checked(boundaryGridRaw - fromGridRaw)
+            : checked(fromGridRaw - boundaryGridRaw);
+        if (distanceGridRaw < 0)
+        {
+            throw new InvalidOperationException(
+                $"ResolveFixedGridRayBoundaryDistanceRaw failed: next boundary is behind the ray origin cell={currentCell}, step={step}, distanceRaw={distanceGridRaw}.");
+        }
+
+        return distanceGridRaw;
+    }
+
+    private static int CompareNonNegativeFractions(
+        long leftNumerator,
+        long leftDenominator,
+        long rightNumerator,
+        long rightDenominator)
+    {
+        if (leftNumerator < 0 || rightNumerator < 0 || leftDenominator <= 0 || rightDenominator <= 0)
+            throw new ArgumentOutOfRangeException(nameof(leftNumerator), "Fraction comparison requires non-negative numerators and positive denominators.");
+
+        int direction = 1;
+        while (true)
+        {
+            long leftQuotient = leftNumerator / leftDenominator;
+            long rightQuotient = rightNumerator / rightDenominator;
+            if (leftQuotient != rightQuotient)
+                return direction * leftQuotient.CompareTo(rightQuotient);
+
+            long leftRemainder = leftNumerator % leftDenominator;
+            long rightRemainder = rightNumerator % rightDenominator;
+            if (leftRemainder == 0 || rightRemainder == 0)
+            {
+                if (leftRemainder == rightRemainder)
+                    return 0;
+                return direction * (leftRemainder == 0 ? -1 : 1);
+            }
+
+            leftNumerator = leftDenominator;
+            leftDenominator = leftRemainder;
+            rightNumerator = rightDenominator;
+            rightDenominator = rightRemainder;
+            direction = -direction;
+        }
+    }
+
     private static string BuildFixedGridLineOfSightFailureDiagnostic(
         NavigationWorld world,
         int fromX,
@@ -26324,8 +26529,8 @@ public static partial class FlowFieldCrowdMovementSystem
         int toY,
         int goalX,
         int goalY,
-        Fix64 tMaxX,
-        Fix64 tMaxY,
+        long nextXBoundaryDistanceRaw,
+        long nextYBoundaryDistanceRaw,
         string stage)
     {
         bool walkable = world.IsWalkable(toX, toY);
@@ -26344,7 +26549,7 @@ public static partial class FlowFieldCrowdMovementSystem
         bool costStamp = walkable && IsCellAffectedByCostStamp(world, toX, toY);
         return $"blocked stage={stage} edge=({fromX},{fromY})->({toX},{toY}) " +
                $"walkable={walkable} cellPassable={cellPassable} cost={cost} costStamp={costStamp} " +
-               $"rawLink={rawLink} traversable={traversable} tMaxRaw=({tMaxX.RawValue},{tMaxY.RawValue})";
+               $"rawLink={rawLink} traversable={traversable} nextBoundaryDistanceRaw=({nextXBoundaryDistanceRaw},{nextYBoundaryDistanceRaw})";
     }
 
     private static bool HasClearanceGridLineOfSight(
@@ -26896,10 +27101,12 @@ public static partial class FlowFieldCrowdMovementSystem
         if (world == null)
             throw new InvalidOperationException("ResolveWallCostBlurRadiusCellsFixed failed: world is null.");
 
-        Fix64 cellSize = Fix64.Max(Fix64.FromRaw(5), world.CellSizeFixed);
-        Fix64 extraRadiusCells = Fix64.Max(
+        Fix64 extraRadius = Fix64.Max(
             Fix64.Zero,
-            (world.AgentRadiusFixed - Fix64.FromRaw(2048)) / cellSize);
+            world.AgentRadiusFixed - Fix64.FromRaw(2048));
+        Fix64 extraRadiusCells = NavigationGridFixedMath.DivideByCellSize(
+            extraRadius,
+            world.CellSizeGridRaw);
         return Fix64.FromRaw(WallCostBlurRadiusRaw) + extraRadiusCells;
     }
 
@@ -26968,11 +27175,13 @@ public static partial class FlowFieldCrowdMovementSystem
         if (world == null)
             throw new InvalidOperationException("ResolveWallCostAdjacentPenalty failed: world is null.");
 
-        Fix64 extraRadiusCells = Fix64.Max(
+        Fix64 extraRadius = Fix64.Max(
             Fix64.Zero,
-            (world.AgentRadiusFixed - Fix64.FromRaw(2048))
-            / Fix64.Max(Fix64.FromRaw(5), world.CellSizeFixed));
-        return WallCostAdjacentPenalty + checked((int)(long)Fix64.Ceiling(extraRadiusCells));
+            world.AgentRadiusFixed - Fix64.FromRaw(2048));
+        int extraRadiusCells = NavigationGridFixedMath.DivideCeilingByCellSize(
+            extraRadius,
+            world.CellSizeGridRaw);
+        return WallCostAdjacentPenalty + extraRadiusCells;
     }
 
     private static int ResolveSlopeCostPenalty(NavigationWorld world, int worldX, int worldY)
@@ -27025,18 +27234,27 @@ public static partial class FlowFieldCrowdMovementSystem
         cost = stamp.Cost;
         if (stamp.Costs == null)
             return true;
-        if (stamp.Width <= 0 || stamp.Height <= 0 || stamp.CellSizeFixed <= Fix64.Zero)
+        if (stamp.Width <= 0 || stamp.Height <= 0 || stamp.CellSizeGridRaw <= 0)
             throw new InvalidOperationException($"TryResolveCostStampCellCost failed: invalid grid stamp id={stamp.Id} size={stamp.Width}x{stamp.Height} cellSize={stamp.CellSize}.");
         if (stamp.Costs.Length != stamp.Width * stamp.Height)
             throw new InvalidOperationException($"TryResolveCostStampCellCost failed: grid stamp costs length {stamp.Costs.Length} does not match {stamp.Width}x{stamp.Height} id={stamp.Id}.");
 
-        FixVector2 center = world.GridToWorldCenterFixed(worldX, worldY);
-        int stampX = NavigationWorld.FloorDivRaw(
-            (center.x - stamp.OriginFixed.x).RawValue,
-            stamp.CellSizeFixed.RawValue);
-        int stampY = NavigationWorld.FloorDivRaw(
-            (center.y - stamp.OriginFixed.y).RawValue,
-            stamp.CellSizeFixed.RawValue);
+        long centerXGridRaw = NavigationGridFixedMath.GridCellCenterRaw(
+            world.OriginXGridRaw,
+            world.CellSizeGridRaw,
+            worldX);
+        long centerYGridRaw = NavigationGridFixedMath.GridCellCenterRaw(
+            world.OriginZGridRaw,
+            world.CellSizeGridRaw,
+            worldY);
+        int stampX = NavigationGridFixedMath.GridRawToCell(
+            centerXGridRaw,
+            stamp.OriginXGridRaw,
+            stamp.CellSizeGridRaw);
+        int stampY = NavigationGridFixedMath.GridRawToCell(
+            centerYGridRaw,
+            stamp.OriginZGridRaw,
+            stamp.CellSizeGridRaw);
         if (stampX < 0 || stampX >= stamp.Width || stampY < 0 || stampY >= stamp.Height)
             return false;
 
@@ -28062,10 +28280,7 @@ public static partial class FlowFieldCrowdMovementSystem
             return false;
 
         Fix64 clearanceSq = edgeClearance * edgeClearance;
-        Fix64 cellSize = world.CellSizeFixed;
-        if (cellSize <= Fix64.Zero)
-            throw new InvalidOperationException("IsNavigationPointClearFixed failed: cell size must be positive.");
-        int radius = checked((int)(long)Fix64.Ceiling(edgeClearance / cellSize) + 1);
+        int radius = checked(NavigationGridFixedMath.DivideCeilingByCellSize(edgeClearance, world.CellSizeGridRaw) + 1);
         for (int y = cellY - radius; y <= cellY + radius; y++)
         {
             for (int x = cellX - radius; x <= cellX + radius; x++)
@@ -28115,10 +28330,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 : Fix64.Zero;
 
         Fix64 minDistanceSq = Fix64.FromRaw(long.MaxValue);
-        Fix64 cellSize = world.CellSizeFixed;
-        if (cellSize <= Fix64.Zero)
-            throw new InvalidOperationException("ResolveNavigationClearanceViolationFixed failed: cell size must be positive.");
-        int radius = checked((int)(long)Fix64.Ceiling(edgeClearance / cellSize) + 1);
+        int radius = checked(NavigationGridFixedMath.DivideCeilingByCellSize(edgeClearance, world.CellSizeGridRaw) + 1);
         for (int y = cellY - radius; y <= cellY + radius; y++)
         {
             for (int x = cellX - radius; x <= cellX + radius; x++)

@@ -162,6 +162,8 @@ public class GameEndManager : GameFrameworkComponent
 
     private void PresentGameEnd(LogicGameEndResult result)
     {
+        if (result.IsWin)
+            RecordCareerWin();
         HandleGameEndPresentation(result.IsWin);
         if (result.IsWin)
         {
@@ -172,6 +174,54 @@ public class GameEndManager : GameFrameworkComponent
         {
             GF.Event.Fire(this, GameEndResultEventArgs.CreateFail(result.FailCondition));
             Log.Info("[GameEndManager] GameEnd FAIL by {0}, logicFrame={1}.", result.FailCondition, LogicGameEndService.LastAppliedFrame);
+        }
+    }
+
+    private static void RecordCareerWin()
+    {
+        if (!CareerRunSettings.HasActiveRun)
+        {
+            Log.Info("[Career] Win was not recorded because the level was entered without career run settings.");
+            return;
+        }
+
+        IReadOnlyList<LevelTagTable> activeTags = LevelTagRuntime.GetActiveTags();
+        if (CareerRunSettings.IsVariableExperiment && activeTags.Count > 0)
+            throw new InvalidOperationException("Variable experiments cannot finish with active level tags.");
+
+        int offsetRate = LevelTagRuntime.GetCurrentSettlementOffsetRateDelta();
+        for (int i = 0; i < activeTags.Count; i++)
+        {
+            LevelTagTable tag = activeTags[i];
+            if (!tag.IsPositiveTag)
+                offsetRate = checked(offsetRate + Math.Max(0, tag.Score));
+        }
+        offsetRate = Math.Max(0, offsetRate);
+
+        CareerProgressDataModel progress = GF.DataModel.GetOrCreate<CareerProgressDataModel>();
+        CareerWinRecordResult record = progress.RecordWin(
+            CareerRunSettings.CareerLevelIdentifier,
+            CareerRunSettings.IsVariableExperiment,
+            offsetRate);
+        Log.Info(
+            "[Career] Win recorded. level={0}, experiment={1}, firstClear={2}, offset={3}, firstOffsetReward={4}, unlockedIndustry={5}, earned={6}, spent={7}, available={8}.",
+            record.LevelIdentifier,
+            record.IsExperiment,
+            record.FirstClear,
+            record.OffsetRate,
+            record.FirstOffsetReward,
+            record.UnlockedArchetype,
+            progress.GetEarnedPointCount(),
+            progress.GetSpentPointCount(),
+            progress.GetAvailablePointCount());
+
+        if (record.UnlockedArchetype != Archetype.None)
+        {
+            string industryName = LocalizationTextDataModel.GetText($"Archetype_{record.UnlockedArchetype}");
+            UnlockPresentationService.Enqueue(new UnlockPayload(
+                UnlockPayloadType.Industry,
+                industryName,
+                "\u65b0\u7684\u521d\u59cb\u884c\u4e1a\u5df2\u52a0\u5165\u5173\u5361\u9009\u9879\u3002"));
         }
     }
 

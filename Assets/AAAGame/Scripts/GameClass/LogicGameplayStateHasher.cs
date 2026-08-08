@@ -48,6 +48,8 @@ public static class LogicGameplayStateHasher
         hasher.Add(frame);
         InGameDataModel.WriteDeterministicState(hasher);
         LogicInGameValueCommandService.WriteDeterministicState(hasher);
+        if (LogicTeleportCommandService.IsActive)
+            LogicTeleportCommandService.WriteDeterministicState(hasher);
         SkillRuntimeDataModel.WriteDeterministicState(hasher);
         LogicRewardStateService.WriteDeterministicState(hasher);
         ulong economyHash = hasher.Hash;
