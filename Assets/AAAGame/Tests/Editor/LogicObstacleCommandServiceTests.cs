@@ -43,6 +43,59 @@ public class LogicObstacleCommandServiceTests
     }
 
     [Test]
+    public void InitialBoxObstacle_RegistersImmediatelyWithoutTimelineCommand()
+    {
+        var applied = new List<LogicObstacleCommand>();
+        var center = new FixVector2(2, 3);
+        var halfExtents = new FixVector2(4, 5);
+
+        LogicObstacleCommandService.RegisterInitialBoxObstacleForTests(10, center, halfExtents, applied.Add);
+
+        Assert.AreEqual(1, applied.Count);
+        Assert.AreEqual(0UL, applied[0].EffectiveFrame);
+        Assert.AreEqual(LogicObstacleCommandKind.AddOrUpdateBox, applied[0].Kind);
+        Assert.AreEqual(1, LogicObstacleCommandService.ActiveObstacleCount);
+        Assert.AreEqual(0, LogicObstacleCommandService.PendingCount);
+        Assert.AreEqual(0, LogicObstacleCommandService.History.Count);
+    }
+
+    [Test]
+    public void InitialBoxObstacle_CanBeRemovedOnFirstFrame()
+    {
+        var applied = new List<LogicObstacleCommand>();
+        LogicObstacleCommandService.RegisterInitialBoxObstacleForTests(
+            10,
+            FixVector2.Zero,
+            new FixVector2(1, 1),
+            applied.Add);
+        LogicObstacleCommandService.ScheduleRemoveForNextFrame(10);
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicObstacleCommandService.ApplyFrameForTests(1, applied.Add);
+
+        Assert.AreEqual(2, applied.Count);
+        Assert.AreEqual(LogicObstacleCommandKind.Remove, applied[1].Kind);
+        Assert.AreEqual(0, LogicObstacleCommandService.ActiveObstacleCount);
+        Assert.AreEqual(0, LogicObstacleCommandService.PendingCount);
+        Assert.AreEqual(1, LogicObstacleCommandService.History.Count);
+    }
+
+    [Test]
+    public void InitialBoxObstacle_RejectsRegistrationAfterFirstFrameStarts()
+    {
+        LogicTimeControlService.BeginFrame(1);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            LogicObstacleCommandService.RegisterInitialBoxObstacleForTests(
+                10,
+                FixVector2.Zero,
+                new FixVector2(1, 1),
+                _ => { }));
+
+        StringAssert.Contains("before the first logic frame", exception.Message);
+    }
+
+    [Test]
     public void ApplyFrame_RejectsMissedCommandFrame()
     {
         LogicObstacleCommandService.ScheduleBoxForNextFrame(10, FixVector2.Zero, new FixVector2(1, 1));

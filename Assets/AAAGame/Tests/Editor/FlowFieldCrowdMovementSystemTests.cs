@@ -435,6 +435,50 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 注销动态建筑Box障碍后必须恢复Authored地形可走性()
+    {
+        const int width = 8;
+        const int height = 3;
+        const int obstacleId = 82003;
+        var walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            obstacleId,
+            new FixVector2((Fix64)1.5f, (Fix64)1.5f),
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f));
+        ProcessRuntimeDirtyQueueUntilReady(1);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestRuntimeCellDiagnostics(
+            1,
+            1,
+            out bool walkableWhileRegistered,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _));
+        Assert.IsFalse(walkableWhileRegistered);
+
+        FlowFieldCrowdMovementSystem.UnregisterObstacle(obstacleId);
+        ProcessRuntimeDirtyQueueUntilReady(100);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestRuntimeCellDiagnostics(
+            1,
+            1,
+            out bool walkableAfterUnregister,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _));
+        Assert.IsTrue(walkableAfterUnregister);
+    }
+
+    [Test]
     public void 同一障碍Id切换Shape不得残留旧类型()
     {
         const int obstacleId = 82002;
@@ -5584,6 +5628,45 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.AreEqual(1, clearCost, "clear sector 应通过静态语义读出普通成本 1");
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(3, 3, out byte blockedCost));
         Assert.AreEqual(255, blockedCost, "chunk sector 内不可走格应保持硬阻挡成本 255");
+    }
+
+    [Test]
+    public void PrebakedWorld_WithInitialDynamicObstacle_MaterializesImportedFullCostField()
+    {
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>(
+            "Assets/AAAGame/Tilemap/LvTest_FlowNavigationGrid_Medium.asset");
+        Assert.NotNull(grid);
+        FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
+        Assert.NotNull(derivedData);
+        Assert.IsTrue(derivedData.IsValid);
+
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = derivedData.ConfigSectorSizeInCells;
+        config.PortalNarrowWidthCells = derivedData.ConfigPortalNarrowWidthCells;
+        config.PortalMaxWindowWidthCells = derivedData.ConfigPortalMaxWindowWidthCells;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSource(
+            grid.AgentTypeId,
+            grid.Width,
+            grid.Height,
+            grid.CellSize,
+            grid.Origin,
+            grid.GetWalkableMaskRuntimeReadOnlyReference(),
+            grid.GetCellAnchorsRuntimeReadOnlyReference(),
+            grid.GetCostFieldRuntimeReadOnlyReference(),
+            grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
+            derivedData,
+            useRuntimeReadOnlyReferences: true);
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            82004,
+            new FixVector2((Fix64)60.5f, (Fix64)46.5f),
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f));
+
+        ProcessWorldBuildQueueUntilReady();
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestWorld());
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestCommittedFullCostField());
     }
 
     [Test]

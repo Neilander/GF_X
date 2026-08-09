@@ -12,7 +12,10 @@ public static class CareerRunSettings
     public static Archetype StartingArchetype { get; private set; }
     public static VariableExperimentRuleTable ActiveRule { get; private set; }
 
-    public static Archetype ResolveRememberedSelection(string levelIdentifier, IReadOnlyList<Archetype> available)
+    public static Archetype ResolveRememberedSelection(
+        string levelIdentifier,
+        IReadOnlyList<Archetype> available,
+        Archetype defaultArchetype)
     {
         if (string.IsNullOrWhiteSpace(levelIdentifier))
             throw new ArgumentException("Level identifier is empty.", nameof(levelIdentifier));
@@ -27,19 +30,62 @@ public static class CareerRunSettings
                     return remembered;
             }
         }
-        return available[0];
+
+        if (defaultArchetype == Archetype.None || defaultArchetype == Archetype.Common)
+            throw new InvalidOperationException($"Level '{levelIdentifier}' has invalid default starting industry '{defaultArchetype}'.");
+        for (int i = 0; i < available.Count; i++)
+        {
+            if (available[i] == defaultArchetype)
+                return defaultArchetype;
+        }
+
+        throw new InvalidOperationException(
+            $"Level '{levelIdentifier}' default starting industry '{defaultArchetype}' is not unlocked.");
+    }
+
+    public static void EnsureDefaultSelectionAvailable(List<Archetype> available, Archetype defaultArchetype)
+    {
+        if (available == null)
+            throw new ArgumentNullException(nameof(available));
+        if (defaultArchetype == Archetype.None || defaultArchetype == Archetype.Common)
+            throw new InvalidOperationException($"Default starting industry '{defaultArchetype}' is not selectable.");
+
+        for (int i = 0; i < available.Count; i++)
+        {
+            if (available[i] == defaultArchetype)
+            {
+                CareerConfigRuntime.SortArchetypes(available);
+                return;
+            }
+        }
+
+        available.Add(defaultArchetype);
+        CareerConfigRuntime.SortArchetypes(available);
+    }
+
+    public static string ResolveRuntimeLevelIdentifier(string levelIdentifier, bool isVariableExperiment)
+    {
+        LevelTable sourceLevel = CareerConfigRuntime.GetLevelRequired(levelIdentifier);
+        if (!isVariableExperiment)
+            return sourceLevel.Identifier;
+
+        if (!CareerConfigRuntime.TryGetExperiment(levelIdentifier, out VariableExperimentTable experiment))
+            throw new InvalidOperationException($"Level '{levelIdentifier}' has no variable experiment config.");
+        return string.IsNullOrWhiteSpace(experiment.LevelConfigIdentifier)
+            ? sourceLevel.Identifier
+            : CareerConfigRuntime.GetLevelRequired(experiment.LevelConfigIdentifier).Identifier;
     }
 
     public static string BeginRun(string levelIdentifier, bool isVariableExperiment, Archetype startingArchetype)
     {
-        LevelTable sourceLevel = CareerConfigRuntime.GetLevelRequired(levelIdentifier);
+        CareerConfigRuntime.GetLevelRequired(levelIdentifier);
         if (startingArchetype == Archetype.None || startingArchetype == Archetype.Common)
             throw new InvalidOperationException($"Starting industry '{startingArchetype}' is not selectable.");
         if (CareerConfigRuntime.IsTutorialLevel(levelIdentifier) && startingArchetype != Archetype.Coding)
             throw new InvalidOperationException("Tutorial level requires the Coding starting industry.");
 
         VariableExperimentRuleTable rule = null;
-        string runtimeLevelIdentifier = sourceLevel.Identifier;
+        string runtimeLevelIdentifier = ResolveRuntimeLevelIdentifier(levelIdentifier, isVariableExperiment);
         if (isVariableExperiment)
         {
             if (!CareerConfigRuntime.TryGetExperiment(levelIdentifier, out VariableExperimentTable experiment))
@@ -50,8 +96,6 @@ public static class CareerRunSettings
                 throw new InvalidOperationException(
                     $"Variable experiment '{levelIdentifier}' requires starting industry '{rule.ForcedArchetype}'.");
             }
-            if (!string.IsNullOrWhiteSpace(experiment.LevelConfigIdentifier))
-                runtimeLevelIdentifier = CareerConfigRuntime.GetLevelRequired(experiment.LevelConfigIdentifier).Identifier;
         }
 
         s_LastSelections[levelIdentifier] = startingArchetype;

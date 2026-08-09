@@ -3723,8 +3723,12 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
-    private static NavigationWorld ApplyInitialRuntimeOverlayToPrebakedWorldIfNeeded(NavigationWorld staticWorld, int agentTypeId)
+    private static NavigationWorld ApplyInitialRuntimeOverlayToPrebakedWorldIfNeeded(
+        NavigationWorld staticWorld,
+        int agentTypeId,
+        out List<PendingSectorPortalAccess> pendingPortalAccessEntries)
     {
+        pendingPortalAccessEntries = null;
         if (staticWorld == null)
             throw new InvalidOperationException("ApplyInitialRuntimeOverlayToPrebakedWorldIfNeeded failed: static world is null.");
         if (CircleObstacles.Count == 0 && BoxObstacles.Count == 0 && CostStamps.Count == 0)
@@ -3765,7 +3769,8 @@ public static partial class FlowFieldCrowdMovementSystem
             CreateSortedCircleObstacleSnapshot(CircleObstacles.Values),
             CreateSortedBoxObstacleSnapshot(BoxObstacles.Values),
             CreateSortedCostStampSnapshot(CostStamps.Values),
-            "initial-prebaked-overlay");
+            "initial-prebaked-overlay",
+            out pendingPortalAccessEntries);
         LogNoStacktrace(
             $"[FlowPrebakedWorldOverlay] agentType={agentTypeId} dirtySectors={dirtySectors.Count} costSectors={costDirtySectors.Count} " +
             $"circleCount={CircleObstacles.Count} boxCount={BoxObstacles.Count} costStampCount={CostStamps.Count}");
@@ -3779,8 +3784,10 @@ public static partial class FlowFieldCrowdMovementSystem
         List<CircleObstacle> circleObstacles,
         List<BoxObstacle> boxObstacles,
         List<CostStamp> costStamps,
-        string reason)
+        string reason,
+        out List<PendingSectorPortalAccess> pendingPortalAccessEntries)
     {
+        pendingPortalAccessEntries = null;
         if (targetWorld == null)
             throw new InvalidOperationException("ApplyRuntimeDirtyOverlayImmediate failed: target world is null.");
         if (dirtySectors == null || dirtySectors.Count == 0)
@@ -3818,6 +3825,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     break;
                 case RuntimeDirtyRebuildStage.SymmetrizeNeighborMask:
                     SymmetrizeNeighborTraversalMaskForSectors(job.WorkingWorld, job.DirtySectors);
+                    PruneIsolatedWalkableCellsForSectors(job.WorkingWorld, job.DirtySectors, "initial-prebaked-overlay");
                     job.SectorCursor = 0;
                     job.Stage = RuntimeDirtyRebuildStage.CostField;
                     break;
@@ -3833,6 +3841,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 case RuntimeDirtyRebuildStage.PortalGraph:
                     ProcessRuntimeDirtyPortalGraph(job, long.MaxValue, forceComplete: true);
                     break;
+                case RuntimeDirtyRebuildStage.PrepareCommit:
+                    job.Stage = RuntimeDirtyRebuildStage.Complete;
+                    break;
                 case RuntimeDirtyRebuildStage.Commit:
                     job.Stage = RuntimeDirtyRebuildStage.Complete;
                     break;
@@ -3841,11 +3852,7 @@ public static partial class FlowFieldCrowdMovementSystem
             }
         }
 
-        CommitPendingSectorPortalAccessEntries(job.WorkingWorld, job.PendingPortalAccessEntries);
-        EnsureAllSectorPortalAccessCoverage(job.WorkingWorld, "synchronous-world-build");
-        FinalizeWorldCostStorage(job.WorkingWorld);
-        RebuildDeterministicPortalTransitionCosts(job.WorkingWorld);
-        ValidateAllSectorPortalAccessCoverage(job.WorkingWorld, "synchronous-world-build");
+        pendingPortalAccessEntries = job.PendingPortalAccessEntries;
         return job.WorkingWorld;
     }
 
@@ -15847,7 +15854,10 @@ public static partial class FlowFieldCrowdMovementSystem
             if (terrainSource.DerivedNavigationData != null)
             {
                 NavigationWorld prebakedWorld = ImportDerivedNavigationWorld(terrainSource);
-                job.WorkingWorld = ApplyInitialRuntimeOverlayToPrebakedWorldIfNeeded(prebakedWorld, job.AgentTypeId);
+                job.WorkingWorld = ApplyInitialRuntimeOverlayToPrebakedWorldIfNeeded(
+                    prebakedWorld,
+                    job.AgentTypeId,
+                    out job.PendingPortalAccessEntries);
                 RefreshWorldBuildAuthorityInputHash(job);
                 job.Stage = WorldBuildStage.Commit;
                 return true;
@@ -18987,12 +18997,22 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         if (world == null)
             throw new InvalidOperationException("MaterializeMutableCostField failed: world is null.");
-        if (world.WalkableMask == null || world.WalkableMask.Length != world.Width * world.Height)
+        int cellCount = checked(world.Width * world.Height);
+        if (world.WalkableMask == null || world.WalkableMask.Length != cellCount)
             throw new InvalidOperationException("MaterializeMutableCostField failed: walkable mask is missing.");
         if (world.Sectors == null || world.Sectors.Length != world.SectorCountX * world.SectorCountY)
             throw new InvalidOperationException("MaterializeMutableCostField failed: sectors are missing.");
+        if (world.CostField != null)
+        {
+            if (world.CostField.Length != cellCount)
+                throw new InvalidOperationException($"MaterializeMutableCostField failed: invalid full cost field length={world.CostField.Length} expected={cellCount}.");
+            if (world.SectorCostFields != null)
+                throw new InvalidOperationException("MaterializeMutableCostField failed: full and sector cost fields are both present.");
 
-        byte[] costField = RentByteArray(world.Width * world.Height, clear: false);
+            return RentCopiedByteArray(world.CostField);
+        }
+
+        byte[] costField = RentByteArray(cellCount, clear: false);
         for (int i = 0; i < costField.Length; i++)
             costField[i] = world.WalkableMask[i] ? (byte)1 : byte.MaxValue;
 

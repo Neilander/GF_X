@@ -1018,7 +1018,6 @@ MonoBehaviour:
   persistAcrossSceneLoads: 0
   waitForGameplayScene: 1
   gameplaySceneName: Real
-  rebuildOnSceneLoaded: 1
   fastRebuildOnGameplaySceneAvailable: 1
   terrainRetryInterval: 0.05
   sceneRebuildFrameDelay: 2

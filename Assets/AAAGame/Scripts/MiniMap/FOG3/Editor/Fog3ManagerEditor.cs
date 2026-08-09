@@ -17,7 +17,6 @@ namespace AAAGame.MiniMap.FOG3.Editor
         private SerializedProperty persistAcrossSceneLoads;
         private SerializedProperty waitForGameplayScene;
         private SerializedProperty gameplaySceneName;
-        private SerializedProperty rebuildOnSceneLoaded;
         private SerializedProperty fastRebuildOnGameplaySceneAvailable;
         private SerializedProperty sceneRebuildFrameDelay;
         private SerializedProperty sceneRebuildDelay;
@@ -64,7 +63,6 @@ namespace AAAGame.MiniMap.FOG3.Editor
             persistAcrossSceneLoads = serializedObject.FindProperty("persistAcrossSceneLoads");
             waitForGameplayScene = serializedObject.FindProperty("waitForGameplayScene");
             gameplaySceneName = serializedObject.FindProperty("gameplaySceneName");
-            rebuildOnSceneLoaded = serializedObject.FindProperty("rebuildOnSceneLoaded");
             fastRebuildOnGameplaySceneAvailable = serializedObject.FindProperty("fastRebuildOnGameplaySceneAvailable");
             sceneRebuildFrameDelay = serializedObject.FindProperty("sceneRebuildFrameDelay");
             sceneRebuildDelay = serializedObject.FindProperty("sceneRebuildDelay");
@@ -203,7 +201,6 @@ namespace AAAGame.MiniMap.FOG3.Editor
                 EditorGUILayout.PropertyField(persistAcrossSceneLoads, new GUIContent("跨场景保留"));
                 EditorGUILayout.PropertyField(waitForGameplayScene, new GUIContent("等待玩法场景"));
                 EditorGUILayout.PropertyField(gameplaySceneName, new GUIContent("玩法场景名"));
-                EditorGUILayout.PropertyField(rebuildOnSceneLoaded, new GUIContent("场景加载后重建"));
                 EditorGUILayout.PropertyField(fastRebuildOnGameplaySceneAvailable, new GUIContent("场景可用立即重建"));
                 EditorGUILayout.PropertyField(sceneRebuildFrameDelay, new GUIContent("兜底重建延迟帧"));
                 EditorGUILayout.PropertyField(sceneRebuildDelay, new GUIContent("兜底重建延迟秒"));

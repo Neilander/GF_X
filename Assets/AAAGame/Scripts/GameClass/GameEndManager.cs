@@ -204,20 +204,21 @@ public class GameEndManager : GameFrameworkComponent
             CareerRunSettings.IsVariableExperiment,
             offsetRate);
         Log.Info(
-            "[Career] Win recorded. level={0}, experiment={1}, firstClear={2}, offset={3}, firstOffsetReward={4}, unlockedIndustry={5}, earned={6}, spent={7}, available={8}.",
+            "[Career] Win recorded. level={0}, experiment={1}, firstClear={2}, offset={3}, firstOffsetReward={4}, unlockedIndustries={5}, earned={6}, spent={7}, available={8}.",
             record.LevelIdentifier,
             record.IsExperiment,
             record.FirstClear,
             record.OffsetRate,
             record.FirstOffsetReward,
-            record.UnlockedArchetype,
+            string.Join(",", record.UnlockedArchetypes),
             progress.GetEarnedPointCount(),
             progress.GetSpentPointCount(),
             progress.GetAvailablePointCount());
 
-        if (record.UnlockedArchetype != Archetype.None)
+        for (int i = 0; i < record.UnlockedArchetypes.Count; i++)
         {
-            string industryName = LocalizationTextDataModel.GetText($"Archetype_{record.UnlockedArchetype}");
+            Archetype unlockedArchetype = record.UnlockedArchetypes[i];
+            string industryName = LocalizationTextDataModel.GetText($"Archetype_{unlockedArchetype}");
             UnlockPresentationService.Enqueue(new UnlockPayload(
                 UnlockPayloadType.Industry,
                 industryName,

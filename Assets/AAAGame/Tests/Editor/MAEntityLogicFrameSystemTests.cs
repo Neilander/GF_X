@@ -568,7 +568,7 @@ public class MAEntityLogicFrameSystemTests
                 LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
 
             Assert.IsFalse(host.BuffComp.HasBuff(timedBuffId));
-            Assert.AreEqual((Fix64)95, host.HealthValue);
+            Assert.AreEqual((Fix64)90, host.HealthValue);
         }
         finally
         {

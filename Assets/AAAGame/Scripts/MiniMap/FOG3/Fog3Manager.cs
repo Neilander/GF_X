@@ -64,8 +64,6 @@ namespace AAAGame.MiniMap.FOG3
         [SerializeField] private bool waitForGameplayScene = true;
         [Tooltip("包含 TileWorld/GridBased 关卡的玩法场景名。")]
         [SerializeField] private string gameplaySceneName = "Game";
-        [Tooltip("玩法场景或关卡实体加载后是否重建迷雾。")]
-        [SerializeField] private bool rebuildOnSceneLoaded = true;
         [Tooltip("玩法场景可用时立即尝试初始化迷雾，减少先看到完整场景的空窗。")]
         [SerializeField] private bool fastRebuildOnGameplaySceneAvailable = true;
         [Tooltip("玩法场景已进入但 TileWorld/GridBased 地形还没生成出来时，重新检测地形的间隔。数值越小，迷雾越快跟上关卡生成。")]
@@ -391,7 +389,7 @@ namespace AAAGame.MiniMap.FOG3
         {
             TrySubscribeEvents();
             if (CanInitializeForCurrentScene())
-                TryRebuildOrSchedule("FOG3 manager started");
+                TryInitializeOrSchedule("FOG3 manager started");
             else
                 Log.Info($"[FOG3] Waiting for gameplay scene '{gameplaySceneName}' before terrain detection.");
         }
@@ -773,13 +771,30 @@ namespace AAAGame.MiniMap.FOG3
             sceneRebuildCoroutine = StartCoroutine(RebuildWhenSceneReady(reason));
         }
 
-        private void TryRebuildOrSchedule(string reason)
+        private void TryInitializeOrSchedule(string reason)
         {
+            if (isInitialized)
+            {
+                if (sceneRebuildCoroutine != null)
+                {
+                    StopCoroutine(sceneRebuildCoroutine);
+                    sceneRebuildCoroutine = null;
+                }
+
+                return;
+            }
+
             if (fastRebuildOnGameplaySceneAvailable && CanInitializeForCurrentScene())
             {
                 RebuildTerrain();
                 if (isInitialized)
                 {
+                    if (sceneRebuildCoroutine != null)
+                    {
+                        StopCoroutine(sceneRebuildCoroutine);
+                        sceneRebuildCoroutine = null;
+                    }
+
                     Log.Info($"[FOG3] Fast rebuilt after scene became ready: {reason}.");
                     return;
                 }
@@ -798,7 +813,7 @@ namespace AAAGame.MiniMap.FOG3
                 yield return new WaitForSecondsRealtime(sceneRebuildDelay);
 
             sceneRebuildCoroutine = null;
-            if (!CanInitializeForCurrentScene())
+            if (isInitialized || !CanInitializeForCurrentScene())
                 yield break;
 
             RebuildTerrain();
@@ -1290,10 +1305,7 @@ namespace AAAGame.MiniMap.FOG3
             if (!IsGameplaySceneName(sceneName))
                 return;
 
-            if (isInitialized && !rebuildOnSceneLoaded)
-                return;
-
-            TryRebuildOrSchedule($"{reason}: {sceneName}");
+            TryInitializeOrSchedule($"{reason}: {sceneName}");
         }
 
         private void OnShowEntitySuccess(object sender, GameEventArgs e)
@@ -1304,7 +1316,7 @@ namespace AAAGame.MiniMap.FOG3
 
             if (IsLevelEntityLogic(args.Entity.Logic))
             {
-                TryRebuildOrSchedule("GF_X level entity loaded");
+                TryInitializeOrSchedule("GF_X level entity loaded");
                 return;
             }
 
@@ -1918,7 +1930,8 @@ namespace AAAGame.MiniMap.FOG3
             if (state.HasAppliedState
                 && state.LastShouldRender == shouldRender
                 && state.LastShouldAnimate == shouldAnimate
-                && state.LastShouldShowHealthBar == shouldShowHealthBar)
+                && state.LastShouldShowHealthBar == shouldShowHealthBar
+                && HealthBarComp.IsFogVisibilityApplied(state.EntityId, shouldShowHealthBar))
             {
                 return false;
             }

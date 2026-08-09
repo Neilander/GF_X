@@ -354,6 +354,19 @@ public class HealthBarComp : MonoBehaviour
         s_fogVisibleMissing++;
     }
 
+    public static bool IsFogVisibilityApplied(int entityId, bool visible)
+    {
+        if (!ActiveBars.TryGetValue(entityId, out HealthBarComp cached) || cached == null)
+            return true;
+
+        if (cached.ownerCanvas == null)
+            cached.ownerCanvas = cached.GetComponent<Canvas>();
+        if (cached.ownerCanvas == null)
+            throw new System.InvalidOperationException($"HealthBar owner canvas is missing. entityId={entityId}.");
+
+        return cached._visibleByFog == visible && cached.ownerCanvas.enabled == visible;
+    }
+
     public static void ResetFogVisibilityDiagnostics()
     {
         s_fogVisibleCalls = 0;
@@ -524,7 +537,10 @@ public class HealthBarComp : MonoBehaviour
             return true;
 
         var building = followTarget.GetComponent<BuildingEntity>();
-        if (building != null && (building.IsLv0Invincible || building.IsHealthBarSuppressedByBuff))
+        if (building != null
+            && (building.IsLv0Invincible
+                || building.IsPermanentlyInvincible
+                || building.IsHealthBarSuppressedByBuff))
             return true;
 
         return false;

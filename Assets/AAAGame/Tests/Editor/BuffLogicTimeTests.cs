@@ -70,7 +70,7 @@ public sealed class BuffLogicTimeTests
     }
 
     [Test]
-    public void HealthDrain_DoesNotAccumulateWhileHostIsOutOfCombat()
+    public void HealthDrain_StartsOnFirstCombatAndContinuesAfterDisengaging()
     {
         var context = new SimEntityContext
         {
@@ -96,9 +96,9 @@ public sealed class BuffLogicTimeTests
 
         attack.InterruptAttack();
         context.TickOutOfCombatState(0f);
-        for (int i = 0; i < 60; i++)
+        for (int i = 0; i < 31; i++)
             callback.OnUpdate(LogicFrameRuntime.FixedDeltaTime);
-        Assert.AreEqual((initialHealth - (Fix64)5).RawValue, context.HealthValue.RawValue);
+        Assert.AreEqual((initialHealth - (Fix64)10).RawValue, context.HealthValue.RawValue);
     }
 
     [Test]
@@ -211,6 +211,7 @@ public sealed class BuffLogicTimeTests
             typeof(PositionAreaRefreshBuff),
             typeof(TauntBuffCallback),
             typeof(TimedDeathBuff),
+            typeof(HealthDrainOverTimeBuff),
         };
 
         string[] missing = statefulTypes
@@ -261,6 +262,11 @@ public sealed class BuffLogicTimeTests
             typeof(TimedDeathBuff),
             "m_AdditiveDuration",
             Fix64.One);
+        AssertPrivateFieldChangesContributorHash(
+            new HealthDrainOverTimeBuff(Fix64.One),
+            typeof(HealthDrainOverTimeBuff),
+            "m_HasStarted",
+            true);
         AssertPrivateFieldChangesContributorHash(
             new HeroGhostBuff(),
             typeof(HeroGhostBuff),

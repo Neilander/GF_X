@@ -196,11 +196,14 @@ public partial class BuildingBuildTips : UIFormBase
         if (varIndustryList == null)
             return;
 
+        foreach (Archetype archetype in m_BuildingCandidatesByArchetype.Keys)
+            CareerConfigRuntime.GetArchetypeOrderIndexRequired(archetype);
+
         int optionIndex = 0;
-        foreach (Archetype archetype in Enum.GetValues(typeof(Archetype)))
+        IReadOnlyList<Archetype> archetypeOrder = CareerConfigRuntime.ArchetypeOrder;
+        for (int archetypeIndex = 0; archetypeIndex < archetypeOrder.Count; archetypeIndex++)
         {
-            if (archetype == Archetype.None)
-                continue;
+            Archetype archetype = archetypeOrder[archetypeIndex];
 
             if (!m_BuildingCandidatesByArchetype.TryGetValue(archetype, out List<BuildingData> list) || list.Count <= 0)
                 continue;

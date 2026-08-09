@@ -619,7 +619,12 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         }
 
         if (IsBuildingEntity && BlocksLogicMovement && !IsNavigationStaticBaked)
-            ScheduleObstacleAdds(currentLifecycleFrame);
+        {
+            if (currentLifecycleFrame)
+                ScheduleObstacleAdds(true);
+            else
+                RegisterInitialObstacles();
+        }
     }
 
     internal void ValidateReadyForSpawn()
@@ -1091,6 +1096,20 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
                 LogicObstacleCommandService.ScheduleBoxForCurrentLifecycleFrame(obstacleId, shape.Center, shape.HalfExtents);
             else
                 LogicObstacleCommandService.ScheduleBoxForNextFrame(obstacleId, shape.Center, shape.HalfExtents);
+            m_RegisteredObstacleIds.Add(obstacleId);
+        }
+    }
+
+    private void RegisterInitialObstacles()
+    {
+        if (m_RegisteredObstacleIds.Count > 0)
+            throw new InvalidOperationException($"LogicEntityState.RegisterInitialObstacles failed: entity {EntityId.Value} already has registered obstacles.");
+
+        for (int i = 0; i < m_LogicObstacleShapes.Count; i++)
+        {
+            LogicCombatShape shape = m_LogicObstacleShapes[i];
+            int obstacleId = LogicEntityObstacleId.FromBuildingCollider(EntityId, i);
+            LogicObstacleCommandService.RegisterInitialBoxObstacle(obstacleId, shape.Center, shape.HalfExtents);
             m_RegisteredObstacleIds.Add(obstacleId);
         }
     }

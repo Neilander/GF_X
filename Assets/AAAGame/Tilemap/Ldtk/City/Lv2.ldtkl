@@ -65,9 +65,9 @@
 					"defUid": 12,
 					"px": [1032,440],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_SortingCenter_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "InitBase_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
-							"params": ["Buil_SortingCenter_Lv1"]
+							"params": ["InitBase_Lv1"]
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 24, "realEditorValues": [{
 							"id": "V_Bool",

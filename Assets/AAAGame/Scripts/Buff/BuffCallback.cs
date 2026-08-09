@@ -378,6 +378,7 @@ public sealed class HighHealthTargetCriticalBuff : BuffCallback
 public sealed class HealthDrainOverTimeBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 m_DamagePerSecond;
+    private bool m_HasStarted;
     private Fix64 m_ElapsedSeconds;
 
     public HealthDrainOverTimeBuff(Fix64 damagePerSecond)
@@ -390,8 +391,12 @@ public sealed class HealthDrainOverTimeBuff : BuffCallback, ILogicDeterministicS
         base.OnUpdate(deltaTime);
         if (hostEntity == null || !hostEntity.Alive || m_DamagePerSecond <= Fix64.Zero || deltaTime <= Fix64.Zero)
             return;
-        if (hostEntity.IsOutOfCombat)
-            return;
+        if (!m_HasStarted)
+        {
+            if (hostEntity.IsOutOfCombat)
+                return;
+            m_HasStarted = true;
+        }
 
         m_ElapsedSeconds += (Fix64)deltaTime;
         while (m_ElapsedSeconds >= Fix64.One && hostEntity != null && hostEntity.Alive)
@@ -403,6 +408,7 @@ public sealed class HealthDrainOverTimeBuff : BuffCallback, ILogicDeterministicS
 
     public void WriteDeterministicState(LogicStateHasher hasher)
     {
+        hasher.Add(m_HasStarted);
         hasher.Add(m_ElapsedSeconds.RawValue);
     }
 }

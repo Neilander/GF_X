@@ -317,6 +317,22 @@ public static class LogicObstacleCommandService
         ScheduleBox(checked(LogicTimeControlService.CurrentFrame + 1), stableObstacleId, center, halfExtents);
     }
 
+    public static void RegisterInitialBoxObstacle(int stableObstacleId, FixVector2 center, FixVector2 halfExtents)
+    {
+        RegisterInitialBoxObstacle(stableObstacleId, center, halfExtents, s_RuntimeSink);
+    }
+
+#if UNITY_EDITOR
+    public static void RegisterInitialBoxObstacleForTests(
+        int stableObstacleId,
+        FixVector2 center,
+        FixVector2 halfExtents,
+        Action<LogicObstacleCommand> sink)
+    {
+        RegisterInitialBoxObstacle(stableObstacleId, center, halfExtents, sink);
+    }
+#endif
+
     public static void ScheduleCircleForNextFrame(int stableObstacleId, FixVector2 center, Fix64 radius)
     {
         ScheduleCircle(checked(LogicTimeControlService.CurrentFrame + 1), stableObstacleId, center, radius);
@@ -436,6 +452,36 @@ public static class LogicObstacleCommandService
             center,
             halfExtents,
             Fix64.Zero));
+    }
+
+    private static void RegisterInitialBoxObstacle(
+        int stableObstacleId,
+        FixVector2 center,
+        FixVector2 halfExtents,
+        Action<LogicObstacleCommand> sink)
+    {
+        EnsureActive();
+        if (LogicTimeControlService.CurrentFrame != 0 || LogicFrameRuntime.IsExecutingFrame || IsApplyingFrame)
+            throw new InvalidOperationException("Initial obstacles can only be registered before the first logic frame.");
+        if (sink == null)
+            throw new ArgumentNullException(nameof(sink));
+        if (halfExtents.x <= Fix64.Zero || halfExtents.y <= Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(halfExtents), "Box half extents must be positive.");
+
+        int obstacleId = ValidateObstacleId(stableObstacleId);
+        if (s_Active.ContainsKey(obstacleId))
+            throw new InvalidOperationException($"Initial obstacle {obstacleId} is already active.");
+
+        var command = new LogicObstacleCommand(
+            0,
+            0,
+            LogicObstacleCommandKind.AddOrUpdateBox,
+            obstacleId,
+            center,
+            halfExtents,
+            Fix64.Zero);
+        sink(command);
+        s_Active.Add(obstacleId, command);
     }
 
     private static void ScheduleCircle(ulong effectiveFrame, int stableObstacleId, FixVector2 center, Fix64 radius)

@@ -38,6 +38,13 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
         return m_ClearedExperiments.Contains(RequireLevelIdentifier(levelIdentifier));
     }
 
+    public bool IsVariableExperimentUnlocked(string levelIdentifier)
+    {
+        EnsureLoaded();
+        string level = RequireLevelIdentifier(levelIdentifier);
+        return CareerConfigRuntime.TryGetExperiment(level, out _) && m_ClearedLevels.Contains(level);
+    }
+
     public int GetMaxOffsetRate(string levelIdentifier)
     {
         EnsureLoaded();
@@ -83,16 +90,24 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
     public IReadOnlyList<Archetype> GetUnlockedArchetypes()
     {
         EnsureLoaded();
-        var unlocked = new HashSet<Archetype> { Archetype.Coding };
+        var unlocked = new HashSet<Archetype>();
         foreach (string levelIdentifier in m_ClearedLevels)
         {
-            Archetype archetype = CareerConfigRuntime.GetLevelRequired(levelIdentifier).UnlockArchetype;
-            if (archetype != Archetype.None && archetype != Archetype.Common)
-                unlocked.Add(archetype);
+            Archetype[] levelUnlocks = CareerConfigRuntime.GetLevelRequired(levelIdentifier).UnlockArchetype;
+            for (int i = 0; i < levelUnlocks.Length; i++)
+                unlocked.Add(levelUnlocks[i]);
         }
 
-        var result = new List<Archetype>(unlocked);
-        result.Sort((left, right) => ((int)left).CompareTo((int)right));
+        var result = new List<Archetype>(unlocked.Count);
+        IReadOnlyList<Archetype> archetypeOrder = CareerConfigRuntime.ArchetypeOrder;
+        for (int i = 0; i < archetypeOrder.Count; i++)
+        {
+            Archetype archetype = archetypeOrder[i];
+            if (unlocked.Remove(archetype))
+                result.Add(archetype);
+        }
+        if (unlocked.Count > 0)
+            throw new InvalidOperationException("Career record contains an industry outside LevelTable unlock order.");
         return result;
     }
 
@@ -113,9 +128,9 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
         if (offsetImproved)
             m_MaxOffsetRates[level] = offsetRate;
 
-        Archetype unlockedArchetype = Archetype.None;
+        IReadOnlyList<Archetype> unlockedArchetypes = Array.Empty<Archetype>();
         if (firstClear && !isExperiment)
-            unlockedArchetype = CareerConfigRuntime.GetLevelRequired(level).UnlockArchetype;
+            unlockedArchetypes = CareerConfigRuntime.GetLevelRequired(level).UnlockArchetype;
 
         bool firstOffsetReward = previousOffset < CareerConfigRuntime.OffsetPointThreshold
                                  && offsetRate >= CareerConfigRuntime.OffsetPointThreshold;
@@ -128,7 +143,7 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
             firstClear,
             firstOffsetReward,
             offsetRate,
-            unlockedArchetype,
+            unlockedArchetypes,
             false);
     }
 
@@ -230,7 +245,7 @@ public readonly struct CareerWinRecordResult
         bool firstClear,
         bool firstOffsetReward,
         int offsetRate,
-        Archetype unlockedArchetype,
+        IReadOnlyList<Archetype> unlockedArchetypes,
         bool ignored)
     {
         LevelIdentifier = levelIdentifier;
@@ -238,7 +253,7 @@ public readonly struct CareerWinRecordResult
         FirstClear = firstClear;
         FirstOffsetReward = firstOffsetReward;
         OffsetRate = offsetRate;
-        UnlockedArchetype = unlockedArchetype;
+        UnlockedArchetypes = unlockedArchetypes ?? throw new ArgumentNullException(nameof(unlockedArchetypes));
         Ignored = ignored;
     }
 
@@ -247,7 +262,7 @@ public readonly struct CareerWinRecordResult
     public bool FirstClear { get; }
     public bool FirstOffsetReward { get; }
     public int OffsetRate { get; }
-    public Archetype UnlockedArchetype { get; }
+    public IReadOnlyList<Archetype> UnlockedArchetypes { get; }
     public bool Ignored { get; }
 
     public static CareerWinRecordResult CreateIgnored(string levelIdentifier, bool isExperiment, int offsetRate)
@@ -258,7 +273,7 @@ public readonly struct CareerWinRecordResult
             false,
             false,
             offsetRate,
-            Archetype.None,
+            Array.Empty<Archetype>(),
             true);
     }
 }

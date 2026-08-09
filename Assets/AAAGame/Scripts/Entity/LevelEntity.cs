@@ -71,7 +71,6 @@ public partial class LevelEntity : EntityBase
         CollectStrongholds();
         m_RuntimePresetPoints = GetComponentsInChildren<EntityPresetPoint>(true);
         PhaseManager.ConfigureInvadeSpawnPoints(m_RuntimePresetPoints);
-        SubscribeRuntimeLayerRules();
         if (m_HiddenDuringRuntimeInitialization)
         {
             LevelSelectionService.HideEntityRenderersDuringLoad(this);
@@ -83,7 +82,6 @@ public partial class LevelEntity : EntityBase
     protected override void OnHide(bool isShutdown, object userData)
     {
         LogicBuildingDisabledEventService.BuildingDisabled -= OnLogicBuildingDisabled;
-        UnsubscribeRuntimeLayerRules();
 
         bool wasActiveLevel = activeLevelEntity == this;
         if (activeLevelEntity == this)
@@ -122,13 +120,6 @@ public partial class LevelEntity : EntityBase
             }
             LogRuntimeInitTiming("after-initial-yield", stopwatch);
 
-            await ApplyStrongholdRuntimeLayerRulesAsync(initVersion);
-            if (!IsRuntimeInitializationActive(initVersion))
-            {
-                return;
-            }
-            LogRuntimeInitTiming("after-stronghold-layer-rules", stopwatch);
-
             await SpawnPresetEntitiesAsync(initVersion);
             if (!IsRuntimeInitializationActive(initVersion))
             {
@@ -146,11 +137,6 @@ public partial class LevelEntity : EntityBase
             SyncEnemyStrongholdFogEffects();
             LogRuntimeInitTiming("after-enemy-stronghold-fog", stopwatch);
 
-            if (GroupMoveManager.HasInstance)
-            {
-                GroupMoveManager.Instance.PrewarmNavigationWorlds();
-            }
-            LogRuntimeInitTiming("after-navigation-prewarm", stopwatch);
             IsRuntimeInitializationCompleted = true;
             RuntimeInitializationCompleted?.Invoke(this);
             LogRuntimeInitTiming("completed-event-invoked", stopwatch);
@@ -173,144 +159,6 @@ public partial class LevelEntity : EntityBase
     private bool IsRuntimeInitializationActive(int initVersion)
     {
         return m_RuntimeInitializationVersion == initVersion && activeLevelEntity == this;
-    }
-
-    private void SubscribeRuntimeLayerRules()
-    {
-        if (tileWorldCreatorManager == null)
-        {
-            return;
-        }
-
-        tileWorldCreatorManager.OnBuildLayersReady -= ApplyStrongholdRuntimeLayerRules;
-        tileWorldCreatorManager.OnBuildLayersReady += ApplyStrongholdRuntimeLayerRules;
-    }
-
-    private void UnsubscribeRuntimeLayerRules()
-    {
-        if (tileWorldCreatorManager == null)
-        {
-            return;
-        }
-
-        tileWorldCreatorManager.OnBuildLayersReady -= ApplyStrongholdRuntimeLayerRules;
-    }
-
-    private void ApplyStrongholdRuntimeLayerRules()
-    {
-        if (!Application.isPlaying)
-        {
-            return;
-        }
-
-        if (tileWorldCreatorManager == null || tileWorldCreatorManager.configuration == null)
-        {
-            return;
-        }
-
-        var configuration = tileWorldCreatorManager.configuration;
-        for (int i = 0; i < configuration.buildLayerFolders.Count; i++)
-        {
-            var folder = configuration.buildLayerFolders[i];
-            if (folder == null || folder.buildLayers == null)
-            {
-                continue;
-            }
-
-            for (int j = 0; j < folder.buildLayers.Count; j++)
-            {
-                var buildLayer = folder.buildLayers[j];
-                if (buildLayer == null)
-                {
-                    continue;
-                }
-
-                var blueprintLayer = configuration.GetBlueprintLayerByGuid(buildLayer.assignedBlueprintLayerGuid);
-                if (blueprintLayer == null)
-                {
-                    continue;
-                }
-
-                if (!TryParseStrongholdLayerName(blueprintLayer.layerName, out _))
-                {
-                    continue;
-                }
-
-                var layerObject = buildLayer.GetLayerObject(tileWorldCreatorManager.gameObject);
-                if (layerObject == null)
-                {
-                    continue;
-                }
-
-                var renderers = layerObject.GetComponentsInChildren<Renderer>(true);
-                for (int r = 0; r < renderers.Length; r++)
-                {
-                    renderers[r].enabled = false;
-                }
-            }
-        }
-    }
-
-    private async UniTask ApplyStrongholdRuntimeLayerRulesAsync(int initVersion)
-    {
-        if (!Application.isPlaying)
-        {
-            return;
-        }
-
-        if (tileWorldCreatorManager == null || tileWorldCreatorManager.configuration == null)
-        {
-            return;
-        }
-
-        var configuration = tileWorldCreatorManager.configuration;
-        for (int i = 0; i < configuration.buildLayerFolders.Count; i++)
-        {
-            var folder = configuration.buildLayerFolders[i];
-            if (folder == null || folder.buildLayers == null)
-            {
-                continue;
-            }
-
-            for (int j = 0; j < folder.buildLayers.Count; j++)
-            {
-                if (!IsRuntimeInitializationActive(initVersion))
-                {
-                    return;
-                }
-
-                var buildLayer = folder.buildLayers[j];
-                if (buildLayer == null)
-                {
-                    continue;
-                }
-
-                var blueprintLayer = configuration.GetBlueprintLayerByGuid(buildLayer.assignedBlueprintLayerGuid);
-                if (blueprintLayer == null)
-                {
-                    continue;
-                }
-
-                if (!TryParseStrongholdLayerName(blueprintLayer.layerName, out _))
-                {
-                    continue;
-                }
-
-                var layerObject = buildLayer.GetLayerObject(tileWorldCreatorManager.gameObject);
-                if (layerObject == null)
-                {
-                    continue;
-                }
-
-                var renderers = layerObject.GetComponentsInChildren<Renderer>(true);
-                for (int r = 0; r < renderers.Length; r++)
-                {
-                    renderers[r].enabled = false;
-                }
-
-                await UniTask.Yield(PlayerLoopTiming.Update);
-            }
-        }
     }
 
     private void SpawnPresetEntities()
@@ -353,13 +201,15 @@ public partial class LevelEntity : EntityBase
                 effectiveIdentifier = slotId;
             }
 
-            if (point.PointType == EntityPresetPointType.Building
-                && !BuildingDataModel.TryResolvePresetIdentifier(effectiveIdentifier, out effectiveIdentifier))
+            if (point.PointType == EntityPresetPointType.Building)
             {
-                Log.Error("LevelEntity.SpawnPresetEntities failed: invalid building identifier '{0}' at point '{1}'.", point.Identifier, point.name);
-                continue;
+                effectiveIdentifier = ResolveCareerStartingBaseIdentifier(point, effectiveIdentifier);
+                if (!BuildingDataModel.TryResolvePresetIdentifier(effectiveIdentifier, out effectiveIdentifier))
+                {
+                    Log.Error("LevelEntity.SpawnPresetEntities failed: invalid building identifier '{0}' at point '{1}'.", point.Identifier, point.name);
+                    continue;
+                }
             }
-            effectiveIdentifier = ResolveCareerStartingBaseIdentifier(point, effectiveIdentifier);
 
             switch (point.PointType)
             {
@@ -395,8 +245,7 @@ public partial class LevelEntity : EntityBase
                             out var buildingInstanceId,
                             isGameEndConditionBuilding: point.IsGameEndConditionBuilding,
                             initialCoinReserves: initialCoinReserves,
-                            isNavigationStaticBaked: !point.IsTestSlot
-                                                     && !BuildingAbilityIds.HasPermanentNoCollisionCapability(effectiveIdentifier)))
+                            isNavigationStaticBaked: false))
                     {
                         Log.Error("LevelEntity.SpawnPresetEntities failed: cannot build preset building '{0}'.", effectiveIdentifier);
                         break;
@@ -471,14 +320,16 @@ public partial class LevelEntity : EntityBase
                 effectiveIdentifier = slotId;
             }
 
-            if (point.PointType == EntityPresetPointType.Building
-                && !BuildingDataModel.TryResolvePresetIdentifier(effectiveIdentifier, out effectiveIdentifier))
+            if (point.PointType == EntityPresetPointType.Building)
             {
-                Log.Error("LevelEntity.SpawnPresetEntities failed: invalid building identifier '{0}' at point '{1}'.", point.Identifier, point.name);
-                skippedCount++;
-                continue;
+                effectiveIdentifier = ResolveCareerStartingBaseIdentifier(point, effectiveIdentifier);
+                if (!BuildingDataModel.TryResolvePresetIdentifier(effectiveIdentifier, out effectiveIdentifier))
+                {
+                    Log.Error("LevelEntity.SpawnPresetEntities failed: invalid building identifier '{0}' at point '{1}'.", point.Identifier, point.name);
+                    skippedCount++;
+                    continue;
+                }
             }
-            effectiveIdentifier = ResolveCareerStartingBaseIdentifier(point, effectiveIdentifier);
 
             switch (point.PointType)
             {
@@ -520,8 +371,7 @@ public partial class LevelEntity : EntityBase
                             out var buildingInstanceId,
                             isGameEndConditionBuilding: point.IsGameEndConditionBuilding,
                             initialCoinReserves: initialCoinReserves,
-                            isNavigationStaticBaked: !point.IsTestSlot
-                                                     && !BuildingAbilityIds.HasPermanentNoCollisionCapability(effectiveIdentifier)))
+                            isNavigationStaticBaked: false))
                     {
                         Log.Error("LevelEntity.SpawnPresetEntities failed: cannot build preset building '{0}'.", effectiveIdentifier);
                         skippedCount++;
@@ -587,47 +437,23 @@ public partial class LevelEntity : EntityBase
             yieldCount);
     }
 
-    private string ResolveCareerStartingBaseIdentifier(EntityPresetPoint point, string resolvedIdentifier)
+    private static string ResolveCareerStartingBaseIdentifier(EntityPresetPoint point, string authoredIdentifier)
     {
-        if (!CareerRunSettings.HasActiveRun
-            || point.PointType != EntityPresetPointType.Building
-            || !point.IsGameEndConditionBuilding)
-            return resolvedIdentifier;
-
-        BuildingData authoredBuilding = BuildingDataModel.GetBuildingData(resolvedIdentifier)
-                                        ?? throw new InvalidOperationException(
-                                            $"Resolved preset building '{resolvedIdentifier}' is missing from BuildingDataModel.");
-        int ownerFactionId = ResolveOwnerFactionIdByPosition(point.Position);
-        if (!ShouldReplaceWithCareerStartingBase(
-                CareerRunSettings.HasActiveRun,
-                point.IsGameEndConditionBuilding,
-                authoredBuilding.Type,
-                ownerFactionId))
-        {
-            return resolvedIdentifier;
-        }
+        if (!EntityPresetPoint.IsInitialBaseIdentifier(authoredIdentifier))
+            return authoredIdentifier;
+        if (!CareerRunSettings.HasActiveRun)
+            throw new InvalidOperationException(
+                $"Initial base placeholder at point '{point.name}' requires an active career run.");
 
         string startingBaseIdentifier = BuildingDataModel.GetRequiredStartingBaseIdentifier(CareerRunSettings.StartingArchetype);
         Log.Info(
-            "[CareerRun] Replaced player initial core building. level={0}, point={1}, authored={2}, replacement={3}, archetype={4}.",
+            "[CareerRun] Replaced initial base placeholder. level={0}, point={1}, authored={2}, replacement={3}, archetype={4}.",
             ChangeSceneProcedure.SelectedLevelIdentifier,
             point.name,
-            resolvedIdentifier,
+            authoredIdentifier,
             startingBaseIdentifier,
             CareerRunSettings.StartingArchetype);
         return startingBaseIdentifier;
-    }
-
-    internal static bool ShouldReplaceWithCareerStartingBase(
-        bool hasActiveRun,
-        bool isGameEndConditionBuilding,
-        BuilType buildingType,
-        int ownerFactionId)
-    {
-        return hasActiveRun
-               && isGameEndConditionBuilding
-               && buildingType == BuilType.Base
-               && ownerFactionId == EntitySideHelper.PlayerFactionId;
     }
 
     private int ResolveOwnerFactionIdByPosition(Vector3 position)

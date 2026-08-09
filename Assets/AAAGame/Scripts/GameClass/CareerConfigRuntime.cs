@@ -11,10 +11,12 @@ public static class CareerConfigRuntime
     private static readonly Dictionary<string, VariableExperimentRuleTable> s_Rules = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, MetaGrowthTable> s_GrowthRows = new(StringComparer.Ordinal);
     private static readonly List<MetaGrowthTable> s_SortedGrowthRows = new();
+    private static readonly List<Archetype> s_ArchetypeOrder = new();
 
     public static bool IsPrepared { get; private set; }
     public static int OffsetPointThreshold { get; private set; }
     public static IReadOnlyList<MetaGrowthTable> GrowthRows => s_SortedGrowthRows;
+    public static IReadOnlyList<Archetype> ArchetypeOrder => s_ArchetypeOrder;
 
     public static void Prepare()
     {
@@ -27,6 +29,10 @@ public static class CareerConfigRuntime
         BuildUniqueIndex(GF.DataTable.GetDataTable<VariableExperimentTable>(), s_Experiments, row => row.LevelIdentifier, nameof(VariableExperimentTable));
         BuildUniqueIndex(GF.DataTable.GetDataTable<VariableExperimentRuleTable>(), s_Rules, row => row.Identifier, nameof(VariableExperimentRuleTable));
         BuildUniqueIndex(GF.DataTable.GetDataTable<MetaGrowthTable>(), s_GrowthRows, row => row.Identifier, nameof(MetaGrowthTable));
+
+        foreach (LevelTable level in s_Levels.Values)
+            ValidateLevelRow(level);
+        BuildArchetypeOrder();
 
         foreach (VariableExperimentTable experiment in s_Experiments.Values)
         {
@@ -100,6 +106,23 @@ public static class CareerConfigRuntime
         return row;
     }
 
+    public static int GetArchetypeOrderIndexRequired(Archetype archetype)
+    {
+        RequirePrepared();
+        int index = s_ArchetypeOrder.IndexOf(archetype);
+        if (index < 0)
+            throw new InvalidOperationException($"Industry '{archetype}' is missing from the authoritative industry order.");
+        return index;
+    }
+
+    public static void SortArchetypes(List<Archetype> archetypes)
+    {
+        if (archetypes == null)
+            throw new ArgumentNullException(nameof(archetypes));
+        archetypes.Sort((left, right) =>
+            GetArchetypeOrderIndexRequired(left).CompareTo(GetArchetypeOrderIndexRequired(right)));
+    }
+
     public static bool IsCareerLevel(string levelIdentifier)
     {
         RequirePrepared();
@@ -167,6 +190,66 @@ public static class CareerConfigRuntime
             if (row.LevelCosts[i] <= 0)
                 throw new InvalidOperationException($"Meta growth '{row.Identifier}' has a non-positive cost at level {i + 1}.");
         }
+    }
+
+    private static void ValidateLevelRow(LevelTable row)
+    {
+        if (!IsTutorialLevel(row.Identifier)
+            && (row.DefaultArchetype == Archetype.None || row.DefaultArchetype == Archetype.Common))
+        {
+            throw new InvalidOperationException(
+                $"Career level '{row.Identifier}' requires a selectable default starting industry.");
+        }
+
+        var rowUnlocks = new HashSet<Archetype>();
+        Archetype[] unlocks = row.UnlockArchetype ?? Array.Empty<Archetype>();
+        for (int i = 0; i < unlocks.Length; i++)
+        {
+            Archetype archetype = unlocks[i];
+            if (archetype == Archetype.None || archetype == Archetype.Common)
+            {
+                throw new InvalidOperationException(
+                    $"Career level '{row.Identifier}' has invalid unlocked industry '{archetype}'.");
+            }
+            if (!rowUnlocks.Add(archetype))
+            {
+                throw new InvalidOperationException(
+                    $"Career level '{row.Identifier}' repeats unlocked industry '{archetype}'.");
+            }
+        }
+    }
+
+    private static void BuildArchetypeOrder()
+    {
+        s_ArchetypeOrder.Clear();
+        var levels = new List<LevelTable>(s_Levels.Values);
+        levels.Sort((left, right) =>
+        {
+            int idComparison = left.Id.CompareTo(right.Id);
+            return idComparison != 0
+                ? idComparison
+                : string.Compare(left.Identifier, right.Identifier, StringComparison.Ordinal);
+        });
+
+        var seen = new HashSet<Archetype>();
+        for (int levelIndex = 0; levelIndex < levels.Count; levelIndex++)
+        {
+            LevelTable level = levels[levelIndex];
+            Archetype[] unlocks = level.UnlockArchetype ?? Array.Empty<Archetype>();
+            for (int unlockIndex = 0; unlockIndex < unlocks.Length; unlockIndex++)
+            {
+                Archetype archetype = unlocks[unlockIndex];
+                if (!seen.Add(archetype))
+                {
+                    throw new InvalidOperationException(
+                        $"Industry '{archetype}' is unlocked more than once in LevelTable.");
+                }
+                s_ArchetypeOrder.Add(archetype);
+            }
+        }
+
+        s_ArchetypeOrder.Reverse();
+        s_ArchetypeOrder.Add(Archetype.Common);
     }
 
     private static void RequirePrepared()

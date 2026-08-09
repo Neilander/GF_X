@@ -326,6 +326,9 @@ public static class BuildingInitialBuffFactory
             buffList.Add(CreateInitialBuff(
                 "building_trap_permanent_stealth",
                 new BuildingPermanentStealthBuff()));
+            buffList.Add(CreateInitialBuff(
+                "building_trap_reveal_on_first_trigger",
+                new TrapRevealOnFirstTriggerBuff()));
         }
         else if (IsBuilding(buildingData, BuildingAbilityIds.RoseBush))
         {

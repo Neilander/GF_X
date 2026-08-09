@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <UnityGameFramework>
   <ResourceCollection>
     <Resources>
@@ -688,7 +688,7 @@
       <Asset Guid="bb6214ddc90f0ac459ee4f6bf1c1a7cf" ResourceName="Entity" />
       <Asset Guid="bb828dd7689b64134a9e9e7c5b0f67f1" ResourceName="SharedAssets" />
       <Asset Guid="bb8317adada0e4363bbd0f7734c9d259" ResourceName="SharedAssets" />
-      <Asset Guid="bb936c9a8045ae641a7e64ce0af1e3df" ResourceName="Scene" />
+
       <Asset Guid="bba685beabe544e4fa033b6bf3bf951a" ResourceName="SharedAssets" />
       <Asset Guid="bbabf2ba3415749b48108fe816da78a1" ResourceName="Entity" />
       <Asset Guid="bc30a9faf1d8f4feea30bd28b82109c5" ResourceName="SharedAssets" />

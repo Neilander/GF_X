@@ -122,7 +122,7 @@ namespace AAAGame.Tools.Editor
             autoCreateMissingAssets = EditorGUILayout.Toggle("Auto create assets", autoCreateMissingAssets);
             autoCreateSceneManager = EditorGUILayout.Toggle("Auto create manager", autoCreateSceneManager);
             syncBuildSettingsFromTemplate = EditorGUILayout.Toggle("Sync build settings", syncBuildSettingsFromTemplate);
-            EditorGUILayout.HelpBox("Plane -> Plane, Water -> Water. SH Player(value 2) -> SH_0_x, Enemy(value 1) -> SH_1_x, split by 4-neighbor connected components. Missing TWC assets are cloned from the selected TWC template when auto create is enabled.", MessageType.Info);
+            EditorGUILayout.HelpBox("Plane -> Plane, Water -> Water. SH Player(value 2) -> SH_0_x, Enemy(value 1) -> SH_1_x, split by 4-neighbor connected components. SH layers contain blueprint data only and do not generate build-layer models.", MessageType.Info);
             resizeConfiguration = EditorGUILayout.Toggle("Resize configuration", resizeConfiguration);
             clearBlueprintModifiers = EditorGUILayout.Toggle("Clear blueprint modifiers", clearBlueprintModifiers);
 
@@ -299,7 +299,7 @@ namespace AAAGame.Tools.Editor
                 terrainPrefabResult = TerrainPrefabResult.Existing(GetDefaultTerrainPrefabPath());
             }
 
-            FlowNavigationGridImportResult flowGridResult = GenerateFlowNavigationGrid(plan, terrainPrefabResult.targetPath);
+            FlowNavigationGridImportResult flowGridResult = LoadExistingFlowNavigationGrids();
             EntityImportResult entityImportResult = ImportEntityPresetPointsIfRequested(plan, terrainPrefabResult.targetPath, flowGridResult.assets);
             entityImportResult.terrainResult = terrainPrefabResult;
             entityImportResult.flowNavigationGridResult = flowGridResult;
@@ -858,7 +858,7 @@ namespace AAAGame.Tools.Editor
             int syncedCount = 0;
             foreach (TilesBuildLayer targetLayer in targetBuildLayers)
             {
-                TilesBuildLayer templateLayer = FindTemplateBuildLayer(templateBuildLayers, templateBlueprintNamesByGuid, targetLayer.layerName);
+                TilesBuildLayer templateLayer = FindTemplateBuildLayer(templateBuildLayers, targetLayer.layerName);
                 if (templateLayer == null)
                 {
                     continue;
@@ -879,32 +879,9 @@ namespace AAAGame.Tools.Editor
 
         private static TilesBuildLayer FindTemplateBuildLayer(
             List<TilesBuildLayer> templateBuildLayers,
-            Dictionary<string, string> templateBlueprintNamesByGuid,
             string targetLayerName)
         {
-            TilesBuildLayer exact = templateBuildLayers.FirstOrDefault(x => string.Equals(x.layerName, targetLayerName, StringComparison.OrdinalIgnoreCase));
-            if (exact != null)
-            {
-                return exact;
-            }
-
-            if (!TryParseStrongholdBuildLayerName(targetLayerName, out int factionId))
-            {
-                return null;
-            }
-
-            return templateBuildLayers
-                .Where(x =>
-                    templateBlueprintNamesByGuid.TryGetValue(x.assignedBlueprintLayerGuid, out string blueprintName) &&
-                    ParseStrongholdName(blueprintName, out int templateFactionId, out _) &&
-                    templateFactionId == factionId)
-                .OrderBy(x =>
-                {
-                    templateBlueprintNamesByGuid.TryGetValue(x.assignedBlueprintLayerGuid, out string blueprintName);
-                    ParseStrongholdName(blueprintName, out _, out int index);
-                    return index;
-                })
-                .FirstOrDefault();
+            return templateBuildLayers.FirstOrDefault(x => string.Equals(x.layerName, targetLayerName, StringComparison.OrdinalIgnoreCase));
         }
 
         private void SyncTilesBuildLayerFromTemplate(
@@ -1119,7 +1096,7 @@ namespace AAAGame.Tools.Editor
                 return false;
             }
 
-            var created = new List<string>();
+            var changed = new List<string>();
             foreach (var required in requiredByFaction.OrderBy(x => x.Key))
             {
                 int factionId = required.Key;
@@ -1128,15 +1105,9 @@ namespace AAAGame.Tools.Editor
                 {
                     string layerName = BuildStrongholdLayerName(factionId, index);
                     BlueprintLayer blueprintLayer = existingBlueprintLayers.FirstOrDefault(x => string.Equals(x.layerName, layerName, StringComparison.OrdinalIgnoreCase));
-                    TilesBuildLayer buildLayerTemplate = null;
                     if (blueprintLayer == null)
                     {
-                        if (!TryFindStrongholdTemplate(existingBlueprintLayers, factionId, out BlueprintLayer templateBlueprint, out TilesBuildLayer templateBuildLayer))
-                        {
-                            return false;
-                        }
-
-                        buildLayerTemplate = templateBuildLayer;
+                        BlueprintLayer templateBlueprint = FindStrongholdBlueprintTemplate(existingBlueprintLayers, factionId);
                         if (!TryCloneBlueprintLayer(templateBlueprint, layerName, out blueprintLayer))
                         {
                             EditorUtility.DisplayDialog("LDtk import failed", $"Failed to create blueprint layer: {layerName}", "OK");
@@ -1144,48 +1115,29 @@ namespace AAAGame.Tools.Editor
                         }
 
                         existingBlueprintLayers.Add(blueprintLayer);
-                        created.Add(layerName);
-                    }
-
-                    if (GetStrongholdBuildLayer(layerName) == null)
-                    {
-                        if (buildLayerTemplate == null && !TryFindStrongholdTemplate(existingBlueprintLayers, factionId, out _, out buildLayerTemplate))
-                        {
-                            return false;
-                        }
-
-                        string buildLayerName = "Build " + layerName;
-                        if (!TryCloneBuildLayer(buildLayerTemplate, blueprintLayer, buildLayerName, out _))
-                        {
-                            EditorUtility.DisplayDialog("LDtk import failed", $"Failed to create build layer: {buildLayerName}", "OK");
-                            return false;
-                        }
-
-                        created.Add(buildLayerName);
+                        changed.Add("Created " + layerName);
                     }
                 }
             }
 
-            if (created.Count > 0)
+            var extraLayerNames = GetExtraStrongholdLayerNames(requiredByFaction, existingBlueprintLayers);
+            if (extraLayerNames.Count > 0)
             {
-                report = "Created missing stronghold layers: " + string.Join(", ", created);
+                changed.Add("Cleared " + string.Join(", ", extraLayerNames));
             }
-            else
+
+            if (changed.Count > 0)
             {
-                var extraLayerNames = GetExtraStrongholdLayerNames(requiredByFaction, existingBlueprintLayers);
-                if (extraLayerNames.Count > 0)
-                {
-                    report = "Cleared extra stronghold layers: " + string.Join(", ", extraLayerNames);
-                }
+                report = "Updated logical stronghold layers: " + string.Join(", ", changed);
             }
 
             return true;
         }
 
-        private bool TryFindStrongholdTemplate(List<BlueprintLayer> existingBlueprintLayers, int factionId, out BlueprintLayer templateBlueprint, out TilesBuildLayer templateBuildLayer)
+        private static BlueprintLayer FindStrongholdBlueprintTemplate(List<BlueprintLayer> existingBlueprintLayers, int factionId)
         {
-            templateBlueprint = existingBlueprintLayers
-                .Where(x => ParseStrongholdName(x.layerName, out int layerFaction, out _) && layerFaction == factionId && GetStrongholdBuildLayer(x.layerName) != null)
+            BlueprintLayer templateBlueprint = existingBlueprintLayers
+                .Where(x => ParseStrongholdName(x.layerName, out int layerFaction, out _) && layerFaction == factionId)
                 .OrderBy(x =>
                 {
                     ParseStrongholdName(x.layerName, out _, out int index);
@@ -1193,15 +1145,7 @@ namespace AAAGame.Tools.Editor
                 })
                 .LastOrDefault();
 
-            templateBlueprint ??= existingBlueprintLayers.LastOrDefault(x => GetStrongholdBuildLayer(x.layerName) != null);
-            templateBuildLayer = templateBlueprint != null ? GetStrongholdBuildLayer(templateBlueprint.layerName) : null;
-            if (templateBlueprint == null || templateBuildLayer == null)
-            {
-                EditorUtility.DisplayDialog("LDtk import failed", "No usable SH_* blueprint/build layer template exists in the selected configuration.", "OK");
-                return false;
-            }
-
-            return true;
+            return templateBlueprint ?? existingBlueprintLayers[existingBlueprintLayers.Count - 1];
         }
 
         private bool TryCloneBlueprintLayer(BlueprintLayer template, string layerName, out BlueprintLayer newLayer)
@@ -1238,43 +1182,6 @@ namespace AAAGame.Tools.Editor
             return true;
         }
 
-        private bool TryCloneBuildLayer(TilesBuildLayer template, BlueprintLayer blueprintLayer, string layerName, out TilesBuildLayer newLayer)
-        {
-            newLayer = ScriptableObject.CreateInstance<TilesBuildLayer>();
-            newLayer.hideFlags = HideFlags.HideInHierarchy;
-            AssetDatabase.AddObjectToAsset(newLayer, configuration);
-
-            EditorUtility.CopySerialized(template, newLayer);
-            newLayer.layerName = layerName;
-            newLayer.guid = Guid.NewGuid().ToString();
-            newLayer.assignedBlueprintLayerGuid = blueprintLayer.guid;
-            newLayer.currentBlueprintLayer = blueprintLayer;
-            newLayer.hierarchyLayerID = newLayer.guid;
-            newLayer.configuration = configuration;
-            newLayer.ResetLayer(manager != null && manager.configuration == configuration ? manager : null);
-
-            BuildLayerFolder folder = FindBuildFolder(template);
-            if (folder == null)
-            {
-                if (configuration.buildLayerFolders == null)
-                {
-                    configuration.buildLayerFolders = new List<BuildLayerFolder>();
-                }
-
-                folder = configuration.buildLayerFolders.FirstOrDefault();
-                if (folder == null)
-                {
-                    folder = new BuildLayerFolder("Root");
-                    configuration.buildLayerFolders.Add(folder);
-                }
-            }
-
-            folder.buildLayers.Add(newLayer);
-            EditorUtility.SetDirty(newLayer);
-            EditorUtility.SetDirty(configuration);
-            return true;
-        }
-
         private BlueprintLayerFolder FindBlueprintFolder(BlueprintLayer layer)
         {
             foreach (var folder in configuration.blueprintLayerFolders)
@@ -1282,41 +1189,6 @@ namespace AAAGame.Tools.Editor
                 if (folder?.blueprintLayers != null && folder.blueprintLayers.Contains(layer))
                 {
                     return folder;
-                }
-            }
-
-            return null;
-        }
-
-        private BuildLayerFolder FindBuildFolder(BuildLayer layer)
-        {
-            foreach (var folder in configuration.buildLayerFolders)
-            {
-                if (folder?.buildLayers != null && folder.buildLayers.Contains(layer))
-                {
-                    return folder;
-                }
-            }
-
-            return null;
-        }
-
-        private TilesBuildLayer GetStrongholdBuildLayer(string blueprintLayerName)
-        {
-            string buildLayerName = "Build " + blueprintLayerName;
-            foreach (var folder in configuration.buildLayerFolders)
-            {
-                if (folder?.buildLayers == null)
-                {
-                    continue;
-                }
-
-                foreach (var layer in folder.buildLayers)
-                {
-                    if (layer is TilesBuildLayer tilesBuildLayer && string.Equals(tilesBuildLayer.layerName, buildLayerName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return tilesBuildLayer;
-                    }
                 }
             }
 
@@ -1331,18 +1203,6 @@ namespace AAAGame.Tools.Editor
         private static bool IsStrongholdLayerName(string layerName)
         {
             return Regex.IsMatch(layerName ?? string.Empty, @"^SH_\d+_\d+$", RegexOptions.IgnoreCase);
-        }
-
-        private static bool TryParseStrongholdBuildLayerName(string layerName, out int factionId)
-        {
-            factionId = int.MaxValue;
-            const string buildPrefix = "Build ";
-            if (string.IsNullOrEmpty(layerName) || !layerName.StartsWith(buildPrefix, StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            return ParseStrongholdName(layerName.Substring(buildPrefix.Length), out factionId, out _);
         }
 
         private static int CompareStrongholdLayers(BlueprintLayer a, BlueprintLayer b)
@@ -1732,7 +1592,7 @@ namespace AAAGame.Tools.Editor
             TerrainPrefabResult terrainPrefabResult = AssetDatabase.LoadAssetAtPath<GameObject>(terrainPrefabPath) != null
                 ? TerrainPrefabResult.Existing(terrainPrefabPath)
                 : TerrainPrefabResult.Skipped("Terrain prefab has not been generated.");
-            FlowNavigationGridImportResult flowGridResult = GenerateFlowNavigationGrid(plan, terrainPrefabResult.targetPath);
+            FlowNavigationGridImportResult flowGridResult = LoadExistingFlowNavigationGrids();
             EntityImportResult result = ImportEntityPresetPointsIfRequested(plan, terrainPrefabResult.targetPath, flowGridResult.assets);
             result.terrainResult = terrainPrefabResult;
             result.flowNavigationGridResult = flowGridResult;
@@ -1974,16 +1834,11 @@ namespace AAAGame.Tools.Editor
                 $"[FlowNavigationGridImport] stage=requests-ready elapsedMs={stopwatch.ElapsedMilliseconds} " +
                 $"requests={FormatFlowNavigationBakeRequests(requests)}");
             float navigationCellSize = ResolveFlowNavigationCellSize(requests);
-            FlowNavigationGridPrefabBaker.StaticObstacleBakeInstance[] staticObstacleBakeInstances =
-                BuildStaticNavigationObstacleBakeInstances(plan.entityPoints);
-            Debug.Log(
-                $"[FlowNavigationGridImport] stage=static-obstacles-ready elapsedMs={stopwatch.ElapsedMilliseconds} " +
-                $"count={staticObstacleBakeInstances.Length}");
             FlowNavigationGridPrefabBaker.Result[] results = FlowNavigationGridPrefabBaker.BakeMovementTypesFromTerrainPrefab(
                 terrainPrefabPath,
                 requests,
                 navigationCellSize,
-                staticObstacleBakeInstances,
+                Array.Empty<FlowNavigationGridPrefabBaker.StaticObstacleBakeInstance>(),
                 new FlowNavigationGridPrefabBaker.TerrainBakeTransform(
                     terrainTransform.localPosition,
                     terrainTransform.localRotation,
@@ -1995,145 +1850,25 @@ namespace AAAGame.Tools.Editor
             return FlowNavigationGridImportResult.From(results);
         }
 
-        private static FlowNavigationGridPrefabBaker.StaticObstacleBakeInstance[] BuildStaticNavigationObstacleBakeInstances(IReadOnlyList<EntityPresetPointData> entityPoints)
+        private FlowNavigationGridImportResult LoadExistingFlowNavigationGrids()
         {
-            if (entityPoints == null || entityPoints.Count == 0)
-                return Array.Empty<FlowNavigationGridPrefabBaker.StaticObstacleBakeInstance>();
+            string primaryAssetPath = GetDefaultFlowNavigationGridAssetPath();
+            if (string.IsNullOrWhiteSpace(primaryAssetPath))
+                return FlowNavigationGridImportResult.Skipped("Flow navigation grid asset path is invalid.");
 
-            List<FlowNavigationGridPrefabBaker.StaticObstacleBakeInstance> result = new List<FlowNavigationGridPrefabBaker.StaticObstacleBakeInstance>();
-            for (int i = 0; i < entityPoints.Count; i++)
+            FlowNavigationGridPrefabBaker.MovementTypeBakeRequest[] requests = BuildDefaultFlowNavigationGridBakeRequests(primaryAssetPath);
+            var assets = new FlowNavigationGridAsset[requests.Length];
+            for (int i = 0; i < requests.Length; i++)
             {
-                EntityPresetPointData point = entityPoints[i];
-                if (point.pointType != EntityPresetPointType.Building)
-                    continue;
-                if (BuildingAbilityIds.HasPermanentNoCollisionCapability(point.identifier))
-                    continue;
-
-                string prefabPath = ResolveBuildingPrefabAssetPath(point.identifier);
-                result.Add(new FlowNavigationGridPrefabBaker.StaticObstacleBakeInstance(prefabPath, point.localPosition, point.identifier));
-            }
-
-            return result.ToArray();
-        }
-
-        private static string ResolveBuildingPrefabAssetPath(string identifier)
-        {
-            if (string.IsNullOrWhiteSpace(identifier))
-                throw new InvalidOperationException("ResolveBuildingPrefabAssetPath failed: identifier is empty.");
-
-            BuildingPrefabTableRow row = ResolveBuildingTableRow(identifier);
-            string prefabPath = ResolveBuildingPrefabPathFromRow(identifier, row);
-            if (string.IsNullOrWhiteSpace(prefabPath))
-                throw new InvalidOperationException($"ResolveBuildingPrefabAssetPath failed: building '{identifier}' has no prefab path in BuildingTable.");
-
-            string assetPath = UtilityBuiltin.AssetsPath.GetEntityPath(prefabPath);
-            if (AssetDatabase.LoadAssetAtPath<GameObject>(assetPath) == null)
-                throw new InvalidOperationException($"ResolveBuildingPrefabAssetPath failed: prefab asset not found. building={identifier} path={assetPath}.");
-
-            return assetPath;
-        }
-
-        private static BuildingPrefabTableRow ResolveBuildingTableRow(string identifier)
-        {
-            foreach (BuildingPrefabTableRow row in EnumerateBuildingTableRows())
-            {
-                if (string.IsNullOrWhiteSpace(row.Identifier))
-                    continue;
-
-                if (string.Equals(identifier, row.Identifier, StringComparison.Ordinal)
-                    || string.Equals(identifier, row.Identifier + "_Lv1", StringComparison.Ordinal)
-                    || string.Equals(identifier, row.Identifier + "_Lv2", StringComparison.Ordinal)
-                    || string.Equals(identifier, row.Identifier + "_Lv3", StringComparison.Ordinal))
+                assets[i] = AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>(requests[i].AssetPath);
+                if (assets[i] == null)
                 {
-                    return row;
+                    return FlowNavigationGridImportResult.Skipped(
+                        $"Existing flow navigation grid is missing: {requests[i].AssetPath}. Generate build layers once before importing entity points only.");
                 }
             }
 
-            throw new InvalidOperationException($"ResolveBuildingTableRow failed: building '{identifier}' was not found in BuildingTable.");
-        }
-
-        private static string ResolveBuildingPrefabPathFromRow(string identifier, BuildingPrefabTableRow row)
-        {
-            if (string.IsNullOrWhiteSpace(row.Identifier))
-                throw new InvalidOperationException($"ResolveBuildingPrefabPathFromRow failed: row is null for {identifier}.");
-
-            if (identifier.EndsWith("_Lv3", StringComparison.OrdinalIgnoreCase))
-                return PickString(row.Lv3PrefabPath, PickString(row.Lv2PrefabPath, row.Lv1PrefabPath));
-            if (identifier.EndsWith("_Lv2", StringComparison.OrdinalIgnoreCase))
-                return PickString(row.Lv2PrefabPath, row.Lv1PrefabPath);
-            if (identifier.EndsWith("_Lv1", StringComparison.OrdinalIgnoreCase))
-                return row.Lv1PrefabPath;
-            if (identifier.EndsWith("Lv0", StringComparison.Ordinal))
-                return row.Lv1PrefabPath;
-
-            return row.Lv1PrefabPath;
-        }
-
-        private readonly struct BuildingPrefabTableRow
-        {
-            public readonly string Identifier;
-            public readonly string Lv1PrefabPath;
-            public readonly string Lv2PrefabPath;
-            public readonly string Lv3PrefabPath;
-
-            public BuildingPrefabTableRow(string identifier, string lv1PrefabPath, string lv2PrefabPath, string lv3PrefabPath)
-            {
-                Identifier = identifier;
-                Lv1PrefabPath = lv1PrefabPath;
-                Lv2PrefabPath = lv2PrefabPath;
-                Lv3PrefabPath = lv3PrefabPath;
-            }
-        }
-
-        private static IEnumerable<BuildingPrefabTableRow> EnumerateBuildingTableRows()
-        {
-            string assetPath = ResolveBuildingTableAssetPath();
-            TextAsset textAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(assetPath);
-            if (textAsset == null)
-                throw new InvalidOperationException($"EnumerateBuildingTableRows failed: BuildingTable asset not found at {assetPath}.");
-
-            using var stringReader = new StringReader(textAsset.text);
-            string line;
-            while ((line = stringReader.ReadLine()) != null)
-            {
-                if (string.IsNullOrWhiteSpace(line) || line[0] == '#')
-                    continue;
-
-                string[] columns = line.Split('\t');
-                if (columns.Length <= 12)
-                    throw new InvalidOperationException($"EnumerateBuildingTableRows failed: BuildingTable row has too few columns: {line}");
-
-                yield return new BuildingPrefabTableRow(
-                    columns[2].Trim(),
-                    columns[10].Trim(),
-                    columns[11].Trim(),
-                    columns[12].Trim());
-            }
-        }
-
-        private static string ResolveBuildingTableAssetPath()
-        {
-            string textPath = UtilityBuiltin.AssetsPath.GetDataTablePath("BuildingTable", false);
-            if (AssetDatabase.LoadAssetAtPath<TextAsset>(textPath) != null)
-                return textPath;
-
-            string[] guids = AssetDatabase.FindAssets("BuildingTable t:TextAsset", new[] { "Assets/AAAGame/DataTable" });
-            for (int i = 0; i < guids.Length; i++)
-            {
-                string assetPath = AssetDatabase.GUIDToAssetPath(guids[i]);
-                if (!string.IsNullOrWhiteSpace(assetPath)
-                    && assetPath.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
-                {
-                    return assetPath;
-                }
-            }
-
-            throw new InvalidOperationException("ResolveBuildingTableAssetPath failed: BuildingTable TextAsset was not found.");
-        }
-
-        private static string PickString(string primary, string secondary)
-        {
-            return !string.IsNullOrWhiteSpace(primary) ? primary : secondary;
+            return FlowNavigationGridImportResult.Existing(requests, assets);
         }
 
         private static string FormatFlowNavigationBakeRequests(IReadOnlyList<FlowNavigationGridPrefabBaker.MovementTypeBakeRequest> requests)
@@ -2738,7 +2473,7 @@ namespace AAAGame.Tools.Editor
                 builder.AppendLine($"Terrain skipped reason: {result.terrainResult.skippedReason}");
             }
 
-            builder.AppendLine($"Flow navigation grid: {(result.flowNavigationGridResult.skipped ? "Skipped" : "Generated")}");
+            builder.AppendLine($"Flow navigation grid: {(result.flowNavigationGridResult.skipped ? "Skipped" : result.flowNavigationGridResult.reused ? "Existing" : "Generated")}");
             if (result.flowNavigationGridResult.skipped)
             {
                 builder.AppendLine($"Flow navigation skipped reason: {result.flowNavigationGridResult.skippedReason}");
@@ -2896,6 +2631,7 @@ namespace AAAGame.Tools.Editor
         private struct FlowNavigationGridImportResult
         {
             public bool skipped;
+            public bool reused;
             public string skippedReason;
             public FlowNavigationGridAsset asset;
             public FlowNavigationGridAsset[] assets;
@@ -2949,6 +2685,50 @@ namespace AAAGame.Tools.Editor
                     blockedCount = blockedCount,
                     groundColliderCount = primary.GroundColliderCount,
                     obstacleColliderCount = primary.ObstacleColliderCount
+                };
+            }
+
+            public static FlowNavigationGridImportResult Existing(
+                IReadOnlyList<FlowNavigationGridPrefabBaker.MovementTypeBakeRequest> requests,
+                FlowNavigationGridAsset[] assets)
+            {
+                if (requests == null || assets == null || requests.Count == 0 || requests.Count != assets.Length)
+                    return Skipped("Existing flow navigation grid set is invalid.");
+
+                int walkableCount = 0;
+                int blockedCount = 0;
+                string[] paths = new string[assets.Length];
+                for (int i = 0; i < assets.Length; i++)
+                {
+                    FlowNavigationGridAsset asset = assets[i];
+                    if (asset == null)
+                        return Skipped($"Existing flow navigation grid is null at index {i}.");
+
+                    bool[] walkable = asset.GetWalkableMaskRuntimeReadOnlyReference();
+                    for (int cellIndex = 0; cellIndex < walkable.Length; cellIndex++)
+                    {
+                        if (walkable[cellIndex])
+                            walkableCount++;
+                        else
+                            blockedCount++;
+                    }
+                    paths[i] = $"{requests[i].AgentTypeId}:{requests[i].AssetPath}";
+                }
+
+                return new FlowNavigationGridImportResult
+                {
+                    reused = true,
+                    asset = assets[0],
+                    assets = assets,
+                    assetPath = requests[0].AssetPath,
+                    assetPathsSummary = string.Join(", ", paths),
+                    assetCount = assets.Length,
+                    width = assets[0].Width,
+                    height = assets[0].Height,
+                    walkableCount = walkableCount,
+                    blockedCount = blockedCount,
+                    groundColliderCount = -1,
+                    obstacleColliderCount = -1
                 };
             }
         }

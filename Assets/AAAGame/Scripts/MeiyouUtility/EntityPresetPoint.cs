@@ -9,7 +9,14 @@ using UnityEditor;
 
 public class EntityPresetPoint : MonoBehaviour
 {
+    public const string InitialBaseIdentifier = "InitBase_Lv1";
+
     public Vector3 Position => transform.position;
+
+    public static bool IsInitialBaseIdentifier(string identifier)
+    {
+        return string.Equals(identifier, InitialBaseIdentifier, StringComparison.Ordinal);
+    }
 
     [Tooltip("预设点id，用于读表")]
     public string Identifier;

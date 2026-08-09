@@ -1916,6 +1916,131 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void RevealedPermanentInvincibleTrap_DoesNotCreateHealthBar()
+    {
+        LogicEntityState trap = CreateConfiguredStateForSide("Buil_Trap_Lv1", SideType.EnemySide);
+        BuildingData trapData = CreateTestBuildingData("Buil_Trap_Lv1");
+        trap.ConfigureBuilding(
+            trapData,
+            "building-revealed-trap-health-bar",
+            "stronghold-revealed-trap-health-bar",
+            EntitySideHelper.EnemyFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+
+        List<BuffData> trapBuffs = BuildingInitialBuffFactory.CreateCombatInitialBuffs(trapData);
+        Assert.IsNotNull(trapBuffs);
+        for (int i = 0; i < trapBuffs.Count; i++)
+            Assert.IsTrue(trap.BuffComp.AddBuff(trapBuffs[i], trap));
+
+        Assert.IsTrue(trap.IsPermanentlyInvincible);
+        Assert.IsTrue(trap.IsPermanentStealth);
+        trap.SetPermanentStealthByBuff(false);
+        Assert.IsFalse(trap.IsPermanentStealth, "The test trap must be revealed before checking its health bar.");
+
+        const int healthBarEntityId = 193847;
+        var viewObject = new GameObject("RevealedPermanentInvincibleTrapView");
+        try
+        {
+            BuildingEntity view = viewObject.AddComponent<BuildingEntity>();
+            System.Reflection.FieldInfo logicStateField = typeof(MAEntity).GetField(
+                "_logicState",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(logicStateField);
+            logicStateField.SetValue(view, trap);
+
+            Assert.NotNull(Shader.Find("AAAGame/UI/HealthBarAlwaysVisible"));
+            Assert.IsNull(HealthBarComp.Create(healthBarEntityId, view.transform, 100f, 100f, false));
+            Assert.IsNull(GameObject.Find($"HealthBar_{healthBarEntityId}"));
+        }
+        finally
+        {
+            GameObject healthBarObject = GameObject.Find($"HealthBar_{healthBarEntityId}");
+            if (healthBarObject != null)
+                UnityEngine.Object.DestroyImmediate(healthBarObject);
+            UnityEngine.Object.DestroyImmediate(viewObject);
+        }
+    }
+
+    [Test]
+    public void TrapFirstTrigger_RevealsPermanentlyUntilAFreshTrapIsBuilt()
+    {
+        LogicEntityState trap = CreateConfiguredStateForSide("Buil_Trap_Lv1", SideType.EnemySide);
+        BuildingData trapData = CreateTestBuildingData("Buil_Trap_Lv1");
+        trap.ConfigureBuilding(
+            trapData,
+            "building-triggered-trap",
+            "stronghold-triggered-trap",
+            EntitySideHelper.EnemyFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+
+        List<BuffData> trapBuffs = BuildingInitialBuffFactory.CreateCombatInitialBuffs(trapData);
+        Assert.IsNotNull(trapBuffs);
+        for (int i = 0; i < trapBuffs.Count; i++)
+            Assert.IsTrue(trap.BuffComp.AddBuff(trapBuffs[i], trap));
+
+        Assert.IsTrue(trap.IsPermanentStealth, "A newly built trap must start hidden.");
+
+        LogicEntityState target = CreateConfiguredStateForSide("Unit_TrapTriggerTarget", SideType.PlayerSide);
+        ActivateRequestedState(trap.EntityId, 1);
+        ActivateRequestedState(target.EntityId, 2);
+        var targeting = new NoTargetingComp { CurrentTarget = target };
+        trap.SetTargetingComp(targeting);
+        targeting.Init(trap);
+        trap.SetBrain(new ScriptedBrain { Attack = true });
+        var trapWeapon = new WeaponData(
+            WeaponType.SelfAoE,
+            (Fix64)10,
+            Fix64.One,
+            (Fix64)200,
+            Fix64.Zero,
+            Fix64.FromRaw(819),
+            Fix64.FromRaw(819),
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.One,
+            Fix64.Zero,
+            Array.Empty<Fix64>());
+        trap.SetWeaponComp(new WeaponComp(trapWeapon.ToWeapon("TrapTriggerTestWeapon", trap.CreatureProperties.propertyManager)));
+        var attack = new DirectAtkComp();
+        trap.SetAtkComp(attack);
+        attack.Init(trap);
+
+        attack.Attack(Fix64.Zero);
+
+        Assert.AreEqual(1, attack.AttackCount, "The trap must start a real attack before it is revealed.");
+        Assert.AreEqual(DirectAtkComp.AtkState.WindUp, attack.State);
+        Assert.IsFalse(trap.IsPermanentStealth, "The first real attack start must reveal the trap.");
+
+        attack.InterruptAttack();
+        Assert.IsFalse(trap.IsPermanentStealth, "Later triggers must not hide the trap again.");
+
+        LogicEntityState rebuiltTrap = CreateConfiguredState("Buil_Trap_Lv1", false);
+        BuildingData rebuiltTrapData = CreateTestBuildingData("Buil_Trap_Lv1");
+        rebuiltTrap.ConfigureBuilding(
+            rebuiltTrapData,
+            "building-rebuilt-trap",
+            "stronghold-triggered-trap",
+            EntitySideHelper.EnemyFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        List<BuffData> rebuiltTrapBuffs = BuildingInitialBuffFactory.CreateCombatInitialBuffs(rebuiltTrapData);
+        Assert.IsNotNull(rebuiltTrapBuffs);
+        for (int i = 0; i < rebuiltTrapBuffs.Count; i++)
+            Assert.IsTrue(rebuiltTrap.BuffComp.AddBuff(rebuiltTrapBuffs[i], rebuiltTrap));
+
+        Assert.IsTrue(rebuiltTrap.IsPermanentStealth, "A recycled and rebuilt trap must start hidden again.");
+    }
+
+    [Test]
     public void DelayedIncomingDamage_DisableEventPreservesOriginalAttacker()
     {
         LogicEntityState state = CreateConfiguredState("Building_DelayedDisabledEvent", false);

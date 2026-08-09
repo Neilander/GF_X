@@ -209,9 +209,18 @@ public class LevelTable : DataRowBase
         }
 
         /// <summary>
-        /// Industry unlocked on first normal clear
+        /// 首通解锁行业
         /// </summary>
-        public Archetype UnlockArchetype
+        public Archetype[] UnlockArchetype
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 默认初始行业
+        /// </summary>
+        public Archetype DefaultArchetype
         {
             get;
             private set;
@@ -249,7 +258,8 @@ public class LevelTable : DataRowBase
             Def8Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
             Def9Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
             Def10Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
-            UnlockArchetype = DataTableExtension.ParseEnum<Archetype>(columnStrings[index++]);
+            UnlockArchetype = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
+            DefaultArchetype = DataTableExtension.ParseEnum<Archetype>(columnStrings[index++]);
 
             return true;
         }
@@ -281,7 +291,8 @@ public class LevelTable : DataRowBase
                     Def8Enemies = binaryReader.ReadStringIntPairArray();
                     Def9Enemies = binaryReader.ReadStringIntPairArray();
                     Def10Enemies = binaryReader.ReadStringIntPairArray();
-                    UnlockArchetype = binaryReader.ReadEnum<Archetype>();
+                    UnlockArchetype = binaryReader.ReadArray<Archetype>();
+                    DefaultArchetype = binaryReader.ReadEnum<Archetype>();
                 }
             }
 

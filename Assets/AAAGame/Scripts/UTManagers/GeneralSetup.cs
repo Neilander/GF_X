@@ -273,6 +273,10 @@ public partial class GeneralSetup : GameFrameworkComponent
                 $"GeneralSetup initial phase changed during level spawn. expected={initialPhase}, authority={authoritativePhase}.");
         }
         LogicEntityLifecycleService.CommitPendingInitializationEntities();
+        GroupMoveManager groupMoveManager = GroupMoveManager.Instance
+                                            ?? throw new System.InvalidOperationException("GeneralSetup requires GroupMoveManager before navigation prewarm.");
+        groupMoveManager.PrewarmNavigationWorlds();
+        LogSetupTiming("navigation-prewarmed");
         if (pending != null)
         {
             GlobalBuffManager globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>()

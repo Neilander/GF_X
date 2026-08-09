@@ -29,6 +29,38 @@ public sealed class Fog3StageCheckpointTests
     }
 
     [Test]
+    public void RepeatedSceneReadyNotification_DoesNotReplaceInitializedMap()
+    {
+        GameObject managerObject = new GameObject("Fog3RepeatedSceneReadyManager");
+        managerObject.SetActive(false);
+        try
+        {
+            var controller = new Fog3Controller();
+            controller.Initialize(CreateTerrainInfo(new[] { true, true, true, true, true, true }));
+            Fog3MapData initializedMap = controller.MapData;
+            Fog3Manager manager = managerObject.AddComponent<Fog3Manager>();
+            typeof(Fog3Manager).GetField("controller", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(manager, controller);
+            typeof(Fog3Manager).GetField("isInitialized", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(manager, true);
+
+            MethodInfo handleSceneReady = typeof(Fog3Manager).GetMethod(
+                "HandleSceneBecameAvailable",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(handleSceneReady);
+
+            handleSceneReady.Invoke(manager, new object[] { "Game", "test duplicate notification" });
+
+            Assert.IsTrue(manager.IsInitialized);
+            Assert.AreSame(initializedMap, manager.MapData);
+        }
+        finally
+        {
+            Object.DestroyImmediate(managerObject);
+        }
+    }
+
+    [Test]
     public void ExplorationCheckpoint_RestoresExploredBitsButNotTransientVisibility()
     {
         Fog3MapData map = CreateMap(new[] { true, true, true, true, true, true });
@@ -259,6 +291,7 @@ public sealed class Fog3StageCheckpointTests
     {
         GameObject managerObject = null;
         GameObject viewObject = null;
+        GameObject healthBarObject = null;
         LogicEntityId entityId = default;
         bool viewBound = false;
 
@@ -308,9 +341,25 @@ public sealed class Fog3StageCheckpointTests
             updateEnemyVisibility.Invoke(manager, new object[] { map });
             Assert.IsFalse(renderer.enabled);
 
+            healthBarObject = new GameObject("LateCreatedEnemyHealthBar");
+            Canvas healthCanvas = healthBarObject.AddComponent<Canvas>();
+            HealthBarComp healthBar = healthBarObject.AddComponent<HealthBarComp>();
+            typeof(HealthBarComp).GetField("_entityId", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(healthBar, view.Id);
+            typeof(HealthBarComp).GetField("ownerCanvas", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(healthBar, healthCanvas);
+            var activeBars = (System.Collections.Generic.Dictionary<int, HealthBarComp>)typeof(HealthBarComp)
+                .GetField("ActiveBars", BindingFlags.Static | BindingFlags.NonPublic)
+                .GetValue(null);
+            activeBars[view.Id] = healthBar;
+
+            updateEnemyVisibility.Invoke(manager, new object[] { map });
+            Assert.IsFalse(healthCanvas.enabled, "A health bar created after the cached fog update must still be hidden.");
+
             map.AddVisibility(0, 0, 1f);
             updateEnemyVisibility.Invoke(manager, new object[] { map });
             Assert.IsTrue(renderer.enabled);
+            Assert.IsTrue(healthCanvas.enabled);
 
             manager.GetEnemyUnitVisibilityDiagnostics(
                 out int aliveLogicCount,
@@ -333,6 +382,8 @@ public sealed class Fog3StageCheckpointTests
             if (viewBound)
                 LogicEntityLifecycleService.UnbindView(entityId, 404);
             EntityRegistry.Clear();
+            if (healthBarObject != null)
+                Object.DestroyImmediate(healthBarObject);
             if (viewObject != null)
                 Object.DestroyImmediate(viewObject);
             LogicEntityLifecycleService.EndTimeline();

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using GameFramework;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -15,6 +16,7 @@ public sealed class CareerSystemsTests
     private Dictionary<string, VariableExperimentRuleTable> m_PreviousRules;
     private Dictionary<string, MetaGrowthTable> m_PreviousGrowthRows;
     private List<MetaGrowthTable> m_PreviousSortedGrowthRows;
+    private List<Archetype> m_PreviousArchetypeOrder;
     private bool m_PreviousPrepared;
     private int m_PreviousOffsetThreshold;
 
@@ -37,11 +39,29 @@ public sealed class CareerSystemsTests
     public void GeneratedTables_HaveRequiredCareerConfiguration()
     {
         Dictionary<string, LevelTable> levels = GetStaticDictionary<LevelTable>("s_Levels");
-        Assert.AreEqual(Archetype.Sightseeing, levels["Lv_1"].UnlockArchetype);
-        Assert.AreEqual(Archetype.Delivery, levels["Lv_2"].UnlockArchetype);
-        Assert.AreEqual(Archetype.Butchery, levels["Lv_3"].UnlockArchetype);
-        Assert.AreEqual(Archetype.Firefighting, levels["Lv_4"].UnlockArchetype);
-        Assert.AreEqual(Archetype.Security, levels["Lv_5"].UnlockArchetype);
+        CollectionAssert.AreEqual(new[] { Archetype.Coding }, levels["Lv_1"].UnlockArchetype);
+        CollectionAssert.AreEqual(new[] { Archetype.Sightseeing }, levels["Lv_2"].UnlockArchetype);
+        CollectionAssert.AreEqual(new[] { Archetype.Delivery }, levels["Lv_3"].UnlockArchetype);
+        CollectionAssert.AreEqual(new[] { Archetype.Medical, Archetype.Sports }, levels["Lv_8"].UnlockArchetype);
+        Assert.AreEqual(Archetype.Coding, levels["Lv_2"].DefaultArchetype);
+        Assert.AreEqual(Archetype.Sightseeing, levels["Lv_3"].DefaultArchetype);
+        Assert.AreEqual(1000, levels["LvTest"].Id);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                Archetype.Gardening,
+                Archetype.Sports,
+                Archetype.Medical,
+                Archetype.Butchery,
+                Archetype.Hunting,
+                Archetype.Security,
+                Archetype.Firefighting,
+                Archetype.Delivery,
+                Archetype.Sightseeing,
+                Archetype.Coding,
+                Archetype.Common
+            },
+            CareerConfigRuntime.ArchetypeOrder);
 
         Dictionary<string, VariableExperimentTable> experiments = GetStaticDictionary<VariableExperimentTable>("s_Experiments");
         VariableExperimentTable levelOneExperiment = experiments["Lv_1"];
@@ -131,11 +151,14 @@ public sealed class CareerSystemsTests
     public void RecordWin_DerivesPointsWithoutPersistentPointCounter()
     {
         CareerProgressDataModel progress = CreateProgressModel();
+        Assert.IsEmpty(progress.GetUnlockedArchetypes());
+        Assert.IsFalse(progress.IsVariableExperimentUnlocked("Lv_1"));
 
         CareerWinRecordResult firstNormal = progress.RecordWin("Lv_1", false, 10);
         Assert.IsTrue(firstNormal.FirstClear);
         Assert.IsTrue(firstNormal.FirstOffsetReward);
-        Assert.AreEqual(Archetype.Sightseeing, firstNormal.UnlockedArchetype);
+        Assert.IsTrue(progress.IsVariableExperimentUnlocked("Lv_1"));
+        CollectionAssert.AreEqual(new[] { Archetype.Coding }, firstNormal.UnlockedArchetypes);
         Assert.AreEqual(2, progress.GetEarnedPointCount());
 
         CareerWinRecordResult repeatNormal = progress.RecordWin("Lv_1", false, 20);
@@ -145,19 +168,25 @@ public sealed class CareerSystemsTests
 
         CareerWinRecordResult firstExperiment = progress.RecordWin("Lv_1", true, 0);
         Assert.IsTrue(firstExperiment.FirstClear);
-        Assert.AreEqual(Archetype.None, firstExperiment.UnlockedArchetype);
+        Assert.IsEmpty(firstExperiment.UnlockedArchetypes);
         Assert.AreEqual(3, progress.GetEarnedPointCount());
 
         progress.RecordWin("Lv_2", true, 10);
         Assert.AreEqual(5, progress.GetEarnedPointCount());
         CollectionAssert.AreEquivalent(
-            new[] { Archetype.Coding, Archetype.Sightseeing },
+            new[] { Archetype.Coding },
             progress.GetUnlockedArchetypes(),
             "Experiment clears must not unlock LevelTable industries.");
 
         progress.RecordWin("Lv_2", false, 0);
-        CollectionAssert.Contains(progress.GetUnlockedArchetypes(), Archetype.Delivery);
+        CollectionAssert.Contains(progress.GetUnlockedArchetypes(), Archetype.Sightseeing);
         Assert.AreEqual(6, progress.GetEarnedPointCount());
+
+        CareerWinRecordResult multiUnlock = progress.RecordWin("Lv_8", false, 0);
+        CollectionAssert.AreEqual(new[] { Archetype.Medical, Archetype.Sports }, multiUnlock.UnlockedArchetypes);
+        CollectionAssert.IsSubsetOf(
+            new[] { Archetype.Medical, Archetype.Sports },
+            progress.GetUnlockedArchetypes());
     }
 
     [Test]
@@ -245,18 +274,68 @@ public sealed class CareerSystemsTests
     }
 
     [Test]
-    public void InitialCoreReplacement_RequiresPlayerGameEndBase()
+    public void InitialBasePlaceholder_UsesExplicitIdentifier()
     {
-        Assert.IsTrue(LevelEntity.ShouldReplaceWithCareerStartingBase(
-            true, true, BuilType.Base, EntitySideHelper.PlayerFactionId));
-        Assert.IsFalse(LevelEntity.ShouldReplaceWithCareerStartingBase(
-            false, true, BuilType.Base, EntitySideHelper.PlayerFactionId));
-        Assert.IsFalse(LevelEntity.ShouldReplaceWithCareerStartingBase(
-            true, false, BuilType.Base, EntitySideHelper.PlayerFactionId));
-        Assert.IsFalse(LevelEntity.ShouldReplaceWithCareerStartingBase(
-            true, true, BuilType.Def, EntitySideHelper.PlayerFactionId));
-        Assert.IsFalse(LevelEntity.ShouldReplaceWithCareerStartingBase(
-            true, true, BuilType.Base, EntitySideHelper.EnemyFactionId));
+        Assert.IsTrue(EntityPresetPoint.IsInitialBaseIdentifier("InitBase_Lv1"));
+        Assert.IsFalse(EntityPresetPoint.IsInitialBaseIdentifier("InitBase"));
+        Assert.IsFalse(EntityPresetPoint.IsInitialBaseIdentifier("Buil_ResearchCenter_Lv1"));
+
+        AssertInitialBaseCount("Level_1", 0);
+        AssertInitialBaseCount("Level_2", 1);
+        AssertInitialBaseCount("Level_3", 1);
+        AssertInitialBaseCount("LvTest", 1);
+    }
+
+    [Test]
+    public void StartingIndustry_DefaultsPerLevelAndRemembersForCurrentProcess()
+    {
+        var available = new[] { Archetype.Coding, Archetype.Sightseeing };
+        Assert.AreEqual(
+            Archetype.Sightseeing,
+            CareerRunSettings.ResolveRememberedSelection("Lv_3", available, Archetype.Sightseeing));
+
+        CareerRunSettings.RememberSelection("Lv_3", Archetype.Coding);
+        Assert.AreEqual(
+            Archetype.Coding,
+            CareerRunSettings.ResolveRememberedSelection("Lv_3", available, Archetype.Sightseeing));
+        Assert.Throws<InvalidOperationException>(() =>
+            CareerRunSettings.ResolveRememberedSelection("Lv_4", available, Archetype.Delivery));
+
+        var testLevelAvailable = new List<Archetype>();
+        CareerRunSettings.EnsureDefaultSelectionAvailable(testLevelAvailable, Archetype.Hunting);
+        CareerRunSettings.EnsureDefaultSelectionAvailable(testLevelAvailable, Archetype.Hunting);
+        CollectionAssert.AreEqual(new[] { Archetype.Hunting }, testLevelAvailable);
+        Assert.AreEqual(
+            Archetype.Hunting,
+            CareerRunSettings.ResolveRememberedSelection("LvTest", testLevelAvailable, Archetype.Hunting));
+
+        var unordered = new List<Archetype> { Archetype.Sports, Archetype.Coding, Archetype.Medical };
+        CareerRunSettings.EnsureDefaultSelectionAvailable(unordered, Archetype.Butchery);
+        CollectionAssert.AreEqual(
+            new[] { Archetype.Sports, Archetype.Medical, Archetype.Butchery, Archetype.Coding },
+            unordered);
+
+        var alreadyContainsDefault = new List<Archetype>
+        {
+            Archetype.Gardening,
+            Archetype.Delivery,
+            Archetype.Coding
+        };
+        CareerRunSettings.EnsureDefaultSelectionAvailable(alreadyContainsDefault, Archetype.Delivery);
+        CollectionAssert.AreEqual(
+            new[] { Archetype.Gardening, Archetype.Delivery, Archetype.Coding },
+            alreadyContainsDefault);
+
+        var buildingPanelOrder = new List<Archetype>
+        {
+            Archetype.Common,
+            Archetype.Coding,
+            Archetype.Hunting
+        };
+        CareerConfigRuntime.SortArchetypes(buildingPanelOrder);
+        CollectionAssert.AreEqual(
+            new[] { Archetype.Hunting, Archetype.Coding, Archetype.Common },
+            buildingPanelOrder);
     }
 
     private static CareerProgressDataModel CreateProgressModel()
@@ -266,6 +345,17 @@ public sealed class CareerSystemsTests
                           ?? throw new InvalidOperationException("DataModelBase.Init was not found.");
         init.Invoke(progress, new object[] { 1, null });
         return progress;
+    }
+
+    private static void AssertInitialBaseCount(string prefabName, int expectedCount)
+    {
+        string path = $"Assets/AAAGame/Prefabs/Entity/Level/{prefabName}.prefab";
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+        Assert.IsNotNull(prefab, $"Level prefab is missing: {path}");
+        int actualCount = prefab.GetComponentsInChildren<EntityPresetPoint>(true).Count(point =>
+            point.PointType == EntityPresetPointType.Building
+            && EntityPresetPoint.IsInitialBaseIdentifier(point.Identifier));
+        Assert.AreEqual(expectedCount, actualCount, path);
     }
 
     private static void AssertGrowth(
@@ -299,6 +389,7 @@ public sealed class CareerSystemsTests
         m_PreviousRules = new Dictionary<string, VariableExperimentRuleTable>(GetStaticDictionary<VariableExperimentRuleTable>("s_Rules"), StringComparer.Ordinal);
         m_PreviousGrowthRows = new Dictionary<string, MetaGrowthTable>(GetStaticDictionary<MetaGrowthTable>("s_GrowthRows"), StringComparer.Ordinal);
         m_PreviousSortedGrowthRows = new List<MetaGrowthTable>(GetStaticList<MetaGrowthTable>("s_SortedGrowthRows"));
+        m_PreviousArchetypeOrder = new List<Archetype>(GetStaticList<Archetype>("s_ArchetypeOrder"));
         m_PreviousPrepared = CareerConfigRuntime.IsPrepared;
         m_PreviousOffsetThreshold = CareerConfigRuntime.OffsetPointThreshold;
     }
@@ -320,6 +411,12 @@ public sealed class CareerSystemsTests
         List<MetaGrowthTable> sorted = GetStaticList<MetaGrowthTable>("s_SortedGrowthRows");
         sorted.Clear();
         sorted.AddRange(growthRows);
+        List<Archetype> archetypeOrder = GetStaticList<Archetype>("s_ArchetypeOrder");
+        archetypeOrder.Clear();
+        foreach (LevelTable level in GetStaticDictionary<LevelTable>("s_Levels").Values.OrderBy(row => row.Id))
+            archetypeOrder.AddRange(level.UnlockArchetype ?? Array.Empty<Archetype>());
+        archetypeOrder.Reverse();
+        archetypeOrder.Add(Archetype.Common);
         SetStaticAutoProperty("IsPrepared", true);
         SetStaticAutoProperty("OffsetPointThreshold", 10);
     }
@@ -333,6 +430,9 @@ public sealed class CareerSystemsTests
         List<MetaGrowthTable> sorted = GetStaticList<MetaGrowthTable>("s_SortedGrowthRows");
         sorted.Clear();
         sorted.AddRange(m_PreviousSortedGrowthRows);
+        List<Archetype> archetypeOrder = GetStaticList<Archetype>("s_ArchetypeOrder");
+        archetypeOrder.Clear();
+        archetypeOrder.AddRange(m_PreviousArchetypeOrder);
         SetStaticAutoProperty("IsPrepared", m_PreviousPrepared);
         SetStaticAutoProperty("OffsetPointThreshold", m_PreviousOffsetThreshold);
     }

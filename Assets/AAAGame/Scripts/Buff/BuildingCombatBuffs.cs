@@ -112,6 +112,19 @@ public sealed class BuildingPermanentStealthBuff : BuffCallback
     }
 }
 
+public sealed class TrapRevealOnFirstTriggerBuff : BuffCallback
+{
+    public override void OnAttackStarted(IEntityContext target)
+    {
+        if (target == null)
+            throw new ArgumentNullException(nameof(target));
+        if (hostEntity is not IBuildingLogicContext building)
+            throw new InvalidOperationException("TrapRevealOnFirstTriggerBuff.OnAttackStarted failed: host is not a building logic context.");
+
+        building.SetPermanentStealthByBuff(false);
+    }
+}
+
 public sealed class AmmoReloadBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 _delaySeconds;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -19,6 +20,7 @@ public partial class LvEnterDialog
     private RectTransform m_Modal;
     private bool m_IsVariableExperiment;
     private Archetype m_SelectedArchetype;
+    private int m_IndustryVisibilityRequestVersion;
 
     private void InitializeCareerEntryUI()
     {
@@ -44,6 +46,7 @@ public partial class LvEnterDialog
         m_Modal = null;
         m_AvailableArchetypes.Clear();
         m_SelectedArchetype = Archetype.None;
+        m_IndustryVisibilityRequestVersion++;
     }
 
     private void BuildCareerEntryRoot()
@@ -93,7 +96,8 @@ public partial class LvEnterDialog
 
     private void ToggleVariableExperiment()
     {
-        if (!CareerConfigRuntime.TryGetExperiment(s_LevelIdentifier, out _))
+        CareerProgressDataModel progress = GF.DataModel.GetOrCreate<CareerProgressDataModel>();
+        if (!progress.IsVariableExperimentUnlocked(s_LevelIdentifier))
             return;
         m_IsVariableExperiment = !m_IsVariableExperiment;
         m_SelectedIds.Clear();
@@ -107,9 +111,17 @@ public partial class LvEnterDialog
 
     private void RefreshCareerEntryUI()
     {
-        bool hasExperiment = CareerConfigRuntime.TryGetExperiment(s_LevelIdentifier, out VariableExperimentTable experiment);
+        bool hasExperimentConfig = CareerConfigRuntime.TryGetExperiment(
+            s_LevelIdentifier,
+            out VariableExperimentTable experiment);
         bool isTutorial = CareerConfigRuntime.IsTutorialLevel(s_LevelIdentifier);
-        m_ModeButton.interactable = hasExperiment;
+        CareerProgressDataModel progress = GF.DataModel.GetOrCreate<CareerProgressDataModel>();
+        bool isExperimentUnlocked = hasExperimentConfig
+                                    && progress.IsVariableExperimentUnlocked(s_LevelIdentifier);
+        if (m_IsVariableExperiment && !isExperimentUnlocked)
+            throw new InvalidOperationException($"Level '{s_LevelIdentifier}' variable experiment is locked.");
+
+        m_ModeButton.interactable = isExperimentUnlocked;
         m_ModeButtonText.text = m_IsVariableExperiment
             ? "\u53d8\u91cf\u8bd5\u9a8c"
             : "\u6807\u51c6\u6311\u6218";
@@ -120,23 +132,24 @@ public partial class LvEnterDialog
         varPositiveSelectNumText.gameObject.SetActive(tagsVisible);
         varNegativeSelectNumText.gameObject.SetActive(tagsVisible);
 
-        CareerProgressDataModel progress = GF.DataModel.GetOrCreate<CareerProgressDataModel>();
         m_AvailableArchetypes.Clear();
         m_AvailableArchetypes.AddRange(progress.GetUnlockedArchetypes());
+        LevelTable sourceLevel = CareerConfigRuntime.GetLevelRequired(s_LevelIdentifier);
+        if (!isTutorial)
+        {
+            CareerRunSettings.EnsureDefaultSelectionAvailable(
+                m_AvailableArchetypes,
+                sourceLevel.DefaultArchetype);
+        }
 
         VariableExperimentRuleTable rule = null;
         if (m_IsVariableExperiment)
         {
-            if (!hasExperiment)
+            if (!hasExperimentConfig)
                 throw new InvalidOperationException($"Level '{s_LevelIdentifier}' has no variable experiment config.");
             rule = CareerConfigRuntime.GetRuleRequired(experiment.RuleIdentifier);
             if (rule.ForcedArchetype != Archetype.None)
             {
-                if (!m_AvailableArchetypes.Contains(rule.ForcedArchetype))
-                {
-                    throw new InvalidOperationException(
-                        $"Variable experiment '{s_LevelIdentifier}' requires locked industry '{rule.ForcedArchetype}'.");
-                }
                 m_AvailableArchetypes.Clear();
                 m_AvailableArchetypes.Add(rule.ForcedArchetype);
             }
@@ -156,12 +169,45 @@ public partial class LvEnterDialog
         }
         else
         {
-            m_SelectedArchetype = CareerRunSettings.ResolveRememberedSelection(s_LevelIdentifier, m_AvailableArchetypes);
+            Archetype defaultArchetype = rule != null && rule.ForcedArchetype != Archetype.None
+                ? rule.ForcedArchetype
+                : sourceLevel.DefaultArchetype;
+            m_SelectedArchetype = CareerRunSettings.ResolveRememberedSelection(
+                s_LevelIdentifier,
+                m_AvailableArchetypes,
+                defaultArchetype);
         }
-        m_IndustryTitle.gameObject.SetActive(!isTutorial);
-        m_IndustryList.gameObject.SetActive(!isTutorial);
+        m_IndustryTitle.gameObject.SetActive(false);
+        m_IndustryList.gameObject.SetActive(false);
         m_IndustryTitle.text = $"\u521d\u59cb\u884c\u4e1a: {GetIndustryName(m_SelectedArchetype)}";
         RebuildIndustryButtons();
+
+        int requestVersion = ++m_IndustryVisibilityRequestVersion;
+        if (!isTutorial)
+            RefreshIndustryVisibilityAsync(requestVersion).Forget();
+    }
+
+    private async UniTaskVoid RefreshIndustryVisibilityAsync(int requestVersion)
+    {
+        try
+        {
+            bool hasInitialBase = await LevelStartingIndustryService.HasInitialBaseAsync(
+                s_LevelIdentifier,
+                m_IsVariableExperiment);
+            if (requestVersion != m_IndustryVisibilityRequestVersion || m_IndustryTitle == null || m_IndustryList == null)
+                return;
+
+            m_IndustryTitle.gameObject.SetActive(hasInitialBase);
+            m_IndustryList.gameObject.SetActive(hasInitialBase);
+        }
+        catch (Exception exception)
+        {
+            Log.Error(
+                "[LvEnterDialog] Failed to inspect initial base placeholder. level={0}, experiment={1}, error={2}",
+                s_LevelIdentifier,
+                m_IsVariableExperiment,
+                exception);
+        }
     }
 
     private void RebuildIndustryButtons()

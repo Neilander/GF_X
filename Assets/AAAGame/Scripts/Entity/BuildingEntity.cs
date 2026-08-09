@@ -41,6 +41,9 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     public bool IsPhaseProtected => LogicState != null
         ? LogicState.IsPhaseProtected
         : throw new System.InvalidOperationException("BuildingEntity.IsPhaseProtected requires a bound logic state.");
+    public bool IsPermanentlyInvincible => LogicState != null
+        ? LogicState.IsPermanentlyInvincible
+        : throw new System.InvalidOperationException("BuildingEntity.IsPermanentlyInvincible requires a bound logic state.");
     public bool IsHealthBarSuppressedByBuff => _healthBarSuppressedByBuff || _stealthHealthBarSuppressed;
     public bool IsHealthBarSuppressedByPhaseBuff => _healthBarSuppressedByBuff;
     internal bool IsHiddenFromPlayerByStealth => _permanentStealthVisibility
@@ -48,7 +51,7 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     public bool HasPermanentNoAttackCapability => LogicState != null
         ? LogicState.HasPermanentNoAttackCapability
         : throw new System.InvalidOperationException("BuildingEntity.HasPermanentNoAttackCapability requires a bound logic state.");
-    bool IBuildingLogicContext.IsPermanentlyInvincible => LogicState.IsPermanentlyInvincible;
+    bool IBuildingLogicContext.IsPermanentlyInvincible => IsPermanentlyInvincible;
     BuildingData IBuildingLogicContext.BuildingData => LogicState.BuildingData;
     BuildingExtraProps IBuildingLogicContext.ProductionProps => LogicState.ProductionProps;
     string IBuildingLogicContext.StrongholdId => LogicState.StrongholdId;
@@ -227,6 +230,8 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         UnsubscribeLv0PhaseVisibilityEvents();
         RestorePhaseVisibility();
         SetStealthVisualState(false, false, 1f);
+        SetOwnershipVisualColor(false, default);
+        ReleaseVisualMaterials();
         ApplyCollisionBlockingPresentation(true);
         UnregisterOutlineRenderers();
         InGameDataModel.UnregisterBuilding(this);
@@ -510,7 +515,7 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         if (hiddenFromPlayer)
             HealthBarComp.Remove(Id);
 
-        SetStealthVisualState(_permanentStealthVisibility, hiddenFromPlayer, 0.55f);
+        SetStealthVisualState(_permanentStealthVisibility, hiddenFromPlayer, 0.35f);
         UpdateMinimapReportVisibility();
     }
 
