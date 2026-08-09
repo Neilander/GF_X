@@ -61,6 +61,44 @@ public sealed class Fog3StageCheckpointTests
     }
 
     [Test]
+    public void VisibilityPresentation_BecomesReadyOnlyAfterALogicFrame()
+    {
+        GameObject managerObject = new GameObject("Fog3LogicFramePresentationManager");
+        EntityRegistry.Clear();
+        if (LogicTimeControlService.IsActive)
+            LogicTimeControlService.EndTimeline();
+        LogicTimeControlService.BeginTimeline();
+        try
+        {
+            var controller = new Fog3Controller();
+            controller.Initialize(CreateTerrainInfo(new[] { true, true, true, true, true, true }));
+            Fog3Manager manager = managerObject.AddComponent<Fog3Manager>();
+            typeof(Fog3Manager).GetField("controller", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(manager, controller);
+            typeof(Fog3Manager).GetField("isInitialized", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(manager, true);
+            MethodInfo presentVisibility = typeof(Fog3Manager).GetMethod(
+                "OnVisibilityUpdated",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(presentVisibility);
+
+            presentVisibility.Invoke(manager, new object[] { controller.MapData });
+            Assert.IsFalse(manager.HasPresentedLogicFrameVisibility);
+
+            LogicTimeControlService.BeginFrame(1);
+            presentVisibility.Invoke(manager, new object[] { controller.MapData });
+            Assert.IsTrue(manager.HasPresentedLogicFrameVisibility);
+        }
+        finally
+        {
+            if (LogicTimeControlService.IsActive)
+                LogicTimeControlService.EndTimeline();
+            EntityRegistry.Clear();
+            Object.DestroyImmediate(managerObject);
+        }
+    }
+
+    [Test]
     public void ExplorationCheckpoint_RestoresExploredBitsButNotTransientVisibility()
     {
         Fog3MapData map = CreateMap(new[] { true, true, true, true, true, true });

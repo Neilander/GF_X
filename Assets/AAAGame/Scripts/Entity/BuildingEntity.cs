@@ -229,7 +229,7 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     {
         UnsubscribeLv0PhaseVisibilityEvents();
         RestorePhaseVisibility();
-        SetStealthVisualState(false, false, 1f);
+        SetStealthVisualState(false, false, 1f, refreshPhaseVisibility: false);
         SetOwnershipVisualColor(false, default);
         ReleaseVisualMaterials();
         ApplyCollisionBlockingPresentation(true);

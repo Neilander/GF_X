@@ -45,6 +45,22 @@ public static class LogicInteractionTargetStateService
         s_TargetByActor.Remove(actorId.Value);
     }
 
+    public static void ClearTargetForPausedOperation(LogicEntityId actorId)
+    {
+        EnsureActive();
+        if (!LogicPausedOperationService.IsExecuting)
+            throw new InvalidOperationException("Interaction target paused clear requires an active paused-operation settlement.");
+        if (!actorId.IsValid)
+            throw new ArgumentException("Actor id must be valid.", nameof(actorId));
+        if (!s_TargetByActor.ContainsKey(actorId.Value))
+        {
+            throw new InvalidOperationException(
+                $"Interaction target paused clear failed: actor {actorId.Value} has no authoritative target state.");
+        }
+
+        s_TargetByActor[actorId.Value] = 0;
+    }
+
     public static bool TryGetTarget(LogicEntityId actorId, out LogicEntityId targetId)
     {
         EnsureActive();

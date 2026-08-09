@@ -363,7 +363,7 @@ public static class LogicEntityLifecycleService
                 $"LogicEntityLifecycleService.RequestDespawn failed: entity {entityId.Value} already has a pending despawn command.");
         }
 
-        ulong effectiveFrame = currentInteractionFrame
+        ulong effectiveFrame = currentInteractionFrame || LogicPausedOperationService.IsExecuting
             ? LogicTimeControlService.CurrentFrame
             : checked(LogicTimeControlService.CurrentFrame + 1);
         s_DespawnFramesByEntityId.Add(entityId.Value, effectiveFrame);

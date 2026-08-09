@@ -9,12 +9,9 @@ public partial class LvEnterDialog : UIFormBase
     private const string MaxCountKey = "LvTagPositiveMaxCount";
 
     private static string s_LevelIdentifier;
-    private static bool s_IsStartup;
-
-    public static void Open(string levelIdentifier, bool isStartup)
+    public static void Open(string levelIdentifier)
     {
         s_LevelIdentifier = levelIdentifier;
-        s_IsStartup = isStartup;
         GF.UI.OpenUIForm(UIViews.LvEnterDialog);
     }
 
@@ -146,9 +143,7 @@ public partial class LvEnterDialog : UIFormBase
         else
             LevelTagRuntime.SetActiveTagIds(m_SelectedIds);
         string error;
-        bool ok = s_IsStartup
-            ? StartupLevelSelectProcedure.TryEnterLevel(runtimeLevelIdentifier, out error)
-            : LevelSelectionService.TryEnterLevelInPlace(runtimeLevelIdentifier, out error);
+        bool ok = LevelSelectionService.TryEnterLevelInPlace(runtimeLevelIdentifier, out error);
 
         if (!ok)
         {

@@ -29,6 +29,37 @@ public sealed class InGameTimeControlUiTests
     }
 
     [Test]
+    public void InGamePrefab_TimeControlsArePlacedLeftOfMinimap()
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            "Assets/AAAGame/Prefabs/UI/InGameUIForm.prefab");
+        GameObject instance = Object.Instantiate(prefab);
+
+        try
+        {
+            var root = (RectTransform)instance.transform;
+            root.sizeDelta = new Vector2(1920f, 1080f);
+            Canvas.ForceUpdateCanvases();
+
+            var controls = (RectTransform)root.Find("TimeControls");
+            var serialized = new SerializedObject(instance.GetComponent<InGameUIForm>());
+            var minimapMask = (RectTransform)serialized.FindProperty("varMiniMapMask").objectReferenceValue;
+            var minimapArea = (RectTransform)minimapMask.parent;
+            Bounds controlsBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(root, controls);
+            Bounds minimapBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(root, minimapArea);
+
+            Assert.That(
+                minimapBounds.min.x - controlsBounds.max.x,
+                Is.GreaterThanOrEqualTo(12f),
+                "Time controls must remain fully left of the minimap.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(instance);
+        }
+    }
+
+    [Test]
     public void InputActions_HavePauseAndSpeedKeyboardShortcuts()
     {
         string json = File.ReadAllText("Assets/InputSystem_Actions.inputactions");

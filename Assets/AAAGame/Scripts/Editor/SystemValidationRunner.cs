@@ -327,7 +327,7 @@ public static class SystemValidationRunner
             + "startedUtc=" + SessionState.GetString(StartedUtcKey, string.Empty) + Environment.NewLine
             + "finishedUtc=" + DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture) + Environment.NewLine
             + "launchScene=Assets/AAAGame/Scene/Launch.unity" + Environment.NewLine
-            + "procedure=StartupLevelSelectProcedure->RuntimeProcedureBase" + Environment.NewLine
+            + "procedure=ChangeSceneProcedure->RuntimeProcedureBase" + Environment.NewLine
             + "level=Lv_2" + Environment.NewLine
             + scenarioReport
             + "LONG_SESSION_GATE" + Environment.NewLine

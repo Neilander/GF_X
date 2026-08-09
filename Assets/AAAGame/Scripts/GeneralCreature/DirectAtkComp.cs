@@ -740,6 +740,7 @@ public void Attack(Fix64 deltaTime)
                     break;
                 }
 
+                NotifyAttackImpact(target);
                 ExecuteWeaponEffect(activeWeapon, target, snapshot);
             }
         }
@@ -828,10 +829,30 @@ public void Attack(Fix64 deltaTime)
 
     private void RemoveInvalidLockedTargets(Weapon activeWeapon)
     {
+        bool validateImpactRange = !WeaponTargetRules.UsesProjectileSimulation(activeWeapon.Type);
+        Fix64 impactRange = validateImpactRange
+            ? DistanceUnitConverter.ConvertToWorld(activeWeapon.Range)
+            : Fix64.Zero;
+
         for (int i = _lockedTargets.Count - 1; i >= 0; i--)
         {
-            if (!WeaponTargetRules.IsValidTargetForWeapon(_ctx, _lockedTargets[i], activeWeapon.Type))
+            IEntityContext target = _lockedTargets[i];
+            if (!WeaponTargetRules.IsValidTargetForWeapon(_ctx, target, activeWeapon.Type))
+            {
                 _lockedTargets.RemoveAt(i);
+                continue;
+            }
+
+            if (!validateImpactRange)
+                continue;
+
+            Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(target);
+            if (distance <= impactRange)
+                continue;
+
+            GameDebugSettings.Log(DebugCategory.Attack,
+                $"[{_ctx.CharacterKey}] DealDamage: 前摇结束时目标超距，取消本次命中 target={target.CharacterKey} dist={(float)distance:F2} range={(float)impactRange:F2}");
+            _lockedTargets.RemoveAt(i);
         }
     }
 
@@ -919,6 +940,12 @@ public void Attack(Fix64 deltaTime)
     {
         foreach (BuffCallback module in GetBuffModuleSnapshot())
             module.OnAttackStarted(target);
+    }
+
+    private void NotifyAttackImpact(IEntityContext target)
+    {
+        foreach (BuffCallback module in GetBuffModuleSnapshot())
+            module.OnAttackImpact(target);
     }
 
     private void NotifyAttackCompleted(IEntityContext target)

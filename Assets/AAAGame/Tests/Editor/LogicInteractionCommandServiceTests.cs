@@ -61,6 +61,70 @@ public sealed class LogicInteractionCommandServiceTests
     }
 
     [Test]
+    public void SubmitWhileInGameUiPaused_AppliesInCurrentFrameWithoutRemainingPending()
+    {
+        var applied = new List<LogicInteractionCommand>();
+        LogicTimeControlService.BeginFrame(1);
+        LogicInteractionCommandService.ApplyFrameForTests(1, applied.Add);
+        LogicTimeControlService.AcquirePause(LogicTimeControlSources.InGameUiPause);
+
+        LogicInteractionCommand command = LogicInteractionCommandService.SubmitForTests(
+            LogicInteractionActionKind.ConstructBuilding,
+            new LogicEntityId(10),
+            "building-a",
+            "Building_Barracks_Lv1",
+            null,
+            applied.Add);
+
+        Assert.AreEqual(1UL, LogicTimeControlService.CurrentFrame);
+        Assert.AreEqual(1UL, command.EffectiveFrame);
+        Assert.AreEqual(1, applied.Count);
+        Assert.AreEqual(0, LogicInteractionCommandService.PendingCount);
+        Assert.AreEqual(1, LogicInteractionCommandService.AppliedCount);
+        Assert.AreEqual(1, LogicInteractionCommandService.PendingAppliedPresentationCount);
+
+        LogicTimeControlService.ReleasePause(LogicTimeControlSources.InGameUiPause);
+        LogicTimeControlService.BeginFrame(2);
+        LogicInteractionCommandService.ApplyFrameForTests(2, applied.Add);
+        Assert.AreEqual(1, applied.Count);
+    }
+
+    [Test]
+    public void PausedSubmit_KeepsPresentationReceiptUntilPanelCommitsPreview()
+    {
+        const int ownerId = 71005;
+        LogicEntityId target = new LogicEntityId(10);
+        LogicTimeControlService.BeginFrame(1);
+        LogicInteractionCommandService.ApplyFrameForTests(1, _ => { });
+        LogicTimeControlService.AcquirePause(LogicTimeControlSources.InGameUiPause);
+        try
+        {
+            IngameCoinPreviewState.SetPreviewDeduction(ownerId, 3);
+            LogicInteractionCommand command = LogicInteractionCommandService.SubmitForTests(
+                LogicInteractionActionKind.UpgradeBuilding,
+                target,
+                "building-a",
+                "Building_Barracks_Lv2",
+                "Tech_A",
+                _ => { });
+
+            IngameCoinPreviewState.CommitPreviewDeduction(ownerId, target, command.ActionKind);
+            Assert.IsTrue(IngameCoinPreviewState.IsCommitted);
+            Assert.AreEqual(1, LogicInteractionCommandService.PendingAppliedPresentationCount);
+
+            LogicInteractionCommandService.UpdatePresentationEvents();
+
+            Assert.IsFalse(IngameCoinPreviewState.IsCommitted);
+            Assert.AreEqual(0, IngameCoinPreviewState.PreviewDeduction);
+        }
+        finally
+        {
+            IngameCoinPreviewState.Reset();
+            LogicTimeControlService.ReleasePause(LogicTimeControlSources.InGameUiPause);
+        }
+    }
+
+    [Test]
     public void Schedule_RejectsSecondPendingCommandForSameStableTarget()
     {
         LogicEntityId target = new LogicEntityId(10);

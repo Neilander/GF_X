@@ -75,6 +75,7 @@ public class PreloadProcedure : ProcedureBase
         if (loadedProgress >= totalProgress && smoothProgress >= 0.99f)
         {
             preloadAllCompleted = true;
+            CareerConfigRuntime.Prepare();
             BuildingCombatShapeCatalog.PrepareRuntimeDependencies();
             BuildingLogicObstacleShapeCatalog.PrepareRuntimeDependencies();
             AAAGame.Card.CardStaticForbiddenShapeCatalog.PrepareRuntimeDependencies();
@@ -84,17 +85,9 @@ public class PreloadProcedure : ProcedureBase
             CriticalDamageUtility.PrepareRuntimeDependencies();
             FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
             InitGameFrameworkSettings();
-            if (LevelSelectionService.ShouldShowStartupLevelSwitch)
-            {
-                GF.Log("预加载完成, 进入启动选关界面.");
-                ChangeState<StartupLevelSelectProcedure>(procedureOwner);
-            }
-            else
-            {
-                GF.Log("预加载完成, 进入游戏场景.");
-                procedureOwner.SetData<VarString>(ChangeSceneProcedure.P_SceneName, ChangeSceneProcedure.SelectedSceneForGame);
-                ChangeState<ChangeSceneProcedure>(procedureOwner);
-            }
+            GF.Log("预加载完成, 进入游戏场景.");
+            procedureOwner.SetData<VarString>(ChangeSceneProcedure.P_SceneName, ChangeSceneProcedure.SelectedSceneForGame);
+            ChangeState<ChangeSceneProcedure>(procedureOwner);
         }
     }
     private void InitAppSettings()

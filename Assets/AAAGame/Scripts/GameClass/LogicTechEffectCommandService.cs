@@ -44,6 +44,7 @@ public static class LogicTechEffectCommandService
     public static bool IsActive { get; private set; }
     public static bool IsApplyingFrame { get; private set; }
     public static ulong LastAppliedFrame { get; private set; }
+    public static ulong LastSequence => s_LastSequence;
     public static int PendingCount => s_Pending.Count;
     public static int AppliedCount => s_AppliedCount;
     public static IReadOnlyList<LogicTechEffectCommand> History => s_ReadOnlyHistory;
@@ -117,7 +118,8 @@ public static class LogicTechEffectCommandService
             throw new InvalidOperationException("Current-frame tech scheduling requires the interaction command apply window.");
         if (LogicTimeControlService.CurrentFrame == 0)
             throw new InvalidOperationException("Current-frame tech scheduling requires a positive logic frame.");
-        if (LastAppliedFrame >= LogicTimeControlService.CurrentFrame)
+        if (LastAppliedFrame >= LogicTimeControlService.CurrentFrame
+            && !LogicPausedOperationService.IsExecuting)
             throw new InvalidOperationException("Current-frame tech scheduling occurred after the tech command apply window.");
 
         return Schedule(
@@ -196,6 +198,22 @@ public static class LogicTechEffectCommandService
     }
 #endif
 
+    public static void ApplyPausedOperation(ulong frameId, ulong firstSequenceExclusive)
+    {
+        EnsureActive();
+        if (!LogicPausedOperationService.IsExecuting)
+            throw new InvalidOperationException("LogicTechEffectCommandService.ApplyPausedOperation requires a paused-operation settlement.");
+        if (frameId != LogicTimeControlService.CurrentFrame)
+        {
+            throw new InvalidOperationException(
+                $"LogicTechEffectCommandService.ApplyPausedOperation failed: time-control frame mismatch. time={LogicTimeControlService.CurrentFrame}, requested={frameId}.");
+        }
+        if (IsApplyingFrame)
+            throw new InvalidOperationException("LogicTechEffectCommandService.ApplyPausedOperation failed: nested command application detected.");
+
+        ApplyCommands(frameId, s_RuntimeSink, firstSequenceExclusive, true);
+    }
+
     private static void ApplyFrame(ulong frameId, Action<LogicTechEffectCommand> sink)
     {
         EnsureActive();
@@ -209,6 +227,15 @@ public static class LogicTechEffectCommandService
         if (IsApplyingFrame)
             throw new InvalidOperationException("LogicTechEffectCommandService.ApplyFrame failed: nested command frame detected.");
 
+        ApplyCommands(frameId, sink, 0, false);
+    }
+
+    private static void ApplyCommands(
+        ulong frameId,
+        Action<LogicTechEffectCommand> sink,
+        ulong firstSequenceExclusive,
+        bool pausedOperation)
+    {
         IsApplyingFrame = true;
         try
         {
@@ -216,10 +243,17 @@ public static class LogicTechEffectCommandService
             for (int i = 0; i < s_Pending.Count; i++)
             {
                 LogicTechEffectCommand command = s_Pending[i];
+                if (command.Sequence <= firstSequenceExclusive)
+                    continue;
                 if (command.EffectiveFrame < frameId)
                 {
                     throw new InvalidOperationException(
                         $"LogicTechEffectCommandService.ApplyFrame failed: command missed its frame. sequence={command.Sequence}, effective={command.EffectiveFrame}, current={frameId}.");
+                }
+                if (pausedOperation && command.EffectiveFrame != frameId)
+                {
+                    throw new InvalidOperationException(
+                        $"Paused operation produced a deferred tech-effect command. sequence={command.Sequence}, effective={command.EffectiveFrame}, frame={frameId}.");
                 }
                 if (command.EffectiveFrame == frameId)
                     s_Due.Add(command);
@@ -236,7 +270,8 @@ public static class LogicTechEffectCommandService
 
             for (int i = s_Pending.Count - 1; i >= 0; i--)
             {
-                if (s_Pending[i].EffectiveFrame == frameId)
+                if (s_Pending[i].Sequence > firstSequenceExclusive
+                    && s_Pending[i].EffectiveFrame == frameId)
                     s_Pending.RemoveAt(i);
             }
             LastAppliedFrame = frameId;

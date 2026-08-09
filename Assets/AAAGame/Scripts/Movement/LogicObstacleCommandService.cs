@@ -119,6 +119,7 @@ public static class LogicObstacleCommandService
     public static bool IsApplyingFrame { get; private set; }
     public static bool IsWorldTransitionActive { get; private set; }
     public static ulong LastAppliedFrame { get; private set; }
+    public static ulong LastSequence => s_LastSequence;
     public static int PendingCount => s_Pending.Count;
     public static int ActiveObstacleCount => s_Active.Count;
     public static IReadOnlyList<LogicObstacleCommand> History => s_ReadOnlyHistory;
@@ -373,6 +374,22 @@ public static class LogicObstacleCommandService
     }
 #endif
 
+    public static void ApplyPausedOperation(ulong frameId, ulong firstSequenceExclusive)
+    {
+        EnsureActive();
+        if (!LogicPausedOperationService.IsExecuting)
+            throw new InvalidOperationException("LogicObstacleCommandService.ApplyPausedOperation requires a paused-operation settlement.");
+        if (frameId != LogicTimeControlService.CurrentFrame)
+        {
+            throw new InvalidOperationException(
+                $"LogicObstacleCommandService.ApplyPausedOperation failed: time-control frame mismatch. time={LogicTimeControlService.CurrentFrame}, requested={frameId}.");
+        }
+        if (IsApplyingFrame)
+            throw new InvalidOperationException("LogicObstacleCommandService.ApplyPausedOperation failed: nested command application detected.");
+
+        ApplyCommands(frameId, s_RuntimeSink, firstSequenceExclusive, true);
+    }
+
     private static void ApplyFrame(ulong frameId, Action<LogicObstacleCommand> sink)
     {
         EnsureActive();
@@ -386,6 +403,15 @@ public static class LogicObstacleCommandService
         if (IsApplyingFrame)
             throw new InvalidOperationException("LogicObstacleCommandService.ApplyFrame failed: nested command frame detected.");
 
+        ApplyCommands(frameId, sink, 0, false);
+    }
+
+    private static void ApplyCommands(
+        ulong frameId,
+        Action<LogicObstacleCommand> sink,
+        ulong firstSequenceExclusive,
+        bool pausedOperation)
+    {
         IsApplyingFrame = true;
         try
         {
@@ -393,10 +419,17 @@ public static class LogicObstacleCommandService
             for (int i = 0; i < s_Pending.Count; i++)
             {
                 LogicObstacleCommand command = s_Pending[i];
+                if (command.Sequence <= firstSequenceExclusive)
+                    continue;
                 if (command.EffectiveFrame < frameId)
                 {
                     throw new InvalidOperationException(
                         $"LogicObstacleCommandService.ApplyFrame failed: command missed its frame. obstacle={command.StableObstacleId}, effective={command.EffectiveFrame}, current={frameId}.");
+                }
+                if (pausedOperation && command.EffectiveFrame != frameId)
+                {
+                    throw new InvalidOperationException(
+                        $"Paused operation produced a deferred obstacle command. obstacle={command.StableObstacleId}, sequence={command.Sequence}, effective={command.EffectiveFrame}, frame={frameId}.");
                 }
                 if (command.EffectiveFrame == frameId)
                     s_Due.Add(command);
@@ -426,7 +459,8 @@ public static class LogicObstacleCommandService
 
             for (int i = s_Pending.Count - 1; i >= 0; i--)
             {
-                if (s_Pending[i].EffectiveFrame == frameId)
+                if (s_Pending[i].Sequence > firstSequenceExclusive
+                    && s_Pending[i].EffectiveFrame == frameId)
                     s_Pending.RemoveAt(i);
             }
 

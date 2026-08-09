@@ -161,7 +161,11 @@ public partial class BuildingEntity
         ApplyVisualState(true);
     }
 
-    private void SetStealthVisualState(bool stealthActive, bool hidden, float visibleAlpha)
+    private void SetStealthVisualState(
+        bool stealthActive,
+        bool hidden,
+        float visibleAlpha,
+        bool refreshPhaseVisibility = true)
     {
         EnsureVisualCache();
         _stealthVisualActive = stealthActive;
@@ -169,7 +173,7 @@ public partial class BuildingEntity
         _stealthVisibleAlpha = Mathf.Clamp01(visibleAlpha);
         ApplyVisualState(true);
 
-        if (!hidden && !stealthActive)
+        if (refreshPhaseVisibility && !hidden && !stealthActive)
             RefreshLv0PhaseVisibility();
     }
 

@@ -89,6 +89,30 @@ public sealed class LogicPhaseCommandServiceTests
     }
 
     [Test]
+    public void SubmitWhileInGameUiPaused_AppliesInCurrentFrameWithoutRemainingPending()
+    {
+        var applied = new List<LogicPhaseCommand>();
+        LogicTimeControlService.BeginFrame(1);
+        LogicPhaseCommandService.ApplyFrameForTests(1, applied.Add);
+        LogicTimeControlService.AcquirePause(LogicTimeControlSources.InGameUiPause);
+
+        LogicPhaseCommand command = LogicPhaseCommandService.SubmitForTests(
+            GamePhase.BuildBeforeInvade,
+            applied.Add);
+
+        Assert.AreEqual(1UL, LogicTimeControlService.CurrentFrame);
+        Assert.AreEqual(1UL, command.EffectiveFrame);
+        Assert.AreEqual(GamePhase.BuildBeforeInvade, LogicPhaseCommandService.GetRequiredCurrentPhase());
+        Assert.AreEqual(1, applied.Count);
+        Assert.AreEqual(0, LogicPhaseCommandService.PendingCount);
+
+        LogicTimeControlService.ReleasePause(LogicTimeControlSources.InGameUiPause);
+        LogicTimeControlService.BeginFrame(2);
+        LogicPhaseCommandService.ApplyFrameForTests(2, applied.Add);
+        Assert.AreEqual(1, applied.Count);
+    }
+
+    [Test]
     public void ApplyFrame_RollsBackAuthorityWhenPhaseEffectsFail()
     {
         LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.Invade);

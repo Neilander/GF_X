@@ -68,6 +68,34 @@ public static class LogicInteractionAuthorityService
         ClearState();
     }
 
+    public static void ReconcilePausedOperation()
+    {
+        EnsureActive();
+        if (!LogicPausedOperationService.IsExecuting)
+            throw new InvalidOperationException("Logic interaction reconciliation requires an active paused-operation settlement.");
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("Logic interaction reconciliation cannot run during a logic Tick.");
+        if (!LogicInteractionTargetStateService.IsActive)
+            throw new InvalidOperationException("Logic interaction reconciliation requires active target state.");
+        if (!s_CurrentActorId.IsValid)
+            return;
+
+        IEntityContext player = EntityRegistry.Player;
+        if (player == null || !player.Alive || player.LogicEntityId != s_CurrentActorId)
+        {
+            LogicInteractionTargetStateService.RemoveActor(s_CurrentActorId);
+            ClearState();
+            return;
+        }
+
+        if (!s_CurrentTargetId.IsValid || TryResolveBuilding(s_CurrentTargetId, out _))
+            return;
+
+        LogicInteractionTargetStateService.ClearTargetForPausedOperation(s_CurrentActorId);
+        s_CurrentTargetId = default;
+        s_LastSwitchFrame = LogicTimeControlService.CurrentFrame;
+    }
+
     public static void WriteDeterministicState(LogicStateHasher hasher)
     {
         EnsureActive();

@@ -28,15 +28,27 @@ public static class LogicPausedOperationService
             throw new InvalidOperationException(
                 $"Paused operation frame mismatch. time={frame}, runtime={LogicFrameRuntime.CurrentFrame}, running={LogicFrameRuntime.IsTimelineRunning}.");
         }
+        ulong techEffectSequence = LogicTechEffectCommandService.IsActive
+            ? LogicTechEffectCommandService.LastSequence
+            : 0;
         ulong lifecycleSequence = LogicEntityLifecycleService.IsActive
             ? LogicEntityLifecycleService.LastSequence
+            : 0;
+        ulong obstacleSequence = LogicObstacleCommandService.IsActive
+            ? LogicObstacleCommandService.LastSequence
             : 0;
         IsExecuting = true;
         try
         {
             T result = operation();
+            if (LogicTechEffectCommandService.IsActive)
+                LogicTechEffectCommandService.ApplyPausedOperation(frame, techEffectSequence);
             if (LogicEntityLifecycleService.IsActive)
                 LogicEntityLifecycleService.ApplyPausedOperation(frame, lifecycleSequence);
+            if (LogicObstacleCommandService.IsActive)
+                LogicObstacleCommandService.ApplyPausedOperation(frame, obstacleSequence);
+            if (LogicInteractionAuthorityService.IsActive)
+                LogicInteractionAuthorityService.ReconcilePausedOperation();
             return result;
         }
         finally

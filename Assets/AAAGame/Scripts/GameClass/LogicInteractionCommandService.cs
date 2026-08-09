@@ -92,6 +92,58 @@ public static class LogicInteractionCommandService
         string primaryId = null,
         string secondaryId = null)
     {
+        return RecordCommand(
+            checked(LogicTimeControlService.CurrentFrame + 1),
+            actionKind,
+            targetEntityId,
+            targetBuildingInstanceId,
+            primaryId,
+            secondaryId,
+            true);
+    }
+
+    public static LogicInteractionCommand Submit(
+        LogicInteractionActionKind actionKind,
+        LogicEntityId targetEntityId,
+        string targetBuildingInstanceId,
+        string primaryId = null,
+        string secondaryId = null)
+    {
+        if (!LogicPausedOperationService.CanResolveImmediately
+            || LogicPausedOperationService.IsExecuting)
+        {
+            return ScheduleForNextFrame(
+                actionKind,
+                targetEntityId,
+                targetBuildingInstanceId,
+                primaryId,
+                secondaryId);
+        }
+
+        return LogicPausedOperationService.Execute(() =>
+        {
+            LogicInteractionCommand command = RecordCommand(
+                LogicTimeControlService.CurrentFrame,
+                actionKind,
+                targetEntityId,
+                targetBuildingInstanceId,
+                primaryId,
+                secondaryId,
+                false);
+            ApplyImmediate(command, s_RuntimeSink);
+            return command;
+        });
+    }
+
+    private static LogicInteractionCommand RecordCommand(
+        ulong effectiveFrame,
+        LogicInteractionActionKind actionKind,
+        LogicEntityId targetEntityId,
+        string targetBuildingInstanceId,
+        string primaryId,
+        string secondaryId,
+        bool pending)
+    {
         EnsureActive();
         ValidatePayload(actionKind, targetEntityId, targetBuildingInstanceId, primaryId, secondaryId);
         if (HasPendingForTarget(targetEntityId))
@@ -101,7 +153,7 @@ public static class LogicInteractionCommandService
         }
 
         var command = new LogicInteractionCommand(
-            checked(LogicTimeControlService.CurrentFrame + 1),
+            effectiveFrame,
             checked(s_LastSequence + 1),
             actionKind,
             targetEntityId,
@@ -109,11 +161,71 @@ public static class LogicInteractionCommandService
             primaryId,
             secondaryId);
         s_LastSequence = command.Sequence;
-        s_Pending.Add(command);
+        if (pending)
+            s_Pending.Add(command);
         s_History.Add(command);
         CommandRecorded?.Invoke(command);
         return command;
     }
+
+    private static void ApplyImmediate(LogicInteractionCommand command, Action<LogicInteractionCommand> sink)
+    {
+        if (!LogicPausedOperationService.IsExecuting)
+            throw new InvalidOperationException("Immediate interaction application requires a paused-operation settlement.");
+        if (sink == null)
+            throw new ArgumentNullException(nameof(sink));
+        if (IsApplyingFrame)
+            throw new InvalidOperationException("LogicInteractionCommandService.ApplyImmediate failed: nested command application detected.");
+
+        IsApplyingFrame = true;
+        try
+        {
+            sink(command);
+            RecordApplied(command);
+            s_PendingAppliedPresentation.Enqueue(command);
+            LastAppliedFrame = command.EffectiveFrame;
+        }
+        finally
+        {
+            IsApplyingFrame = false;
+        }
+    }
+
+#if UNITY_EDITOR
+    public static LogicInteractionCommand SubmitForTests(
+        LogicInteractionActionKind actionKind,
+        LogicEntityId targetEntityId,
+        string targetBuildingInstanceId,
+        string primaryId,
+        string secondaryId,
+        Action<LogicInteractionCommand> sink)
+    {
+        if (!LogicPausedOperationService.CanResolveImmediately
+            || LogicPausedOperationService.IsExecuting)
+        {
+            return ScheduleForNextFrame(
+                actionKind,
+                targetEntityId,
+                targetBuildingInstanceId,
+                primaryId,
+                secondaryId);
+        }
+
+        return LogicPausedOperationService.Execute(() =>
+        {
+            LogicInteractionCommand command = RecordCommand(
+                LogicTimeControlService.CurrentFrame,
+                actionKind,
+                targetEntityId,
+                targetBuildingInstanceId,
+                primaryId,
+                secondaryId,
+                false);
+            ApplyImmediate(command, sink);
+            return command;
+        });
+    }
+#endif
 
     public static bool HasPendingForTarget(LogicEntityId targetEntityId)
     {

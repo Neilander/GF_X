@@ -94,6 +94,24 @@ public static class LogicPhaseCommandService
         return Schedule(phase, checked(LogicTimeControlService.CurrentFrame + 1));
     }
 
+    public static LogicPhaseCommand Submit(GamePhase phase)
+    {
+        if (!LogicPausedOperationService.CanResolveImmediately
+            || LogicPausedOperationService.IsExecuting)
+        {
+            return ScheduleForNextFrame(phase);
+        }
+
+        EnsureReady();
+        ValidatePhase(phase);
+        return LogicPausedOperationService.Execute(() =>
+        {
+            LogicPhaseCommand command = RecordCommand(phase, LogicTimeControlService.CurrentFrame, false);
+            ApplyImmediate(command, s_RuntimeSink);
+            return command;
+        });
+    }
+
 #if UNITY_EDITOR
     public static LogicPhaseCommand ScheduleForEditorGate(GamePhase phase, ulong effectiveFrame)
     {
@@ -113,16 +131,75 @@ public static class LogicPhaseCommandService
 
     private static LogicPhaseCommand Schedule(GamePhase phase, ulong effectiveFrame)
     {
+        return RecordCommand(phase, effectiveFrame, true);
+    }
+
+    private static LogicPhaseCommand RecordCommand(GamePhase phase, ulong effectiveFrame, bool pending)
+    {
         var command = new LogicPhaseCommand(
             effectiveFrame,
             checked(s_LastSequence + 1),
             phase);
         s_LastSequence = command.Sequence;
-        s_Pending.Add(command);
+        if (pending)
+            s_Pending.Add(command);
         s_History.Add(command);
         CommandRecorded?.Invoke(command);
         return command;
     }
+
+    private static void ApplyImmediate(LogicPhaseCommand command, Action<LogicPhaseCommand> sink)
+    {
+        if (!LogicPausedOperationService.IsExecuting)
+            throw new InvalidOperationException("Immediate phase application requires a paused-operation settlement.");
+        if (sink == null)
+            throw new ArgumentNullException(nameof(sink));
+        if (IsApplyingFrame)
+            throw new InvalidOperationException("LogicPhaseCommandService.ApplyImmediate failed: nested command application detected.");
+
+        IsApplyingFrame = true;
+        try
+        {
+            GamePhase oldPhase = CurrentPhase;
+            CurrentPhase = command.Phase;
+            try
+            {
+                sink(command);
+            }
+            catch
+            {
+                CurrentPhase = oldPhase;
+                throw;
+            }
+            if (oldPhase != CurrentPhase)
+                PhaseApplied?.Invoke(oldPhase, CurrentPhase);
+            LastAppliedFrame = command.EffectiveFrame;
+        }
+        finally
+        {
+            IsApplyingFrame = false;
+        }
+    }
+
+#if UNITY_EDITOR
+    public static LogicPhaseCommand SubmitForTests(GamePhase phase, Action<LogicPhaseCommand> sink)
+    {
+        if (!LogicPausedOperationService.CanResolveImmediately
+            || LogicPausedOperationService.IsExecuting)
+        {
+            return ScheduleForNextFrame(phase);
+        }
+
+        EnsureReady();
+        ValidatePhase(phase);
+        return LogicPausedOperationService.Execute(() =>
+        {
+            LogicPhaseCommand command = RecordCommand(phase, LogicTimeControlService.CurrentFrame, false);
+            ApplyImmediate(command, sink);
+            return command;
+        });
+    }
+#endif
 
     public static void ApplyFrame(ulong frameId)
     {

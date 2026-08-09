@@ -108,14 +108,9 @@ public static class StageCheckpointRestoreGateRunner
     {
         if (GF.Procedure?.CurrentProcedure == null)
             return;
-        if (GF.Procedure.CurrentProcedure is RuntimeProcedureBase)
-        {
-            SessionState.SetInt(StateKey, (int)RunnerState.WaitingForFirstStage);
+        if (GF.Procedure.CurrentProcedure is not RuntimeProcedureBase)
             return;
-        }
-        if (GF.Procedure.CurrentProcedure is not StartupLevelSelectProcedure)
-            return;
-        if (!StartupLevelSelectProcedure.TryEnterLevel("Lv_2", out string error))
+        if (!EditorRuntimeLevelEntry.TryEnterWithDefaultCareer("Lv_2", out string error))
             throw new InvalidOperationException($"Cannot enter Lv_2 from Launch: {error}");
         SessionState.SetInt(StateKey, (int)RunnerState.WaitingForFirstStage);
     }

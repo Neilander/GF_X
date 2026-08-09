@@ -318,15 +318,10 @@ public static class LogicRuntimeLongSessionGateRunner
     {
         if (GF.Procedure == null || GF.Procedure.CurrentProcedure == null)
             return;
-        if (GF.Procedure.CurrentProcedure is RuntimeProcedureBase)
-        {
-            SessionState.SetInt(StateKey, (int)RunnerState.WaitingForRuntime);
-            return;
-        }
-        if (GF.Procedure.CurrentProcedure is not StartupLevelSelectProcedure)
+        if (GF.Procedure.CurrentProcedure is not RuntimeProcedureBase)
             return;
 
-        if (!StartupLevelSelectProcedure.TryEnterLevel("Lv_2", out string errorMessage))
+        if (!EditorRuntimeLevelEntry.TryEnterWithDefaultCareer("Lv_2", out string errorMessage))
             throw new InvalidOperationException($"Cannot enter Lv_2 from Launch: {errorMessage}");
         SessionState.SetInt(StateKey, (int)RunnerState.WaitingForRuntime);
     }

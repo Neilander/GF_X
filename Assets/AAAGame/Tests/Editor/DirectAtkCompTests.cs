@@ -241,6 +241,40 @@ atkComp.Attack((Fix64)999);
     }
 
     [Test]
+    public void MeleeTargetLeavesRangeDuringWindUp_DoesNotDealDamage()
+    {
+        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        var target = CreateUnit(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        var targeting = new SimTargetingComp(attacker, new List<IEntityContext> { attacker, target })
+        {
+            AggroRangeFixed = (Fix64)10f,
+        };
+        targeting.Init(attacker);
+        attacker.TargetComp = targeting;
+        attacker.Brain = new ScriptedBrain { Attack = true };
+
+        var moveComp = new SimMoveComp();
+        moveComp.Init(attacker);
+        attacker.MoveComp = moveComp;
+
+        WeaponData weapon = MeleeWeapon(damage: 30f, range: 150f, windUp: 0.2f, windDown: 0.2f);
+        attacker.WeaponComp = new WeaponComp(weapon.ToWeapon("MeleeImpactRangeValidationWeapon"));
+        var atkComp = new DirectAtkComp();
+        atkComp.Init(attacker);
+        attacker.AtkComp = atkComp;
+
+        targeting.UpdateTargeting(Fix64.One);
+        StartAttack(atkComp);
+        Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State);
+
+        target.Position = new Vector3(10f, 0f, 0f);
+        AdvanceFrames(atkComp, 6);
+
+        Assert.AreEqual(100f, (float)target.Health.currentHealth, 0.01f, "目标离开近战射程后，本次攻击不得命中。");
+        Assert.AreEqual(0, atkComp.LastSuccessfulMeleeImpactAttackCount);
+    }
+
+    [Test]
     public void 玩家英雄不产生手动攻击意图但有目标时仍会自动攻击()
     {
         EnsureInputModelForTests();

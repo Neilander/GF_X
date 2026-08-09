@@ -170,10 +170,10 @@ public sealed class LogicInteractionHoldServiceTests
         AssertRenderFramePanelBoundary(buildTips);
         AssertRenderFramePanelBoundary(upgradeTips);
         AssertRenderFramePanelBoundary(infoTips);
-        StringAssert.Contains("LogicInteractionCommandService.ScheduleForNextFrame", buildManager);
+        StringAssert.Contains("LogicInteractionCommandService.Submit", buildManager);
         StringAssert.Contains("LogicInteractionActionKind.ConstructBuilding", buildManager);
         StringAssert.Contains("LogicInteractionActionKind.RecycleBuilding", buildManager);
-        StringAssert.Contains("LogicInteractionCommandService.ScheduleForNextFrame", techManager);
+        StringAssert.Contains("LogicInteractionCommandService.Submit", techManager);
         StringAssert.Contains("LogicInteractionActionKind.UpgradeBuilding", techManager);
         StringAssert.Contains("LogicInteractionActionKind.ResearchTech", techManager);
     }

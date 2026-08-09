@@ -134,7 +134,7 @@ public class TechManager : GameFrameworkComponent
         if (!IsUpgradeOptionExecutable(owner, upgradeBuildingId, techId))
             return false;
 
-        LogicInteractionCommandService.ScheduleForNextFrame(
+        LogicInteractionCommandService.Submit(
             LogicInteractionActionKind.UpgradeBuilding,
             owner.LogicEntityId,
             owner.BuildingInstanceId,
@@ -187,7 +187,7 @@ public class TechManager : GameFrameworkComponent
         if (!IsResearchOptionExecutable(owner, techId))
             return false;
 
-        LogicInteractionCommandService.ScheduleForNextFrame(
+        LogicInteractionCommandService.Submit(
             LogicInteractionActionKind.ResearchTech,
             owner.LogicEntityId,
             owner.BuildingInstanceId,

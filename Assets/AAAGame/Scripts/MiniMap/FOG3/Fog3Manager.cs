@@ -108,6 +108,7 @@ namespace AAAGame.MiniMap.FOG3
         public Fog3Controller Controller => controller;
         public Fog3MapData MapData => controller?.MapData;
         public bool IsInitialized => isInitialized;
+        public bool HasPresentedLogicFrameVisibility { get; private set; }
         public bool BlocksHiddenRevealByEnemyStronghold => enableEnemyStrongholdHiddenVisionBlock;
 
         public void GetEnemyUnitVisibilityDiagnostics(
@@ -520,6 +521,7 @@ namespace AAAGame.MiniMap.FOG3
             missingTerrainLogged = false;
             nextInitializeRetryTime = 0f;
             currentTerrainInfo = terrainInfo;
+            HasPresentedLogicFrameVisibility = false;
             controller.VisibilityUpdated -= OnVisibilityUpdated;
             controller.Initialize(terrainInfo);
             controller.VisibilityUpdated += OnVisibilityUpdated;
@@ -542,6 +544,7 @@ namespace AAAGame.MiniMap.FOG3
             if (controller != null)
                 controller.VisibilityUpdated -= OnVisibilityUpdated;
             currentTerrainInfo = null;
+            HasPresentedLogicFrameVisibility = false;
             currentOverlayHeight = 0f;
             cloudHeightRefreshTimer = 0f;
             cloudReferenceHeightResolved = false;
@@ -838,6 +841,7 @@ namespace AAAGame.MiniMap.FOG3
 
             controller = new Fog3Controller();
             currentTerrainInfo = null;
+            HasPresentedLogicFrameVisibility = false;
             currentOverlayHeight = 0f;
             cloudHeightRefreshTimer = 0f;
             cloudReferenceHeightResolved = false;
@@ -1195,6 +1199,8 @@ namespace AAAGame.MiniMap.FOG3
             }
 
             UpdateEnemyVisibilityByFog(mapData);
+            if (LogicTimeControlService.IsActive && LogicTimeControlService.CurrentFrame > 0)
+                HasPresentedLogicFrameVisibility = true;
         }
 
         private void UpdateVisibilityImmediately()

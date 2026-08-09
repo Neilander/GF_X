@@ -629,7 +629,7 @@ public partial class LevelEntity : EntityBase
         return true;
     }
 
-    private void TryCaptureStrongholdAfterBuildingDisabled(IBuildingLogicContext disabledBuilding, IEntityContext attacker)
+    internal void TryCaptureStrongholdAfterBuildingDisabled(IBuildingLogicContext disabledBuilding, IEntityContext attacker)
     {
         if (disabledBuilding == null)
             throw new ArgumentNullException(nameof(disabledBuilding));
@@ -637,6 +637,9 @@ public partial class LevelEntity : EntityBase
             return;
 
         int captureFactionId = ResolveCaptureFactionId(attacker);
+        if (captureFactionId != EntitySideHelper.PlayerFactionId)
+            return;
+
         int currentOwnerFactionId = LogicStrongholdMap.GetOwnerFactionIdRequired(disabledBuilding.StrongholdId);
         if (currentOwnerFactionId == captureFactionId)
             return;

@@ -120,10 +120,10 @@ public static class LogicRuntimeIdleMemoryControlRunner
 
     private static void WaitForStartupProcedure()
     {
-        if (GF.Procedure?.CurrentProcedure is not StartupLevelSelectProcedure)
+        if (GF.Procedure?.CurrentProcedure is not RuntimeProcedureBase)
             return;
-        if (LogicFrameRuntime.IsActive)
-            throw new InvalidOperationException("Launch idle memory control found an active logic frame runtime.");
+        if (!LogicFrameRuntime.IsActive || !LogicTimeControlService.IsActive)
+            throw new InvalidOperationException("Launch idle memory control found an inactive runtime timeline.");
         SetState(RunnerState.WarmingUp);
     }
 
@@ -181,10 +181,10 @@ public static class LogicRuntimeIdleMemoryControlRunner
 
     private static void ValidateIdleRuntime()
     {
-        if (GF.Procedure?.CurrentProcedure is not StartupLevelSelectProcedure)
-            throw new InvalidOperationException("Launch idle memory control left StartupLevelSelectProcedure.");
-        if (LogicFrameRuntime.IsActive || LogicTimeControlService.IsActive)
-            throw new InvalidOperationException("Launch idle memory control observed an active logic timeline.");
+        if (GF.Procedure?.CurrentProcedure is not RuntimeProcedureBase)
+            throw new InvalidOperationException("Launch idle memory control left RuntimeProcedureBase.");
+        if (!LogicFrameRuntime.IsActive || !LogicTimeControlService.IsActive)
+            throw new InvalidOperationException("Launch idle memory control observed an inactive logic timeline.");
         if (Profiler.enabled || Profiler.enableBinaryLog)
             throw new InvalidOperationException("Unity Profiler recording became enabled during the Launch idle memory control.");
     }

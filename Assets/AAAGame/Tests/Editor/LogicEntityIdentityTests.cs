@@ -1816,6 +1816,47 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void LogicBuildingConfigurator_Lv0PlaceholderDoesNotBlockLogicMovement()
+    {
+        const string identifier = "Buil_Def_Lv0";
+        var buildingData = new BuildingData(
+            identifier,
+            BuilType.Def,
+            Archetype.None,
+            "Building/Buil_Def_Lv0",
+            identifier,
+            identifier,
+            0,
+            0,
+            (Fix64)100,
+            null,
+            Fix64.Zero,
+            Array.Empty<Fix64>(),
+            null,
+            0,
+            Array.Empty<string>());
+        var position = new FixVector2((Fix64)12, (Fix64)34);
+        IReadOnlyList<LogicCombatShape> obstacleShapes =
+            LogicBuildingConfigurator.ResolveLogicObstacleShapes(buildingData, position, 0);
+        LogicCombatShape combatShape = BuildingCombatShapeCatalog.LoadRequired()
+            .ResolveRequired(buildingData.PrefabPath, position, 0);
+        LogicEntityState building = CreateConfiguredState(identifier, false);
+        building.ConfigureBuilding(
+            buildingData,
+            "building-def-lv0-collision-test",
+            null,
+            EntitySideHelper.PlayerFactionId,
+            combatShape,
+            obstacleShapes,
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            true);
+
+        Assert.AreEqual(LogicCombatShapeKind.AxisAlignedBox, building.CombatShape.Kind);
+        Assert.IsEmpty(building.LogicObstacleShapes);
+        Assert.IsFalse(building.BlocksLogicMovement);
+    }
+
+    [Test]
     public void BuildingDisabled_PublishesPureLogicEventWithoutView()
     {
         LogicEntityState state = CreateConfiguredState("Building_DisabledEvent", false);
@@ -1916,6 +1957,116 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void PlayerStronghold_LastBuildingDisabledByEnemy_DoesNotChangeOwner()
+    {
+        const string strongholdId = "stronghold-player-disabled-by-enemy";
+        LogicStrongholdMap.Initialize(
+            FixVector2.Zero,
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            Fix64.One,
+            new[]
+            {
+                new LogicStrongholdCellDefinition(
+                    strongholdId,
+                    0,
+                    0,
+                    EntitySideHelper.PlayerFactionId),
+            });
+        var levelObject = new GameObject("LevelEntity_PlayerStrongholdDisabled_Test");
+        try
+        {
+            LogicEntityState building = CreateConfiguredState("Building_PlayerStrongholdCore", false);
+            building.ConfigureBuilding(
+                CreateTestBuildingData("Building_PlayerStrongholdCore"),
+                "building-player-stronghold-core",
+                strongholdId,
+                EntitySideHelper.PlayerFactionId,
+                LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+                Array.Empty<LogicCombatShape>(),
+                Array.Empty<LogicInteractionOptionDescriptor>(),
+                false);
+            ActivateRequestedState(building.EntityId, 1);
+            LogicEntityState attacker = CreateConfiguredStateForSide(
+                "Unit_PlayerStrongholdEnemyAttacker",
+                SideType.EnemySide);
+            ActivateRequestedState(attacker.EntityId, 2);
+            building.TakeDamage((Fix64)150, HealthModifyType.empty, attacker);
+
+            LevelEntity levelEntity = levelObject.AddComponent<LevelEntity>();
+            levelEntity.TryCaptureStrongholdAfterBuildingDisabled(building, attacker);
+
+            Assert.IsTrue(building.IsDisabled);
+            Assert.AreEqual(
+                EntitySideHelper.PlayerFactionId,
+                LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId));
+            Assert.AreEqual(EntitySideHelper.PlayerFactionId, building.OwnerFactionId);
+            Assert.AreEqual(0, levelEntity.PendingStrongholdCapturePresentationCount);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(levelObject);
+            LogicStrongholdMap.Clear();
+        }
+    }
+
+    [Test]
+    public void PausedBuildingSpawn_CommitsLifecycleAndObstacleInCurrentFrame()
+    {
+        LogicObstacleCommandService.BeginTimeline();
+        FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
+        try
+        {
+            LogicTimeControlService.BeginFrame(1);
+            LogicEntityLifecycleService.ApplyFrame(1);
+            LogicObstacleCommandService.ApplyFrameForTests(1, _ => { });
+            LogicTimeControlService.AcquirePause(LogicTimeControlSources.InGameUiPause);
+
+            LogicEntityId spawned = LogicPausedOperationService.Execute(() =>
+                LogicEntityLifecycleService.RequestConfiguredSpawn(
+                    new LogicEntitySpawnDescriptor(
+                        new FixVector2((Fix64)2, (Fix64)3),
+                        new FixVector2(Fix64.One, Fix64.Zero),
+                        SideType.PlayerSide,
+                        "Building_PausedObstacle"),
+                    state =>
+                    {
+                        ConfigureBasicState(state);
+                        state.ConfigureBuilding(
+                            CreateTestBuildingData("Building_PausedObstacle"),
+                            "building-paused-obstacle",
+                            "stronghold-paused-obstacle",
+                            EntitySideHelper.PlayerFactionId,
+                            LogicCombatShape.AxisAlignedBox(
+                                FixVector2.Zero,
+                                new FixVector2(Fix64.One, Fix64.One)),
+                            new[]
+                            {
+                                LogicCombatShape.AxisAlignedBox(
+                                    new FixVector2((Fix64)2, (Fix64)3),
+                                    new FixVector2(Fix64.One, Fix64.One)),
+                            },
+                            Array.Empty<LogicInteractionOptionDescriptor>(),
+                            false);
+                    }));
+
+            Assert.AreEqual(1UL, LogicTimeControlService.CurrentFrame);
+            Assert.IsTrue(LogicEntityStateStore.GetRequired(spawned).IsSpawnCommitted);
+            Assert.AreEqual(0, LogicObstacleCommandService.PendingCount);
+            Assert.AreEqual(1, LogicObstacleCommandService.ActiveObstacleCount);
+            Assert.AreEqual(1UL, LogicObstacleCommandService.LastAppliedFrame);
+        }
+        finally
+        {
+            if (LogicTimeControlService.HasPause(LogicTimeControlSources.InGameUiPause))
+                LogicTimeControlService.ReleasePause(LogicTimeControlSources.InGameUiPause);
+            LogicObstacleCommandService.EndTimeline();
+            FlowFieldCrowdMovementSystem.ResetAll();
+        }
+    }
+
+    [Test]
     public void RevealedPermanentInvincibleTrap_DoesNotCreateHealthBar()
     {
         LogicEntityState trap = CreateConfiguredStateForSide("Buil_Trap_Lv1", SideType.EnemySide);
@@ -1994,7 +2145,7 @@ public class LogicEntityIdentityTests
         targeting.Init(trap);
         trap.SetBrain(new ScriptedBrain { Attack = true });
         var trapWeapon = new WeaponData(
-            WeaponType.SelfAoE,
+            WeaponType.Melee,
             (Fix64)10,
             Fix64.One,
             (Fix64)200,
@@ -2012,11 +2163,33 @@ public class LogicEntityIdentityTests
         trap.SetAtkComp(attack);
         attack.Init(trap);
 
-        attack.Attack(Fix64.Zero);
+        Assert.IsFalse(LogicFrameRuntime.IsActive);
+        LogicFrameRuntime.Begin();
+        try
+        {
+            LogicEntityFrameSnapshotService.BeginTimeline();
+            LogicFrameRuntime.StartTimeline();
+            attack.Attack(Fix64.Zero);
 
-        Assert.AreEqual(1, attack.AttackCount, "The trap must start a real attack before it is revealed.");
-        Assert.AreEqual(DirectAtkComp.AtkState.WindUp, attack.State);
-        Assert.IsFalse(trap.IsPermanentStealth, "The first real attack start must reveal the trap.");
+            Assert.AreEqual(1, attack.AttackCount, "The trap must start a real attack before it is revealed.");
+            Assert.AreEqual(DirectAtkComp.AtkState.WindUp, attack.State);
+            Assert.IsTrue(trap.IsPermanentStealth, "Starting wind-up must not reveal the trap.");
+
+            for (int i = 0; i < 6; i++)
+            {
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+                attack.Attack(Fix64.Zero);
+            }
+
+            Assert.That(target.HealthValue < (Fix64)100, Is.True, "The target must take damage before the trap is revealed.");
+            Assert.IsFalse(trap.IsPermanentStealth, "The first committed attack impact must reveal the trap.");
+        }
+        finally
+        {
+            if (LogicEntityFrameSnapshotService.IsActive)
+                LogicEntityFrameSnapshotService.EndTimeline();
+            LogicFrameRuntime.End();
+        }
 
         attack.InterruptAttack();
         Assert.IsFalse(trap.IsPermanentStealth, "Later triggers must not hide the trap again.");

@@ -33,6 +33,7 @@ public static class LevelSelectionService
 
     public static event Action<float> LevelLoadProgressChanged;
     public static event Action LevelLoadStarted;
+    public static event Action LevelRuntimeReadyForFirstFrame;
     public static event Action LevelLoadCompleted;
     public static event Action<string> LevelLoadFailed;
 
@@ -183,6 +184,14 @@ public static class LevelSelectionService
     {
         float clampedProgress = Math.Max(0f, Math.Min(1f, progress));
         LevelLoadProgressChanged?.Invoke(clampedProgress);
+    }
+
+    internal static void NotifyLevelRuntimeReadyForFirstFrame()
+    {
+        if (!IsLevelLoading)
+            throw new InvalidOperationException("Level runtime became ready while no level load was active.");
+
+        LevelRuntimeReadyForFirstFrame?.Invoke();
     }
 
     internal static void NotifyLevelLoadCompleted()

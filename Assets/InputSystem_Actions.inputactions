@@ -325,7 +325,7 @@
                     "name": "Speed",
                     "type": "Button",
                     "id": "f5c4a869-ab76-428b-b3db-2f95686f2143",
-                    "expectedControlType": "Button",
+                    "expectedControlType": "",
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false

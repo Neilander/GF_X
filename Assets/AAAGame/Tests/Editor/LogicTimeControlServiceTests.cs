@@ -328,6 +328,32 @@ public sealed class LogicTimeControlServiceTests
     }
 
     [Test]
+    public void LevelSwitchPauseOwnership_RuntimeReady_ReleasesPauseWithoutClosingLoadingUI()
+    {
+        var gameObject = new GameObject("LevelSwitchPauseOwnershipRuntimeReadyTest");
+        try
+        {
+            LevelSwitchUIForm form = gameObject.AddComponent<LevelSwitchUIForm>();
+            LogicTimeControlService.AcquirePause(LogicTimeControlSources.LevelSwitchUiPause);
+            SetLevelSwitchPauseOwnership(form, true);
+            typeof(LevelSwitchUIForm)
+                .GetField("m_IsLoading", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .SetValue(form, true);
+
+            typeof(LevelSwitchUIForm)
+                .GetMethod("OnLevelRuntimeReadyForFirstFrame", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(form, null);
+
+            Assert.IsFalse(LogicTimeControlService.HasPause(LogicTimeControlSources.LevelSwitchUiPause));
+            Assert.IsFalse(GetLevelSwitchPauseOwnership(form));
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(gameObject);
+        }
+    }
+
+    [Test]
     public void SnapshotRestore_PreservesPendingCommandsAndStableSourceOrder()
     {
         LogicTimeControlService.SetBulletTimeScale(20, 5000);

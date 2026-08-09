@@ -41,6 +41,7 @@ public partial class LevelSwitchUIForm : UIFormBase
         BindButtons();
         LevelSelectionService.LevelLoadStarted += OnLevelLoadStarted;
         LevelSelectionService.LevelLoadProgressChanged += OnLevelLoadProgressChanged;
+        LevelSelectionService.LevelRuntimeReadyForFirstFrame += OnLevelRuntimeReadyForFirstFrame;
         LevelSelectionService.LevelLoadCompleted += OnLevelLoadCompleted;
         LevelSelectionService.LevelLoadFailed += OnLevelLoadFailed;
 
@@ -53,6 +54,7 @@ public partial class LevelSwitchUIForm : UIFormBase
     {
         LevelSelectionService.LevelLoadStarted -= OnLevelLoadStarted;
         LevelSelectionService.LevelLoadProgressChanged -= OnLevelLoadProgressChanged;
+        LevelSelectionService.LevelRuntimeReadyForFirstFrame -= OnLevelRuntimeReadyForFirstFrame;
         LevelSelectionService.LevelLoadCompleted -= OnLevelLoadCompleted;
         LevelSelectionService.LevelLoadFailed -= OnLevelLoadFailed;
         UnbindButtons();
@@ -163,22 +165,22 @@ public partial class LevelSwitchUIForm : UIFormBase
 
     private void OnLevel1Clicked()
     {
-        LvEnterDialog.Open("Lv_1", m_IsStartup);
+        LvEnterDialog.Open("Lv_1");
     }
 
     private void OnLevel2Clicked()
     {
-        LvEnterDialog.Open("Lv_2", m_IsStartup);
+        LvEnterDialog.Open("Lv_2");
     }
 
     private void OnLevel3Clicked()
     {
-        LvEnterDialog.Open("Lv_3", m_IsStartup);
+        LvEnterDialog.Open("Lv_3");
     }
 
     private void OnTestLevelClicked()
     {
-        LvEnterDialog.Open(LevelSelectionService.TestLevelIdentifier, m_IsStartup);
+        LvEnterDialog.Open(LevelSelectionService.TestLevelIdentifier);
     }
 
     private void TryLoadLevel(int levelNumber)
@@ -200,9 +202,7 @@ public partial class LevelSwitchUIForm : UIFormBase
         SetProgressVisible(true);
         SetProgress(0f);
 
-        bool enterStarted = m_IsStartup
-            ? StartupLevelSelectProcedure.TryEnterLevel(levelIdentifier, out string errorMessage)
-            : LevelSelectionService.TryEnterLevelInPlace(levelIdentifier, out errorMessage);
+        bool enterStarted = LevelSelectionService.TryEnterLevelInPlace(levelIdentifier, out string errorMessage);
 
         if (!enterStarted)
         {
@@ -233,6 +233,14 @@ public partial class LevelSwitchUIForm : UIFormBase
         }
 
         SetProgress(progress);
+    }
+
+    private void OnLevelRuntimeReadyForFirstFrame()
+    {
+        if (!m_IsLoading)
+            throw new System.InvalidOperationException("Level switch UI received runtime-ready outside a level load.");
+
+        RelinquishPauseOwnership(false);
     }
 
     private void OnLevelLoadCompleted()

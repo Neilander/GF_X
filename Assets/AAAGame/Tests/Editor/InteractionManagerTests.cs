@@ -139,6 +139,79 @@ public sealed class InteractionManagerTests
         }
     }
 
+    [Test]
+    public void PausedSettlement_ClearsInvalidInteractionTargetWithoutNextLogicFrame()
+    {
+        const int actorValue = 71011;
+        const int staleTargetValue = 71012;
+        LogicEntityId actorId = new LogicEntityId(actorValue);
+        var actor = new LogicEntityState(
+            actorId,
+            new LogicEntitySpawnDescriptor(
+                FixVector2.Zero,
+                new FixVector2(Fix64.Zero, Fix64.One),
+                SideType.PlayerSide,
+                "InteractionManagerTests_Player"));
+        System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+        System.Reflection.FieldInfo activeField = typeof(LogicInteractionAuthorityService).GetField(
+            "<IsActive>k__BackingField",
+            flags);
+        System.Reflection.FieldInfo actorField = typeof(LogicInteractionAuthorityService).GetField(
+            "s_CurrentActorId",
+            flags);
+        System.Reflection.FieldInfo targetField = typeof(LogicInteractionAuthorityService).GetField(
+            "s_CurrentTargetId",
+            flags);
+        System.Reflection.FieldInfo switchFrameField = typeof(LogicInteractionAuthorityService).GetField(
+            "s_LastSwitchFrame",
+            flags);
+        System.Reflection.FieldInfo targetMapField = typeof(LogicInteractionTargetStateService).GetField(
+            "s_TargetByActor",
+            flags);
+        Assert.NotNull(activeField);
+        Assert.NotNull(actorField);
+        Assert.NotNull(targetField);
+        Assert.NotNull(switchFrameField);
+        Assert.NotNull(targetMapField);
+
+        try
+        {
+            EntityRegistry.Clear();
+            EntityRegistry.RegisterAsPlayer(actor);
+            LogicTimeControlService.BeginTimeline();
+            LogicTimeControlService.BeginFrame(1);
+            LogicInteractionTargetStateService.BeginTimeline();
+
+            activeField.SetValue(null, true);
+            actorField.SetValue(null, actorId);
+            targetField.SetValue(null, new LogicEntityId(staleTargetValue));
+            var targetMap = (Dictionary<int, int>)targetMapField.GetValue(null);
+            targetMap.Add(actorValue, staleTargetValue);
+
+            LogicTimeControlService.AcquirePause(LogicTimeControlSources.InGameUiPause);
+            LogicPausedOperationService.Execute(() => 0);
+
+            Assert.AreEqual(actorId, LogicInteractionAuthorityService.CurrentActorId);
+            Assert.IsFalse(LogicInteractionAuthorityService.CurrentTargetId.IsValid);
+            Assert.IsFalse(LogicInteractionTargetStateService.TryGetTarget(actorId, out _));
+            Assert.AreEqual(1, LogicInteractionTargetStateService.ActorCount);
+            Assert.AreEqual(1UL, LogicInteractionAuthorityService.LastSwitchFrame);
+        }
+        finally
+        {
+            activeField.SetValue(null, false);
+            actorField.SetValue(null, default(LogicEntityId));
+            targetField.SetValue(null, default(LogicEntityId));
+            switchFrameField.SetValue(null, 0UL);
+            if (LogicInteractionTargetStateService.IsActive)
+                LogicInteractionTargetStateService.EndTimeline();
+            if (LogicTimeControlService.IsActive)
+                LogicTimeControlService.EndTimeline();
+            EntityRegistry.Clear();
+        }
+    }
+
     private static LogicEntityFrameState CreateState(
         int id,
         FixVector2 position,

@@ -1470,15 +1470,10 @@ internal static class Lv3InteractiveHitchCaptureRunner
     {
         if (GF.Procedure?.CurrentProcedure == null)
             return;
-        if (GF.Procedure.CurrentProcedure is RuntimeProcedureBase)
-        {
-            SessionState.SetInt(StateKey, (int)RunnerState.WaitingForRuntime);
-            return;
-        }
-        if (GF.Procedure.CurrentProcedure is not StartupLevelSelectProcedure)
+        if (GF.Procedure.CurrentProcedure is not RuntimeProcedureBase)
             return;
 
-        if (!StartupLevelSelectProcedure.TryEnterLevel("Lv_3", out string error))
+        if (!EditorRuntimeLevelEntry.TryEnterWithDefaultCareer("Lv_3", out string error))
             throw new InvalidOperationException($"Cannot enter Lv_3 from Launch: {error}");
         SessionState.SetInt(StateKey, (int)RunnerState.WaitingForRuntime);
     }

@@ -46,8 +46,10 @@ public static class LogicBuildingConfigurator
 
         LogicCombatShape combatShape = BuildingCombatShapeCatalog.LoadRequired()
             .ResolveRequired(buildingData.PrefabPath, state.Position, logicQuarterTurns);
-        IReadOnlyList<LogicCombatShape> obstacleShapes = BuildingLogicObstacleShapeCatalog.LoadRequired()
-            .ResolveRequired(buildingData.PrefabPath, state.Position, logicQuarterTurns);
+        IReadOnlyList<LogicCombatShape> obstacleShapes = ResolveLogicObstacleShapes(
+            buildingData,
+            state.Position,
+            logicQuarterTurns);
         bool noAttack = buildingData.Weapon == null || buildingData.Weapon.Atk <= Fix64.Zero;
         LogicInteractionOptionDescriptor[] interactionOptions = LogicInteractionOptionDescriptorFactory.Create(
             state.EntityId,
@@ -95,6 +97,19 @@ public static class LogicBuildingConfigurator
         targetingComp.ForgetRangeFixed = aggroRange + (Fix64)2;
         targetingComp.FollowSearchRangeFixed = Fix64.Zero;
         BuildingConfigured?.Invoke(state);
+    }
+
+    internal static IReadOnlyList<LogicCombatShape> ResolveLogicObstacleShapes(
+        BuildingData buildingData,
+        FixVector2 position,
+        int logicQuarterTurns)
+    {
+        if (buildingData == null)
+            throw new ArgumentNullException(nameof(buildingData));
+        return buildingData.Lv == 0
+            ? Array.Empty<LogicCombatShape>()
+            : BuildingLogicObstacleShapeCatalog.LoadRequired()
+                .ResolveRequired(buildingData.PrefabPath, position, logicQuarterTurns);
     }
 
     private static void AddLogicInitialBuffs(LogicEntityState state, BuildingData buildingData)

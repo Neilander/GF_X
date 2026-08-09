@@ -128,6 +128,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         }
 
         UpdateLogicFrames();
+        TryCompleteLoadingPresentation();
         LogicFrameRuntime.SyncPresentationPhysics();
         LogicEntityLifecycleService.UpdatePresentation();
         LevelEntity.UpdateActivePresentation();
@@ -716,6 +717,34 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         }
     }
 
+    private void TryCompleteLoadingPresentation()
+    {
+        if (m_RuntimeInitPipeline == null
+            || !m_RuntimeInitPipeline.IsCompleted
+            || m_RuntimeInitPipeline.IsLoadingPresentationCompleted)
+        {
+            return;
+        }
+
+        if (!m_RuntimeInitPipeline.RequiresAuthoritativeFogPresentation)
+        {
+            m_RuntimeInitPipeline.CompleteLoadingPresentation();
+            return;
+        }
+
+        Fog3Manager fogManager = Fog3Manager.Instance ?? GameEntry.GetComponent<Fog3Manager>();
+        if (fogManager == null || !fogManager.IsInitialized || fogManager.MapData == null)
+            throw new InvalidOperationException("Runtime loading completion requires initialized Fog3Manager presentation.");
+        if (!LogicCardPlacementAuthority.IsActive || !LogicCardPlacementAuthority.IsWorldBound)
+            throw new InvalidOperationException("Runtime loading completion requires bound authoritative fog.");
+        if (!LogicCardPlacementAuthority.IsBoundTo(fogManager.MapData))
+            throw new InvalidOperationException("Runtime loading completion found authoritative fog bound to a stale map.");
+        if (LogicCardPlacementAuthority.LastAppliedFrame == 0 || !fogManager.HasPresentedLogicFrameVisibility)
+            return;
+
+        m_RuntimeInitPipeline.CompleteLoadingPresentation();
+    }
+
 #if UNITY_EDITOR
     private void UpdateEditorStressLogicFrames(double realtime)
     {
@@ -845,9 +874,13 @@ internal sealed class RuntimeInitPipeline
     private float m_DisplayedProgress;
     private float m_TargetProgress;
     private bool m_FinishPending;
+    private bool m_LoadingPresentationCompleted;
     private Stopwatch m_StartupStopwatch;
 
     public bool IsCompleted { get; private set; }
+    public bool IsLoadingPresentationCompleted => m_LoadingPresentationCompleted;
+    public bool RequiresAuthoritativeFogPresentation =>
+        HasFlag(RuntimeInitSystemFlags.MinimapSystem) || HasFlag(RuntimeInitSystemFlags.MinimapUI);
 
     public RuntimeInitPipeline(string logTag, string levelIdentifier, RuntimeInitSystemFlags runtimeSystems, bool showBuiltinProgress = true)
     {
@@ -873,6 +906,7 @@ internal sealed class RuntimeInitPipeline
         m_DisplayedProgress = RuntimeProgressStart;
         m_TargetProgress = RuntimeProgressStart;
         m_FinishPending = false;
+        m_LoadingPresentationCompleted = false;
         m_StartupStopwatch = Stopwatch.StartNew();
         PhaseManager.CancelRuntimePhaseFlows();
         LogRuntimeInitTiming("cancel-phase-flows");
@@ -963,6 +997,7 @@ internal sealed class RuntimeInitPipeline
         m_OnCompleted = null;
         m_GeneralSetup = null;
         m_FinishPending = false;
+        m_LoadingPresentationCompleted = false;
         m_StartupStopwatch = null;
     }
 
@@ -1144,13 +1179,22 @@ internal sealed class RuntimeInitPipeline
             GF.BuiltinView.SetLoadingProgress(1f);
         }
         m_OnCompleted?.Invoke();
+        LevelSelectionService.NotifyLevelRuntimeReadyForFirstFrame();
+    }
+
+    public void CompleteLoadingPresentation()
+    {
+        if (!IsCompleted)
+            throw new InvalidOperationException("Runtime loading presentation cannot complete before runtime initialization.");
+        if (m_LoadingPresentationCompleted)
+            return;
+
+        m_LoadingPresentationCompleted = true;
         if (m_ShowBuiltinProgress)
-        {
             GF.BuiltinView.HideLoadingProgress();
-        }
         LevelSelectionService.NotifyLevelLoadCompleted();
         LogRuntimeInitTiming("startup-complete");
-        Log.Info("{0} Runtime startup completed.", m_LogTag);
+        Log.Info("{0} Runtime startup completed after authoritative fog presentation.", m_LogTag);
         ShowLevelObjectiveTips();
         EnablePlayerInput();
     }

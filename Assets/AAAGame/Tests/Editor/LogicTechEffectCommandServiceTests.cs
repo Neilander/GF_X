@@ -141,6 +141,49 @@ public sealed class LogicTechEffectCommandServiceTests
         Assert.AreEqual(1UL, LogicTechEffectCommandService.LastAppliedFrame);
     }
 
+    [Test]
+    public void PausedInteraction_CommitsCurrentFrameTechEffectBeforeReturning()
+    {
+        LogicTimeControlService.BeginFrame(1);
+        LogicInteractionCommandService.ApplyFrameForTests(1, _ => { });
+        LogicTechEffectCommandService.ApplyFrameForTests(1, _ => { });
+        LogicTimeControlService.AcquirePause(LogicTimeControlSources.InGameUiPause);
+        FieldInfo effectApplyingField = typeof(LogicTechEffectCommandService).GetField(
+            nameof(LogicTechEffectCommandService.EffectApplying),
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(effectApplyingField);
+        var previousRuntimeConsumer =
+            (Action<LogicTechEffectCommand>)effectApplyingField.GetValue(null);
+        Action<LogicTechEffectCommand> runtimeConsumer = _ => { };
+        effectApplyingField.SetValue(null, runtimeConsumer);
+        try
+        {
+            LogicInteractionCommand command = LogicInteractionCommandService.SubmitForTests(
+                LogicInteractionActionKind.ResearchTech,
+                new LogicEntityId(10),
+                "building-a",
+                "Tech_A",
+                null,
+                _ => Assert.IsTrue(InGameDataModel.UnlockTechInCurrentInteractionFrame(
+                    "Tech_A",
+                    false,
+                    "building-a",
+                    0)));
+
+            Assert.AreEqual(1UL, LogicTimeControlService.CurrentFrame);
+            Assert.AreEqual(1UL, command.EffectiveFrame);
+            Assert.IsTrue(InGameDataModel.HasUnlockedTech("Tech_A", "building-a"));
+            Assert.AreEqual(0, LogicInteractionCommandService.PendingCount);
+            Assert.AreEqual(0, LogicTechEffectCommandService.PendingCount);
+            Assert.AreEqual(1UL, LogicTechEffectCommandService.LastAppliedFrame);
+        }
+        finally
+        {
+            effectApplyingField.SetValue(null, previousRuntimeConsumer);
+            LogicTimeControlService.ReleasePause(LogicTimeControlSources.InGameUiPause);
+        }
+    }
+
     private static ulong CaptureHash()
     {
         var hasher = new LogicStateHasher();

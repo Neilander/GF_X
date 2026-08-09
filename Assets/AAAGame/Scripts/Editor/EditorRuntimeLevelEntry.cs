@@ -1,0 +1,29 @@
+﻿using System;
+
+internal static class EditorRuntimeLevelEntry
+{
+    public static bool TryEnterWithDefaultCareer(string levelIdentifier, out string errorMessage)
+    {
+        errorMessage = null;
+        try
+        {
+            LevelTable level = CareerConfigRuntime.GetLevelRequired(levelIdentifier);
+            Archetype archetype = CareerConfigRuntime.IsTutorialLevel(levelIdentifier)
+                ? Archetype.Coding
+                : level.DefaultArchetype;
+            string runtimeLevelIdentifier = CareerRunSettings.BeginRun(levelIdentifier, false, archetype);
+            LevelTagRuntime.SetActiveTagIds(Array.Empty<int>());
+            if (LevelSelectionService.TryEnterLevelInPlace(runtimeLevelIdentifier, out errorMessage))
+                return true;
+
+            CareerRunSettings.CancelRun();
+            return false;
+        }
+        catch (Exception exception)
+        {
+            CareerRunSettings.CancelRun();
+            errorMessage = exception.Message;
+            return false;
+        }
+    }
+}

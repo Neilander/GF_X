@@ -120,7 +120,7 @@ public class BuildManager : GameFrameworkComponent
         if (owner == null || !IsConstructOptionExecutable(owner, buildBuildingId))
             return false;
 
-        LogicInteractionCommandService.ScheduleForNextFrame(
+        LogicInteractionCommandService.Submit(
             LogicInteractionActionKind.ConstructBuilding,
             owner.LogicEntityId,
             owner.BuildingInstanceId,
@@ -275,7 +275,7 @@ public class BuildManager : GameFrameworkComponent
         if (!CanRecycleBuilding(owner))
             return false;
 
-        LogicInteractionCommandService.ScheduleForNextFrame(
+        LogicInteractionCommandService.Submit(
             LogicInteractionActionKind.RecycleBuilding,
             owner.LogicEntityId,
             owner.BuildingInstanceId);

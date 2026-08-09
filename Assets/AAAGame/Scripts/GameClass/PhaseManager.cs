@@ -165,7 +165,7 @@ public class PhaseManager : GameFrameworkComponent
 
     public static void SwitchToPhase(GamePhase phase)
     {
-        LogicPhaseCommandService.ScheduleForNextFrame(phase);
+        LogicPhaseCommandService.Submit(phase);
     }
 
     public static void InitializePhaseAuthorityOnGameStart(GamePhase phase)
@@ -207,6 +207,8 @@ public class PhaseManager : GameFrameworkComponent
 
         var transitionWatch = Stopwatch.StartNew();
         HandlePhaseTransition(oldPhase, phase);
+        if (LogicPausedOperationService.IsExecuting && phase == GamePhase.Defend)
+            DefendPhaseRuntime.ApplyScheduledSpawnRequests(LogicTimeControlService.CurrentFrame);
         transitionWatch.Stop();
         LogPhaseStep($"transition {oldPhase}->{phase}", transitionWatch.ElapsedMilliseconds);
 

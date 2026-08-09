@@ -36,6 +36,7 @@ public abstract class BuffCallback
     public virtual void OnKill(IEntityContext target) { }
     public virtual void OnHealed(Fix64 amount) { }
     public virtual void OnAttackStarted(IEntityContext target) { }
+    public virtual void OnAttackImpact(IEntityContext target) { }
     public virtual void OnAttackCompleted(IEntityContext target) { }
     public virtual void OnAttackInterrupted(AttackInterruptReason reason, IEntityContext target) { }
     public virtual bool CanStartAttack() => true;
