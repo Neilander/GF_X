@@ -104,13 +104,13 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         {
             GF.BuiltinView.HideLoadingProgress();
             if (!LevelSelectionService.OpenLevelSwitch(true))
-            {
-                Log.Error("{0} Failed to open startup level switch UI.", RuntimeInitLogTag);
-                StartRuntimeInitPipeline(RuntimeLevelIdentifier, true);
-            }
+                throw new InvalidOperationException($"{RuntimeInitLogTag} Failed to open startup level switch UI.");
 
             return;
         }
+
+        if (!TryValidatePreparedCareerRunLevel(RuntimeLevelIdentifier, out string careerError))
+            throw new InvalidOperationException(careerError);
 
         bool showBuiltinProgress = !SuppressNextBuiltinLoadingProgress;
         SuppressNextBuiltinLoadingProgress = false;
@@ -244,42 +244,21 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         m_MaxUnloadUnusedAssetsIntervalBeforeRuntime = 0f;
     }
 
-    public bool TryEnterRuntimeLevel(string levelIdentifier, out string errorMessage)
+    internal bool TryEnterPreparedCareerRun(out string errorMessage)
     {
-        errorMessage = null;
-        if (string.IsNullOrWhiteSpace(levelIdentifier))
-        {
-            errorMessage = "Level identifier is empty.";
+        string levelIdentifier = CareerRunSettings.RuntimeLevelIdentifier;
+        if (!TryValidatePreparedCareerRunLevel(levelIdentifier, out errorMessage))
             return false;
-        }
 
-        if (m_ProcedureOwner == null)
-        {
-            errorMessage = "Runtime procedure is not active.";
-            return false;
-        }
-
-        string sceneName = !string.IsNullOrWhiteSpace(ChangeSceneProcedure.SelectedSceneForGame)
-            ? ChangeSceneProcedure.SelectedSceneForGame
-            : AppSettings.Instance.StartSceneName;
-
-        ChangeSceneProcedure.SelectedLevelIdentifier = levelIdentifier;
-        ChangeSceneProcedure.SelectedProcedureForGame = GetType().Name;
-        ChangeSceneProcedure.SelectedSceneForGame = sceneName;
-
-        m_ProcedureOwner.SetData<VarString>(ChangeSceneProcedure.P_SceneName, sceneName);
-        ChangeState<ChangeSceneProcedure>(m_ProcedureOwner);
-        return true;
+        return IsRuntimeReady
+            ? TryEnterRuntimeLevelInPlace(levelIdentifier, out errorMessage)
+            : TryStartRuntimeLevel(levelIdentifier, out errorMessage);
     }
 
-    public bool TryEnterRuntimeLevelInPlace(string levelIdentifier, out string errorMessage)
+    private bool TryEnterRuntimeLevelInPlace(string levelIdentifier, out string errorMessage)
     {
-        errorMessage = null;
-        if (string.IsNullOrWhiteSpace(levelIdentifier))
-        {
-            errorMessage = "Level identifier is empty.";
+        if (!TryValidatePreparedCareerRunLevel(levelIdentifier, out errorMessage))
             return false;
-        }
 
         if (m_ProcedureOwner == null)
         {
@@ -335,14 +314,10 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         return false;
     }
 
-    public bool TryStartRuntimeLevel(string levelIdentifier, out string errorMessage)
+    private bool TryStartRuntimeLevel(string levelIdentifier, out string errorMessage)
     {
-        errorMessage = null;
-        if (string.IsNullOrWhiteSpace(levelIdentifier))
-        {
-            errorMessage = "Level identifier is empty.";
+        if (!TryValidatePreparedCareerRunLevel(levelIdentifier, out errorMessage))
             return false;
-        }
 
         if (m_ProcedureOwner == null)
         {
@@ -358,6 +333,29 @@ public abstract class RuntimeProcedureBase : ProcedureBase
 
         ChangeSceneProcedure.SelectedLevelIdentifier = levelIdentifier;
         StartRuntimeInitPipeline(RuntimeLevelIdentifier, false);
+        return true;
+    }
+
+    private static bool TryValidatePreparedCareerRunLevel(string levelIdentifier, out string errorMessage)
+    {
+        if (!CareerRunSettings.HasActiveRun)
+        {
+            errorMessage = "Cannot enter a runtime level before selecting a starting industry.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(CareerRunSettings.RuntimeLevelIdentifier))
+            throw new InvalidOperationException("Active career run has no runtime level identifier.");
+        if (!string.Equals(
+                levelIdentifier,
+                CareerRunSettings.RuntimeLevelIdentifier,
+                StringComparison.Ordinal))
+        {
+            errorMessage =
+                $"Runtime level '{levelIdentifier}' does not match prepared career level '{CareerRunSettings.RuntimeLevelIdentifier}'.";
+            return false;
+        }
+
+        errorMessage = null;
         return true;
     }
 

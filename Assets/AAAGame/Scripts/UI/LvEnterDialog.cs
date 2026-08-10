@@ -143,7 +143,7 @@ public partial class LvEnterDialog : UIFormBase
         else
             LevelTagRuntime.SetActiveTagIds(m_SelectedIds);
         string error;
-        bool ok = LevelSelectionService.TryEnterLevelInPlace(runtimeLevelIdentifier, out error);
+        bool ok = LevelSelectionService.TryEnterPreparedCareerRun(out error);
 
         if (!ok)
         {

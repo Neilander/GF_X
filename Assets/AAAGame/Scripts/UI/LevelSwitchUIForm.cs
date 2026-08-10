@@ -183,37 +183,6 @@ public partial class LevelSwitchUIForm : UIFormBase
         LvEnterDialog.Open(LevelSelectionService.TestLevelIdentifier);
     }
 
-    private void TryLoadLevel(int levelNumber)
-    {
-        TryLoadLevel($"Lv_{levelNumber}");
-    }
-
-    private void TryLoadLevel(string levelIdentifier)
-    {
-        if (m_IsLoading)
-        {
-            return;
-        }
-
-        m_IsLoading = true;
-        SetInputModeToUIForm();
-        Interactable = false;
-        SetButtonsInteractable(false);
-        SetProgressVisible(true);
-        SetProgress(0f);
-
-        bool enterStarted = LevelSelectionService.TryEnterLevelInPlace(levelIdentifier, out string errorMessage);
-
-        if (!enterStarted)
-        {
-            m_IsLoading = false;
-            Interactable = true;
-            SetButtonsInteractable(true);
-            SetProgressVisible(false);
-            Log.Warning("[LevelSwitchUIForm] Failed to load level {0}: {1}", levelIdentifier, errorMessage);
-        }
-    }
-
     private void OnLevelLoadStarted()
     {
         m_IsLoading = true;

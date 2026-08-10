@@ -32,6 +32,7 @@ public sealed class StorySystemTests
         StoryScriptTable[] l2 = StoryTableQuery.GetScriptRows(scripts, "Story_L2");
         StoryTriggerTable l1Trigger = StoryTableQuery.FindTrigger(triggers, "Lv_1", StoryTiming.AfterLevelWin);
         StoryTriggerTable l2Trigger = StoryTableQuery.FindTrigger(triggers, "Lv_2", StoryTiming.AfterLevelWin);
+        StoryTriggerTable lTestTrigger = StoryTableQuery.FindTrigger(triggers, "LvTest", StoryTiming.AfterLevelWin);
 
         CollectionAssert.AreEqual(new[] { 1, 2, 3, 4 }, l1.Select(row => row.Order));
         CollectionAssert.AreEqual(new[] { 1, 2, 3, 4 }, l2.Select(row => row.Order));
@@ -39,6 +40,7 @@ public sealed class StorySystemTests
         Assert.AreEqual(StoryStyle.Document, l2[0].Style);
         Assert.AreEqual("Story_L1", l1Trigger.ScriptID);
         Assert.AreEqual("Story_L2", l2Trigger.ScriptID);
+        Assert.AreEqual("Story_LTest", lTestTrigger.ScriptID);
         Assert.IsTrue(l1Trigger.OnceOnly);
         Assert.IsTrue(l2Trigger.OnceOnly);
         Assert.IsNull(StoryTableQuery.FindTrigger(triggers, "Lv_1", StoryTiming.AfterLevelFail));

@@ -58,7 +58,6 @@ MonoBehaviour:
   - MinimapGameProcedure
   - PreloadProcedure
   - RealProcedure
-  - StartupLevelSelectProcedure
   - LaunchProcedure
   - LoadHotfixDllProcedure
   - UpdateResourcesProcedure

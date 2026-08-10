@@ -71,12 +71,7 @@ public static class LevelSelectionService
         return result;
     }
 
-    public static bool TrySelectLevelByNumber(int levelNumber, out string errorMessage)
-    {
-        return TrySelectLevel(Utility.Text.Format("Lv_{0}", levelNumber), out _, out errorMessage);
-    }
-
-    public static bool TrySelectLevel(string levelIdentifier, out LevelSelectionEntry selectedLevel, out string errorMessage)
+    private static bool TrySelectLevel(string levelIdentifier, out LevelSelectionEntry selectedLevel, out string errorMessage)
     {
         selectedLevel = null;
         errorMessage = null;
@@ -96,43 +91,18 @@ public static class LevelSelectionService
         return true;
     }
 
-    public static bool TryEnterLevelByNumber(int levelNumber, out string errorMessage)
+    public static bool TryEnterPreparedCareerRun(out string errorMessage)
     {
-        return TryEnterLevel(Utility.Text.Format("Lv_{0}", levelNumber), out errorMessage);
-    }
-
-    public static bool TryEnterLevel(string levelIdentifier, out string errorMessage)
-    {
-        if (!TrySelectLevel(levelIdentifier, out LevelSelectionEntry selectedLevel, out errorMessage))
+        if (!CareerRunSettings.HasActiveRun)
         {
+            errorMessage = "Cannot enter a level before selecting a starting industry.";
             return false;
         }
 
-        RuntimeProcedureBase runtimeProcedure = GetCurrentRuntimeProcedure();
-        if (runtimeProcedure == null)
-        {
-            errorMessage = Utility.Text.Format(
-                "Cannot enter level '{0}' because current procedure is not a RuntimeProcedureBase.",
-                selectedLevel.Identifier);
-            return false;
-        }
+        string levelIdentifier = CareerRunSettings.RuntimeLevelIdentifier;
+        if (string.IsNullOrWhiteSpace(levelIdentifier))
+            throw new InvalidOperationException("Active career run has no runtime level identifier.");
 
-        if (!runtimeProcedure.TryEnterRuntimeLevel(selectedLevel.Identifier, out errorMessage))
-        {
-            return false;
-        }
-
-        Log.Info("[LevelSelection] Enter level requested. level={0}", selectedLevel.Identifier);
-        return true;
-    }
-
-    public static bool TryEnterLevelInPlaceByNumber(int levelNumber, out string errorMessage)
-    {
-        return TryEnterLevelInPlace(Utility.Text.Format("Lv_{0}", levelNumber), out errorMessage);
-    }
-
-    public static bool TryEnterLevelInPlace(string levelIdentifier, out string errorMessage)
-    {
         if (!TrySelectLevel(levelIdentifier, out LevelSelectionEntry selectedLevel, out errorMessage))
         {
             return false;
@@ -149,13 +119,12 @@ public static class LevelSelectionService
 
         ConsumeStartupLevelSwitch();
 
-        if (!runtimeProcedure.TryEnterRuntimeLevelInPlace(selectedLevel.Identifier, out errorMessage)
-            && !runtimeProcedure.TryStartRuntimeLevel(selectedLevel.Identifier, out errorMessage))
+        if (!runtimeProcedure.TryEnterPreparedCareerRun(out errorMessage))
         {
             return false;
         }
 
-        Log.Info("[LevelSelection] Enter level in place requested. level={0}", selectedLevel.Identifier);
+        Log.Info("[LevelSelection] Prepared career run entry requested. level={0}", selectedLevel.Identifier);
         return true;
     }
 

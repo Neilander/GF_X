@@ -11,9 +11,9 @@ internal static class EditorRuntimeLevelEntry
             Archetype archetype = CareerConfigRuntime.IsTutorialLevel(levelIdentifier)
                 ? Archetype.Coding
                 : level.DefaultArchetype;
-            string runtimeLevelIdentifier = CareerRunSettings.BeginRun(levelIdentifier, false, archetype);
+            CareerRunSettings.BeginRun(levelIdentifier, false, archetype);
             LevelTagRuntime.SetActiveTagIds(Array.Empty<int>());
-            if (LevelSelectionService.TryEnterLevelInPlace(runtimeLevelIdentifier, out errorMessage))
+            if (LevelSelectionService.TryEnterPreparedCareerRun(out errorMessage))
                 return true;
 
             CareerRunSettings.CancelRun();
