@@ -6,14 +6,17 @@ using Newtonsoft.Json;
 [JsonObject(MemberSerialization.OptIn)]
 public sealed class CareerProgressDataModel : DataModelStorageBase
 {
-    [JsonProperty]
-    private HashSet<string> m_ClearedLevels;
+    [JsonProperty("m_ClearedLevels", NullValueHandling = NullValueHandling.Ignore)]
+    private HashSet<string> m_LegacyClearedLevels;
 
     [JsonProperty]
     private HashSet<string> m_ClearedExperiments;
 
     [JsonProperty]
     private Dictionary<string, int> m_MaxOffsetRates;
+
+    [JsonProperty]
+    private HashSet<string> m_UnlockedKeepsakes;
 
     [JsonProperty]
     private Dictionary<string, int> m_GrowthLevels;
@@ -23,9 +26,10 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
 
     protected override void OnInitialDataModel()
     {
-        m_ClearedLevels = new HashSet<string>(StringComparer.Ordinal);
+        m_LegacyClearedLevels = null;
         m_ClearedExperiments = new HashSet<string>(StringComparer.Ordinal);
         m_MaxOffsetRates = new Dictionary<string, int>(StringComparer.Ordinal);
+        m_UnlockedKeepsakes = new HashSet<string>(StringComparer.Ordinal);
         m_GrowthLevels = new Dictionary<string, int>(StringComparer.Ordinal);
         m_Experience = 0;
     }
@@ -44,7 +48,7 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
     public bool HasClearedLevel(string levelIdentifier)
     {
         EnsureLoaded();
-        return m_ClearedLevels.Contains(RequireLevelIdentifier(levelIdentifier));
+        return m_MaxOffsetRates.ContainsKey(RequireLevelIdentifier(levelIdentifier));
     }
 
     public bool HasClearedExperiment(string levelIdentifier)
@@ -57,7 +61,7 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
     {
         EnsureLoaded();
         string level = RequireLevelIdentifier(levelIdentifier);
-        return CareerConfigRuntime.TryGetExperiment(level, out _) && m_ClearedLevels.Contains(level);
+        return CareerConfigRuntime.TryGetExperiment(level, out _) && m_MaxOffsetRates.ContainsKey(level);
     }
 
     public int GetMaxOffsetRate(string levelIdentifier)
@@ -109,7 +113,7 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
     {
         EnsureLoaded();
         var unlocked = new HashSet<Archetype>();
-        foreach (string levelIdentifier in m_ClearedLevels)
+        foreach (string levelIdentifier in m_MaxOffsetRates.Keys)
         {
             Archetype[] levelUnlocks = CareerConfigRuntime.GetLevelRequired(levelIdentifier).UnlockArchetype;
             for (int i = 0; i < levelUnlocks.Length; i++)
@@ -127,6 +131,37 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
         if (unlocked.Count > 0)
             throw new InvalidOperationException("Career record contains an industry outside LevelTable unlock order.");
         return result;
+    }
+
+    public bool IsKeepsakeUnlocked(string identifier)
+    {
+        EnsureLoaded();
+        KeepsakeTable row = KeepsakeConfigRuntime.GetRequired(identifier);
+        return row.InitialUnlocked || m_UnlockedKeepsakes.Contains(row.Identifier);
+    }
+
+    public IReadOnlyList<KeepsakeTable> GetUnlockedKeepsakes()
+    {
+        EnsureLoaded();
+        IReadOnlyList<KeepsakeTable> rows = KeepsakeConfigRuntime.Rows;
+        var result = new List<KeepsakeTable>();
+        for (int i = 0; i < rows.Count; i++)
+        {
+            KeepsakeTable row = rows[i];
+            if (row.InitialUnlocked || m_UnlockedKeepsakes.Contains(row.Identifier))
+                result.Add(row);
+        }
+        return result;
+    }
+
+    public bool UnlockKeepsake(string identifier)
+    {
+        EnsureLoaded();
+        KeepsakeTable row = KeepsakeConfigRuntime.GetRequired(identifier);
+        if (row.InitialUnlocked || !m_UnlockedKeepsakes.Add(row.Identifier))
+            return false;
+        Save();
+        return true;
     }
 
     public CareerWinRecordResult RecordWin(string levelIdentifier, bool isExperiment, int offsetRate)
@@ -151,14 +186,14 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
 
         LevelTable levelRow = CareerConfigRuntime.GetLevelRequired(level);
         int previousGrade = CurrentGrade;
+        bool hadOffsetRecord = m_MaxOffsetRates.TryGetValue(level, out int previousOffset);
         bool firstClear = isExperiment
             ? m_ClearedExperiments.Add(level)
-            : m_ClearedLevels.Add(level);
-        bool hadOffsetRecord = m_MaxOffsetRates.TryGetValue(level, out int previousOffset);
-        int previousBadgePoints = hadOffsetRecord
+            : !hadOffsetRecord;
+        int previousBadgePoints = !isExperiment && hadOffsetRecord
             ? CareerConfigRuntime.GetOffsetBadgePointCount(previousOffset)
             : 0;
-        bool offsetImproved = !hadOffsetRecord || offsetRate > previousOffset;
+        bool offsetImproved = !isExperiment && (!hadOffsetRecord || offsetRate > previousOffset);
         if (offsetImproved)
             m_MaxOffsetRates[level] = offsetRate;
 
@@ -179,7 +214,9 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
         IReadOnlyList<LevelTagTable> unlockedLevelTags =
             CareerConfigRuntime.GetTagsUnlockedBetweenGrades(previousGrade, currentGrade);
 
-        int currentBadgePoints = CareerConfigRuntime.GetOffsetBadgePointCount(Math.Max(previousOffset, offsetRate));
+        int currentBadgePoints = isExperiment
+            ? 0
+            : CareerConfigRuntime.GetOffsetBadgePointCount(Math.Max(previousOffset, offsetRate));
         int offsetBadgePointsGained = currentBadgePoints - previousBadgePoints;
         if (firstClear || offsetImproved || totalExperienceGained > 0)
             Save();
@@ -253,7 +290,7 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
     public IReadOnlyCollection<string> GetClearedLevelsForDebug()
     {
         EnsureLoaded();
-        return m_ClearedLevels;
+        return m_MaxOffsetRates.Keys;
     }
 
     public IReadOnlyCollection<string> GetClearedExperimentsForDebug()
@@ -262,12 +299,38 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
         return m_ClearedExperiments;
     }
 
+    public IReadOnlyCollection<string> GetUnlockedKeepsakesForDebug()
+    {
+        EnsureLoaded();
+        IReadOnlyList<KeepsakeTable> rows = GetUnlockedKeepsakes();
+        var result = new List<string>(rows.Count);
+        for (int i = 0; i < rows.Count; i++)
+            result.Add(rows[i].Identifier);
+        return result;
+    }
+
     private void EnsureLoaded()
     {
-        if (m_ClearedLevels == null || m_ClearedExperiments == null || m_MaxOffsetRates == null || m_GrowthLevels == null)
+        m_UnlockedKeepsakes ??= new HashSet<string>(StringComparer.Ordinal);
+        if (m_ClearedExperiments == null || m_MaxOffsetRates == null || m_GrowthLevels == null)
             throw new InvalidOperationException("Career progress data is incomplete.");
+        MigrateLegacyClearedLevels();
         if (m_Experience < 0)
             throw new InvalidOperationException("Career progress experience cannot be negative.");
+    }
+
+    private void MigrateLegacyClearedLevels()
+    {
+        if (m_LegacyClearedLevels == null)
+            return;
+
+        foreach (string levelIdentifier in m_LegacyClearedLevels)
+        {
+            string level = RequireLevelIdentifier(levelIdentifier);
+            if (!m_MaxOffsetRates.ContainsKey(level))
+                m_MaxOffsetRates.Add(level, 0);
+        }
+        m_LegacyClearedLevels = null;
     }
 
     private static int GetCostToLevel(MetaGrowthTable row, int level)

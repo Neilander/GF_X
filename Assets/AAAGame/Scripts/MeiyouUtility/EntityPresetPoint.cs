@@ -61,6 +61,7 @@ static class EntityPresetPointEditorPreview
 
     private static readonly Dictionary<string, string> BuildingPrefabPathByIdentifier = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, string> UnitPrefabPathByCharacterKey = new(StringComparer.Ordinal);
+    private static string defaultHeroCharacterKey;
     private static bool buildingTableLoaded;
     private static bool characterTableLoaded;
     private static bool syncQueued;
@@ -166,6 +167,7 @@ static class EntityPresetPointEditorPreview
 
         characterTableLoaded = true;
         UnitPrefabPathByCharacterKey.Clear();
+        defaultHeroCharacterKey = null;
 
         if (TryLoadCharacterTable(GetCharacterTableAssetPath(false)))
         {
@@ -454,6 +456,8 @@ static class EntityPresetPointEditorPreview
         }
 
         AddCharacterPreviewPath(row.CharacterKey, row.PrefabPath);
+        if (defaultHeroCharacterKey == null && row.UnitTags != null && Array.IndexOf(row.UnitTags, UnitTag.Hero) >= 0)
+            defaultHeroCharacterKey = row.CharacterKey;
     }
 
     private static void AddBuildingPreviewPath(string identifier, string prefabPath)
@@ -570,7 +574,16 @@ static class EntityPresetPointEditorPreview
         string characterKey = string.IsNullOrWhiteSpace(identifier) ? string.Empty : identifier.Trim();
         if (UnitTypeHelper.TryParseUnitType(identifier, out var unitType))
         {
-            characterKey = unitType.ToString();
+            if (unitType == UnitType.Unit_Hero)
+            {
+                if (string.IsNullOrWhiteSpace(defaultHeroCharacterKey))
+                    throw new InvalidOperationException("CharacterDataDetail has no hero row for level preview.");
+                characterKey = defaultHeroCharacterKey;
+            }
+            else
+            {
+                characterKey = unitType.ToString();
+            }
         }
 
         if (string.IsNullOrWhiteSpace(characterKey) || !UnitPrefabPathByCharacterKey.TryGetValue(characterKey, out var prefabPath))

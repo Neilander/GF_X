@@ -397,7 +397,7 @@ public class PhaseManager : GameFrameworkComponent
 
     private static void RemoveAllSoldiers()
     {
-        SoldierFactory.RemoveAllSoldiersInCreatureGroup();
+        SoldierFactory.RemoveAllCurrentBattleTroops();
     }
 
     private static int GenerateCardsFromArmyBuildings()

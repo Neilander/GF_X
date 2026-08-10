@@ -147,7 +147,7 @@ public static class LevelTagRuntime
 
     public static List<BuffData> CreateUnitBuffs(UnitType unitType, int ownerFactionId)
     {
-        CharacterDataDetail row = FindCharacterData(unitType.ToString());
+        CharacterDataDetail row = FindCharacterData(KeepsakeConfigRuntime.ResolveCharacterKey(unitType));
         if (row == null)
             return null;
 

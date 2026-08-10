@@ -353,7 +353,7 @@ public class MoveExecutor : MonoBehaviour
         float deltaTime,
         bool constraintEnabled)
     {
-        if (_ownerEntity == null || !string.Equals(_ownerEntity.CharacterKey, UnitType.Unit_Hero.ToString(), System.StringComparison.Ordinal))
+        if (_ownerEntity == null || !ReferenceEquals(_ownerEntity, EntityRegistry.Player))
             return;
 
         Vector3 actualHorizontal = afterMovePosition - beforeMovePosition;

@@ -99,7 +99,7 @@ public static class CareerRuntimeEffects
 
     public static Fix64 GetEffectValue(MetaGrowthEffectType effectType)
     {
-        if (!CareerRunSettings.HasActiveRun || CareerRunSettings.IsVariableExperiment)
+        if (!ShouldApplyGrowthForActiveRun())
             return Fix64.Zero;
         CareerProgressDataModel progress = GF.DataModel.GetOrCreate<CareerProgressDataModel>();
         IReadOnlyList<MetaGrowthTable> rows = CareerConfigRuntime.GrowthRows;
@@ -116,11 +116,20 @@ public static class CareerRuntimeEffects
         throw new InvalidOperationException($"Meta growth effect '{effectType}' is not configured.");
     }
 
+    internal static bool ShouldApplyGrowthForActiveRun()
+    {
+        if (!CareerRunSettings.HasActiveRun)
+            return false;
+        if (string.IsNullOrWhiteSpace(CareerRunSettings.CareerLevelIdentifier))
+            throw new InvalidOperationException("Active career run has no career level identifier.");
+        return !CareerRunSettings.IsVariableExperiment
+               && !CareerConfigRuntime.IsTutorialLevel(CareerRunSettings.CareerLevelIdentifier);
+    }
+
     private static bool ShouldApplyGrowth(int ownerFactionId)
     {
         return ownerFactionId == EntitySideHelper.PlayerFactionId
-               && CareerRunSettings.HasActiveRun
-               && !CareerRunSettings.IsVariableExperiment;
+               && ShouldApplyGrowthForActiveRun();
     }
 
     private static List<BuffData> CreatePermanentBuff(string prefix, string suffix, List<BuffCallback> modules)

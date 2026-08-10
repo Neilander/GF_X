@@ -436,27 +436,44 @@ public sealed class LogicMigrationAuthorityBoundaryTests
     }
 
     [Test]
-    public void RemoveAllSoldiers_RequestsViewlessLogicSoldierDespawn()
+    public void RemoveAllCurrentBattleTroops_DespawnsOnlyTroopsMarkedAtBattleSpawn()
     {
         LogicTimeControlService.BeginTimeline();
         LogicPhaseCommandService.BeginTimeline();
         LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
         LogicEntityLifecycleService.BeginTimeline();
-        LogicEntityState soldier = CreateConfiguredUnitState(UnitType.Unit_Sprinter.ToString());
+        LogicEntityState battleTroop = CreateConfiguredUnitState(
+            UnitType.Unit_Sprinter.ToString(),
+            LogicEntityLifetime.CurrentBattleTroop);
+        LogicEntityState neutralCreature = CreateConfiguredUnitState("Future_Neutral_Merchant");
+        LogicEntityState building = CreateConfiguredUnitState("Buil_Test");
+        building.ConfigureBuilding(
+            CreateTestBuildingData("Buil_Test"),
+            "building-test",
+            null,
+            EntitySideHelper.EnemyFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
 
         try
         {
             LogicEntityLifecycleService.CommitPendingInitializationEntities();
-            Assert.IsTrue(soldier.IsSpawnCommitted);
+            Assert.IsTrue(battleTroop.IsSpawnCommitted);
+            Assert.IsTrue(neutralCreature.IsSpawnCommitted);
+            Assert.IsTrue(building.IsSpawnCommitted);
             Assert.AreEqual(0, LogicEntityLifecycleService.BoundViewCount);
 
-            SoldierFactory.RemoveAllSoldiersInCreatureGroup();
+            SoldierFactory.RemoveAllCurrentBattleTroops();
 
             Assert.AreEqual(1, LogicEntityLifecycleService.Commands.Count);
             Assert.AreEqual(
                 LogicEntityLifecycleCommandKind.DespawnRequested,
                 LogicEntityLifecycleService.Commands[0].Kind);
-            Assert.AreEqual(soldier.EntityId, LogicEntityLifecycleService.Commands[0].EntityId);
+            Assert.AreEqual(battleTroop.EntityId, LogicEntityLifecycleService.Commands[0].EntityId);
+            Assert.IsTrue(EntityRegistry.AllEntities.Contains(neutralCreature));
+            Assert.IsTrue(EntityRegistry.AllEntities.Contains(building));
         }
         finally
         {
@@ -523,7 +540,7 @@ public sealed class LogicMigrationAuthorityBoundaryTests
         string soldierFactorySource = ReadProjectSource("AAAGame/Scripts/Entity/SoldierFactory.cs");
         string removeAllSoldiers = ExtractSourceBlock(
             soldierFactorySource,
-            "public static void RemoveAllSoldiersInCreatureGroup()",
+            "public static void RemoveAllCurrentBattleTroops()",
             "public static LogicEntityId ShowSoldierFixed(");
         Assert.That(removeAllSoldiers, Does.Contain("EntityRegistry.AllEntities"));
         Assert.That(removeAllSoldiers, Does.Not.Contain("GF.Entity"));
@@ -776,7 +793,7 @@ public sealed class LogicMigrationAuthorityBoundaryTests
             row => row.UniqueValues != null && row.UniqueValues.Length > 0);
         LevelTable level = Array.Find(
             levelRows,
-            row => row.OptionalObjective1Id > 0
+            row => !string.IsNullOrWhiteSpace(row.OptionalObjective1Identifier)
                    && row.OptionalObjective1UniqueValues != null
                    && row.OptionalObjective1UniqueValues.Length > 0);
         Assert.NotNull(building);
@@ -1137,13 +1154,16 @@ public sealed class LogicMigrationAuthorityBoundaryTests
         field.SetValue(instance, value);
     }
 
-    private static LogicEntityState CreateConfiguredUnitState(string characterKey)
+    private static LogicEntityState CreateConfiguredUnitState(
+        string characterKey,
+        LogicEntityLifetime lifetime = LogicEntityLifetime.Persistent)
     {
         var descriptor = new LogicEntitySpawnDescriptor(
             FixVector2.Zero,
             new FixVector2(Fix64.Zero, Fix64.One),
             SideType.EnemySide,
-            characterKey);
+            characterKey,
+            lifetime: lifetime);
         LogicEntityId entityId = LogicEntityLifecycleService.RequestConfiguredSpawn(
             descriptor,
             state =>
@@ -1167,6 +1187,26 @@ public sealed class LogicMigrationAuthorityBoundaryTests
                 targeting.Init(state);
             });
         return LogicEntityStateStore.GetRequired(entityId);
+    }
+
+    private static BuildingData CreateTestBuildingData(string identifier)
+    {
+        return new BuildingData(
+            identifier,
+            BuilType.Def,
+            Archetype.None,
+            "Tests/Building",
+            identifier,
+            identifier,
+            1,
+            0,
+            (Fix64)100,
+            null,
+            Fix64.Zero,
+            Array.Empty<Fix64>(),
+            null,
+            0,
+            Array.Empty<string>());
     }
 
     private static void InvokePrivate(object instance, string methodName)
@@ -1227,17 +1267,17 @@ public sealed class LogicMigrationAuthorityBoundaryTests
 
     private static SkillTable[] LoadSkillRows()
     {
-        return LoadRows<SkillTable>("AAAGame/DataTable/Skill/SkillTable.txt");
+        return LoadRows<SkillTable>("AAAGame/DataTable/Hero/SkillTable.txt");
     }
 
     private static LevelTagTable[] LoadLevelTagRows()
     {
-        return LoadRows<LevelTagTable>("AAAGame/DataTable/LevelTagTable.txt");
+        return LoadRows<LevelTagTable>("AAAGame/DataTable/Level/LevelTagTable.txt");
     }
 
     private static LevelTable[] LoadLevelRows()
     {
-        return LoadRows<LevelTable>("AAAGame/DataTable/LevelTable.txt");
+        return LoadRows<LevelTable>("AAAGame/DataTable/Level/LevelTable.txt");
     }
 
     private static T[] LoadRows<T>(string relativePath) where T : UnityGameFramework.Runtime.DataRowBase, new()

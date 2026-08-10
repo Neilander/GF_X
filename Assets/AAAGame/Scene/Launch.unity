@@ -257,8 +257,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 01614664b831546d2ae94a42149d80ac, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   m_SendPointerHoverToParent: 1
   m_MoveRepeatDelay: 0.5
   m_MoveRepeatRate: 0.1
@@ -975,13 +975,6 @@ MonoBehaviour:
   playerSideUnitVisionRadius: 18
   buildingVisionRadius: 18
   autoRegisterPlayerSideEntities: 1
-  updateInterval: 0.08
-  softEdgeWidth: 2
-  useLineOfSight: 0
-  lineOfSightOccluderMask:
-    serializedVersion: 2
-    m_Bits: 0
-  lineOfSightEyeHeight: 1
   enableEnemyStrongholdHiddenVisionBlock: 0
   createWorldOverlay: 1
   viewSettings:
@@ -4320,7 +4313,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4997160fcda625842b3f5ff296cdbe2f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  tipDuration: 2
   tipSpacing: 15
 --- !u!4 &1857117722
 Transform:

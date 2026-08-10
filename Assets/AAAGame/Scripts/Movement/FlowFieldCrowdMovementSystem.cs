@@ -8989,6 +8989,46 @@ public static partial class FlowFieldCrowdMovementSystem
         return false;
     }
 
+    public static bool TryEstimateNavigationDistanceToReachableGoalFixed(
+        FixVector2 from,
+        FixVector2 rawGoal,
+        int agentTypeId,
+        out Fix64 distance,
+        out FixVector2 reachableGoal,
+        out string failureReason)
+    {
+        distance = Fix64.Zero;
+        reachableGoal = rawGoal;
+        failureReason = string.Empty;
+        if (!TryGetNavigationQueryWorld(agentTypeId, allowSynchronousBuild: true, out NavigationWorld world))
+        {
+            failureReason = $"navigation world unavailable agentType={agentTypeId}";
+            return false;
+        }
+        if (!TryResolveReachableNavigationQueryCellsFixed(
+                world,
+                from,
+                rawGoal,
+                out int startX,
+                out int startY,
+                out int goalX,
+                out int goalY,
+                out reachableGoal,
+                out failureReason))
+        {
+            return false;
+        }
+        if (startX == goalX && startY == goalY)
+            return true;
+        if (TryFindGridPathFixed(world, startX, startY, goalX, goalY, out distance))
+            return true;
+
+        failureReason =
+            $"no traversable grid path to reachable goal start=({startX},{startY}) goal=({goalX},{goalY}) " +
+            $"rawGoal=({rawGoal.x.RawValue},{rawGoal.y.RawValue}) agentType={agentTypeId}";
+        return false;
+    }
+
     public static bool TryGetNavigationPathCorners(
         Vector3 from,
         Vector3 to,
@@ -9002,6 +9042,7 @@ public static partial class FlowFieldCrowdMovementSystem
             agentTypeId,
             true,
             true,
+            false,
             pathCorners,
             out failureReason,
             out _);
@@ -9037,6 +9078,27 @@ public static partial class FlowFieldCrowdMovementSystem
             agentTypeId,
             false,
             false,
+            false,
+            pathCorners,
+            out failureReason,
+            out navigationUpdatePending);
+    }
+
+    public static bool TryGetNavigationPathCornersToReachableGoalNonBlocking(
+        Vector3 from,
+        Vector3 rawGoal,
+        int agentTypeId,
+        List<Vector3> pathCorners,
+        out string failureReason,
+        out bool navigationUpdatePending)
+    {
+        return TryGetNavigationPathCorners(
+            from,
+            rawGoal,
+            agentTypeId,
+            false,
+            false,
+            true,
             pathCorners,
             out failureReason,
             out navigationUpdatePending);
@@ -9048,6 +9110,7 @@ public static partial class FlowFieldCrowdMovementSystem
         int agentTypeId,
         bool allowSynchronousBuild,
         bool useAuthorityPathCaches,
+        bool resolveReachableGoal,
         List<Vector3> pathCorners,
         out string failureReason,
         out bool navigationUpdatePending)
@@ -9086,15 +9149,44 @@ public static partial class FlowFieldCrowdMovementSystem
 
             world = ResolveReachabilityQueryWorld(queryWorldState);
         }
-        if (!world.WorldToGrid(from, out int startX, out int startY))
+        int startX;
+        int startY;
+        int goalX;
+        int goalY;
+        Vector3 resolvedGoal = to;
+        if (resolveReachableGoal)
         {
-            failureReason = $"start is outside authored grid position={from}";
-            return false;
+            if (!TryResolveReachableNavigationQueryCellsFixed(
+                    world,
+                    new FixVector2((Fix64)from.x, (Fix64)from.z),
+                    new FixVector2((Fix64)to.x, (Fix64)to.z),
+                    out startX,
+                    out startY,
+                    out goalX,
+                    out goalY,
+                    out FixVector2 reachableGoal,
+                    out failureReason))
+            {
+                return false;
+            }
+
+            resolvedGoal = new Vector3(
+                (float)reachableGoal.x,
+                world.GridToWorldCenter(goalX, goalY).y,
+                (float)reachableGoal.y);
         }
-        if (!world.WorldToGrid(to, out int goalX, out int goalY))
+        else
         {
-            failureReason = $"goal is outside authored grid position={to}";
-            return false;
+            if (!world.WorldToGrid(from, out startX, out startY))
+            {
+                failureReason = $"start is outside authored grid position={from}";
+                return false;
+            }
+            if (!world.WorldToGrid(to, out goalX, out goalY))
+            {
+                failureReason = $"goal is outside authored grid position={to}";
+                return false;
+            }
         }
         if (!world.IsWalkable(startX, startY))
         {
@@ -9109,11 +9201,11 @@ public static partial class FlowFieldCrowdMovementSystem
         if (startX == goalX && startY == goalY)
         {
             pathCorners.Add(from);
-            pathCorners.Add(to);
+            pathCorners.Add(resolvedGoal);
             return true;
         }
 
-        if (TryFindGridPath(world, startX, startY, goalX, goalY, pathCorners, from, to, out _))
+        if (TryFindGridPath(world, startX, startY, goalX, goalY, pathCorners, from, resolvedGoal, out _))
             return true;
 
         failureReason = $"no traversable grid path start=({startX},{startY}) goal=({goalX},{goalY}) agentType={agentTypeId}";
@@ -16404,7 +16496,10 @@ public static partial class FlowFieldCrowdMovementSystem
         ActiveSharedGoalFieldBuildKeys.Clear();
         ActiveSharedGoalFieldDemandStartSectors.Clear();
         ActiveSharedGoalFieldDemandStartCells.Clear();
-        CommitPendingSectorPortalAccessEntries(state.World, job.PendingPortalAccessEntries);
+        CommitPendingSectorPortalAccessEntries(
+            state.World,
+            job.PendingPortalAccessEntries,
+            entriesAreFinalized: false);
         EnsureAllSectorPortalAccessCoverage(state.World, "world-build-commit");
         FinalizeWorldCostStorage(state.World);
         RebuildDeterministicPortalTransitionCosts(state.World);
@@ -17774,7 +17869,10 @@ public static partial class FlowFieldCrowdMovementSystem
         job.CommitCacheInvalidationTicks = Stopwatch.GetTimestamp() - stepStartTicks;
 
         stepStartTicks = Stopwatch.GetTimestamp();
-        CommitPendingSectorPortalAccessEntries(target, job.PendingPortalAccessEntries);
+        CommitPendingSectorPortalAccessEntries(
+            target,
+            job.PendingPortalAccessEntries,
+            entriesAreFinalized: true);
         job.CommitPortalAccessTicks = Stopwatch.GetTimestamp() - stepStartTicks;
 
         stepStartTicks = Stopwatch.GetTimestamp();
@@ -19588,7 +19686,10 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
-    private static void CommitPendingSectorPortalAccessEntries(NavigationWorld world, List<PendingSectorPortalAccess> pendingEntries)
+    private static void CommitPendingSectorPortalAccessEntries(
+        NavigationWorld world,
+        List<PendingSectorPortalAccess> pendingEntries,
+        bool entriesAreFinalized)
     {
         if (pendingEntries == null || pendingEntries.Count == 0)
             return;
@@ -19604,7 +19705,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 pending.SectorId,
                 pending.PortalId,
                 pending.SectorDirtyVersion);
-            SetSectorPortalAccessCacheEntry(key, new SectorPortalAccessEntry
+            var entry = new SectorPortalAccessEntry
             {
                 DeterministicIntegration = pending.DeterministicIntegration,
                 IsAnalyticClearSector = pending.IsAnalyticClearSector,
@@ -19612,7 +19713,10 @@ public static partial class FlowFieldCrowdMovementSystem
                 PortalId = pending.PortalId,
                 SectorDirtyVersion = pending.SectorDirtyVersion,
                 LastUsedFrame = GetFrameCount()
-            });
+            };
+            SetSectorPortalAccessCacheEntry(key, entry);
+            if (entriesAreFinalized)
+                RefreshSectorPortalAccessAuthorityContentHash(key, entry);
             pending.DeterministicIntegration = null;
         }
 
@@ -24767,6 +24871,7 @@ public static partial class FlowFieldCrowdMovementSystem
         else
         {
             if (!TryResolveReachableGoalCellFixed(
+                    _world,
                     currentTargetFramePosition,
                     anchorRawGoalX,
                     anchorRawGoalY,
@@ -24906,6 +25011,7 @@ public static partial class FlowFieldCrowdMovementSystem
         if (!TryResolveStartCellForReachabilityFixed(self, out startX, out startY, out startIsland))
             return false;
         bool resolved = TryResolveReachableGoalCellFixed(
+            _world,
             rawGoalPosition,
             rawGoalX,
             rawGoalY,
@@ -25176,7 +25282,72 @@ public static partial class FlowFieldCrowdMovementSystem
                $"neighborhood={BuildIslandNeighborhoodDiagnostics(_world, rawX, rawY, 2)}";
     }
 
+    private static bool TryResolveReachableNavigationQueryCellsFixed(
+        NavigationWorld world,
+        FixVector2 from,
+        FixVector2 rawGoal,
+        out int startX,
+        out int startY,
+        out int goalX,
+        out int goalY,
+        out FixVector2 reachableGoal,
+        out string failureReason)
+    {
+        if (world == null)
+            throw new InvalidOperationException("TryResolveReachableNavigationQueryCellsFixed failed: world is null.");
+
+        startX = 0;
+        startY = 0;
+        goalX = 0;
+        goalY = 0;
+        reachableGoal = rawGoal;
+        failureReason = string.Empty;
+        if (!world.WorldToGridFixed(from, out startX, out startY))
+        {
+            failureReason = $"start is outside authored grid raw=({from.x.RawValue},{from.y.RawValue})";
+            return false;
+        }
+        if (!world.IsWalkable(startX, startY)
+            && !TryResolveNearbyStartWalkableFixed(world, from, startX, startY, out startX, out startY))
+        {
+            failureReason =
+                $"start has no nearby walkable cell raw=({from.x.RawValue},{from.y.RawValue}) cell=({startX},{startY})";
+            return false;
+        }
+
+        int startIsland = ResolveIslandIdForDiagnostics(world, startX, startY);
+        if (startIsland <= 0)
+        {
+            failureReason = $"start cell has no navigation island cell=({startX},{startY})";
+            return false;
+        }
+        if (!world.WorldToGridFixed(rawGoal, out int rawGoalX, out int rawGoalY))
+        {
+            failureReason = $"goal is outside authored grid raw=({rawGoal.x.RawValue},{rawGoal.y.RawValue})";
+            return false;
+        }
+        if (!TryResolveReachableGoalCellFixed(
+                world,
+                rawGoal,
+                rawGoalX,
+                rawGoalY,
+                startIsland,
+                out goalX,
+                out goalY,
+                out reachableGoal,
+                out _))
+        {
+            failureReason =
+                $"goal has no reachable cell on start island raw=({rawGoal.x.RawValue},{rawGoal.y.RawValue}) " +
+                $"rawCell=({rawGoalX},{rawGoalY}) start=({startX},{startY}) startIsland={startIsland}";
+            return false;
+        }
+
+        return true;
+    }
+
     private static bool TryResolveReachableGoalCellFixed(
+        NavigationWorld world,
         FixVector2 rawGoalPosition,
         int rawGoalX,
         int rawGoalY,
@@ -25186,20 +25357,23 @@ public static partial class FlowFieldCrowdMovementSystem
         out FixVector2 goalWorld,
         out int goalSectorId)
     {
+        if (world == null)
+            throw new InvalidOperationException("TryResolveReachableGoalCellFixed failed: world is null.");
+
         goalX = rawGoalX;
         goalY = rawGoalY;
         goalWorld = rawGoalPosition;
         goalSectorId = -1;
 
-        int rawGoalIsland = ResolveIslandIdForDiagnostics(_world, rawGoalX, rawGoalY);
-        if (_world.IsWalkable(rawGoalX, rawGoalY) && rawGoalIsland == startIsland)
+        int rawGoalIsland = ResolveIslandIdForDiagnostics(world, rawGoalX, rawGoalY);
+        if (world.IsWalkable(rawGoalX, rawGoalY) && rawGoalIsland == startIsland)
         {
-            goalWorld = _world.GridToWorldCenterFixed(rawGoalX, rawGoalY);
-            return _world.TryGetSectorId(goalX, goalY, out goalSectorId);
+            goalWorld = world.GridToWorldCenterFixed(rawGoalX, rawGoalY);
+            return world.TryGetSectorId(goalX, goalY, out goalSectorId);
         }
 
         if (!TryFindNearestWalkableInIslandByWorldDistanceFixed(
-                _world,
+                world,
                 rawGoalX,
                 rawGoalY,
                 rawGoalPosition,
@@ -25213,8 +25387,8 @@ public static partial class FlowFieldCrowdMovementSystem
             return false;
         }
 
-        goalWorld = _world.GridToWorldCenterFixed(goalX, goalY);
-        return _world.TryGetSectorId(goalX, goalY, out goalSectorId);
+        goalWorld = world.GridToWorldCenterFixed(goalX, goalY);
+        return world.TryGetSectorId(goalX, goalY, out goalSectorId);
     }
 
 

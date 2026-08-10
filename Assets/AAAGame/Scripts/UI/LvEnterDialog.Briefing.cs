@@ -24,19 +24,16 @@ public partial class LvEnterDialog
 
     private sealed class CommCardView
     {
-        public GameObject ContentRoot;
         public Image Portrait;
         public TextMeshProUGUI PortraitFallback;
         public TextMeshProUGUI Speaker;
         public TextMeshProUGUI Body;
         public TextMeshProUGUI Signal;
-        public TextMeshProUGUI CollapseLabel;
         public ScrollRect Scroll;
         public string FullText;
         public float VisibleCharacters;
         public int TotalCharacters;
         public int VisualVersion;
-        public bool IsCollapsed;
     }
 
     protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
@@ -45,7 +42,7 @@ public partial class LvEnterDialog
         for (int i = 0; i < m_CommCards.Count; i++)
         {
             CommCardView card = m_CommCards[i];
-            if (card.IsCollapsed || card.Body == null || card.Body.maxVisibleCharacters >= card.TotalCharacters)
+            if (card.Body == null || card.Body.maxVisibleCharacters >= card.TotalCharacters)
                 continue;
             card.VisibleCharacters += CommCharactersPerSecond * realElapseSeconds;
             card.Body.maxVisibleCharacters = Mathf.Min(card.TotalCharacters, Mathf.FloorToInt(card.VisibleCharacters));
@@ -82,19 +79,19 @@ public partial class LvEnterDialog
             throw new InvalidOperationException("LvEnterDialog tag panel hierarchy is invalid.");
 
         RectTransform tagPanel = positivePanel.parent as RectTransform;
-        SetRect(tagPanel, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(58f, 92f), new Vector2(1000f, 520f));
+        SetRect(tagPanel, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(58f, 92f), new Vector2(680f, 520f));
         Image tagBackground = tagPanel.GetComponent<Image>()
                               ?? throw new InvalidOperationException("LvEnterDialog tag panel requires an Image.");
         tagBackground.color = new Color(0.105f, 0.115f, 0.13f, 0.98f);
 
         ConfigureTagSection(positivePanel, varPositiveSelectNumText, varPositiveTagGrids, new Vector2(14f, 88f));
-        ConfigureTagSection(negativePanel, varNegativeSelectNumText, varNegativeTagGrids, new Vector2(506f, 88f));
+        ConfigureTagSection(negativePanel, varNegativeSelectNumText, varNegativeTagGrids, new Vector2(340f, 88f));
 
         RectTransform infoPanel = varInfoDesc.transform.parent as RectTransform;
         if (infoPanel == null)
             throw new InvalidOperationException("LvEnterDialog tag description panel is missing.");
         infoPanel.SetParent(tagPanel, false);
-        SetRect(infoPanel, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(14f, 12f), new Vector2(972f, 66f));
+        SetRect(infoPanel, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(14f, 12f), new Vector2(652f, 66f));
         Image infoBackground = infoPanel.GetComponent<Image>()
                                ?? throw new InvalidOperationException("LvEnterDialog tag description panel requires an Image.");
         infoBackground.color = new Color(0.055f, 0.065f, 0.08f, 0.94f);
@@ -111,7 +108,7 @@ public partial class LvEnterDialog
         RectTransform grid,
         Vector2 position)
     {
-        SetRect(section, Vector2.zero, Vector2.zero, Vector2.zero, position, new Vector2(480f, 420f));
+        SetRect(section, Vector2.zero, Vector2.zero, Vector2.zero, position, new Vector2(312f, 420f));
         Image background = section.GetComponent<Image>();
         if (background != null)
             background.color = Color.clear;
@@ -130,10 +127,11 @@ public partial class LvEnterDialog
 
         GridLayoutGroup layout = grid.GetComponent<GridLayoutGroup>()
                                  ?? throw new InvalidOperationException("LvEnterDialog tag grid requires GridLayoutGroup.");
-        layout.cellSize = new Vector2(108f, 86f);
-        layout.spacing = new Vector2(8f, 8f);
+        layout.padding = new RectOffset(0, 0, 0, 0);
+        layout.cellSize = new Vector2(98f, 90f);
+        layout.spacing = new Vector2(6f, 6f);
         layout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-        layout.constraintCount = 4;
+        layout.constraintCount = 3;
         ScrollRect scroll = scrollRect.GetComponent<ScrollRect>();
         if (scroll != null)
         {
@@ -169,8 +167,6 @@ public partial class LvEnterDialog
         SetRect(content, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
         content.offsetMin = new Vector2(12f, 44f);
         content.offsetMax = new Vector2(-12f, -12f);
-        card.ContentRoot = content.gameObject;
-
         RectTransform portraitFrame = CreateRect("PortraitFrame", content);
         SetRect(portraitFrame, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0f), new Vector2(126f, 196f));
         Image portraitBackground = portraitFrame.gameObject.AddComponent<Image>();
@@ -215,15 +211,6 @@ public partial class LvEnterDialog
         SetRect(card.Signal.rectTransform, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(14f, 6f), new Vector2(240f, 34f));
         card.Signal.alignment = TextAlignmentOptions.MidlineLeft;
 
-        Button replay = CreateButton(root, LocalizeBriefingRequired("LvEnter.Replay"), 32f, out TextMeshProUGUI replayLabel);
-        SetRect(replay.GetComponent<RectTransform>(), Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(492f, 6f), new Vector2(74f, 32f));
-        replayLabel.fontSize = 16f;
-        replay.onClick.AddListener(() => StartCommunicationTypewriter(card));
-
-        Button collapse = CreateButton(root, LocalizeBriefingRequired("LvEnter.Collapse"), 32f, out card.CollapseLabel);
-        SetRect(collapse.GetComponent<RectTransform>(), Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(574f, 6f), new Vector2(72f, 32f));
-        card.CollapseLabel.fontSize = 16f;
-        collapse.onClick.AddListener(() => ToggleCommunicationCard(card));
         return card;
     }
 
@@ -231,7 +218,7 @@ public partial class LvEnterDialog
     {
         m_ObjectiveRoot = CreateRect("MissionObjectives", transform);
         m_CareerTransientObjects.Add(m_ObjectiveRoot.gameObject);
-        SetRect(m_ObjectiveRoot, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(1080f, 150f), new Vector2(812f, 470f));
+        SetRect(m_ObjectiveRoot, Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(760f, 150f), new Vector2(648f, 470f));
         Image background = m_ObjectiveRoot.gameObject.AddComponent<Image>();
         background.color = new Color(0.09f, 0.105f, 0.125f, 0.98f);
 
@@ -244,13 +231,13 @@ public partial class LvEnterDialog
         m_LevelTitleText.alignment = TextAlignmentOptions.MidlineLeft;
 
         m_HistoryOffsetText = CreateText(m_ObjectiveRoot, string.Empty, 19, FontStyles.Normal, 32f);
-        SetRect(m_HistoryOffsetText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -62f), new Vector2(300f, 32f));
+        SetRect(m_HistoryOffsetText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -62f), new Vector2(240f, 32f));
         m_HistoryOffsetText.alignment = TextAlignmentOptions.MidlineLeft;
         m_CurrentOffsetText = CreateText(m_ObjectiveRoot, string.Empty, 19, FontStyles.Normal, 32f);
-        SetRect(m_CurrentOffsetText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -96f), new Vector2(300f, 32f));
+        SetRect(m_CurrentOffsetText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -96f), new Vector2(240f, 32f));
         m_CurrentOffsetText.alignment = TextAlignmentOptions.MidlineLeft;
         m_GradeText = CreateText(m_ObjectiveRoot, string.Empty, 19, FontStyles.Normal, 32f);
-        SetRect(m_GradeText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(330f, -62f), new Vector2(360f, 32f));
+        SetRect(m_GradeText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(270f, -62f), new Vector2(250f, 32f));
         m_GradeText.alignment = TextAlignmentOptions.MidlineLeft;
 
         RectTransform stampRect = CreateRect("OffsetBadgeStamp", m_ObjectiveRoot);
@@ -304,9 +291,6 @@ public partial class LvEnterDialog
         ApplySignalStyle(card, row.SignalState);
         card.VisualVersion = ++m_CommVisualVersion;
         ApplyCommunicationPortrait(card, row.PortraitPath, card.VisualVersion);
-        card.IsCollapsed = false;
-        card.ContentRoot.SetActive(true);
-        card.CollapseLabel.text = LocalizeBriefingRequired("LvEnter.Collapse");
         StartCommunicationTypewriter(card);
     }
 
@@ -341,15 +325,6 @@ public partial class LvEnterDialog
         card.Scroll.verticalNormalizedPosition = 1f;
     }
 
-    private void ToggleCommunicationCard(CommCardView card)
-    {
-        card.IsCollapsed = !card.IsCollapsed;
-        card.ContentRoot.SetActive(!card.IsCollapsed);
-        card.CollapseLabel.text = LocalizeBriefingRequired(card.IsCollapsed ? "LvEnter.Expand" : "LvEnter.Collapse");
-        if (!card.IsCollapsed)
-            StartCommunicationTypewriter(card);
-    }
-
     private void RefreshMissionStatistics()
     {
         if (m_HistoryOffsetText == null)
@@ -364,7 +339,15 @@ public partial class LvEnterDialog
             .Where(item => m_SelectedIds.Contains(item.TagId))
             .Sum(item => item.TagLevel);
         m_CurrentOffsetText.text = string.Format(LocalizeBriefingRequired("LvEnter.CurrentOffset"), currentOffsetRate);
-        m_GradeText.text = string.Format(LocalizeBriefingRequired("LvEnter.Grade"), progress.Experience, progress.CurrentGrade);
+        CareerConfigRuntime.GetGradeProgressForExperience(
+            progress.Experience,
+            out int currentSegmentExperience,
+            out int requiredSegmentExperience);
+        m_GradeText.text = string.Format(
+            LocalizeBriefingRequired("LvEnter.Grade"),
+            progress.CurrentGrade,
+            currentSegmentExperience,
+            requiredSegmentExperience);
 
         m_BadgeStamp.gameObject.SetActive(hasRecord);
         if (!hasRecord)
@@ -374,23 +357,30 @@ public partial class LvEnterDialog
 
     private void ApplyBadgeStamp(CareerOffsetBadgeTier tier)
     {
+        // TODO: Replace the temporary text with the final badge icon.
         Color color;
+        string stampText;
         switch (tier)
         {
             case CareerOffsetBadgeTier.Plain:
                 color = new Color(0.68f, 0.7f, 0.72f, 1f);
+                stampText = "铁";
                 break;
             case CareerOffsetBadgeTier.Bronze:
                 color = new Color(0.72f, 0.39f, 0.2f, 1f);
+                stampText = "铜";
                 break;
             case CareerOffsetBadgeTier.Silver:
                 color = new Color(0.72f, 0.78f, 0.84f, 1f);
+                stampText = "银";
                 break;
             case CareerOffsetBadgeTier.Gold:
                 color = new Color(0.95f, 0.72f, 0.2f, 1f);
+                stampText = "金";
                 break;
             case CareerOffsetBadgeTier.Diamond:
                 color = new Color(0.3f, 0.88f, 0.92f, 1f);
+                stampText = "钻";
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(tier), tier, "Unsupported offset badge tier.");
@@ -399,7 +389,7 @@ public partial class LvEnterDialog
         m_BadgeStamp.color = new Color(color.r, color.g, color.b, 0.13f);
         m_BadgeStamp.GetComponent<Outline>().effectColor = color;
         m_BadgeStampText.color = color;
-        m_BadgeStampText.text = LocalizeBriefingRequired($"LvEnter.Badge.{tier}");
+        m_BadgeStampText.text = stampText;
     }
 
     private static string BuildObjectiveText(LevelData level)
@@ -427,7 +417,7 @@ public partial class LvEnterDialog
         {
             LevelObjectiveDefinition objective = objectives[i]
                 ?? throw new InvalidOperationException($"Level objective is null at index {i}.");
-            string text = ObjectiveDataModel.GetText(objective.DefinitionId, objective.UniqueValues);
+            string text = ObjectiveDataModel.GetText(objective.ObjectiveIdentifier, objective.UniqueValues);
             builder.Append("<color=#7F91A0>\u25A1</color> ").Append(text);
             if (includeExperience && objective.Experience > 0)
             {

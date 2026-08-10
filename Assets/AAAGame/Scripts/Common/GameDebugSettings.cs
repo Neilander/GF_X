@@ -79,7 +79,16 @@ public class GameDebugSettings : MonoBehaviour
 
     public static bool ShouldLogMovementForCharacter(string characterKey)
     {
-        return !string.Equals(characterKey, "Unit_Hero", StringComparison.Ordinal);
+        CharacterDataDetail row = LogicRuntimeDataTableCache.GetCharacterRequired(characterKey);
+        UnitTag[] tags = row.UnitTags;
+        if (tags == null)
+            return true;
+        for (int i = 0; i < tags.Length; i++)
+        {
+            if (tags[i] == UnitTag.Hero)
+                return false;
+        }
+        return true;
     }
 
     public static bool IsRuntimeResourceModifyEnabled()

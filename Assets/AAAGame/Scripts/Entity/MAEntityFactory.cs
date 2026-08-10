@@ -11,6 +11,7 @@ public static class MAEntityFactory
         string characterKey,
         SideType side,
         BrainType brainType,
+        LogicEntityLifetime lifetime,
         List<BuffData> startBuffs = null,
         string sourceStrongholdId = null,
         int unitLevel = 1,
@@ -24,6 +25,7 @@ public static class MAEntityFactory
             characterKey,
             side,
             brainType,
+            lifetime,
             startBuffs,
             sourceStrongholdId,
             unitLevel,
@@ -37,6 +39,7 @@ public static class MAEntityFactory
         string characterKey,
         SideType side,
         BrainType brainType,
+        LogicEntityLifetime lifetime,
         List<BuffData> startBuffs,
         string sourceStrongholdId,
         int unitLevel,
@@ -61,6 +64,7 @@ public static class MAEntityFactory
             new FixVector2(Fix64.Zero, Fix64.One),
             side,
             characterKey,
+            lifetime,
             state => LogicUnitConfigurator.Configure(state, entityParams));
         return entityParams;
     }
@@ -73,6 +77,7 @@ public static class MAEntityFactory
         SideType side,
         BrainType brainType,
         Const.EntityGroup entityGroup,
+        LogicEntityLifetime lifetime,
         List<BuffData> startBuffs = null,
         string sourceStrongholdId = null,
         System.Action<EntityParams> configureParams = null,
@@ -85,6 +90,7 @@ public static class MAEntityFactory
             characterKey,
             side,
             brainType,
+            lifetime,
             startBuffs,
             sourceStrongholdId,
             unitLevel,
@@ -122,6 +128,7 @@ public static class MAEntityFactory
             characterKey,
             side,
             brainType,
+            LogicEntityLifetime.Persistent,
             startBuffs,
             sourceStrongholdId,
             unitLevel,
@@ -210,6 +217,7 @@ public static class MAEntityFactory
             ResolveBuildingForwardFixed(logicQuarterTurns),
             side,
             buildingData.Identifier,
+            LogicEntityLifetime.Persistent,
             state => LogicBuildingConfigurator.Configure(
                 state,
                 buildingData,
@@ -252,6 +260,7 @@ public static class MAEntityFactory
         FixVector2 forward,
         SideType side,
         string characterKey,
+        LogicEntityLifetime lifetime,
         System.Action<LogicEntityState> configure,
         bool currentInteractionFrameLifecycle = false)
     {
@@ -267,7 +276,8 @@ public static class MAEntityFactory
             forward,
             side,
             characterKey,
-            entityParams.GetString(EntityParams.P_SourceStrongholdId));
+            entityParams.GetString(EntityParams.P_SourceStrongholdId),
+            lifetime);
         LogicEntityId entityId = currentInteractionFrameLifecycle
             ? LogicEntityLifecycleService.RequestConfiguredSpawnForCurrentInteractionFrame(descriptor, configure)
             : LogicEntityLifecycleService.RequestConfiguredSpawn(descriptor, configure);

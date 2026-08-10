@@ -31,7 +31,11 @@ public class AgentTypeHelper : GameFrameworkComponent
             CharacterDataDetail row = rows[i]
                                       ?? throw new InvalidOperationException($"AgentTypeHelper found a null CharacterDataDetail row at index {i}.");
             if (!Enum.TryParse(row.CharacterKey, false, out UnitType unitType))
+            {
+                if (HasUnitTag(row.UnitTags, UnitTag.Hero))
+                    continue;
                 throw new InvalidOperationException($"AgentTypeHelper cannot parse CharacterKey '{row.CharacterKey}' as UnitType.");
+            }
             int agentTypeId = ResolveNavAgentTypeId(row.Size);
             if (s_UnitAgentTypeIds.TryGetValue(unitType, out int existing) && existing != agentTypeId)
             {
@@ -64,8 +68,26 @@ public class AgentTypeHelper : GameFrameworkComponent
     {
         if (!s_RuntimeMappingsPrepared)
             throw new InvalidOperationException("AgentTypeHelper runtime mappings have not been prepared.");
+        if (unitType == UnitType.Unit_Hero)
+        {
+            string characterKey = KeepsakeConfigRuntime.ResolveCharacterKey(unitType);
+            CharacterDataDetail hero = LogicRuntimeDataTableCache.GetCharacterRequired(characterKey);
+            return ResolveNavAgentTypeId(hero.Size);
+        }
         return s_UnitAgentTypeIds.TryGetValue(unitType, out int agentTypeId)
             ? agentTypeId
             : throw new InvalidOperationException($"UnitType={unitType} has no prepared Flow movement type.");
+    }
+
+    private static bool HasUnitTag(UnitTag[] tags, UnitTag required)
+    {
+        if (tags == null)
+            return false;
+        for (int i = 0; i < tags.Length; i++)
+        {
+            if (tags[i] == required)
+                return true;
+        }
+        return false;
     }
 }

@@ -143,8 +143,8 @@ public class GameEndManager : GameFrameworkComponent
         }
         else
         {
-            GF.Event.Fire(this, GameEndResultEventArgs.CreateFail(result.FailedObjectiveDefinitionId));
-            Log.Info("[GameEndManager] GameEnd FAIL by objective={0}, logicFrame={1}.", result.FailedObjectiveDefinitionId, LogicGameEndService.LastAppliedFrame);
+            GF.Event.Fire(this, GameEndResultEventArgs.CreateFail(result.FailedObjectiveIdentifier));
+            Log.Info("[GameEndManager] GameEnd FAIL by objective={0}, logicFrame={1}.", result.FailedObjectiveIdentifier, LogicGameEndService.LastAppliedFrame);
         }
     }
 

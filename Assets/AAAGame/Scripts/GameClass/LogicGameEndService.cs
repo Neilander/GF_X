@@ -22,18 +22,18 @@ public readonly struct LevelObjectiveState
 
 public readonly struct LogicGameEndResult
 {
-    private LogicGameEndResult(bool isWin, int failedObjectiveDefinitionId)
+    private LogicGameEndResult(bool isWin, string failedObjectiveIdentifier)
     {
         IsWin = isWin;
-        FailedObjectiveDefinitionId = failedObjectiveDefinitionId;
+        FailedObjectiveIdentifier = failedObjectiveIdentifier;
     }
 
     public bool IsWin { get; }
-    public int FailedObjectiveDefinitionId { get; }
+    public string FailedObjectiveIdentifier { get; }
 
-    public static LogicGameEndResult CreateWin() => new LogicGameEndResult(true, 0);
-    public static LogicGameEndResult CreateFail(int definitionId) =>
-        new LogicGameEndResult(false, definitionId);
+    public static LogicGameEndResult CreateWin() => new LogicGameEndResult(true, null);
+    public static LogicGameEndResult CreateFail(string objectiveIdentifier) =>
+        new LogicGameEndResult(false, objectiveIdentifier);
 }
 
 public static class LogicGameEndService
@@ -106,7 +106,7 @@ public static class LogicGameEndService
         for (int i = 0; i < s_Objectives.Count; i++)
         {
             ValidateObjective(s_Objectives[i].Definition);
-            if (s_Objectives[i].Definition.IsPrimary && !IsConstraint(s_Objectives[i].Definition.DefinitionId))
+            if (s_Objectives[i].Definition.IsPrimary && !IsConstraint(s_Objectives[i].Definition.ObjectiveIdentifier))
                 hasProgressObjective = true;
         }
         if (!hasProgressObjective)
@@ -207,14 +207,14 @@ public static class LogicGameEndService
         building.SetGameEndConditionBuilding(false);
     }
 
-    public static void CompleteScriptedObjective(int definitionId)
+    public static void CompleteScriptedObjective(string objectiveIdentifier)
     {
         EnsureInitialized();
         if (IsGameEnded)
             throw new InvalidOperationException("Cannot complete an objective after the game has ended.");
-        RuntimeObjective objective = FindActivePrimaryObjective(definitionId);
-        if (objective.Definition.DefinitionId != LevelObjectiveIds.UpgradeCodingCoreLevel3)
-            throw new InvalidOperationException($"Objective {definitionId} is not scripted.");
+        RuntimeObjective objective = FindActivePrimaryObjective(objectiveIdentifier);
+        if (objective.Definition.ObjectiveIdentifier != LevelObjectiveIdentifiers.UpgradeCodingCoreLevel3)
+            throw new InvalidOperationException($"Objective '{objectiveIdentifier}' is not scripted.");
         SetStatus(objective, LevelObjectiveStatus.Completed);
         EvaluateTerminalState();
     }
@@ -262,10 +262,9 @@ public static class LogicGameEndService
             RuntimeObjective item = s_Objectives[i];
             hasher.Add(item.Definition.IsPrimary);
             hasher.Add(item.Definition.Slot);
-            hasher.Add(item.Definition.DefinitionId);
+            hasher.Add(item.Definition.ObjectiveIdentifier);
             hasher.Add((int)item.Status);
             hasher.Add(item.Definition.Experience);
-            AddArray(hasher, item.Definition.TargetIds);
             hasher.Add(item.Definition.UniqueValues.Length);
             for (int valueIndex = 0; valueIndex < item.Definition.UniqueValues.Length; valueIndex++)
                 hasher.Add(item.Definition.UniqueValues[valueIndex].RawValue);
@@ -299,59 +298,54 @@ public static class LogicGameEndService
 
     private static void ValidateObjective(LevelObjectiveDefinition definition)
     {
-        switch (definition.DefinitionId)
+        switch (definition.ObjectiveIdentifier)
         {
-            case LevelObjectiveIds.CaptureSpecificStrongholds:
-                RequireTarget(definition, LevelObjectiveTargetIds.InitialEnemyConditionBuildings);
+            case LevelObjectiveIdentifiers.CaptureSpecificStrongholds:
                 RequireValueCount(definition, 0);
                 break;
-            case LevelObjectiveIds.CaptureStrongholdCount:
-                RequireTarget(definition, LevelObjectiveTargetIds.InitialEnemyConditionBuildings);
+            case LevelObjectiveIdentifiers.CaptureStrongholdCount:
                 RequirePositiveIntegerValue(definition);
                 break;
-            case LevelObjectiveIds.SurviveDays:
-                RequireTarget(definition, LevelObjectiveTargetIds.Day);
+            case LevelObjectiveIdentifiers.SurviveDays:
                 RequirePositiveIntegerValue(definition);
                 break;
-            case LevelObjectiveIds.DefendBase:
-            case LevelObjectiveIds.ProtectStronghold:
-                RequireTarget(definition, LevelObjectiveTargetIds.InitialPlayerConditionBuildings);
+            case LevelObjectiveIdentifiers.DefendBase:
+            case LevelObjectiveIdentifiers.ProtectStronghold:
                 RequireValueCount(definition, 0);
                 break;
-            case LevelObjectiveIds.UpgradeCodingCoreLevel3:
-                RequireTarget(definition, LevelObjectiveTargetIds.Tutorial);
+            case LevelObjectiveIdentifiers.UpgradeCodingCoreLevel3:
                 RequireValueCount(definition, 0);
                 break;
             default:
-                throw new InvalidOperationException($"Objective definition {definition.DefinitionId} has no runtime evaluator.");
+                throw new InvalidOperationException($"Objective '{definition.ObjectiveIdentifier}' has no runtime evaluator.");
         }
     }
 
     private static void EvaluateObjective(RuntimeObjective objective, int currentDay)
     {
-        switch (objective.Definition.DefinitionId)
+        switch (objective.Definition.ObjectiveIdentifier)
         {
-            case LevelObjectiveIds.CaptureSpecificStrongholds:
+            case LevelObjectiveIdentifiers.CaptureSpecificStrongholds:
                 if (AreAllEnemyTargetsPlayerOwned())
                     SetStatus(objective, LevelObjectiveStatus.Completed);
                 break;
-            case LevelObjectiveIds.CaptureStrongholdCount:
+            case LevelObjectiveIdentifiers.CaptureStrongholdCount:
                 if (GetPlayerOwnedEnemyTargetCount() >= GetRequiredIntValue(objective.Definition))
                     SetStatus(objective, LevelObjectiveStatus.Completed);
                 break;
-            case LevelObjectiveIds.SurviveDays:
+            case LevelObjectiveIdentifiers.SurviveDays:
                 if (currentDay > GetRequiredIntValue(objective.Definition))
                     SetStatus(objective, LevelObjectiveStatus.Completed);
                 break;
-            case LevelObjectiveIds.DefendBase:
-            case LevelObjectiveIds.ProtectStronghold:
+            case LevelObjectiveIdentifiers.DefendBase:
+            case LevelObjectiveIdentifiers.ProtectStronghold:
                 if (AreAllPlayerTargetsDisabled())
                     SetStatus(objective, LevelObjectiveStatus.Failed);
                 break;
-            case LevelObjectiveIds.UpgradeCodingCoreLevel3:
+            case LevelObjectiveIdentifiers.UpgradeCodingCoreLevel3:
                 break;
             default:
-                throw new InvalidOperationException($"Objective definition {objective.Definition.DefinitionId} has no runtime evaluator.");
+                throw new InvalidOperationException($"Objective '{objective.Definition.ObjectiveIdentifier}' has no runtime evaluator.");
         }
     }
 
@@ -369,14 +363,14 @@ public static class LogicGameEndService
                 failedPrimary = item;
                 break;
             }
-            if (!IsConstraint(item.Definition.DefinitionId) && item.Status != LevelObjectiveStatus.Completed)
+            if (!IsConstraint(item.Definition.ObjectiveIdentifier) && item.Status != LevelObjectiveStatus.Completed)
                 allProgressPrimaryCompleted = false;
         }
 
         if (failedPrimary != null)
         {
             FailAllActiveObjectives();
-            CompleteFail(failedPrimary.Definition.DefinitionId);
+            CompleteFail(failedPrimary.Definition.ObjectiveIdentifier);
             return;
         }
         if (!allProgressPrimaryCompleted)
@@ -387,7 +381,7 @@ public static class LogicGameEndService
             RuntimeObjective item = s_Objectives[i];
             if (item.Status != LevelObjectiveStatus.Active)
                 continue;
-            if (IsConstraint(item.Definition.DefinitionId))
+            if (IsConstraint(item.Definition.ObjectiveIdentifier))
                 SetStatus(item, LevelObjectiveStatus.Completed);
             else if (!item.Definition.IsPrimary)
                 SetStatus(item, LevelObjectiveStatus.Failed);
@@ -435,11 +429,11 @@ public static class LogicGameEndService
         bool needsPlayer = false;
         for (int i = 0; i < s_Objectives.Count; i++)
         {
-            int definitionId = s_Objectives[i].Definition.DefinitionId;
-            needsEnemy |= definitionId == LevelObjectiveIds.CaptureSpecificStrongholds
-                          || definitionId == LevelObjectiveIds.CaptureStrongholdCount;
-            needsPlayer |= definitionId == LevelObjectiveIds.DefendBase
-                           || definitionId == LevelObjectiveIds.ProtectStronghold;
+            string objectiveIdentifier = s_Objectives[i].Definition.ObjectiveIdentifier;
+            needsEnemy |= objectiveIdentifier == LevelObjectiveIdentifiers.CaptureSpecificStrongholds
+                          || objectiveIdentifier == LevelObjectiveIdentifiers.CaptureStrongholdCount;
+            needsPlayer |= objectiveIdentifier == LevelObjectiveIdentifiers.DefendBase
+                           || objectiveIdentifier == LevelObjectiveIdentifiers.ProtectStronghold;
         }
         if (needsEnemy && s_EnemyTargetBuildingInstanceIds.Count == 0)
             throw new InvalidOperationException("Enemy condition-building objective has no registered target.");
@@ -482,7 +476,7 @@ public static class LogicGameEndService
     {
         for (int i = 0; i < s_Objectives.Count; i++)
         {
-            if (s_Objectives[i].Definition.DefinitionId == LevelObjectiveIds.SurviveDays)
+            if (s_Objectives[i].Definition.ObjectiveIdentifier == LevelObjectiveIdentifiers.SurviveDays)
                 return true;
         }
         return false;
@@ -503,12 +497,12 @@ public static class LogicGameEndService
         GameEnded?.Invoke(LogicGameEndResult.CreateWin());
     }
 
-    private static void CompleteFail(int definitionId)
+    private static void CompleteFail(string objectiveIdentifier)
     {
         StopAllEntitiesForGameEnd();
         IsGameEnded = true;
         IsWin = false;
-        GameEnded?.Invoke(LogicGameEndResult.CreateFail(definitionId));
+        GameEnded?.Invoke(LogicGameEndResult.CreateFail(objectiveIdentifier));
     }
 
     private static void StopAllEntitiesForGameEnd()
@@ -524,19 +518,23 @@ public static class LogicGameEndService
         }
     }
 
-    private static RuntimeObjective FindActivePrimaryObjective(int definitionId)
+    private static RuntimeObjective FindActivePrimaryObjective(string objectiveIdentifier)
     {
+        if (string.IsNullOrWhiteSpace(objectiveIdentifier))
+            throw new ArgumentException("Objective identifier is empty.", nameof(objectiveIdentifier));
         RuntimeObjective result = null;
         for (int i = 0; i < s_Objectives.Count; i++)
         {
             RuntimeObjective item = s_Objectives[i];
-            if (!item.Definition.IsPrimary || item.Definition.DefinitionId != definitionId || item.Status != LevelObjectiveStatus.Active)
+            if (!item.Definition.IsPrimary
+                || !string.Equals(item.Definition.ObjectiveIdentifier, objectiveIdentifier, StringComparison.Ordinal)
+                || item.Status != LevelObjectiveStatus.Active)
                 continue;
             if (result != null)
-                throw new InvalidOperationException($"Multiple active primary objectives use definition {definitionId}.");
+                throw new InvalidOperationException($"Multiple active primary objectives use identifier '{objectiveIdentifier}'.");
             result = item;
         }
-        return result ?? throw new InvalidOperationException($"Active primary objective {definitionId} was not found.");
+        return result ?? throw new InvalidOperationException($"Active primary objective '{objectiveIdentifier}' was not found.");
     }
 
     private static void SetStatus(RuntimeObjective objective, LevelObjectiveStatus status)
@@ -558,21 +556,16 @@ public static class LogicGameEndService
         }
     }
 
-    private static bool IsConstraint(int definitionId) =>
-        definitionId == LevelObjectiveIds.DefendBase || definitionId == LevelObjectiveIds.ProtectStronghold;
+    private static bool IsConstraint(string objectiveIdentifier) =>
+        objectiveIdentifier == LevelObjectiveIdentifiers.DefendBase
+        || objectiveIdentifier == LevelObjectiveIdentifiers.ProtectStronghold;
 
     private static int GetRequiredIntValue(LevelObjectiveDefinition definition) => (int)definition.UniqueValues[0];
-
-    private static void RequireTarget(LevelObjectiveDefinition definition, string expected)
-    {
-        if (definition.TargetIds.Length != 1 || !string.Equals(definition.TargetIds[0], expected, StringComparison.Ordinal))
-            throw new InvalidOperationException($"Objective {definition.DefinitionId} requires target id '{expected}'.");
-    }
 
     private static void RequireValueCount(LevelObjectiveDefinition definition, int expected)
     {
         if (definition.UniqueValues.Length != expected)
-            throw new InvalidOperationException($"Objective {definition.DefinitionId} requires {expected} unique value(s).");
+            throw new InvalidOperationException($"Objective '{definition.ObjectiveIdentifier}' requires {expected} unique value(s).");
     }
 
     private static void RequirePositiveIntegerValue(LevelObjectiveDefinition definition)
@@ -580,14 +573,7 @@ public static class LogicGameEndService
         RequireValueCount(definition, 1);
         Fix64 value = definition.UniqueValues[0];
         if (value <= Fix64.Zero || value != Fix64.Floor(value))
-            throw new InvalidOperationException($"Objective {definition.DefinitionId} requires one positive integer value.");
-    }
-
-    private static void AddArray(LogicStateHasher hasher, string[] values)
-    {
-        hasher.Add(values.Length);
-        for (int i = 0; i < values.Length; i++)
-            hasher.Add(values[i]);
+            throw new InvalidOperationException($"Objective '{definition.ObjectiveIdentifier}' requires one positive integer value.");
     }
 
     private static void AddArray(LogicStateHasher hasher, Fix64[] values)

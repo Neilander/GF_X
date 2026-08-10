@@ -38,7 +38,7 @@ public sealed class UrgentRequestActiveSkillSO : TargetPositionActiveSkillSO
 
         for (int i = 0; i < spawnPositions.Count; i++)
         {
-            SoldierFactory.ShowSoldierFixed(
+            SoldierFactory.ShowCurrentBattleTroopFixed(
                 UnitType.Unit_Intern,
                 spawnPositions[i],
                 0.05f,

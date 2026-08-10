@@ -3,8 +3,6 @@ using UnityEngine;
 
 public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateContributor
 {
-    private const string HeroCharacterKey = "Unit_Hero";
-
     private enum TargetingMode
     {
         Default = 0,
@@ -494,7 +492,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
             }
         }
 
-        return entity != null && entity.CharacterKey == HeroCharacterKey;
+        return false;
     }
 
     private static bool HasLowerLogicId(IEntityContext candidate, IEntityContext current)

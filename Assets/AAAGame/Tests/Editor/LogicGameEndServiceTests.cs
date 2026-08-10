@@ -107,11 +107,25 @@ public sealed class LogicGameEndServiceTests
         Assert.IsTrue(target.IsDisabled);
         Assert.IsFalse(LogicGameEndService.IsGameEnded);
 
-        LogicTimeControlService.BeginFrame(1);
-        LogicGameEndService.ApplyFrame(1);
+        LogicGameEndResult? captured = null;
+        void Capture(LogicGameEndResult result) => captured = result;
+        LogicGameEndService.GameEnded += Capture;
+        try
+        {
+            LogicTimeControlService.BeginFrame(1);
+            LogicGameEndService.ApplyFrame(1);
+        }
+        finally
+        {
+            LogicGameEndService.GameEnded -= Capture;
+        }
 
         Assert.IsTrue(LogicGameEndService.IsGameEnded);
         Assert.IsFalse(LogicGameEndService.IsWin);
+        Assert.IsTrue(captured.HasValue);
+        Assert.AreEqual(
+            LevelObjectiveIdentifiers.DefendBase,
+            captured.Value.FailedObjectiveIdentifier);
     }
 
     [Test]
@@ -191,7 +205,7 @@ public sealed class LogicGameEndServiceTests
         LogicGameEndService.GameEnded += Capture;
         try
         {
-            LogicGameEndService.CompleteScriptedObjective(LevelObjectiveIds.UpgradeCodingCoreLevel3);
+            LogicGameEndService.CompleteScriptedObjective(LevelObjectiveIdentifiers.UpgradeCodingCoreLevel3);
         }
         finally
         {
@@ -202,7 +216,7 @@ public sealed class LogicGameEndServiceTests
         Assert.IsTrue(LogicGameEndService.IsWin);
         Assert.IsTrue(captured.HasValue);
         Assert.IsTrue(captured.Value.IsWin);
-        Assert.AreEqual(0, captured.Value.FailedObjectiveDefinitionId);
+        Assert.IsNull(captured.Value.FailedObjectiveIdentifier);
         Assert.AreEqual(
             LevelObjectiveStatus.Completed,
             LogicGameEndService.GetObjectiveSnapshot()[0].Status);
@@ -213,7 +227,7 @@ public sealed class LogicGameEndServiceTests
     {
         LevelData level = CreateTutorialLevel("Lv_1");
         LogicGameEndService.Initialize(level);
-        LogicGameEndService.CompleteScriptedObjective(LevelObjectiveIds.UpgradeCodingCoreLevel3);
+        LogicGameEndService.CompleteScriptedObjective(LevelObjectiveIdentifiers.UpgradeCodingCoreLevel3);
 
         MethodInfo prepareNextFrame = typeof(RuntimeProcedureBase).GetMethod(
             "PrepareNextLogicFrame",
@@ -321,10 +335,8 @@ public sealed class LogicGameEndServiceTests
             "MultiplePrimaryObjectives",
             new[]
             {
-                CreateObjective(1, true, LevelObjectiveIds.CaptureSpecificStrongholds,
-                    LevelObjectiveTargetIds.InitialEnemyConditionBuildings),
-                CreateObjective(2, true, LevelObjectiveIds.SurviveDays,
-                    LevelObjectiveTargetIds.Day, 2),
+                CreateObjective(1, true, LevelObjectiveIdentifiers.CaptureSpecificStrongholds),
+                CreateObjective(2, true, LevelObjectiveIdentifiers.SurviveDays, 2),
             }));
         LogicGameEndService.RegisterInitialConditionBuilding(target.BuildingInstanceId, target.OwnerFactionId);
         PublishEntities();
@@ -354,13 +366,11 @@ public sealed class LogicGameEndServiceTests
             "IncompleteOptionalObjective",
             new[]
             {
-                CreateObjective(1, true, LevelObjectiveIds.CaptureSpecificStrongholds,
-                    LevelObjectiveTargetIds.InitialEnemyConditionBuildings),
+                CreateObjective(1, true, LevelObjectiveIdentifiers.CaptureSpecificStrongholds),
             },
             new[]
             {
-                CreateObjective(1, false, LevelObjectiveIds.SurviveDays,
-                    LevelObjectiveTargetIds.Day, 5, 30),
+                CreateObjective(1, false, LevelObjectiveIdentifiers.SurviveDays, 5, 30),
             }));
         LogicGameEndService.RegisterInitialConditionBuilding(target.BuildingInstanceId, target.OwnerFactionId);
         PublishEntities();
@@ -383,13 +393,11 @@ public sealed class LogicGameEndServiceTests
             "CompletedOptionalObjective",
             new[]
             {
-                CreateObjective(1, true, LevelObjectiveIds.CaptureSpecificStrongholds,
-                    LevelObjectiveTargetIds.InitialEnemyConditionBuildings),
+                CreateObjective(1, true, LevelObjectiveIdentifiers.CaptureSpecificStrongholds),
             },
             new[]
             {
-                CreateObjective(1, false, LevelObjectiveIds.SurviveDays,
-                    LevelObjectiveTargetIds.Day, 1, 30),
+                CreateObjective(1, false, LevelObjectiveIdentifiers.SurviveDays, 1, 30),
             }));
         LogicGameEndService.RegisterInitialConditionBuilding(target.BuildingInstanceId, target.OwnerFactionId);
         PublishEntities();
@@ -459,8 +467,7 @@ public sealed class LogicGameEndServiceTests
             "LogicGameEndServiceTests",
             new[]
             {
-                CreateObjective(1, true, LevelObjectiveIds.CaptureSpecificStrongholds,
-                    LevelObjectiveTargetIds.InitialEnemyConditionBuildings),
+                CreateObjective(1, true, LevelObjectiveIdentifiers.CaptureSpecificStrongholds),
             });
     }
 
@@ -470,10 +477,8 @@ public sealed class LogicGameEndServiceTests
             "LogicGameEndServiceTests",
             new[]
             {
-                CreateObjective(1, true, LevelObjectiveIds.DefendBase,
-                    LevelObjectiveTargetIds.InitialPlayerConditionBuildings),
-                CreateObjective(2, true, LevelObjectiveIds.UpgradeCodingCoreLevel3,
-                    LevelObjectiveTargetIds.Tutorial),
+                CreateObjective(1, true, LevelObjectiveIdentifiers.DefendBase),
+                CreateObjective(2, true, LevelObjectiveIdentifiers.UpgradeCodingCoreLevel3),
             });
     }
 
@@ -483,8 +488,7 @@ public sealed class LogicGameEndServiceTests
             "LogicGameEndServiceTests",
             new[]
             {
-                CreateObjective(1, true, LevelObjectiveIds.SurviveDays,
-                    LevelObjectiveTargetIds.Day, days),
+                CreateObjective(1, true, LevelObjectiveIdentifiers.SurviveDays, days),
             });
     }
 
@@ -494,16 +498,14 @@ public sealed class LogicGameEndServiceTests
             identifier,
             new[]
             {
-                CreateObjective(1, true, LevelObjectiveIds.UpgradeCodingCoreLevel3,
-                    LevelObjectiveTargetIds.Tutorial),
+                CreateObjective(1, true, LevelObjectiveIdentifiers.UpgradeCodingCoreLevel3),
             });
     }
 
     private static LevelObjectiveDefinition CreateObjective(
         int slot,
         bool isPrimary,
-        int definitionId,
-        string targetId,
+        string objectiveIdentifier,
         int uniqueValue = 0,
         int experience = 0)
     {
@@ -511,8 +513,7 @@ public sealed class LogicGameEndServiceTests
         return new LevelObjectiveDefinition(
             slot,
             isPrimary,
-            definitionId,
-            new[] { targetId },
+            objectiveIdentifier,
             values,
             experience);
     }

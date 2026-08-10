@@ -1,21 +1,13 @@
 using System;
 
-public static class LevelObjectiveIds
+public static class LevelObjectiveIdentifiers
 {
-    public const int CaptureStrongholdCount = 3;
-    public const int CaptureSpecificStrongholds = 5;
-    public const int SurviveDays = 12;
-    public const int ProtectStronghold = 20;
-    public const int DefendBase = 25;
-    public const int UpgradeCodingCoreLevel3 = 26;
-}
-
-public static class LevelObjectiveTargetIds
-{
-    public const string InitialEnemyConditionBuildings = "InitialEnemyConditionBuildings";
-    public const string InitialPlayerConditionBuildings = "InitialPlayerConditionBuildings";
-    public const string Day = "Day";
-    public const string Tutorial = "Tutorial";
+    public const string CaptureStrongholdCount = "CaptureStrongholdCount";
+    public const string CaptureSpecificStrongholds = "CaptureSpecificStrongholds";
+    public const string SurviveDays = "SurviveDays";
+    public const string ProtectStronghold = "ProtectStronghold";
+    public const string DefendBase = "DefendBase";
+    public const string UpgradeCodingCoreLevel3 = "UpgradeCodingCoreLevel3";
 }
 
 public sealed class LevelObjectiveDefinition
@@ -23,30 +15,27 @@ public sealed class LevelObjectiveDefinition
     public LevelObjectiveDefinition(
         int slot,
         bool isPrimary,
-        int definitionId,
-        string[] targetIds,
+        string objectiveIdentifier,
         Fix64[] uniqueValues,
         int experience)
     {
         if (slot <= 0)
             throw new ArgumentOutOfRangeException(nameof(slot));
-        if (definitionId <= 0)
-            throw new ArgumentOutOfRangeException(nameof(definitionId));
+        if (string.IsNullOrWhiteSpace(objectiveIdentifier))
+            throw new ArgumentException("Objective identifier is empty.", nameof(objectiveIdentifier));
         if (experience < 0)
             throw new ArgumentOutOfRangeException(nameof(experience));
 
         Slot = slot;
         IsPrimary = isPrimary;
-        DefinitionId = definitionId;
-        TargetIds = targetIds == null ? Array.Empty<string>() : (string[])targetIds.Clone();
+        ObjectiveIdentifier = objectiveIdentifier;
         UniqueValues = uniqueValues == null ? Array.Empty<Fix64>() : (Fix64[])uniqueValues.Clone();
         Experience = experience;
     }
 
     public int Slot { get; }
     public bool IsPrimary { get; }
-    public int DefinitionId { get; }
-    public string[] TargetIds { get; }
+    public string ObjectiveIdentifier { get; }
     public Fix64[] UniqueValues { get; }
     public int Experience { get; }
 }
@@ -96,30 +85,30 @@ public class LevelData
     private static LevelObjectiveDefinition[] BuildPrimaryObjectives(LevelTable row)
     {
         var result = new LevelObjectiveDefinition[CountConfigured(
-            row.PrimaryObjective1Id,
-            row.PrimaryObjective2Id,
-            row.PrimaryObjective3Id)];
+            row.PrimaryObjective1Identifier,
+            row.PrimaryObjective2Identifier,
+            row.PrimaryObjective3Identifier)];
         int index = 0;
-        AddConfigured(result, ref index, 1, true, row.PrimaryObjective1Id, row.PrimaryObjective1TargetIds, row.PrimaryObjective1UniqueValues, 0);
-        AddConfigured(result, ref index, 2, true, row.PrimaryObjective2Id, row.PrimaryObjective2TargetIds, row.PrimaryObjective2UniqueValues, 0);
-        AddConfigured(result, ref index, 3, true, row.PrimaryObjective3Id, row.PrimaryObjective3TargetIds, row.PrimaryObjective3UniqueValues, 0);
+        AddConfigured(result, ref index, 1, true, row.PrimaryObjective1Identifier, row.PrimaryObjective1UniqueValues, 0);
+        AddConfigured(result, ref index, 2, true, row.PrimaryObjective2Identifier, row.PrimaryObjective2UniqueValues, 0);
+        AddConfigured(result, ref index, 3, true, row.PrimaryObjective3Identifier, row.PrimaryObjective3UniqueValues, 0);
         return result;
     }
 
     private static LevelObjectiveDefinition[] BuildOptionalObjectives(LevelTable row)
     {
         var result = new LevelObjectiveDefinition[CountConfigured(
-            row.OptionalObjective1Id,
-            row.OptionalObjective2Id,
-            row.OptionalObjective3Id,
-            row.OptionalObjective4Id,
-            row.OptionalObjective5Id)];
+            row.OptionalObjective1Identifier,
+            row.OptionalObjective2Identifier,
+            row.OptionalObjective3Identifier,
+            row.OptionalObjective4Identifier,
+            row.OptionalObjective5Identifier)];
         int index = 0;
-        AddConfigured(result, ref index, 1, false, row.OptionalObjective1Id, row.OptionalObjective1TargetIds, row.OptionalObjective1UniqueValues, row.OptionalObjective1Experience);
-        AddConfigured(result, ref index, 2, false, row.OptionalObjective2Id, row.OptionalObjective2TargetIds, row.OptionalObjective2UniqueValues, row.OptionalObjective2Experience);
-        AddConfigured(result, ref index, 3, false, row.OptionalObjective3Id, row.OptionalObjective3TargetIds, row.OptionalObjective3UniqueValues, row.OptionalObjective3Experience);
-        AddConfigured(result, ref index, 4, false, row.OptionalObjective4Id, row.OptionalObjective4TargetIds, row.OptionalObjective4UniqueValues, row.OptionalObjective4Experience);
-        AddConfigured(result, ref index, 5, false, row.OptionalObjective5Id, row.OptionalObjective5TargetIds, row.OptionalObjective5UniqueValues, row.OptionalObjective5Experience);
+        AddConfigured(result, ref index, 1, false, row.OptionalObjective1Identifier, row.OptionalObjective1UniqueValues, row.OptionalObjective1Experience);
+        AddConfigured(result, ref index, 2, false, row.OptionalObjective2Identifier, row.OptionalObjective2UniqueValues, row.OptionalObjective2Experience);
+        AddConfigured(result, ref index, 3, false, row.OptionalObjective3Identifier, row.OptionalObjective3UniqueValues, row.OptionalObjective3Experience);
+        AddConfigured(result, ref index, 4, false, row.OptionalObjective4Identifier, row.OptionalObjective4UniqueValues, row.OptionalObjective4Experience);
+        AddConfigured(result, ref index, 5, false, row.OptionalObjective5Identifier, row.OptionalObjective5UniqueValues, row.OptionalObjective5Experience);
         return result;
     }
 
@@ -128,19 +117,17 @@ public class LevelData
         ref int index,
         int slot,
         bool isPrimary,
-        int definitionId,
-        string[] targetIds,
+        string objectiveIdentifier,
         Fix64[] uniqueValues,
         int experience)
     {
-        if (definitionId == 0)
+        if (string.IsNullOrWhiteSpace(objectiveIdentifier))
         {
-            if ((targetIds != null && targetIds.Length > 0)
-                || (uniqueValues != null && uniqueValues.Length > 0)
+            if ((uniqueValues != null && uniqueValues.Length > 0)
                 || experience != 0)
             {
                 throw new InvalidOperationException(
-                    $"Unconfigured objective slot {slot} contains target, value, or experience data.");
+                    $"Unconfigured objective slot {slot} contains value or experience data.");
             }
             return;
         }
@@ -148,21 +135,18 @@ public class LevelData
         result[index++] = new LevelObjectiveDefinition(
             slot,
             isPrimary,
-            definitionId,
-            targetIds,
+            objectiveIdentifier,
             uniqueValues,
             experience);
     }
 
-    private static int CountConfigured(params int[] definitionIds)
+    private static int CountConfigured(params string[] objectiveIdentifiers)
     {
         int count = 0;
-        for (int i = 0; i < definitionIds.Length; i++)
+        for (int i = 0; i < objectiveIdentifiers.Length; i++)
         {
-            if (definitionIds[i] > 0)
+            if (!string.IsNullOrWhiteSpace(objectiveIdentifiers[i]))
                 count++;
-            else if (definitionIds[i] < 0)
-                throw new InvalidOperationException($"Objective definition id cannot be negative: {definitionIds[i]}.");
         }
         return count;
     }
@@ -179,8 +163,7 @@ public class LevelData
             result[i] = new LevelObjectiveDefinition(
                 item.Slot,
                 item.IsPrimary,
-                item.DefinitionId,
-                item.TargetIds,
+                item.ObjectiveIdentifier,
                 item.UniqueValues,
                 item.Experience);
         }

@@ -71,4 +71,19 @@ public sealed class StartupLevelFlowTests
         Assert.That(entered, Is.False);
         Assert.That(errorMessage, Does.Contain("starting industry"));
     }
+
+    [Test]
+    public void LevelBriefing_HasNoCommunicationReplayOrCollapseControls()
+    {
+        string briefing = File.ReadAllText(Path.Combine(
+            Application.dataPath,
+            "AAAGame",
+            "Scripts",
+            "UI",
+            "LvEnterDialog.Briefing.cs"));
+
+        Assert.That(briefing, Does.Not.Contain("LvEnter.Replay"));
+        Assert.That(briefing, Does.Not.Contain("LvEnter.Collapse"));
+        Assert.That(briefing, Does.Not.Contain("ToggleCommunicationCard"));
+    }
 }

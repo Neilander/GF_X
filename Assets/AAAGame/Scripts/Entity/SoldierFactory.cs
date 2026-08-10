@@ -25,9 +25,9 @@ public static class SoldierFactory
     }
 
     /// <summary>
-    /// Request despawn for every authoritative non-hero soldier.
+    /// Request despawn for every authoritative combat troop created for the current battle.
     /// </summary>
-    public static void RemoveAllSoldiersInCreatureGroup()
+    public static void RemoveAllCurrentBattleTroops()
     {
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         var soldierIds = new List<LogicEntityId>();
@@ -35,8 +35,8 @@ public static class SoldierFactory
         {
             IEntityContext entity = entities[i]
                                     ?? throw new InvalidOperationException($"EntityRegistry contains a null entity at index {i}.");
-            if (!UnitTypeHelper.TryParseUnitType(entity.CharacterKey, out UnitType unitType)
-                || unitType == UnitType.Unit_Hero)
+            if (entity is not LogicEntityState state
+                || state.Lifetime != LogicEntityLifetime.CurrentBattleTroop)
                 continue;
 
             soldierIds.Add(entity.LogicEntityId);
@@ -58,35 +58,83 @@ public static class SoldierFactory
         System.Action<EntityParams> configureParams = null,
         int unitLevel = 1)
     {
-        unitLevel = NormalizeUnitLevel(unitLevel);
-        string characterKey = unitType.ToString();
-        long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        string prefabName = GetPrefabPathFromCharacterData(characterKey);
-        MainThreadFrameProfiler.Record(
-            MainThreadPerfScope.SoldierResolvePrefab,
-            System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
-        Const.EntityGroup entityGroup = unitType == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
-        stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        List<BuffData> startBuffs = CreateStartBuffs(unitType, unitLevel, side, sourceBuildingInstanceId);
-        MainThreadFrameProfiler.Record(
-            MainThreadPerfScope.SoldierCreateBuffs,
-            System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
+        return ShowSoldierFixedInternal(
+            unitType,
+            position,
+            viewY,
+            side,
+            brainType,
+            sourceBuildingInstanceId,
+            sourceStrongholdId,
+            configureParams,
+            unitLevel,
+            LogicEntityLifetime.Persistent);
+    }
 
+    public static LogicEntityId ShowCurrentBattleTroopFixed(
+        UnitType unitType,
+        FixVector2 position,
+        float viewY,
+        SideType side = SideType.PlayerSide,
+        BrainType brainType = BrainType.SoldierAI,
+        string sourceBuildingInstanceId = null,
+        string sourceStrongholdId = null,
+        System.Action<EntityParams> configureParams = null,
+        int unitLevel = 1)
+    {
+        if (unitType == UnitType.Unit_Hero)
+            throw new InvalidOperationException("A hero cannot be spawned as a combat troop.");
+        return ShowSoldierFixedInternal(
+            unitType,
+            position,
+            viewY,
+            side,
+            brainType,
+            sourceBuildingInstanceId,
+            sourceStrongholdId,
+            configureParams,
+            unitLevel,
+            LogicEntityLifetime.CurrentBattleTroop);
+    }
+
+    private static LogicEntityId ShowSoldierFixedInternal(
+        UnitType unitType,
+        FixVector2 position,
+        float viewY,
+        SideType side,
+        BrainType brainType,
+        string sourceBuildingInstanceId,
+        string sourceStrongholdId,
+        System.Action<EntityParams> configureParams,
+        int unitLevel,
+        LogicEntityLifetime lifetime)
+    {
+        unitLevel = NormalizeUnitLevel(unitLevel);
+        string characterKey = KeepsakeConfigRuntime.ResolveCharacterKey(unitType);
         if (unitType == UnitType.Unit_Hero)
         {
-            return MAEntityFactory.ShowHeroFixed(
-                prefabName,
+            return ShowHeroCharacterFixed(
                 characterKey,
                 position,
                 viewY,
                 side,
                 brainType,
-                entityGroup,
-                startBuffs,
                 sourceStrongholdId,
                 configureParams,
                 unitLevel);
         }
+
+        long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        string prefabName = GetPrefabPathFromCharacterData(characterKey);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.SoldierResolvePrefab,
+            System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
+        Const.EntityGroup entityGroup = Const.EntityGroup.Creature;
+        stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        List<BuffData> startBuffs = CreateStartBuffs(unitType, unitLevel, side, sourceBuildingInstanceId);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.SoldierCreateBuffs,
+            System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
 
         return MAEntityFactory.ShowSoldierFixed(
             prefabName,
@@ -96,10 +144,58 @@ public static class SoldierFactory
             side,
             brainType,
             entityGroup,
+            lifetime,
             startBuffs,
             sourceStrongholdId,
             configureParams,
             unitLevel);
+    }
+
+    public static LogicEntityId ShowHeroCharacterFixed(
+        string characterKey,
+        FixVector2 position,
+        float viewY,
+        SideType side = SideType.PlayerSide,
+        BrainType brainType = BrainType.Player,
+        string sourceStrongholdId = null,
+        Action<EntityParams> configureParams = null,
+        int unitLevel = 1)
+    {
+        unitLevel = NormalizeUnitLevel(unitLevel);
+        CharacterDataDetail character = GetCharacterDataRow(characterKey);
+        if (!HasUnitTag(character.UnitTags, UnitTag.Hero))
+            throw new InvalidOperationException($"Hero character is missing the Hero unit tag. character={characterKey}.");
+
+        string prefabName = GetPrefabPathFromCharacterData(characterKey);
+        List<BuffData> startBuffs = CreateStartBuffs(
+            UnitType.Unit_Hero,
+            unitLevel,
+            side,
+            null);
+        return MAEntityFactory.ShowHeroFixed(
+            prefabName,
+            characterKey,
+            position,
+            viewY,
+            side,
+            brainType,
+            Const.EntityGroup.Player,
+            startBuffs,
+            sourceStrongholdId,
+            configureParams,
+            unitLevel);
+    }
+
+    private static bool HasUnitTag(UnitTag[] tags, UnitTag required)
+    {
+        if (tags == null)
+            return false;
+        for (int i = 0; i < tags.Length; i++)
+        {
+            if (tags[i] == required)
+                return true;
+        }
+        return false;
     }
 
     private static List<BuffData> CreateStartBuffs(

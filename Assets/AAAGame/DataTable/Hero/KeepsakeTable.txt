@@ -1,0 +1,10 @@
+#	信物表			i18n	i18n				
+#	ID		Identifier	NameKey	DescKey	IconPath	HeroCharacterKey	InitialSkillIdentifiers	InitialUnlocked
+#	int		string	string	string	string	string	string[]	bool
+#	唯一编号	中文备注	稳定信物标识	信物名称（多语言）	信物描述（多语言）	图标路径，可留空	英雄角色配置标识，模型、动作、武器和属性读取CharacterDataDetail	初始技能标识列表，按逗号分隔	是否初始解锁
+	1	基础信物，沿用当前英雄配置	Keepsake_Default	Keepsake.Name.Default	Keepsake.Desc.Default		Hero_Keepsake_Default		True
+	2	待录入信物2	Keepsake_02	Keepsake.Name.Pending02	Keepsake.Desc.Pending02		Hero_Keepsake_02		False
+	3	待录入信物3	Keepsake_03	Keepsake.Name.Pending03	Keepsake.Desc.Pending03		Hero_Keepsake_03		False
+	4	待录入信物4	Keepsake_04	Keepsake.Name.Pending04	Keepsake.Desc.Pending04		Hero_Keepsake_04		False
+	5	待录入信物5	Keepsake_05	Keepsake.Name.Pending05	Keepsake.Desc.Pending05		Hero_Keepsake_05		False
+	6	待录入信物6	Keepsake_06	Keepsake.Name.Pending06	Keepsake.Desc.Pending06		Hero_Keepsake_06		False

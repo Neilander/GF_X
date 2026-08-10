@@ -219,20 +219,7 @@ public partial class LevelEntity : EntityBase
                         break;
                     }
 
-                    if (!UnitTypeHelper.TryParseUnitType(effectiveIdentifier, out var heroUnitType))
-                    {
-                        Log.Error("LevelEntity.SpawnPresetEntities failed: invalid hero identifier '{0}'.", effectiveIdentifier);
-                        break;
-                    }
-
-                    Log.Info("LevelEntity.SpawnPresetEntities hero spawn point: name={0}, position={1}.", point.name, point.Position);
-                    SoldierFactory.ShowSoldierFixed(
-                        heroUnitType,
-                        new FixVector2((Fix64)point.Position.x, (Fix64)point.Position.z),
-                        point.Position.y,
-                        SideType.PlayerSide,
-                        BrainType.Player);
-                    heroSpawned = true;
+                    heroSpawned = TrySpawnHero(effectiveIdentifier, point.name, point.Position);
                     break;
 
                 case EntityPresetPointType.Building:
@@ -339,21 +326,9 @@ public partial class LevelEntity : EntityBase
                         break;
                     }
 
-                    if (!UnitTypeHelper.TryParseUnitType(effectiveIdentifier, out var heroUnitType))
-                    {
-                        Log.Error("LevelEntity.SpawnPresetEntities failed: invalid hero identifier '{0}'.", effectiveIdentifier);
-                        break;
-                    }
-
-                    Log.Info("LevelEntity.SpawnPresetEntities hero spawn point: name={0}, position={1}.", point.name, point.Position);
-                    SoldierFactory.ShowSoldierFixed(
-                        heroUnitType,
-                        new FixVector2((Fix64)point.Position.x, (Fix64)point.Position.z),
-                        point.Position.y,
-                        SideType.PlayerSide,
-                        BrainType.Player);
-                    heroSpawned = true;
-                    processedCount++;
+                    heroSpawned = TrySpawnHero(effectiveIdentifier, point.name, point.Position);
+                    if (heroSpawned)
+                        processedCount++;
                     break;
 
                 case EntityPresetPointType.Building:
@@ -435,6 +410,19 @@ public partial class LevelEntity : EntityBase
             heroSpawned,
             skippedCount,
             yieldCount);
+    }
+
+    private static bool TrySpawnHero(string presetIdentifier, string pointName, Vector3 position)
+    {
+        Log.Info("LevelEntity.SpawnPresetEntities hero spawn point: name={0}, position={1}.", pointName, position);
+        var fixedPosition = new FixVector2((Fix64)position.x, (Fix64)position.z);
+        SoldierFactory.ShowHeroCharacterFixed(
+            KeepsakeConfigRuntime.ResolveCharacterKey(UnitType.Unit_Hero),
+            fixedPosition,
+            position.y,
+            SideType.PlayerSide,
+            BrainType.Player);
+        return true;
     }
 
     private static string ResolveCareerStartingBaseIdentifier(EntityPresetPoint point, string authoredIdentifier)

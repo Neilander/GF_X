@@ -147,7 +147,7 @@ public static class ClusterSpawnSystem
         stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         for (int i = 0; i < spawnPositions.Count; i++)
         {
-            LogicEntityId entityId = SoldierFactory.ShowSoldierFixed(
+            LogicEntityId entityId = SoldierFactory.ShowCurrentBattleTroopFixed(
                 unitIndex,
                 spawnPositions[i],
                 0.05f,

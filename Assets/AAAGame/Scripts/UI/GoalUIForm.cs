@@ -14,6 +14,8 @@ public partial class GoalUIForm : UIFormBase
 	private const string PrimaryTitleTextId = "GoalUI_PrimaryTitle";
 	private const string OptionalTitleTextId = "GoalUI_OptionalTitle";
 	private const string OptionalExperienceTextId = "GoalUI_OptionalExperience";
+	private const string CollapseTextId = "GoalUI_Collapse";
+	private const string ExpandTextId = "GoalUI_Expand";
 
 	private bool m_IsExpanded = true;
 
@@ -143,7 +145,7 @@ public partial class GoalUIForm : UIFormBase
 				continue;
 
 			string line = ObjectiveDataModel.GetText(
-				objective.Definition.DefinitionId,
+				objective.Definition.ObjectiveIdentifier,
 				objective.Definition.UniqueValues);
 			if (!isPrimary && objective.Definition.Experience > 0)
 			{
@@ -196,7 +198,8 @@ public partial class GoalUIForm : UIFormBase
 		var buttonText = var展开 != null ? var展开.GetComponentInChildren<TMP_Text>(true) : null;
 		if (buttonText != null)
 		{
-			buttonText.text = m_IsExpanded ? "收起目标" : "展开目标";
+			buttonText.text = LocalizationTextDataModel.GetText(
+				m_IsExpanded ? CollapseTextId : ExpandTextId);
 		}
 	}
 }

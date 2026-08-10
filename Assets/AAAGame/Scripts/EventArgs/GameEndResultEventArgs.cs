@@ -7,27 +7,27 @@ public class GameEndResultEventArgs : GameEventArgs
     public override int Id => EventId;
 
     public bool IsWin { get; private set; }
-    public int FailedObjectiveDefinitionId { get; private set; }
+    public string FailedObjectiveIdentifier { get; private set; }
 
     public static GameEndResultEventArgs CreateWin()
     {
         var instance = ReferencePool.Acquire<GameEndResultEventArgs>();
         instance.IsWin = true;
-        instance.FailedObjectiveDefinitionId = 0;
+        instance.FailedObjectiveIdentifier = null;
         return instance;
     }
 
-    public static GameEndResultEventArgs CreateFail(int failedObjectiveDefinitionId)
+    public static GameEndResultEventArgs CreateFail(string failedObjectiveIdentifier)
     {
         var instance = ReferencePool.Acquire<GameEndResultEventArgs>();
         instance.IsWin = false;
-        instance.FailedObjectiveDefinitionId = failedObjectiveDefinitionId;
+        instance.FailedObjectiveIdentifier = failedObjectiveIdentifier;
         return instance;
     }
 
     public override void Clear()
     {
         IsWin = false;
-        FailedObjectiveDefinitionId = 0;
+        FailedObjectiveIdentifier = null;
     }
 }

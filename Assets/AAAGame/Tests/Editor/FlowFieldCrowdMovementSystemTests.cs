@@ -1351,6 +1351,92 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void Lv2研发中心重型目标_距离规划必须复用同岛可达目标解析()
+    {
+        const int agentTypeId = 92001;
+        const int width = 200;
+        const int height = 160;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        Fix64 largeRadius = Fix64.FromRaw(2212);
+        FixVector2 basePosition = new FixVector2((Fix64)9f, (Fix64)7f);
+        FixVector2 spawnPosition = new FixVector2((Fix64)1f, (Fix64)7f);
+        FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadiusFixed(agentTypeId, largeRadius);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            agentTypeId,
+            width,
+            height,
+            0.09f,
+            Vector3.zero,
+            walkable);
+        RegisterResearchCenterLv1ObstacleShapes(basePosition);
+        ProcessWorldBuildQueueUntilReady();
+
+        Fix64 oldProbeRadius = Fix64.FromRaw(10240);
+        Assert.IsFalse(
+            FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixed(
+                basePosition,
+                agentTypeId,
+                oldProbeRadius,
+                Fix64.Zero,
+                out _),
+            "Lv2 研发中心中心到重型合法格的距离应超过旧的 2.5m 固定吸附半径。" );
+
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryEstimateNavigationDistanceToReachableGoalFixed(
+                spawnPosition,
+                basePosition,
+                agentTypeId,
+                out Fix64 distance,
+                out FixVector2 reachableGoal,
+                out string failureReason),
+            failureReason);
+        Assert.Greater(distance.RawValue, 0L);
+        Assert.Greater(
+            FixVector2.Distance(basePosition, reachableGoal).RawValue,
+            oldProbeRadius.RawValue,
+            "目标终点必须来自同岛可达解析，不能重新引入固定半径吸附。" );
+
+        var previewCorners = new List<Vector3>();
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryGetNavigationPathCornersToReachableGoalNonBlocking(
+                new Vector3((float)spawnPosition.x, 0f, (float)spawnPosition.y),
+                new Vector3((float)basePosition.x, 0f, (float)basePosition.y),
+                agentTypeId,
+                previewCorners,
+                out string previewFailureReason,
+                out bool navigationUpdatePending),
+            previewFailureReason);
+        Assert.IsFalse(navigationUpdatePending);
+        Assert.GreaterOrEqual(previewCorners.Count, 2);
+        Vector3 previewGoal = previewCorners[previewCorners.Count - 1];
+        Assert.AreEqual((float)reachableGoal.x, previewGoal.x);
+        Assert.AreEqual((float)reachableGoal.y, previewGoal.z);
+    }
+
+    private static void RegisterResearchCenterLv1ObstacleShapes(FixVector2 basePosition)
+    {
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            92011,
+            basePosition + new FixVector2(Fix64.FromRaw(-2107), Fix64.FromRaw(8192)),
+            new FixVector2(Fix64.FromRaw(10535), Fix64.FromRaw(2731)));
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            92012,
+            basePosition + new FixVector2(Fix64.FromRaw(-2107), Fix64.FromRaw(13654)),
+            new FixVector2(Fix64.FromRaw(2107), Fix64.FromRaw(2731)));
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            92013,
+            basePosition + new FixVector2(Fix64.FromRaw(1), Fix64.FromRaw(2731)),
+            new FixVector2(Fix64.FromRaw(8428), Fix64.FromRaw(2731)));
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            92014,
+            basePosition + new FixVector2(Fix64.FromRaw(2107), Fix64.FromRaw(-8192)),
+            new FixVector2(Fix64.FromRaw(10535), Fix64.FromRaw(8192)));
+    }
+
+    [Test]
     public void FixedSteering_相同状态Raw一致且不超过最大速度()
     {
         const int width = 7;
@@ -3377,6 +3463,33 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.AreEqual(
             FlowFieldCrowdMovementSystem.GetEditorTestSynchronousWorldContentHash(),
             FlowFieldCrowdMovementSystem.GetEditorTestCommittedWorldContentHash());
+    }
+
+    [Test]
+    public void NavigationAuthorityDigest_RuntimeDirty提交的PortalCache必须已登记内容哈希()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 4;
+        config.RuntimeRebuildOperationQuota = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        const int width = 64;
+        const int height = 16;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(
+            9203,
+            new Vector3(10.5f, 0f, 4.5f),
+            new Vector3(0.49f, 0f, 0.49f));
+        ProcessRuntimeDirtyQueueUntilReady(1);
+
+        var hasher = new LogicStateHasher();
+        Assert.DoesNotThrow(
+            () => FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigestWithCheckpoints(hasher),
+            "运行期重建已经提交的 Portal cache 必须在同一提交事务内完成内容哈希登记。" );
     }
 
     [Test]

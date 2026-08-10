@@ -132,7 +132,8 @@ public partial class LvEnterDialog : UIFormBase
             runtimeLevelIdentifier = CareerRunSettings.BeginRun(
                 s_LevelIdentifier,
                 m_IsVariableExperiment,
-                m_SelectedArchetype);
+                m_SelectedArchetype,
+                m_SelectedKeepsakeIdentifier);
         }
         catch (System.Exception exception)
         {

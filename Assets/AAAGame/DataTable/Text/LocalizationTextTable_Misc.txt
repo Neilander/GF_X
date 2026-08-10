@@ -48,3 +48,18 @@
 	44	目标栏_主要目标标题	GoalUI_PrimaryTitle	GoalUI.PrimaryTitle
 	45	目标栏_可选目标标题	GoalUI_OptionalTitle	GoalUI.OptionalTitle
 	46	目标栏_可选目标经验	GoalUI_OptionalExperience	GoalUI.OptionalExperience
+	47	目标栏_收起	GoalUI_Collapse	GoalUI.Collapse
+	48	目标栏_展开	GoalUI_Expand	GoalUI.Expand
+	49	任务目标_适配信息	LvEnter_Grade	LvEnter.Grade
+	50	生涯记录_入口按钮	LvEnter_CareerRecord_Button	LvEnter.CareerRecord.Button
+	51	生涯记录_标题	LvEnter_CareerRecord_Title	LvEnter.CareerRecord.Title
+	52	生涯记录_已通过关卡	LvEnter_CareerRecord_ClearedLevels	LvEnter.CareerRecord.ClearedLevels
+	53	生涯记录_已通过变量试验	LvEnter_CareerRecord_ClearedExperiments	LvEnter.CareerRecord.ClearedExperiments
+	54	生涯记录_已解锁信物	LvEnter_CareerRecord_UnlockedKeepsakes	LvEnter.CareerRecord.UnlockedKeepsakes
+	55	生涯记录_成长点	LvEnter_CareerRecord_GrowthPoints	LvEnter.CareerRecord.GrowthPoints
+	56	生涯记录_印章阈值	LvEnter_CareerRecord_BadgeThresholds	LvEnter.CareerRecord.BadgeThresholds
+	57	生涯记录_最高偏移率	LvEnter_CareerRecord_MaxOffset	LvEnter.CareerRecord.MaxOffset
+	58	生涯记录_关闭	LvEnter_CareerRecord_Close	LvEnter.CareerRecord.Close
+	59	生涯结算_适配度与等级	CareerSettlement_ExperienceGrade	CareerSettlement.ExperienceGrade
+	60	生涯结算_经验明细	CareerSettlement_ExperienceBreakdown	CareerSettlement.ExperienceBreakdown
+	61	生涯结算_偏移率倍率	CareerSettlement_OffsetMultiplier	CareerSettlement.OffsetMultiplier

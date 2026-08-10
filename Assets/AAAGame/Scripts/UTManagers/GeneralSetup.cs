@@ -141,6 +141,11 @@ public partial class GeneralSetup : GameFrameworkComponent
         rewardManager.PrepareRuntimeDependencies();
 
         GF.DataModel.CreateDataModel<SkillRuntimeDataModel>();
+        if (CareerRunSettings.HasActiveRun)
+        {
+            KeepsakeTable keepsake = KeepsakeConfigRuntime.GetRequired(CareerRunSettings.KeepsakeIdentifier);
+            SkillRuntimeDataModel.InitializeFromKeepsake(keepsake.InitialSkillIdentifiers ?? Array.Empty<string>());
+        }
         GF.DataModel.CreateDataModel<InputModel>();
         TutorialManager tutorialManager = GameEntry.GetComponent<TutorialManager>();
         if (tutorialManager != null)

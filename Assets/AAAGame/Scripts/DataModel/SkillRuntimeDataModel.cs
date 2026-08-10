@@ -134,6 +134,29 @@ public class SkillRuntimeDataModel : DataModelBase
         return dm.m_ReadOnlyUnlockedSkills;
     }
 
+    public static void InitializeFromKeepsake(IReadOnlyList<string> skillIdentifiers)
+    {
+        if (skillIdentifiers == null)
+            throw new ArgumentNullException(nameof(skillIdentifiers));
+
+        SkillRuntimeDataModel dm = GetRequiredModel();
+        if (dm.m_SkillLevels.Count > 0 || dm.m_UnlockOrder.Count > 0)
+            throw new InvalidOperationException("Keepsake skills must be initialized before any runtime skill is unlocked.");
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < skillIdentifiers.Count; i++)
+        {
+            string skillIdentifier = skillIdentifiers[i];
+            if (string.IsNullOrWhiteSpace(skillIdentifier))
+                throw new InvalidOperationException($"Keepsake initial skill at index {i} is empty.");
+            if (!seen.Add(skillIdentifier))
+                throw new InvalidOperationException($"Keepsake repeats initial skill '{skillIdentifier}'.");
+            SkillData skill = SkillDataModel.GetSkillData(skillIdentifier)
+                              ?? throw new InvalidOperationException($"Keepsake initial skill is missing. skill={skillIdentifier}.");
+            dm.AddLevelInternal(skill);
+        }
+    }
+
     private void RebuildUnlockedSkillsSnapshot()
     {
         RebuildUnlockedSkillsSnapshot(LevelTagRuntime.GetHeroSkillLevelBonus());

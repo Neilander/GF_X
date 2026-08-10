@@ -22,12 +22,16 @@ public sealed class CareerSystemsTests
     private bool m_PreviousPrepared;
     private int[] m_PreviousOffsetBadgeThresholds;
     private Fix64 m_PreviousOffsetExperienceCoefficient;
+    private List<KeepsakeTable> m_PreviousKeepsakeRows;
+    private bool m_PreviousKeepsakePrepared;
 
     [SetUp]
     public void SetUp()
     {
         SnapshotCareerConfig();
+        SnapshotKeepsakeConfig();
         InstallCareerConfigFromGeneratedTables();
+        InstallKeepsakeConfigFromGeneratedTable();
         ResetRunSettings();
     }
 
@@ -35,6 +39,7 @@ public sealed class CareerSystemsTests
     public void TearDown()
     {
         ResetRunSettings();
+        RestoreKeepsakeConfig();
         RestoreCareerConfig();
     }
 
@@ -51,21 +56,38 @@ public sealed class CareerSystemsTests
         Assert.AreEqual(1000, levels["LvTest"].Id);
         LevelData tutorialLevel = LevelData.FromRow(levels["Lv_1"]);
         CollectionAssert.AreEqual(
-            new[] { LevelObjectiveIds.UpgradeCodingCoreLevel3 },
-            tutorialLevel.PrimaryObjectives.Select(value => value.DefinitionId));
+            new[] { LevelObjectiveIdentifiers.UpgradeCodingCoreLevel3 },
+            tutorialLevel.PrimaryObjectives.Select(value => value.ObjectiveIdentifier));
         LevelData levelTwo = LevelData.FromRow(levels["Lv_2"]);
         CollectionAssert.AreEqual(
-            new[] { LevelObjectiveIds.CaptureSpecificStrongholds, LevelObjectiveIds.DefendBase },
-            levelTwo.PrimaryObjectives.Select(value => value.DefinitionId));
+            new[] { LevelObjectiveIdentifiers.CaptureSpecificStrongholds, LevelObjectiveIdentifiers.DefendBase },
+            levelTwo.PrimaryObjectives.Select(value => value.ObjectiveIdentifier));
         CollectionAssert.AreEqual(
-            new[] { LevelObjectiveIds.SurviveDays, LevelObjectiveIds.ProtectStronghold },
-            levelTwo.OptionalObjectives.Select(value => value.DefinitionId));
+            new[] { LevelObjectiveIdentifiers.SurviveDays, LevelObjectiveIdentifiers.ProtectStronghold },
+            levelTwo.OptionalObjectives.Select(value => value.ObjectiveIdentifier));
         CollectionAssert.AreEqual(new[] { 15, 10 }, levelTwo.OptionalObjectives.Select(value => value.Experience));
         CollectionAssert.AreEqual(new[] { (Fix64)2 }, levelTwo.OptionalObjectives[0].UniqueValues);
         LevelData levelThree = LevelData.FromRow(levels["Lv_3"]);
         CollectionAssert.AreEqual(
-            new[] { LevelObjectiveIds.CaptureStrongholdCount, LevelObjectiveIds.SurviveDays },
-            levelThree.OptionalObjectives.Select(value => value.DefinitionId));
+            new[] { LevelObjectiveIdentifiers.CaptureStrongholdCount, LevelObjectiveIdentifiers.SurviveDays },
+            levelThree.OptionalObjectives.Select(value => value.ObjectiveIdentifier));
+        var objectiveIdentifiers = new HashSet<string>(
+            LoadRows<ObjectiveTable>("AAAGame/DataTable/Level/ObjectiveTable.txt")
+                .Select(value => value.Identifier),
+            StringComparer.Ordinal);
+        foreach (LevelTable level in levels.Values)
+        {
+            LevelData configured = LevelData.FromRow(level);
+            Assert.IsTrue(
+                configured.PrimaryObjectives
+                    .Concat(configured.OptionalObjectives)
+                    .All(value => objectiveIdentifiers.Contains(value.ObjectiveIdentifier)),
+                $"Level '{level.Identifier}' references an objective outside ObjectiveTable.Identifier.");
+        }
+        string levelTableHeader = File.ReadLines(
+            Path.Combine(Application.dataPath, "AAAGame/DataTable/Level/LevelTable.txt")).Skip(1).First();
+        StringAssert.Contains("PrimaryObjective1Identifier", levelTableHeader);
+        StringAssert.DoesNotContain("TargetIds", levelTableHeader);
         CollectionAssert.AreEqual(
             new[]
             {
@@ -111,6 +133,9 @@ public sealed class CareerSystemsTests
         StringAssert.Contains("\"VariableExperiment_Desc_OneHealthCoding\":\"所有单位生命上限固定为1，且初始行业固定为编程。\"", chineseLocalization);
         StringAssert.Contains("\"VariableExperiment_Name_VariantTerrain\":\"地形变体\"", chineseLocalization);
         StringAssert.Contains("\"VariableExperiment_Desc_VariantTerrain\":\"使用试验地形进行挑战。\"", chineseLocalization);
+        StringAssert.Contains("\"GoalUI.Collapse\":\"收起目标\"", chineseLocalization);
+        StringAssert.Contains("\"GoalUI.Expand\":\"展开目标\"", chineseLocalization);
+        StringAssert.Contains("\"LvEnter.Grade\":\"适配等级 {0}  适配度 {1}/{2}\"", chineseLocalization);
 
         IReadOnlyList<MetaGrowthTable> growthRows = CareerConfigRuntime.GrowthRows;
         Assert.AreEqual(11, growthRows.Count);
@@ -125,10 +150,28 @@ public sealed class CareerSystemsTests
         }
         StringAssert.Contains("\"MetaGrowth_Name_HeroAttack\":\"英雄攻击\"", chineseLocalization);
         StringAssert.Contains("\"MetaGrowth_Desc_HeroAttack\":\"英雄攻击+{0}%\"", chineseLocalization);
-        AssertTableHeader("AAAGame/DataTable/MetaGrowthTable.txt", 4, "i18n");
-        AssertTableHeader("AAAGame/DataTable/MetaGrowthTable.txt", 5, "i18n");
-        AssertTableHeader("AAAGame/DataTable/VariableExperimentRuleTable.txt", 4, "i18n");
-        AssertTableHeader("AAAGame/DataTable/VariableExperimentRuleTable.txt", 5, "i18n");
+        AssertTableHeader("AAAGame/DataTable/Career/MetaGrowthTable.txt", 4, "i18n");
+        AssertTableHeader("AAAGame/DataTable/Career/MetaGrowthTable.txt", 5, "i18n");
+        AssertTableHeader("AAAGame/DataTable/Level/VariableExperimentRuleTable.txt", 4, "i18n");
+        AssertTableHeader("AAAGame/DataTable/Level/VariableExperimentRuleTable.txt", 5, "i18n");
+        AssertTableHeader("AAAGame/DataTable/Hero/KeepsakeTable.txt", 4, "i18n");
+        AssertTableHeader("AAAGame/DataTable/Hero/KeepsakeTable.txt", 5, "i18n");
+        Assert.AreEqual(6, KeepsakeConfigRuntime.Rows.Count);
+        KeepsakeTable defaultKeepsake = KeepsakeConfigRuntime.GetDefaultRequired();
+        Assert.AreEqual("Keepsake_Default", defaultKeepsake.Identifier);
+        Assert.AreEqual("Hero_Keepsake_Default", defaultKeepsake.HeroCharacterKey);
+        Assert.IsEmpty(defaultKeepsake.InitialSkillIdentifiers);
+        List<CharacterDataDetail> heroRows = LoadRows<CharacterDataDetail>(
+                "AAAGame/DataTable/CharacterDataDetail.txt")
+            .Where(row => row.UnitTags != null && row.UnitTags.Contains(UnitTag.Hero))
+            .ToList();
+        Assert.AreEqual(6, heroRows.Count);
+        Assert.IsFalse(heroRows.Any(row => row.CharacterKey == "Unit_Hero"));
+        CollectionAssert.AreEquivalent(
+            heroRows.Select(row => row.CharacterKey),
+            KeepsakeConfigRuntime.Rows.Select(row => row.HeroCharacterKey));
+        Assert.AreEqual(6, KeepsakeConfigRuntime.Rows.Select(row => row.HeroCharacterKey).Distinct().Count());
+        StringAssert.Contains("\"Keepsake.Name.Default\":\"\u57fa\u7840\u4fe1\u7269\"", chineseLocalization);
         AssertGrowth(growthRows, "HeroAttack", 15, 30, 1);
         AssertGrowth(growthRows, "HeroHealth", 15, 30, 1);
         AssertGrowth(growthRows, "UnitAttack", 20, 20, 1);
@@ -153,6 +196,12 @@ public sealed class CareerSystemsTests
         CollectionAssert.AreEqual(
             new[] { 0, 100, 250, 450, 700, 1000 },
             CareerConfigRuntime.GradeExperienceRows.Select(row => row.RequiredTotalExperience));
+        CareerConfigRuntime.GetGradeProgressForExperience(177, out int currentExperience, out int requiredExperience);
+        Assert.AreEqual(77, currentExperience);
+        Assert.AreEqual(150, requiredExperience);
+        CareerConfigRuntime.GetGradeProgressForExperience(1000, out currentExperience, out requiredExperience);
+        Assert.AreEqual(300, currentExperience);
+        Assert.AreEqual(300, requiredExperience);
 
         List<BuildingTable> buildingRows = LoadRows<BuildingTable>("AAAGame/DataTable/Build/BuildingTable.txt");
         Assert.AreEqual("Buil_ResearchCenter_Lv1",
@@ -199,7 +248,7 @@ public sealed class CareerSystemsTests
         Assert.AreEqual(4, progress.GetEarnedPointCount());
 
         progress.RecordWin("Lv_2", true, 10);
-        Assert.AreEqual(7, progress.GetEarnedPointCount());
+        Assert.AreEqual(5, progress.GetEarnedPointCount());
         CollectionAssert.AreEquivalent(
             new[] { Archetype.Coding },
             progress.GetUnlockedArchetypes(),
@@ -207,14 +256,14 @@ public sealed class CareerSystemsTests
 
         progress.RecordWin("Lv_2", false, 0);
         CollectionAssert.Contains(progress.GetUnlockedArchetypes(), Archetype.Sightseeing);
-        Assert.AreEqual(7, progress.GetEarnedPointCount());
+        Assert.AreEqual(6, progress.GetEarnedPointCount());
 
         CareerWinRecordResult multiUnlock = progress.RecordWin("Lv_8", false, 0);
         CollectionAssert.AreEqual(new[] { Archetype.Medical, Archetype.Sports }, multiUnlock.UnlockedArchetypes);
         CollectionAssert.IsSubsetOf(
             new[] { Archetype.Medical, Archetype.Sports },
             progress.GetUnlockedArchetypes());
-        Assert.AreEqual(8, progress.GetEarnedPointCount());
+        Assert.AreEqual(7, progress.GetEarnedPointCount());
     }
 
     [Test]
@@ -241,6 +290,45 @@ public sealed class CareerSystemsTests
         CareerProgressDataModel directDiamond = CreateProgressModel();
         Assert.AreEqual(5, directDiamond.RecordWin("Lv_1", false, 28).OffsetBadgePointsGained);
         Assert.AreEqual(5, directDiamond.GetEarnedPointCount());
+    }
+
+    [Test]
+    public void LegacyNormalClears_AreMigratedToExplicitPlainOffsetRecords()
+    {
+        CareerProgressDataModel progress = CreateProgressModel();
+        SetInstanceField(
+            progress,
+            "m_LegacyClearedLevels",
+            new HashSet<string>(new[] { "Lv_1", "Lv_2", "Lv_3", "Lv_4" }, StringComparer.Ordinal));
+        SetInstanceField(
+            progress,
+            "m_MaxOffsetRates",
+            new Dictionary<string, int>(StringComparer.Ordinal) { ["Lv_2"] = 28 });
+
+        Assert.AreEqual(8, progress.GetEarnedPointCount());
+        Assert.IsTrue(progress.TryGetMaxOffsetRate("Lv_1", out int plainOffset));
+        Assert.AreEqual(0, plainOffset);
+        Assert.IsTrue(progress.HasClearedLevel("Lv_4"));
+        FieldInfo legacyField = typeof(CareerProgressDataModel).GetField(
+                                    "m_LegacyClearedLevels",
+                                    BindingFlags.Instance | BindingFlags.NonPublic)
+                                ?? throw new InvalidOperationException(
+                                    "CareerProgressDataModel.m_LegacyClearedLevels was not found.");
+        Assert.IsNull(legacyField.GetValue(progress));
+    }
+
+    [Test]
+    public void ExperimentClear_DoesNotCreateNormalOffsetRecord()
+    {
+        CareerProgressDataModel progress = CreateProgressModel();
+
+        CareerWinRecordResult result = progress.RecordWin("Lv_1", true, 28);
+
+        Assert.IsTrue(result.FirstClear);
+        Assert.AreEqual(0, result.OffsetBadgePointsGained);
+        Assert.AreEqual(1, progress.GetEarnedPointCount());
+        Assert.IsFalse(progress.HasClearedLevel("Lv_1"));
+        Assert.IsFalse(progress.TryGetMaxOffsetRate("Lv_1", out _));
     }
 
     [Test]
@@ -317,6 +405,30 @@ public sealed class CareerSystemsTests
     }
 
     [Test]
+    public void KeepsakeUnlock_IsCommittedOnlyByWinningSettlement()
+    {
+        CareerProgressDataModel progress = CreateProgressModel();
+        Assert.IsTrue(progress.IsKeepsakeUnlocked("Keepsake_Default"));
+        Assert.IsFalse(progress.IsKeepsakeUnlocked("Keepsake_02"));
+
+        CareerRunSettings.BeginRun("Lv_2", false, Archetype.Coding, "Keepsake_Default");
+        KeepsakeSettlementUnlockService.RequestUnlock("Keepsake_02");
+        Assert.IsFalse(progress.IsKeepsakeUnlocked("Keepsake_02"),
+            "Requesting an unlock must not mutate career progress before settlement.");
+        IReadOnlyList<KeepsakeTable> unlocked = KeepsakeSettlementUnlockService.Commit(progress);
+        CollectionAssert.AreEqual(new[] { "Keepsake_02" }, unlocked.Select(row => row.Identifier));
+        Assert.IsTrue(progress.IsKeepsakeUnlocked("Keepsake_02"));
+
+        CareerRunSettings.CancelRun();
+        CareerRunSettings.BeginRun("Lv_2", false, Archetype.Coding, "Keepsake_02");
+        Assert.AreEqual("Keepsake_02", CareerRunSettings.KeepsakeIdentifier);
+        KeepsakeSettlementUnlockService.RequestUnlock("Keepsake_03");
+        KeepsakeSettlementUnlockService.DiscardPending();
+        Assert.IsFalse(progress.IsKeepsakeUnlocked("Keepsake_03"),
+            "A failed settlement must discard requested keepsake unlocks.");
+    }
+
+    [Test]
     public void VariableExperiment_UsesRuleAndOptionalLevelOverride()
     {
         string runtimeLevel = CareerRunSettings.BeginRun("Lv_1", true, Archetype.Coding);
@@ -325,7 +437,7 @@ public sealed class CareerSystemsTests
         Assert.AreEqual(Fix64.One, CareerRuntimeEffects.GetVariableUnitMaxHealth());
         Assert.AreEqual(Fix64.Zero, CareerRuntimeEffects.GetEffectValue(MetaGrowthEffectType.HeroAttackPercent));
 
-        string levelOneLine = File.ReadLines(Path.Combine(Application.dataPath, "AAAGame/DataTable/LevelTable.txt"))
+        string levelOneLine = File.ReadLines(Path.Combine(Application.dataPath, "AAAGame/DataTable/Level/LevelTable.txt"))
             .Single(line => line.Contains("\tLv_1\t", StringComparison.Ordinal));
         LevelTable overrideLevel = ParseRow<LevelTable>(levelOneLine);
         SetInstanceProperty(overrideLevel, nameof(LevelTable.VariableLevelConfigIdentifier), "Lv_2");
@@ -349,12 +461,29 @@ public sealed class CareerSystemsTests
     }
 
     [Test]
+    public void MetaGrowth_AppliesOnlyToStandardNonTutorialRuns()
+    {
+        CareerRunSettings.BeginRun("Lv_2", false, Archetype.Coding);
+        Assert.IsTrue(CareerRuntimeEffects.ShouldApplyGrowthForActiveRun());
+
+        CareerRunSettings.CancelRun();
+        CareerRunSettings.BeginRun("Lv_2", true, Archetype.Coding);
+        Assert.IsFalse(CareerRuntimeEffects.ShouldApplyGrowthForActiveRun());
+        Assert.AreEqual(Fix64.Zero, CareerRuntimeEffects.GetEffectValue(MetaGrowthEffectType.HeroAttackPercent));
+
+        CareerRunSettings.CancelRun();
+        CareerRunSettings.BeginRun("Lv_1", false, Archetype.Coding);
+        Assert.IsFalse(CareerRuntimeEffects.ShouldApplyGrowthForActiveRun());
+        Assert.AreEqual(Fix64.Zero, CareerRuntimeEffects.GetEffectValue(MetaGrowthEffectType.HeroAttackPercent));
+    }
+
+    [Test]
     public void TutorialLevel_UsesCodingAndRejectsAllTagsThroughLogic()
     {
         Assert.IsTrue(CareerConfigRuntime.IsTutorialLevel("Lv_1"));
         Assert.IsFalse(CareerConfigRuntime.IsTutorialLevel("Lv_2"));
 
-        List<LevelTagTable> generatedTags = LoadRows<LevelTagTable>("AAAGame/DataTable/LevelTagTable.txt");
+        List<LevelTagTable> generatedTags = LoadRows<LevelTagTable>("AAAGame/DataTable/Level/LevelTagTable.txt");
         Assert.IsNotEmpty(generatedTags);
         Assert.IsTrue(generatedTags.All(row => !CareerConfigRuntime.IsTagAvailableForLevel(row, "Lv_1")));
         Assert.IsTrue(generatedTags.All(row => row.ExceptLevelID == null || !row.ExceptLevelID.Contains("Lv_1")),
@@ -448,6 +577,15 @@ public sealed class CareerSystemsTests
         return progress;
     }
 
+    private static void SetInstanceField<T>(CareerProgressDataModel progress, string fieldName, T value)
+    {
+        FieldInfo field = typeof(CareerProgressDataModel).GetField(
+                              fieldName,
+                              BindingFlags.Instance | BindingFlags.NonPublic)
+                          ?? throw new InvalidOperationException($"CareerProgressDataModel.{fieldName} was not found.");
+        field.SetValue(progress, value);
+    }
+
     private static void AssertInitialBaseCount(string prefabName, int expectedCount)
     {
         string path = $"Assets/AAAGame/Prefabs/Entity/Level/{prefabName}.prefab";
@@ -504,26 +642,34 @@ public sealed class CareerSystemsTests
         m_PreviousOffsetExperienceCoefficient = CareerConfigRuntime.OffsetRateExpCoefficient;
     }
 
+    private void SnapshotKeepsakeConfig()
+    {
+        m_PreviousKeepsakePrepared = KeepsakeConfigRuntime.IsPrepared;
+        m_PreviousKeepsakeRows = m_PreviousKeepsakePrepared
+            ? KeepsakeConfigRuntime.Rows.ToList()
+            : new List<KeepsakeTable>();
+    }
+
     private static void InstallCareerConfigFromGeneratedTables()
     {
         ReplaceDictionary(GetStaticDictionary<LevelTable>("s_Levels"),
-            LoadRows<LevelTable>("AAAGame/DataTable/LevelTable.txt").ToDictionary(row => row.Identifier, StringComparer.Ordinal));
+            LoadRows<LevelTable>("AAAGame/DataTable/Level/LevelTable.txt").ToDictionary(row => row.Identifier, StringComparer.Ordinal));
         ReplaceDictionary(GetStaticDictionary<LevelTable>("s_Experiments"),
-            LoadRows<LevelTable>("AAAGame/DataTable/LevelTable.txt")
+            LoadRows<LevelTable>("AAAGame/DataTable/Level/LevelTable.txt")
                 .Where(row => !string.IsNullOrWhiteSpace(row.VariableRuleIdentifier))
                 .ToDictionary(row => row.Identifier, StringComparer.Ordinal));
         ReplaceDictionary(GetStaticDictionary<VariableExperimentRuleTable>("s_Rules"),
-            LoadRows<VariableExperimentRuleTable>("AAAGame/DataTable/VariableExperimentRuleTable.txt").ToDictionary(row => row.Identifier, StringComparer.Ordinal));
+            LoadRows<VariableExperimentRuleTable>("AAAGame/DataTable/Level/VariableExperimentRuleTable.txt").ToDictionary(row => row.Identifier, StringComparer.Ordinal));
 
-        List<GradeExperienceTable> gradeRows = LoadRows<GradeExperienceTable>("AAAGame/DataTable/GradeExperienceTable.txt")
+        List<GradeExperienceTable> gradeRows = LoadRows<GradeExperienceTable>("AAAGame/DataTable/Career/GradeExperienceTable.txt")
             .OrderBy(row => row.Id)
             .ToList();
         ReplaceDictionary(GetStaticDictionary<int, GradeExperienceTable>("s_GradeExperience"),
             gradeRows.ToDictionary(row => row.Id));
         ReplaceDictionary(GetStaticDictionary<int, LevelTagTable>("s_LevelTagsById"),
-            LoadRows<LevelTagTable>("AAAGame/DataTable/LevelTagTable.txt").ToDictionary(row => row.Id));
+            LoadRows<LevelTagTable>("AAAGame/DataTable/Level/LevelTagTable.txt").ToDictionary(row => row.Id));
 
-        List<MetaGrowthTable> growthRows = LoadRows<MetaGrowthTable>("AAAGame/DataTable/MetaGrowthTable.txt")
+        List<MetaGrowthTable> growthRows = LoadRows<MetaGrowthTable>("AAAGame/DataTable/Career/MetaGrowthTable.txt")
             .OrderBy(row => row.Id)
             .ToList();
         ReplaceDictionary(GetStaticDictionary<MetaGrowthTable>("s_GrowthRows"),
@@ -548,6 +694,12 @@ public sealed class CareerSystemsTests
         SetStaticAutoProperty("OffsetRateExpCoefficient", Fix64.Parse("0.1"));
     }
 
+    private static void InstallKeepsakeConfigFromGeneratedTable()
+    {
+        KeepsakeConfigRuntime.PrepareForEditorTests(
+            LoadRows<KeepsakeTable>("AAAGame/DataTable/Hero/KeepsakeTable.txt"));
+    }
+
     private void RestoreCareerConfig()
     {
         ReplaceDictionary(GetStaticDictionary<LevelTable>("s_Levels"), m_PreviousLevels);
@@ -570,6 +722,13 @@ public sealed class CareerSystemsTests
         SetStaticAutoProperty("OffsetBadgeGoldThreshold", m_PreviousOffsetBadgeThresholds[2]);
         SetStaticAutoProperty("OffsetBadgeDiamondThreshold", m_PreviousOffsetBadgeThresholds[3]);
         SetStaticAutoProperty("OffsetRateExpCoefficient", m_PreviousOffsetExperienceCoefficient);
+    }
+
+    private void RestoreKeepsakeConfig()
+    {
+        KeepsakeConfigRuntime.ResetForEditorTests();
+        if (m_PreviousKeepsakePrepared)
+            KeepsakeConfigRuntime.PrepareForEditorTests(m_PreviousKeepsakeRows);
     }
 
     private static List<TRow> LoadRows<TRow>(string relativePath)
@@ -662,5 +821,10 @@ public sealed class CareerSystemsTests
             BindingFlags.Static | BindingFlags.NonPublic)?.GetValue(null)
             ?? throw new InvalidOperationException("CareerRunSettings.s_LastSelections was not found."));
         selections.Clear();
+        var keepsakeSelections = (Dictionary<string, string>)(typeof(CareerRunSettings).GetField(
+            "s_LastKeepsakeSelections",
+            BindingFlags.Static | BindingFlags.NonPublic)?.GetValue(null)
+            ?? throw new InvalidOperationException("CareerRunSettings.s_LastKeepsakeSelections was not found."));
+        keepsakeSelections.Clear();
     }
 }

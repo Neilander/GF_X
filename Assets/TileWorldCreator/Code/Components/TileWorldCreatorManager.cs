@@ -691,11 +691,17 @@ namespace GiantGrey.TileWorldCreator
 			{
 				for (int i = 0; i < configuration.buildLayerFolders[j].buildLayers.Count; i++)
 				{
-					var _tileData = (configuration.buildLayerFolders[j].buildLayers[i] as TilesBuildLayer).GetTileDataFromPosition(_gridPosition);
-
-					if (_tileData.tilePosition != Vector2.zero && (configuration.buildLayerFolders[j].buildLayers[i] as TilesBuildLayer).layerYOffset > _layerYOffset)
+					var _tilesBuildLayer = configuration.buildLayerFolders[j].buildLayers[i] as TilesBuildLayer;
+					if (_tilesBuildLayer == null)
 					{
-						_layerYOffset = (configuration.buildLayerFolders[j].buildLayers[i] as TilesBuildLayer).layerYOffset;
+						continue;
+					}
+
+					var _tileData = _tilesBuildLayer.GetTileDataFromPosition(_gridPosition);
+
+					if (_tileData.tilePosition != Vector2.zero && _tilesBuildLayer.layerYOffset > _layerYOffset)
+					{
+						_layerYOffset = _tilesBuildLayer.layerYOffset;
 					}
 				}
 			}

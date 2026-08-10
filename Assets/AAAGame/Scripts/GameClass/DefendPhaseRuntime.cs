@@ -293,7 +293,7 @@ public static class DefendPhaseRuntime
 
     private static void SpawnPlannedEvent(PlannedSpawnEvent evt)
     {
-        LogicEntityId entityId = SoldierFactory.ShowSoldierFixed(
+        LogicEntityId entityId = SoldierFactory.ShowCurrentBattleTroopFixed(
             evt.UnitType,
             evt.SpawnPosition,
             0f,
@@ -393,12 +393,9 @@ public static class DefendPhaseRuntime
         pathCorners.Clear();
         navigationUpdatePending = false;
         int agentTypeId = ResolveAgentTypeId(unitType);
-        if (!TryResolveBaseNavigationPoint(basePosition, agentTypeId, out Vector3 navigationBase, out failureReason))
-            return false;
-
-        return FlowFieldCrowdMovementSystem.TryGetNavigationPathCornersNonBlocking(
+        return FlowFieldCrowdMovementSystem.TryGetNavigationPathCornersToReachableGoalNonBlocking(
             spawnPosition,
-            navigationBase,
+            basePosition,
             agentTypeId,
             pathCorners,
             out failureReason,
@@ -607,19 +604,13 @@ public static class DefendPhaseRuntime
     private static Fix64 CalculatePathDistanceFixed(FixVector2 from, FixVector2 to, UnitType unitType)
     {
         int agentTypeId = ResolveAgentTypeId(unitType);
-        if (!TryResolveBaseNavigationPointFixed(to, agentTypeId, out FixVector2 navigationBase, out string failureReason))
-        {
-            throw new InvalidOperationException(
-                $"DefendPhaseRuntime.CalculatePathDistanceFixed failed: unit={unitType} fromRaw=({from.x.RawValue},{from.y.RawValue}) " +
-                $"toRaw=({to.x.RawValue},{to.y.RawValue}) agentType={agentTypeId} reason={failureReason}");
-        }
-
-        if (FlowFieldCrowdMovementSystem.TryEstimateNavigationDistanceFixed(
+        if (FlowFieldCrowdMovementSystem.TryEstimateNavigationDistanceToReachableGoalFixed(
                 from,
-                navigationBase,
+                to,
                 agentTypeId,
                 out Fix64 distance,
-                out failureReason))
+                out _,
+                out string failureReason))
         {
             return distance;
         }
@@ -627,55 +618,6 @@ public static class DefendPhaseRuntime
         throw new InvalidOperationException(
             $"DefendPhaseRuntime.CalculatePathDistanceFixed failed: unit={unitType} fromRaw=({from.x.RawValue},{from.y.RawValue}) " +
             $"toRaw=({to.x.RawValue},{to.y.RawValue}) agentType={agentTypeId} reason={failureReason}");
-    }
-
-    private static bool TryResolveBaseNavigationPointFixed(
-        FixVector2 basePosition,
-        int agentTypeId,
-        out FixVector2 navigationBase,
-        out string failureReason)
-    {
-        if (FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixed(
-                basePosition,
-                agentTypeId,
-                NavigationPointProbeRadius,
-                Fix64.Zero,
-                out navigationBase))
-        {
-            failureReason = string.Empty;
-            return true;
-        }
-
-        failureReason =
-            $"no legal navigation point near player base raw=({basePosition.x.RawValue},{basePosition.y.RawValue}) " +
-            $"agentType={agentTypeId} maxSnapDistanceRaw={NavigationPointProbeRadius.RawValue}";
-        return false;
-    }
-
-    private static bool TryResolveBaseNavigationPoint(
-        Vector3 basePosition,
-        int agentTypeId,
-        out Vector3 navigationBase,
-        out string failureReason)
-    {
-        var fixedBase = new FixVector2((Fix64)basePosition.x, (Fix64)basePosition.z);
-        if (FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixedNonBlocking(
-                fixedBase,
-                agentTypeId,
-                NavigationPointProbeRadius,
-                Fix64.Zero,
-                out FixVector2 fixedNavigationBase))
-        {
-            navigationBase = new Vector3((float)fixedNavigationBase.x, basePosition.y, (float)fixedNavigationBase.y);
-            failureReason = string.Empty;
-            return true;
-        }
-
-        navigationBase = Vector3.zero;
-        failureReason =
-            $"no committed legal navigation point near player base raw=({fixedBase.x.RawValue},{fixedBase.y.RawValue}) " +
-            $"agentType={agentTypeId} maxSnapDistanceRaw={NavigationPointProbeRadius.RawValue}";
-        return false;
     }
 
     private static void LogSpawnPointDiagnostics(EntityPresetPoint point)

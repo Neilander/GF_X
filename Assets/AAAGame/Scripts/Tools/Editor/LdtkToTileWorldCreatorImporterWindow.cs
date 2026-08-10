@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using AAAGame.Tilemap;
 using GiantGrey.TileWorldCreator;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -19,7 +20,10 @@ namespace AAAGame.Tools.Editor
     {
         private const string DefaultLdtkPath = "Assets/AAAGame/Tilemap/Ldtk/City/Lv3.ldtkl";
         private const string TemplateConfigurationPath = "Assets/AAAGame/Tilemap/Lv3.asset";
-        private const string PlaneLayerName = "Plane";
+        private const string PlaneLayerName = "Plane_H0";
+        private const string LegacyPlaneLayerName = "Plane";
+        private const string PlatformLayerPrefix = "Plane_H";
+        private const string SlopeLayerName = "Slope";
         private const string WaterLayerName = "Water";
         private const string StrongholdLayerName = "SH";
         private const string EntityLayerName = "Entities";
@@ -35,6 +39,10 @@ namespace AAAGame.Tools.Editor
         private const int PlayerStrongholdValue = 2;
         private const int PlayerStrongholdFaction = 0;
         private const int EnemyStrongholdFaction = 1;
+        private const int MinimumPlatformHeight = 0;
+        private const int MaximumPlatformHeight = 5;
+        private const string Ramp45PrefabPath = "Assets/AAAGame/Models/SlopePlaceholder/Ramp45.prefab";
+        private const string Ramp2x1PrefabPath = "Assets/AAAGame/Models/SlopePlaceholder/Ramp2x1.prefab";
 
         private UnityEngine.Object ldtkLevelAsset;
         private Configuration templateConfiguration;
@@ -52,8 +60,9 @@ namespace AAAGame.Tools.Editor
         private bool autoCreateSceneManager = true;
         private Vector2 scrollPosition;
         private string lastReport;
+        private GameObject temporaryManagerObject;
 
-        [MenuItem("Tools/LDtk/Import To TileWorldCreator")]
+        [MenuItem("Tools/LDtk To TileWorldCreator")]
         private static void Open()
         {
             var window = GetWindow<LdtkToTileWorldCreatorImporterWindow>("LDtk To TWC");
@@ -111,7 +120,7 @@ namespace AAAGame.Tools.Editor
 
                 if (GUILayout.Button("Find/Create Manager"))
                 {
-                    manager = FindOrCreateManager(createSceneManager: true, out string managerReport);
+                    manager = FindOrCreateManager(createSceneManager: true, out string managerReport, out _);
                     lastReport = managerReport;
                 }
             }
@@ -122,7 +131,7 @@ namespace AAAGame.Tools.Editor
             autoCreateMissingAssets = EditorGUILayout.Toggle("Auto create assets", autoCreateMissingAssets);
             autoCreateSceneManager = EditorGUILayout.Toggle("Auto create manager", autoCreateSceneManager);
             syncBuildSettingsFromTemplate = EditorGUILayout.Toggle("Sync build settings", syncBuildSettingsFromTemplate);
-            EditorGUILayout.HelpBox("Plane -> Plane, Water -> Water. SH Player(value 2) -> SH_0_x, Enemy(value 1) -> SH_1_x, split by 4-neighbor connected components. SH layers contain blueprint data only and do not generate build-layer models.", MessageType.Info);
+            EditorGUILayout.HelpBox("Plane_H0..Plane_H5 define platform heights; overlapping cells use the highest layer for slope inference. Each straight Slope component must have run:rise 1:1 or 2:1. Slope support cells are added to the inferred platform layers automatically.", MessageType.Info);
             resizeConfiguration = EditorGUILayout.Toggle("Resize configuration", resizeConfiguration);
             clearBlueprintModifiers = EditorGUILayout.Toggle("Clear blueprint modifiers", clearBlueprintModifiers);
 
@@ -174,6 +183,22 @@ namespace AAAGame.Tools.Editor
 
         private void Import(bool generateBuildLayers)
         {
+            bool cleanupDeferred = false;
+            try
+            {
+                ImportCore(generateBuildLayers, ref cleanupDeferred);
+            }
+            finally
+            {
+                if (!cleanupDeferred)
+                {
+                    CleanupTemporaryManager();
+                }
+            }
+        }
+
+        private void ImportCore(bool generateBuildLayers, ref bool cleanupDeferred)
+        {
             lastReport = string.Empty;
 
             if (!TryGetLdtkPath(out string ldtkPath))
@@ -219,8 +244,16 @@ namespace AAAGame.Tools.Editor
                 return;
             }
 
-            if (!TryFindBlueprintLayer(PlaneLayerName, out BlueprintLayer planeLayer) ||
-                !TryFindBlueprintLayer(WaterLayerName, out BlueprintLayer waterLayer))
+            if (!TryFindBlueprintLayer(WaterLayerName, out BlueprintLayer waterLayer))
+            {
+                return;
+            }
+
+            if (!EnsurePlatformAndSlopeLayers(
+                    plan,
+                    out Dictionary<int, BlueprintLayer> platformLayers,
+                    out BlueprintLayer slopeLayer,
+                    out string terrainLayerReport))
             {
                 return;
             }
@@ -251,7 +284,12 @@ namespace AAAGame.Tools.Editor
             }
 
             int clearedModifierCount = 0;
-            clearedModifierCount += ImportCells(planeLayer, plan.planeCells, clearBlueprintModifiers);
+            foreach (PlatformImport platform in plan.platforms)
+            {
+                clearedModifierCount += ImportCells(platformLayers[platform.height], platform.cells, clearBlueprintModifiers);
+            }
+
+            clearedModifierCount += ImportCells(slopeLayer, plan.slopeCells, clearBlueprintModifiers);
             clearedModifierCount += ImportCells(waterLayer, plan.waterCells, clearBlueprintModifiers);
 
             for (int i = 0; i < strongholdLayers.Count; i++)
@@ -267,26 +305,39 @@ namespace AAAGame.Tools.Editor
                     configuration,
                     () =>
                     {
-                        TerrainPrefabResult delayedTerrainResult = SaveTerrainPrefabFromManager();
-                        FlowNavigationGridImportResult delayedFlowGridResult = GenerateFlowNavigationGrid(plan, delayedTerrainResult.targetPath);
-                        EntityImportResult delayedEntityImportResult = ImportEntityPresetPointsIfRequested(plan, delayedTerrainResult.targetPath, delayedFlowGridResult.assets);
-                        delayedEntityImportResult.terrainResult = delayedTerrainResult;
-                        delayedEntityImportResult.flowNavigationGridResult = delayedFlowGridResult;
-                        AssetDatabase.SaveAssets();
-
-                        lastReport = BuildImportReport(ldtkPath, plan, strongholdLayers, true, clearedModifierCount, delayedEntityImportResult);
-                        if (!string.IsNullOrEmpty(ensureReport))
+                        try
                         {
-                            lastReport = ensureReport + "\n\n" + lastReport;
-                        }
+                            TerrainPrefabResult delayedTerrainResult = SaveTerrainPrefabFromManager();
+                            FlowNavigationGridImportResult delayedFlowGridResult = GenerateFlowNavigationGrid(plan, delayedTerrainResult.targetPath);
+                            EntityImportResult delayedEntityImportResult = ImportEntityPresetPointsIfRequested(plan, delayedTerrainResult.targetPath, delayedFlowGridResult.assets);
+                            delayedEntityImportResult.terrainResult = delayedTerrainResult;
+                            delayedEntityImportResult.flowNavigationGridResult = delayedFlowGridResult;
+                            AssetDatabase.SaveAssets();
 
-                        if (!string.IsNullOrEmpty(templateSyncReport))
+                            lastReport = BuildImportReport(ldtkPath, plan, strongholdLayers, true, clearedModifierCount, delayedEntityImportResult);
+                            if (!string.IsNullOrEmpty(ensureReport))
+                            {
+                                lastReport = ensureReport + "\n\n" + lastReport;
+                            }
+
+                            if (!string.IsNullOrEmpty(terrainLayerReport))
+                            {
+                                lastReport = terrainLayerReport + "\n\n" + lastReport;
+                            }
+
+                            if (!string.IsNullOrEmpty(templateSyncReport))
+                            {
+                                lastReport = templateSyncReport + "\n\n" + lastReport;
+                            }
+
+                            Debug.Log(lastReport);
+                        }
+                        finally
                         {
-                            lastReport = templateSyncReport + "\n\n" + lastReport;
+                            CleanupTemporaryManager();
                         }
-
-                        Debug.Log(lastReport);
                     });
+                cleanupDeferred = true;
 
                 lastReport = "[LDtk Import] TileWorldCreator build layers are generating. Terrain prefab and level prefab will be saved after the editor build pass finishes.";
                 Debug.Log(lastReport);
@@ -306,7 +357,7 @@ namespace AAAGame.Tools.Editor
 
             if (!generateBuildLayers)
             {
-                MarkImportedAssetsDirty(configuration, planeLayer, waterLayer, strongholdLayers);
+                MarkImportedAssetsDirty(configuration, platformLayers.Values, slopeLayer, waterLayer, strongholdLayers);
                 AssetDatabase.SaveAssets();
             }
             else
@@ -318,6 +369,11 @@ namespace AAAGame.Tools.Editor
             if (!string.IsNullOrEmpty(ensureReport))
             {
                 lastReport = ensureReport + "\n\n" + lastReport;
+            }
+
+            if (!string.IsNullOrEmpty(terrainLayerReport))
+            {
+                lastReport = terrainLayerReport + "\n\n" + lastReport;
             }
 
             if (!string.IsNullOrEmpty(templateSyncReport))
@@ -491,7 +547,15 @@ namespace AAAGame.Tools.Editor
 
             if (configuration != null)
             {
-                manager = FindOrCreateManager(createSceneManager && autoCreateSceneManager, out string managerReport);
+                manager = FindOrCreateManager(
+                    createSceneManager && autoCreateSceneManager,
+                    out string managerReport,
+                    out bool createdManager);
+                if (createdManager)
+                {
+                    temporaryManagerObject = manager.gameObject;
+                }
+
                 if (!string.IsNullOrEmpty(managerReport))
                 {
                     builder.AppendLine(managerReport);
@@ -507,9 +571,10 @@ namespace AAAGame.Tools.Editor
             return success;
         }
 
-        private TileWorldCreatorManager FindOrCreateManager(bool createSceneManager, out string report)
+        private TileWorldCreatorManager FindOrCreateManager(bool createSceneManager, out string report, out bool created)
         {
             report = string.Empty;
+            created = false;
             if (configuration == null)
             {
                 report = "TWC manager skipped: no configuration selected.";
@@ -535,9 +600,29 @@ namespace AAAGame.Tools.Editor
             Undo.RegisterCreatedObjectUndo(managerObject, "Create LDtk TWC Manager");
             found = managerObject.AddComponent<TileWorldCreatorManager>();
             found.configuration = configuration;
+            created = true;
             EditorSceneManager.MarkSceneDirty(managerObject.scene);
             report = $"Created TWC manager: {managerName}";
             return found;
+        }
+
+        private void CleanupTemporaryManager()
+        {
+            if (temporaryManagerObject == null)
+            {
+                return;
+            }
+
+            GameObject target = temporaryManagerObject;
+            temporaryManagerObject = null;
+            if (manager != null && manager.gameObject == target)
+            {
+                manager = null;
+            }
+
+            string targetName = target.name;
+            DestroyImmediate(target);
+            Debug.Log("[LDtk Import] Removed temporary TWC manager: " + targetName);
         }
 
         private void CreateOrSelectTargetFromTemplate()
@@ -569,7 +654,7 @@ namespace AAAGame.Tools.Editor
             if (existing != null)
             {
                 configuration = existing;
-                manager = FindOrCreateManager(createSceneManager: false, out _);
+                manager = FindOrCreateManager(createSceneManager: false, out _, out _);
                 return true;
             }
 
@@ -727,23 +812,54 @@ namespace AAAGame.Tools.Editor
         {
             plan = null;
 
-            if (!TryFindLdtkLayer(level, PlaneLayerName, out LdtkLayerInstance plane) ||
+            if (!TryFindPlatformLdtkLayers(level, out List<PlatformLdtkLayer> platformLayers) ||
                 !TryFindLdtkLayer(level, WaterLayerName, out LdtkLayerInstance water) ||
                 !TryFindLdtkLayer(level, StrongholdLayerName, out LdtkLayerInstance stronghold))
             {
                 return false;
             }
 
-            int width = plane.__cWid;
-            int height = plane.__cHei;
-            int gridSize = plane.__gridSize;
+            LdtkLayerInstance referenceLayer = platformLayers[0].layer;
+            int width = referenceLayer.__cWid;
+            int height = referenceLayer.__cHei;
+            int gridSize = referenceLayer.__gridSize;
             float cellSize = GetTileWorldCellSize();
-            if (!ValidateSameGrid(plane, water, stronghold))
+            LdtkLayerInstance slope = level.layerInstances.FirstOrDefault(x =>
+                x != null &&
+                string.Equals(x.__identifier, SlopeLayerName, StringComparison.OrdinalIgnoreCase));
+            if (slope != null && (!string.Equals(slope.__type, "IntGrid", StringComparison.OrdinalIgnoreCase) || slope.intGridCsv == null))
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", "Slope must be an IntGrid layer.", "OK");
+                return false;
+            }
+            var validatedLayers = platformLayers.Select(x => x.layer).Concat(new[] { water, stronghold }).ToList();
+            if (slope != null)
+            {
+                validatedLayers.Add(slope);
+            }
+
+            if (!ValidateSameGrid(validatedLayers.ToArray()))
             {
                 return false;
             }
 
             if (!TryReadStrongholdComponents(stronghold, width, height, out var strongholdComponentsByFaction))
+            {
+                return false;
+            }
+
+            var platformImports = platformLayers
+                .Select(x => new PlatformImport
+                {
+                    height = x.height,
+                    cells = ReadIntGridCells(x.layer, width, height)
+                })
+                .OrderBy(x => x.height)
+                .ToList();
+            HashSet<Vector2> slopeCells = slope != null
+                ? ReadIntGridCells(slope, width, height)
+                : new HashSet<Vector2>();
+            if (!TryApplySlopeSupports(platformImports, slopeCells))
             {
                 return false;
             }
@@ -755,12 +871,76 @@ namespace AAAGame.Tools.Editor
                 gridSize = gridSize,
                 cellSize = cellSize,
                 pixelHeight = level.pxHei > 0 ? level.pxHei : height * gridSize,
-                planeCells = ReadIntGridCells(plane, width, height),
+                platforms = platformImports,
+                slopeCells = slopeCells,
                 waterCells = ReadIntGridCells(water, width, height),
                 strongholdComponentsByFaction = strongholdComponentsByFaction,
                 entityPoints = ReadEntityPresetPoints(level, gridSize, cellSize)
             };
 
+            return true;
+        }
+
+        private static bool TryFindPlatformLdtkLayers(LdtkLevelJson level, out List<PlatformLdtkLayer> platformLayers)
+        {
+            platformLayers = new List<PlatformLdtkLayer>();
+            if (level.layerInstances.Any(layer =>
+                    layer != null &&
+                    string.Equals(layer.__identifier, LegacyPlaneLayerName, StringComparison.OrdinalIgnoreCase)))
+            {
+                EditorUtility.DisplayDialog(
+                    "LDtk import failed",
+                    "Legacy layer Plane is no longer supported. Rename it to Plane_H0.",
+                    "OK");
+                return false;
+            }
+
+            foreach (LdtkLayerInstance layer in level.layerInstances)
+            {
+                if (layer == null)
+                {
+                    continue;
+                }
+
+                Match match = Regex.Match(layer.__identifier ?? string.Empty, @"^Plane_H(\d+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (!match.Success)
+                {
+                    continue;
+                }
+
+                int height = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                if (height < MinimumPlatformHeight || height > MaximumPlatformHeight)
+                {
+                    EditorUtility.DisplayDialog("LDtk import failed", $"Unsupported platform height: {layer.__identifier}. Expected Plane_H0..Plane_H5.", "OK");
+                    return false;
+                }
+
+                if (!string.Equals(layer.__type, "IntGrid", StringComparison.OrdinalIgnoreCase) || layer.intGridCsv == null)
+                {
+                    EditorUtility.DisplayDialog("LDtk import failed", $"{layer.__identifier} must be an IntGrid layer.", "OK");
+                    return false;
+                }
+
+                platformLayers.Add(new PlatformLdtkLayer
+                {
+                    height = height,
+                    layer = layer
+                });
+            }
+
+            if (platformLayers.Count == 0)
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", "Missing IntGrid platform layers. Expected Plane_H0..Plane_H5.", "OK");
+                return false;
+            }
+
+            if (platformLayers.GroupBy(x => x.height).Any(group => group.Count() > 1))
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", "Duplicate platform height layer found. Each Plane_H0..Plane_H5 height may appear only once.", "OK");
+                return false;
+            }
+
+            platformLayers.Sort((a, b) => a.height.CompareTo(b.height));
             return true;
         }
 
@@ -803,11 +983,11 @@ namespace AAAGame.Tools.Editor
             {
                 if (layer.__cWid != width || layer.__cHei != height || layer.__gridSize != gridSize)
                 {
-                    EditorUtility.DisplayDialog("LDtk import failed", "Plane, Water and SH must use the same LDtk grid.", "OK");
+                    EditorUtility.DisplayDialog("LDtk import failed", "Plane_H*, Slope, Water and SH must use the same LDtk grid.", "OK");
                     return false;
                 }
 
-                if (layer.intGridCsv.Length != width * height)
+                if (layer.intGridCsv == null || layer.intGridCsv.Length != width * height)
                 {
                     EditorUtility.DisplayDialog("LDtk import failed", $"Layer {layer.__identifier} has invalid IntGrid data length.", "OK");
                     return false;
@@ -815,6 +995,51 @@ namespace AAAGame.Tools.Editor
             }
 
             return true;
+        }
+
+        private static bool TryApplySlopeSupports(List<PlatformImport> platforms, HashSet<Vector2> slopeCells)
+        {
+            var levels = platforms.Select(platform =>
+                new KeyValuePair<int, IEnumerable<Vector2>>(platform.height, platform.cells));
+            Dictionary<Vector2, int> topHeights = LdtkSlopeLayoutResolver.GetTopPlatformHeights(levels);
+            if (!LdtkSlopeLayoutResolver.TryResolve(slopeCells, topHeights, out LdtkSlopeLayout layout, out string error))
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", error, "OK");
+                return false;
+            }
+
+            foreach (KeyValuePair<Vector2, int> support in layout.requiredPlatformHeights)
+            {
+                if (support.Value < MinimumPlatformHeight || support.Value > MaximumPlatformHeight)
+                {
+                    EditorUtility.DisplayDialog(
+                        "LDtk import failed",
+                        "Slope support at " + FormatCell(support.Key) + " resolves outside Plane_H0..Plane_H5.",
+                        "OK");
+                    return false;
+                }
+
+                PlatformImport platform = platforms.FirstOrDefault(item => item.height == support.Value);
+                if (platform == null)
+                {
+                    platform = new PlatformImport
+                    {
+                        height = support.Value,
+                        cells = new HashSet<Vector2>()
+                    };
+                    platforms.Add(platform);
+                }
+
+                platform.cells.Add(support.Key);
+            }
+
+            platforms.Sort((left, right) => left.height.CompareTo(right.height));
+            return true;
+        }
+
+        private static string FormatCell(Vector2 cell)
+        {
+            return $"({Mathf.RoundToInt(cell.x)},{Mathf.RoundToInt(cell.y)})";
         }
 
         private bool TrySyncBuildSettingsFromTemplate(out string report)
@@ -1060,6 +1285,289 @@ namespace AAAGame.Tools.Editor
             }
 
             return true;
+        }
+
+        private bool EnsurePlatformAndSlopeLayers(
+            ImportPlan plan,
+            out Dictionary<int, BlueprintLayer> platformLayers,
+            out BlueprintLayer slopeLayer,
+            out string report)
+        {
+            platformLayers = new Dictionary<int, BlueprintLayer>();
+            slopeLayer = null;
+            report = string.Empty;
+            if (!TryFindBlueprintLayer(PlaneLayerName, out BlueprintLayer planeTemplate))
+            {
+                return false;
+            }
+
+            string planeBuildLayerName = "Build " + PlaneLayerName;
+            TilesBuildLayer buildTemplate = GetBuildLayers(configuration)
+                .OfType<TilesBuildLayer>()
+                .FirstOrDefault(layer => string.Equals(layer.layerName, planeBuildLayerName, StringComparison.OrdinalIgnoreCase));
+            if (buildTemplate == null)
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", "Missing TWC build layer: " + planeBuildLayerName, "OK");
+                return false;
+            }
+
+            var changes = new List<string>();
+            foreach (PlatformImport platform in plan.platforms)
+            {
+                string blueprintName = BuildPlatformLayerName(platform.height);
+                BlueprintLayer blueprint = GetBlueprintLayers(configuration)
+                    .FirstOrDefault(layer => string.Equals(layer.layerName, blueprintName, StringComparison.OrdinalIgnoreCase));
+                if (blueprint == null)
+                {
+                    if (!TryCloneBlueprintLayer(planeTemplate, blueprintName, out blueprint))
+                    {
+                        EditorUtility.DisplayDialog("LDtk import failed", "Failed to create TWC blueprint layer: " + blueprintName, "OK");
+                        return false;
+                    }
+
+                    changes.Add("Created " + blueprintName);
+                }
+
+                blueprint.defaultLayerHeight = platform.height * plan.cellSize;
+                blueprint.isEnabled = true;
+                platformLayers.Add(platform.height, blueprint);
+
+                string buildLayerName = "Build " + blueprintName;
+                TilesBuildLayer buildLayer = GetBuildLayers(configuration)
+                    .OfType<TilesBuildLayer>()
+                    .FirstOrDefault(layer => string.Equals(layer.layerName, buildLayerName, StringComparison.OrdinalIgnoreCase));
+                if (buildLayer == null)
+                {
+                    if (!TryCloneTilesBuildLayer(buildTemplate, blueprint, buildLayerName, out buildLayer))
+                    {
+                        EditorUtility.DisplayDialog("LDtk import failed", "Failed to create TWC build layer: " + buildLayerName, "OK");
+                        return false;
+                    }
+
+                    changes.Add("Created " + buildLayerName);
+                }
+
+                buildLayer.assignedBlueprintLayerGuid = blueprint.guid;
+                buildLayer.currentBlueprintLayer = blueprint;
+                buildLayer.isEnabled = true;
+                EditorUtility.SetDirty(blueprint);
+                EditorUtility.SetDirty(buildLayer);
+            }
+
+            ClearUnusedPlatformLayers(platformLayers.Keys.ToHashSet());
+
+            slopeLayer = GetBlueprintLayers(configuration)
+                .FirstOrDefault(layer => string.Equals(layer.layerName, SlopeLayerName, StringComparison.OrdinalIgnoreCase));
+            if (slopeLayer == null)
+            {
+                if (!TryCloneBlueprintLayer(planeTemplate, SlopeLayerName, out slopeLayer))
+                {
+                    EditorUtility.DisplayDialog("LDtk import failed", "Failed to create TWC blueprint layer: " + SlopeLayerName, "OK");
+                    return false;
+                }
+
+                changes.Add("Created " + SlopeLayerName);
+            }
+
+            slopeLayer.defaultLayerHeight = 0f;
+            slopeLayer.isEnabled = true;
+
+            LdtkSlopeBuildLayer slopeBuildLayer = GetBuildLayers(configuration)
+                .OfType<LdtkSlopeBuildLayer>()
+                .FirstOrDefault(layer => string.Equals(layer.layerName, "Build Slope", StringComparison.OrdinalIgnoreCase));
+            if (slopeBuildLayer == null)
+            {
+                slopeBuildLayer = ScriptableObject.CreateInstance<LdtkSlopeBuildLayer>();
+                slopeBuildLayer.hideFlags = HideFlags.HideInHierarchy;
+                slopeBuildLayer.layerName = "Build Slope";
+                slopeBuildLayer.guid = Guid.NewGuid().ToString();
+                slopeBuildLayer.hierarchyLayerID = slopeBuildLayer.guid;
+                AssetDatabase.AddObjectToAsset(slopeBuildLayer, configuration);
+                GetOrCreateBuildLayerFolder().buildLayers.Add(slopeBuildLayer);
+                changes.Add("Created Build Slope");
+            }
+
+            GameObject ramp45 = AssetDatabase.LoadAssetAtPath<GameObject>(Ramp45PrefabPath);
+            GameObject ramp2x1 = AssetDatabase.LoadAssetAtPath<GameObject>(Ramp2x1PrefabPath);
+            if (ramp45 == null || ramp2x1 == null)
+            {
+                EditorUtility.DisplayDialog(
+                    "LDtk import failed",
+                    "Slope placeholder prefabs are missing. Run Tools/TileWorldCreator/Generate Slope Placeholder Prefabs first.",
+                    "OK");
+                return false;
+            }
+
+            if (!TryCalculatePlatformSurfaceBase(buildTemplate, planeTemplate, plan.cellSize, out float surfaceBaseHeight))
+            {
+                return false;
+            }
+
+            slopeBuildLayer.assignedBlueprintLayerGuid = slopeLayer.guid;
+            slopeBuildLayer.currentBlueprintLayer = slopeLayer;
+            slopeBuildLayer.slopeLayer = slopeLayer;
+            slopeBuildLayer.platformLevels = platformLayers
+                .OrderBy(pair => pair.Key)
+                .Select(pair => new LdtkSlopeBuildLayer.PlatformLevel { height = pair.Key, layer = pair.Value })
+                .ToList();
+            slopeBuildLayer.ramp45Prefab = ramp45;
+            slopeBuildLayer.ramp2x1Prefab = ramp2x1;
+            slopeBuildLayer.surfaceBaseHeight = surfaceBaseHeight;
+            slopeBuildLayer.surfaceHeightStep = plan.cellSize;
+            slopeBuildLayer.objectLayer = buildTemplate.meshGenerationOverride
+                ? buildTemplate.objectLayer
+                : configuration.objectLayer;
+            slopeBuildLayer.isEnabled = true;
+
+            EditorUtility.SetDirty(slopeLayer);
+            EditorUtility.SetDirty(slopeBuildLayer);
+            EditorUtility.SetDirty(configuration);
+            report = changes.Count > 0 ? "Updated height/slope layers: " + string.Join(", ", changes) : string.Empty;
+            return true;
+        }
+
+        private static string BuildPlatformLayerName(int height)
+        {
+            return PlatformLayerPrefix + height.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private bool TryCloneTilesBuildLayer(
+            TilesBuildLayer template,
+            BlueprintLayer blueprint,
+            string layerName,
+            out TilesBuildLayer newLayer)
+        {
+            newLayer = ScriptableObject.CreateInstance<TilesBuildLayer>();
+            newLayer.hideFlags = HideFlags.HideInHierarchy;
+            AssetDatabase.AddObjectToAsset(newLayer, configuration);
+            EditorUtility.CopySerialized(template, newLayer);
+            newLayer.hideFlags = HideFlags.HideInHierarchy;
+            newLayer.layerName = layerName;
+            newLayer.guid = Guid.NewGuid().ToString();
+            newLayer.hierarchyLayerID = newLayer.guid;
+            newLayer.configuration = configuration;
+            newLayer.assignedBlueprintLayerGuid = blueprint.guid;
+            newLayer.currentBlueprintLayer = blueprint;
+            newLayer.isEnabled = true;
+            GetOrCreateBuildLayerFolder().buildLayers.Add(newLayer);
+            EditorUtility.SetDirty(newLayer);
+            EditorUtility.SetDirty(configuration);
+            return true;
+        }
+
+        private BuildLayerFolder GetOrCreateBuildLayerFolder()
+        {
+            if (configuration.buildLayerFolders == null)
+            {
+                configuration.buildLayerFolders = new List<BuildLayerFolder>();
+            }
+
+            BuildLayerFolder folder = configuration.buildLayerFolders.FirstOrDefault();
+            if (folder == null)
+            {
+                folder = new BuildLayerFolder("Root");
+                configuration.buildLayerFolders.Add(folder);
+            }
+
+            return folder;
+        }
+
+        private void ClearUnusedPlatformLayers(HashSet<int> importedHeights)
+        {
+            for (int height = MinimumPlatformHeight; height <= MaximumPlatformHeight; height++)
+            {
+                if (importedHeights.Contains(height))
+                {
+                    continue;
+                }
+
+                string blueprintName = BuildPlatformLayerName(height);
+                BlueprintLayer blueprint = GetBlueprintLayers(configuration)
+                    .FirstOrDefault(layer => string.Equals(layer.layerName, blueprintName, StringComparison.OrdinalIgnoreCase));
+                if (blueprint != null)
+                {
+                    blueprint.ClearLayer(false);
+                    EditorUtility.SetDirty(blueprint);
+                }
+            }
+        }
+
+        private static bool TryCalculatePlatformSurfaceBase(
+            TilesBuildLayer buildLayer,
+            BlueprintLayer blueprintLayer,
+            float cellSize,
+            out float surfaceBaseHeight)
+        {
+            surfaceBaseHeight = 0f;
+            TilesBuildLayer.TilePresetSelection selection = buildLayer.tilePresetsTop?.FirstOrDefault(item => item?.preset != null);
+            if (selection?.preset == null)
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", "Build Plane_H0 has no top tile preset.", "OK");
+                return false;
+            }
+
+            GameObject fillPrefab = selection.preset.GetTile(
+                buildLayer.useDualGrid ? TilePreset.TileType.DUALGRD_fill : TilePreset.TileType.NRMGRD_fill,
+                out _);
+            if (fillPrefab == null || !TryGetPrefabLocalBounds(fillPrefab, out Bounds bounds))
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", "Build Plane_H0 top preset has no measurable fill mesh.", "OK");
+                return false;
+            }
+
+            float topLayerOffset = buildLayer.tileLayers != null && buildLayer.tileLayers.Count > 0
+                ? buildLayer.tileLayers.Max(layer => layer.heightOffset)
+                : 0f;
+            float meshScale = buildLayer.scaleTileToCellSize ? cellSize : 1f;
+            surfaceBaseHeight = blueprintLayer.defaultLayerHeight + buildLayer.layerYOffset + topLayerOffset +
+                                bounds.max.y * buildLayer.scaleOffset.y * meshScale;
+            return true;
+        }
+
+        private static bool TryGetPrefabLocalBounds(GameObject prefab, out Bounds bounds)
+        {
+            bounds = default;
+            bool hasBounds = false;
+            Matrix4x4 rootWorldToLocal = prefab.transform.worldToLocalMatrix;
+            foreach (MeshFilter filter in prefab.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (filter.sharedMesh == null)
+                {
+                    continue;
+                }
+
+                Matrix4x4 matrix = rootWorldToLocal * filter.transform.localToWorldMatrix;
+                Bounds meshBounds = filter.sharedMesh.bounds;
+                foreach (Vector3 corner in GetBoundsCorners(meshBounds))
+                {
+                    Vector3 point = matrix.MultiplyPoint3x4(corner);
+                    if (!hasBounds)
+                    {
+                        bounds = new Bounds(point, Vector3.zero);
+                        hasBounds = true;
+                    }
+                    else
+                    {
+                        bounds.Encapsulate(point);
+                    }
+                }
+            }
+
+            return hasBounds;
+        }
+
+        private static IEnumerable<Vector3> GetBoundsCorners(Bounds bounds)
+        {
+            for (int x = -1; x <= 1; x += 2)
+            {
+                for (int y = -1; y <= 1; y += 2)
+                {
+                    for (int z = -1; z <= 1; z += 2)
+                    {
+                        yield return bounds.center + Vector3.Scale(bounds.extents, new Vector3(x, y, z));
+                    }
+                }
+            }
         }
 
         private List<BlueprintLayer> GetStrongholdBlueprintLayers()
@@ -2366,12 +2874,23 @@ namespace AAAGame.Tools.Editor
             return result;
         }
 
-        private static void MarkImportedAssetsDirty(Configuration configuration, BlueprintLayer planeLayer, BlueprintLayer waterLayer, List<BlueprintLayer> strongholdLayers)
+        private static void MarkImportedAssetsDirty(
+            Configuration configuration,
+            IEnumerable<BlueprintLayer> platformLayers,
+            BlueprintLayer slopeLayer,
+            BlueprintLayer waterLayer,
+            List<BlueprintLayer> strongholdLayers)
         {
             EditorUtility.SetDirty(configuration);
-            planeLayer.OnBeforeSerialize();
+            foreach (BlueprintLayer platformLayer in platformLayers)
+            {
+                platformLayer.OnBeforeSerialize();
+                EditorUtility.SetDirty(platformLayer);
+            }
+
+            slopeLayer.OnBeforeSerialize();
             waterLayer.OnBeforeSerialize();
-            EditorUtility.SetDirty(planeLayer);
+            EditorUtility.SetDirty(slopeLayer);
             EditorUtility.SetDirty(waterLayer);
             foreach (var layer in strongholdLayers)
             {
@@ -2451,7 +2970,12 @@ namespace AAAGame.Tools.Editor
             builder.AppendLine($"Source: {path}");
             builder.AppendLine($"Size: {plan.width} x {plan.height}");
             builder.AppendLine($"TWC cell size: {plan.cellSize}");
-            builder.AppendLine($"Plane cells: {plan.planeCells.Count}");
+            foreach (PlatformImport platform in plan.platforms)
+            {
+                builder.AppendLine($"Plane_H{platform.height} cells: {platform.cells.Count}");
+            }
+
+            builder.AppendLine($"Slope cells: {plan.slopeCells.Count}");
             builder.AppendLine($"Water cells: {plan.waterCells.Count}");
             builder.AppendLine($"SH components: {GetStrongholdComponentCount(plan.strongholdComponentsByFaction)}");
             builder.AppendLine($"Cleared blueprint modifiers: {clearedModifierCount}");
@@ -2584,10 +3108,23 @@ namespace AAAGame.Tools.Editor
             public int gridSize;
             public float cellSize;
             public int pixelHeight;
-            public HashSet<Vector2> planeCells;
+            public List<PlatformImport> platforms;
+            public HashSet<Vector2> slopeCells;
             public HashSet<Vector2> waterCells;
             public Dictionary<int, List<StrongholdComponent>> strongholdComponentsByFaction;
             public List<EntityPresetPointData> entityPoints;
+        }
+
+        private sealed class PlatformLdtkLayer
+        {
+            public int height;
+            public LdtkLayerInstance layer;
+        }
+
+        private sealed class PlatformImport
+        {
+            public int height;
+            public HashSet<Vector2> cells;
         }
 
         private struct EntityPresetPointData

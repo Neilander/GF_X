@@ -242643,7 +242643,7 @@ GameObject:
   - component: {fileID: 6026595845824274331}
   - component: {fileID: 5224540651924247970}
   m_Layer: 0
-  m_Name: Layer Build Plane
+  m_Name: Layer Build Plane_H0
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

@@ -14,10 +14,32 @@ public partial class GameOverUIForm : UIFormBase
     {
         base.OnOpen(userData);
         RefreshResultView();
+        FinalizeKeepsakeUnlocks();
         ShowCareerSettlement();
         BindButtons();
         LevelSelectionService.LevelLoadCompleted += OnLevelLoadCompleted;
         UnlockPresentationService.ShowPending(transform);
+    }
+
+    private void FinalizeKeepsakeUnlocks()
+    {
+        bool isWin = Params.Get<VarBoolean>(P_IsWin);
+        if (!isWin || !CareerRunSettings.HasActiveRun)
+        {
+            KeepsakeSettlementUnlockService.DiscardPending();
+            return;
+        }
+
+        CareerProgressDataModel progress = GF.DataModel.GetOrCreate<CareerProgressDataModel>();
+        IReadOnlyList<KeepsakeTable> unlocked = KeepsakeSettlementUnlockService.Commit(progress);
+        for (int i = 0; i < unlocked.Count; i++)
+        {
+            KeepsakeTable keepsake = unlocked[i];
+            UnlockPresentationService.Enqueue(new UnlockPayload(
+                UnlockPayloadType.Keepsake,
+                LocalizationTextManager.GetLocalizedText(keepsake.NameKey),
+                LocalizationTextManager.GetLocalizedText(keepsake.DescKey)));
+        }
     }
 
     protected override void OnClose(bool isShutdown, object userData)
@@ -71,9 +93,31 @@ public partial class GameOverUIForm : UIFormBase
         layout.childControlWidth = true;
         layout.childControlHeight = true;
         CareerWinRecordResult value = result.Value;
-        CreateSettlementText(panel, $"EXP +{value.TotalExperienceGained}   Grade {value.PreviousGrade} -> {value.CurrentGrade}", 26, 42f);
-        CreateSettlementText(panel, $"Base {value.ClearExperience}  Optional {value.OptionalExperience}  First {value.FirstClearExperience}", 18, 34f);
-        CreateSettlementText(panel, $"Offset multiplier x{value.ExperienceMultiplier}", 18, 34f);
+        CreateSettlementText(
+            panel,
+            string.Format(
+                LocalizationTextManager.GetLocalizedText("CareerSettlement.ExperienceGrade"),
+                value.TotalExperienceGained,
+                value.PreviousGrade,
+                value.CurrentGrade),
+            26,
+            42f);
+        CreateSettlementText(
+            panel,
+            string.Format(
+                LocalizationTextManager.GetLocalizedText("CareerSettlement.ExperienceBreakdown"),
+                value.ClearExperience,
+                value.OptionalExperience,
+                value.FirstClearExperience),
+            18,
+            34f);
+        CreateSettlementText(
+            panel,
+            string.Format(
+                LocalizationTextManager.GetLocalizedText("CareerSettlement.OffsetMultiplier"),
+                value.ExperienceMultiplier),
+            18,
+            34f);
     }
 
     private static void CreateSettlementText(Transform parent, string value, int fontSize, float height)

@@ -173,17 +173,26 @@ public class UnitTypeEditorWindow : EditorWindow
         }
 
         _entries = new List<string>(characterEntries.Count);
+        bool hasHero = false;
         foreach (var entry in characterEntries)
         {
+            if (entry.IsHero)
+            {
+                hasHero = true;
+                continue;
+            }
             _entries.Add(entry.CharacterKey);
         }
+        if (!hasHero)
+            throw new InvalidOperationException("CharacterDataDetail requires at least one hero row.");
+        _entries.Insert(0, UnitType.Unit_Hero.ToString());
 
         var spritesByCardKey = CollectExistingCardSprites();
         BuildList();
         SaveEnum(false);
         SyncWeaponOverrideEntries();
         SaveWeaponOverrideConfig();
-        int cardCount = RebuildCardDataAssets(characterEntries, spritesByCardKey);
+        int cardCount = RebuildCardDataAssets(characterEntries, _entries, spritesByCardKey);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
 
@@ -381,7 +390,10 @@ public class UnitTypeEditorWindow : EditorWindow
         return int.TryParse(value, out int result) ? result : fallback;
     }
 
-    private static int RebuildCardDataAssets(List<CharacterTableEntry> characterEntries, Dictionary<string, Sprite> spritesByCardKey)
+    private static int RebuildCardDataAssets(
+        List<CharacterTableEntry> characterEntries,
+        List<string> unitTypeEntries,
+        Dictionary<string, Sprite> spritesByCardKey)
     {
         EnsureDirectory(CardDataDirectory);
 
@@ -395,11 +407,15 @@ public class UnitTypeEditorWindow : EditorWindow
             if (entry == null || entry.IsHero)
                 continue;
 
+            int unitTypeIndex = unitTypeEntries.IndexOf(entry.CharacterKey);
+            if (unitTypeIndex < 0)
+                throw new InvalidOperationException($"Character '{entry.CharacterKey}' has no generated UnitType entry.");
+
             for (int level = 1; level <= MaxGeneratedCardLevel; level++)
             {
                 string assetPath = $"{CardDataDirectory}/{entry.CharacterKey}_Lv{level}.asset";
                 CardData cardData = CreateInstance<CardData>();
-                cardData.Configure(i, level);
+                cardData.Configure(unitTypeIndex, level);
                 AssetDatabase.CreateAsset(cardData, assetPath);
 
                 if (spritesByCardKey.TryGetValue(BuildCardKey(entry.CharacterKey, level), out Sprite sprite) && sprite != null)

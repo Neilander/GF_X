@@ -103,6 +103,7 @@ public static class CareerConfigRuntime
             throw new InvalidOperationException("Offset badge thresholds must be strictly increasing.");
         }
         BuildArchetypeOrder();
+        KeepsakeConfigRuntime.Prepare();
         IsPrepared = true;
     }
 
@@ -161,6 +162,27 @@ public static class CareerConfigRuntime
             grade = s_SortedGradeExperience[i].Id;
         }
         return grade;
+    }
+
+    public static void GetGradeProgressForExperience(
+        int experience,
+        out int currentSegmentExperience,
+        out int requiredSegmentExperience)
+    {
+        int grade = GetGradeForExperience(experience);
+        int currentIndex = grade - 1;
+        GradeExperienceTable current = s_SortedGradeExperience[currentIndex];
+        if (currentIndex == s_SortedGradeExperience.Count - 1)
+        {
+            GradeExperienceTable previous = s_SortedGradeExperience[currentIndex - 1];
+            requiredSegmentExperience = current.RequiredTotalExperience - previous.RequiredTotalExperience;
+            currentSegmentExperience = requiredSegmentExperience;
+            return;
+        }
+
+        GradeExperienceTable next = s_SortedGradeExperience[currentIndex + 1];
+        requiredSegmentExperience = next.RequiredTotalExperience - current.RequiredTotalExperience;
+        currentSegmentExperience = experience - current.RequiredTotalExperience;
     }
 
     public static CareerOffsetBadgeTier GetOffsetBadgeTier(int offsetRate)
@@ -286,8 +308,8 @@ public static class CareerConfigRuntime
 
     private static void ValidateGradeExperience()
     {
-        if (s_SortedGradeExperience.Count == 0 || s_SortedGradeExperience[0].Id != 1 || s_SortedGradeExperience[0].RequiredTotalExperience != 0)
-            throw new InvalidOperationException("GradeExperienceTable must start at grade 1 with zero experience.");
+        if (s_SortedGradeExperience.Count < 2 || s_SortedGradeExperience[0].Id != 1 || s_SortedGradeExperience[0].RequiredTotalExperience != 0)
+            throw new InvalidOperationException("GradeExperienceTable must contain at least two grades and start at grade 1 with zero experience.");
         for (int i = 1; i < s_SortedGradeExperience.Count; i++)
         {
             if (s_SortedGradeExperience[i].Id != s_SortedGradeExperience[i - 1].Id + 1

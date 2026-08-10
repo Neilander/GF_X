@@ -4,6 +4,12 @@ using UnityEngine;
 using AAAGame.Scripts.BuffSystem;
 using UnityGameFramework.Runtime;
 
+public enum LogicEntityLifetime
+{
+    Persistent = 0,
+    CurrentBattleTroop = 1,
+}
+
 public readonly struct LogicEntitySpawnDescriptor
 {
     public LogicEntitySpawnDescriptor(
@@ -11,7 +17,8 @@ public readonly struct LogicEntitySpawnDescriptor
         FixVector2 forward,
         SideType side,
         string characterKey,
-        string sourceStrongholdId = null)
+        string sourceStrongholdId = null,
+        LogicEntityLifetime lifetime = LogicEntityLifetime.Persistent)
     {
         FixVector2 normalizedForward = forward.GetNormalized();
         if (FixVector2.SqrMagnitude(normalizedForward) == Fix64.Zero)
@@ -24,6 +31,7 @@ public readonly struct LogicEntitySpawnDescriptor
         Side = side;
         CharacterKey = characterKey;
         SourceStrongholdId = string.IsNullOrWhiteSpace(sourceStrongholdId) ? null : sourceStrongholdId;
+        Lifetime = lifetime;
     }
 
     public FixVector2 Position { get; }
@@ -31,6 +39,7 @@ public readonly struct LogicEntitySpawnDescriptor
     public SideType Side { get; }
     public string CharacterKey { get; }
     public string SourceStrongholdId { get; }
+    public LogicEntityLifetime Lifetime { get; }
 
     internal static LogicEntitySpawnDescriptor CreateUnspecified()
     {
@@ -154,6 +163,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         Side = descriptor.Side;
         CharacterKey = descriptor.CharacterKey;
         m_SourceStrongholdId = descriptor.SourceStrongholdId;
+        Lifetime = descriptor.Lifetime;
         Alive = true;
     }
 
@@ -163,6 +173,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public FixVector2 Forward { get; private set; }
     public SideType Side { get; internal set; }
     public string CharacterKey { get; }
+    public LogicEntityLifetime Lifetime { get; }
     public bool IsSpawnCommitted { get; internal set; }
     public bool IsDespawnCommitted { get; internal set; }
     public int BoundViewEntityId { get; internal set; }
@@ -1281,6 +1292,7 @@ public static class LogicEntityStateStore
             hasher.Add(state.Forward.y.RawValue);
             hasher.Add((int)state.Side);
             hasher.Add(state.CharacterKey);
+            hasher.Add((int)state.Lifetime);
             hasher.Add(state.SourceStrongholdId);
             hasher.Add(state.IsSpawnCommitted);
             state.WriteDeterministicControlState(hasher);

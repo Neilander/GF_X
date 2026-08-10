@@ -15,7 +15,7 @@ MonoBehaviour:
   random:
     state: 495877002
   guid: 77b4a1fa-4014-4c15-802e-a52aa19898c6
-  layerName: Plane
+  layerName: Plane_H0
   icon: {fileID: 0}
   isEnabled: 1
   layerColor: {r: 1, g: 1, b: 1, a: 1}
@@ -2032,7 +2032,7 @@ MonoBehaviour:
   random:
     state: 755229098
   isEnabled: 1
-  layerName: Build Plane
+  layerName: Build Plane_H0
   guid: 1c43cd3c-7ad2-460b-8d60-d2bccaafb00a
   assignedBlueprintLayerGuid: 77b4a1fa-4014-4c15-802e-a52aa19898c6
   currentBlueprintLayer: {fileID: -9048560326444747118}

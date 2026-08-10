@@ -7,6 +7,7 @@
         "UnityGameFramework.Runtime",
         "Builtin.Runtime",
         "AAAGame.Tools.Editor",
+        "GiantGrey.TileWorldCreator",
         "Unity.InputSystem",
         "Unity.InputSystem.TestFramework",
         "Unity.TextMeshPro"

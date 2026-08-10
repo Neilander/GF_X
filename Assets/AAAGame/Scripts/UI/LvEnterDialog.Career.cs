@@ -12,15 +12,20 @@ public partial class LvEnterDialog
 {
     private readonly List<GameObject> m_CareerTransientObjects = new();
     private readonly List<Archetype> m_AvailableArchetypes = new();
+    private readonly List<KeepsakeTable> m_AvailableKeepsakes = new();
     private RectTransform m_CareerEntryRoot;
     private RectTransform m_IndustryList;
+    private RectTransform m_KeepsakeList;
     private Button m_ModeButton;
     private TextMeshProUGUI m_ModeButtonText;
     private TextMeshProUGUI m_IndustryTitle;
+    private TextMeshProUGUI m_KeepsakeDescription;
     private RectTransform m_Modal;
     private bool m_IsVariableExperiment;
     private Archetype m_SelectedArchetype;
+    private string m_SelectedKeepsakeIdentifier;
     private int m_IndustryVisibilityRequestVersion;
+    private int m_KeepsakeIconRequestVersion;
 
     private void InitializeCareerEntryUI()
     {
@@ -41,13 +46,18 @@ public partial class LvEnterDialog
         m_CareerTransientObjects.Clear();
         m_CareerEntryRoot = null;
         m_IndustryList = null;
+        m_KeepsakeList = null;
         m_ModeButton = null;
         m_ModeButtonText = null;
         m_IndustryTitle = null;
+        m_KeepsakeDescription = null;
         m_Modal = null;
         m_AvailableArchetypes.Clear();
+        m_AvailableKeepsakes.Clear();
         m_SelectedArchetype = Archetype.None;
+        m_SelectedKeepsakeIdentifier = null;
         m_IndustryVisibilityRequestVersion++;
+        m_KeepsakeIconRequestVersion++;
         ShutdownMissionBriefingUI();
     }
 
@@ -59,7 +69,7 @@ public partial class LvEnterDialog
         m_CareerEntryRoot.anchorMax = new Vector2(1f, 1f);
         m_CareerEntryRoot.pivot = new Vector2(1f, 1f);
         m_CareerEntryRoot.anchoredPosition = new Vector2(-20f, -20f);
-        m_CareerEntryRoot.sizeDelta = new Vector2(460f, 430f);
+        m_CareerEntryRoot.sizeDelta = new Vector2(460f, 700f);
         Image background = m_CareerEntryRoot.gameObject.AddComponent<Image>();
         background.color = new Color(0.08f, 0.09f, 0.11f, 0.96f);
         VerticalLayoutGroup layout = m_CareerEntryRoot.gameObject.AddComponent<VerticalLayoutGroup>();
@@ -72,6 +82,17 @@ public partial class LvEnterDialog
         CreateText(m_CareerEntryRoot, "\u6311\u6218\u8bbe\u7f6e", 27, FontStyles.Bold, 40f);
         m_ModeButton = CreateButton(m_CareerEntryRoot, string.Empty, 48f, out m_ModeButtonText);
         m_ModeButton.onClick.AddListener(ToggleVariableExperiment);
+        CreateText(m_CareerEntryRoot, LocalizeBriefingRequired("LvEnter.Keepsake.Title"), 21, FontStyles.Bold, 30f);
+        m_KeepsakeList = CreateRect("KeepsakeList", m_CareerEntryRoot);
+        LayoutElement keepsakeHeight = m_KeepsakeList.gameObject.AddComponent<LayoutElement>();
+        keepsakeHeight.preferredHeight = 140f;
+        GridLayoutGroup keepsakeGrid = m_KeepsakeList.gameObject.AddComponent<GridLayoutGroup>();
+        keepsakeGrid.cellSize = new Vector2(132f, 62f);
+        keepsakeGrid.spacing = new Vector2(8f, 8f);
+        keepsakeGrid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        keepsakeGrid.constraintCount = 3;
+        m_KeepsakeDescription = CreateText(m_CareerEntryRoot, string.Empty, 16, FontStyles.Normal, 56f);
+        m_KeepsakeDescription.alignment = TextAlignmentOptions.TopLeft;
         m_IndustryTitle = CreateText(m_CareerEntryRoot, string.Empty, 21, FontStyles.Normal, 32f);
         m_IndustryList = CreateRect("IndustryList", m_CareerEntryRoot);
         LayoutElement industryHeight = m_IndustryList.gameObject.AddComponent<LayoutElement>();
@@ -90,7 +111,7 @@ public partial class LvEnterDialog
         footerLayout.childControlHeight = true;
         footerLayout.childControlWidth = true;
         footerLayout.childForceExpandWidth = true;
-        Button career = CreateButton(footer, "\u751f\u6daf\u8bb0\u5f55", 48f, out _);
+        Button career = CreateButton(footer, LocalizeBriefingRequired("LvEnter.CareerRecord.Button"), 48f, out _);
         career.onClick.AddListener(OpenCareerRecordPanel);
         Button growth = CreateButton(footer, "\u5c40\u5916\u6210\u957f", 48f, out _);
         growth.onClick.AddListener(OpenGrowthPanel);
@@ -127,6 +148,14 @@ public partial class LvEnterDialog
         m_ModeButtonText.text = m_IsVariableExperiment
             ? "\u53d8\u91cf\u8bd5\u9a8c"
             : "\u6807\u51c6\u6311\u6218";
+
+        m_AvailableKeepsakes.Clear();
+        m_AvailableKeepsakes.AddRange(progress.GetUnlockedKeepsakes());
+        m_SelectedKeepsakeIdentifier = CareerRunSettings.ResolveRememberedKeepsakeSelection(
+            s_LevelIdentifier,
+            m_AvailableKeepsakes,
+            KeepsakeConfigRuntime.GetDefaultRequired().Identifier);
+        RebuildKeepsakeButtons();
 
         bool tagsVisible = !m_IsVariableExperiment && !isTutorial;
         varPositiveTagGrids.gameObject.SetActive(tagsVisible);
@@ -234,31 +263,159 @@ public partial class LvEnterDialog
         }
     }
 
+    private void RebuildKeepsakeButtons()
+    {
+        for (int i = m_KeepsakeList.childCount - 1; i >= 0; i--)
+            Destroy(m_KeepsakeList.GetChild(i).gameObject);
+
+        CareerProgressDataModel progress = GF.DataModel.GetOrCreate<CareerProgressDataModel>();
+        int requestVersion = ++m_KeepsakeIconRequestVersion;
+        IReadOnlyList<KeepsakeTable> rows = KeepsakeConfigRuntime.Rows;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            KeepsakeTable keepsake = rows[i];
+            bool unlocked = progress.IsKeepsakeUnlocked(keepsake.Identifier);
+            string name = GetKeepsakeName(keepsake);
+            string labelText = unlocked
+                ? name
+                : $"{name}\n{LocalizeBriefingRequired("LvEnter.Keepsake.Locked")}";
+            Button button = CreateButton(m_KeepsakeList, labelText, 62f, out TextMeshProUGUI label);
+            label.fontSize = unlocked ? 15f : 13f;
+            label.rectTransform.offsetMin = new Vector2(38f, 0f);
+            button.interactable = unlocked;
+            SetButtonSelected(button, unlocked && keepsake.Identifier == m_SelectedKeepsakeIdentifier);
+            if (!unlocked)
+                button.GetComponent<Image>().color = new Color(0.12f, 0.13f, 0.15f, 1f);
+
+            RectTransform iconRect = CreateRect("Icon", button.transform);
+            SetRect(
+                iconRect,
+                new Vector2(0f, 0.5f),
+                new Vector2(0f, 0.5f),
+                new Vector2(0f, 0.5f),
+                new Vector2(5f, 0f),
+                new Vector2(30f, 30f));
+            Image icon = iconRect.gameObject.AddComponent<Image>();
+            icon.preserveAspect = true;
+            icon.color = Color.clear;
+            LoadKeepsakeIcon(icon, keepsake.IconPath, requestVersion);
+
+            if (unlocked)
+            {
+                button.onClick.AddListener(() =>
+                {
+                    m_SelectedKeepsakeIdentifier = keepsake.Identifier;
+                    CareerRunSettings.RememberKeepsakeSelection(s_LevelIdentifier, keepsake.Identifier);
+                    RebuildKeepsakeButtons();
+                });
+            }
+            AddHover(
+                button.gameObject,
+                () => m_KeepsakeDescription.text = FormatKeepsakeDescription(keepsake),
+                RefreshSelectedKeepsakeDescription);
+        }
+        RefreshSelectedKeepsakeDescription();
+    }
+
+    private void RefreshSelectedKeepsakeDescription()
+    {
+        KeepsakeTable selected = KeepsakeConfigRuntime.GetRequired(m_SelectedKeepsakeIdentifier);
+        m_KeepsakeDescription.text = FormatKeepsakeDescription(selected);
+    }
+
+    private void LoadKeepsakeIcon(Image icon, string iconPath, int requestVersion)
+    {
+        if (string.IsNullOrWhiteSpace(iconPath))
+            return;
+        string assetPath = UtilityBuiltin.AssetsPath.GetSpritesPath(iconPath);
+        GF.UI.LoadSprite(assetPath, sprite =>
+        {
+            if (requestVersion != m_KeepsakeIconRequestVersion || icon == null)
+                return;
+            if (sprite == null)
+                throw new InvalidOperationException($"Keepsake icon failed to load: {iconPath}");
+            icon.sprite = sprite;
+            icon.color = Color.white;
+        });
+    }
+
+    private static string GetKeepsakeName(KeepsakeTable keepsake)
+    {
+        return LocalizationTextManager.GetLocalizedText(keepsake.NameKey, false);
+    }
+
+    private static string FormatKeepsakeDescription(KeepsakeTable keepsake)
+    {
+        string description = LocalizationTextManager.GetLocalizedText(keepsake.DescKey, false);
+        string[] initialSkills = keepsake.InitialSkillIdentifiers ?? Array.Empty<string>();
+        string skillText;
+        if (initialSkills.Length == 0)
+        {
+            skillText = LocalizeBriefingRequired("LvEnter.Keepsake.NoInitialSkill");
+        }
+        else
+        {
+            var skillNames = new List<string>(initialSkills.Length);
+            for (int i = 0; i < initialSkills.Length; i++)
+            {
+                SkillData skill = SkillDataModel.GetSkillData(initialSkills[i])
+                                  ?? throw new InvalidOperationException($"Keepsake skill is missing: {initialSkills[i]}");
+                skillNames.Add(LocalizationTextManager.GetLocalizedText(skill.NameKey, false));
+            }
+            skillText = string.Join(" / ", skillNames);
+        }
+        return $"{description}\n{string.Format(LocalizeBriefingRequired("LvEnter.Keepsake.InitialSkills"), skillText)}";
+    }
+
     private void OpenCareerRecordPanel()
     {
         CloseModal();
         m_Modal = CreateModal("CareerRecordPanel", new Vector2(760f, 680f));
         VerticalLayoutGroup layout = AddVerticalLayout(m_Modal, 24, 14f);
         layout.childAlignment = TextAnchor.UpperCenter;
-        CreateText(m_Modal, "\u751f\u6daf\u8bb0\u5f55\uff08\u6d4b\u8bd5\uff09", 30, FontStyles.Bold, 52f);
+        CreateText(m_Modal, LocalizeBriefingRequired("LvEnter.CareerRecord.Title"), 30, FontStyles.Bold, 52f);
 
         CareerProgressDataModel progress = GF.DataModel.GetOrCreate<CareerProgressDataModel>();
         string cleared = JoinSorted(progress.GetClearedLevelsForDebug());
         string experiments = JoinSorted(progress.GetClearedExperimentsForDebug());
+        string keepsakes = JoinSorted(progress.GetUnlockedKeepsakes().Select(GetKeepsakeName).ToArray());
+        CareerConfigRuntime.GetGradeProgressForExperience(
+            progress.Experience,
+            out int currentSegmentExperience,
+            out int requiredSegmentExperience);
         var lines = new List<string>
         {
-            $"\u9002\u914d\u5ea6: {progress.Experience}   Grade {progress.CurrentGrade}",
-            $"\u5df2\u901a\u8fc7\u5173\u5361: {cleared}",
-            $"\u5df2\u901a\u8fc7\u53d8\u91cf\u8bd5\u9a8c: {experiments}",
-            $"\u6210\u957f\u70b9: \u83b7\u5f97 {progress.GetEarnedPointCount()} / \u5df2\u7528 {progress.GetSpentPointCount()} / \u53ef\u7528 {progress.GetAvailablePointCount()}",
-            $"\u89d2\u6807\u9608\u503c: {CareerConfigRuntime.OffsetBadgeBronzeThreshold}/{CareerConfigRuntime.OffsetBadgeSilverThreshold}/{CareerConfigRuntime.OffsetBadgeGoldThreshold}/{CareerConfigRuntime.OffsetBadgeDiamondThreshold}"
+            string.Format(
+                LocalizeBriefingRequired("LvEnter.Grade"),
+                progress.CurrentGrade,
+                currentSegmentExperience,
+                requiredSegmentExperience),
+            string.Format(LocalizeBriefingRequired("LvEnter.CareerRecord.ClearedLevels"), cleared),
+            string.Format(LocalizeBriefingRequired("LvEnter.CareerRecord.ClearedExperiments"), experiments),
+            string.Format(LocalizeBriefingRequired("LvEnter.CareerRecord.UnlockedKeepsakes"), keepsakes),
+            string.Format(
+                LocalizeBriefingRequired("LvEnter.CareerRecord.GrowthPoints"),
+                progress.GetEarnedPointCount(),
+                progress.GetSpentPointCount(),
+                progress.GetAvailablePointCount()),
+            string.Format(
+                LocalizeBriefingRequired("LvEnter.CareerRecord.BadgeThresholds"),
+                CareerConfigRuntime.OffsetBadgeBronzeThreshold,
+                CareerConfigRuntime.OffsetBadgeSilverThreshold,
+                CareerConfigRuntime.OffsetBadgeGoldThreshold,
+                CareerConfigRuntime.OffsetBadgeDiamondThreshold)
         };
         HashSet<string> allLevels = new(progress.GetClearedLevelsForDebug(), StringComparer.Ordinal);
         allLevels.UnionWith(progress.GetClearedExperimentsForDebug());
         foreach (string level in allLevels.OrderBy(value => value, StringComparer.Ordinal))
-            lines.Add($"{level} \u6700\u9ad8\u504f\u79fb\u7387: {progress.GetMaxOffsetRate(level)}");
+        {
+            lines.Add(string.Format(
+                LocalizeBriefingRequired("LvEnter.CareerRecord.MaxOffset"),
+                level,
+                progress.GetMaxOffsetRate(level)));
+        }
         CreateText(m_Modal, string.Join("\n", lines), 22, FontStyles.Normal, 470f).alignment = TextAlignmentOptions.TopLeft;
-        Button close = CreateButton(m_Modal, "\u5173\u95ed", 52f, out _);
+        Button close = CreateButton(m_Modal, LocalizeBriefingRequired("LvEnter.CareerRecord.Close"), 52f, out _);
         close.onClick.AddListener(CloseModal);
     }
 

@@ -267,7 +267,7 @@ public sealed class TutorialSystemTests
         Assert.AreNotEqual("i18n", tipsHeader[7], "TipsTable.Duration must not be scanned as localization.");
 
         string[] objectiveHeader = System.IO.File.ReadAllLines(
-            "Assets/AAAGame/DataTable/Text/ObjectiveTable.txt")[0].Split('\t');
+            "Assets/AAAGame/DataTable/Level/ObjectiveTable.txt")[0].Split('\t');
         Assert.AreEqual(5, objectiveHeader.Length, "ObjectiveTable schema must contain exactly five columns.");
         Assert.AreEqual("i18n", objectiveHeader[4], "ObjectiveTable.TextKey must be scanned as localization.");
         for (int i = 0; i < objectiveHeader.Length - 1; i++)
@@ -278,12 +278,16 @@ public sealed class TutorialSystemTests
         StringAssert.Contains("GoalUI_PrimaryTitle\tGoalUI.PrimaryTitle", miscTable);
         StringAssert.Contains("GoalUI_OptionalTitle\tGoalUI.OptionalTitle", miscTable);
         StringAssert.Contains("GoalUI_OptionalExperience\tGoalUI.OptionalExperience", miscTable);
+        StringAssert.Contains("GoalUI_Collapse\tGoalUI.Collapse", miscTable);
+        StringAssert.Contains("GoalUI_Expand\tGoalUI.Expand", miscTable);
 
         string language = System.IO.File.ReadAllText(
             "Assets/AAAGame/Language/ChineseSimplified.json");
         StringAssert.Contains("\"GoalUI.PrimaryTitle\":\"主要目标\"", language);
         StringAssert.Contains("\"GoalUI.OptionalTitle\":\"可选目标\"", language);
         StringAssert.Contains("\"GoalUI.OptionalExperience\":\"（+{0}经验）\"", language);
+        StringAssert.Contains("\"GoalUI.Collapse\":\"收起目标\"", language);
+        StringAssert.Contains("\"GoalUI.Expand\":\"展开目标\"", language);
     }
 
     private static string GetText(Component textComponent)
