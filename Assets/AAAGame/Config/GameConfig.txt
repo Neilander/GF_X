@@ -37,5 +37,8 @@
 	InvadePhaseIncomePerCapturedOutpost	进攻阶段每个占领据点提供资源收获	2
 	EnemyProductionBuildingDailyResourceCost	敌方生产建筑每日消耗资源量	3
 	LvTagPositiveMaxCount	关卡正面tag选择数量上限	3
-	OffsetRateExpCoefficient	偏移率提供的经验获取系数	0.1
-	OffsetRateRequiredForGrowthPoint	获取局外成长点数所需的合约等级	10
+	OffsetRateExpCoefficient	偏移率提供的经验获取系数	0.01
+	OffsetBadgeBronzeThreshold	关卡偏移率铜角标阈值	10
+	OffsetBadgeSilverThreshold	关卡偏移率银角标阈值	18
+	OffsetBadgeGoldThreshold	关卡偏移率金角标阈值	24
+	OffsetBadgeDiamondThreshold	关卡偏移率钻角标阈值	28

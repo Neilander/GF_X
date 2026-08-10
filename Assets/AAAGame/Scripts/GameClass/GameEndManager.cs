@@ -4,18 +4,12 @@ using GameFramework;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
-public enum VictoryConditionType { OccupySpecificBuildings, SurviveAmountDays, CollectAmountResources, KillSpecificUnits, CompleteTutorial }
-public enum FailConditionType { LoseSpecificBuildings, ArriveAmountDays, ConsumeAmountResources, LoseHero }
-
 public class GameEndManager : GameFrameworkComponent
 {
     private static GameEndManager s_Current;
-    private const string ObjectiveOccupyBeforeDayTextId = "GameEnd_Cond_OccupyBeforeDay";
-    private const string ObjectiveOccupyTextId = "GameEnd_Cond_Occupy";
-    private const string ObjectiveSurviveToDayTextId = "GameEnd_Cond_SurviveToDay";
-    private const string ObjectiveDefendBaseTextId = "GameEnd_Cond_DefendBase";
 
     private bool m_EndEventSubscribed;
+    private bool m_ObjectivesPresentationDirty;
     private readonly Queue<LogicGameEndResult> m_PendingEndPresentation = new Queue<LogicGameEndResult>();
 
     public bool IsGameEnded => LogicGameEndService.IsGameEnded;
@@ -35,6 +29,7 @@ public class GameEndManager : GameFrameworkComponent
     {
         UnsubscribeEndEvent();
         m_PendingEndPresentation.Clear();
+        m_ObjectivesPresentationDirty = false;
         if (ReferenceEquals(s_Current, this))
             s_Current = null;
     }
@@ -42,58 +37,22 @@ public class GameEndManager : GameFrameworkComponent
     public void Init(LevelData levelData)
     {
         m_PendingEndPresentation.Clear();
+        m_ObjectivesPresentationDirty = false;
         SubscribeEndEvent();
         LogicGameEndService.Initialize(levelData);
-        Log.Info(
-            "[GameEndManager] Initialized. level={0}, OccupySpecificBuildings={1}, SurviveAmountDays={2}(>{3}), LoseSpecificBuildings={4}, ArriveAmountDays={5}(>{6})",
+        Log.Info("[GameEndManager] Initialized. level={0}, objectives={1}.",
             LogicGameEndService.CurrentLevelIdentifier,
-            LogicGameEndService.EnableOccupySpecificBuildings,
-            LogicGameEndService.EnableSurviveAmountDays,
-            LogicGameEndService.SurviveAmountDaysValue,
-            LogicGameEndService.EnableLoseSpecificBuildings,
-            LogicGameEndService.EnableArriveAmountDays,
-            LogicGameEndService.ArriveAmountDaysValue);
+            LogicGameEndService.GetObjectiveSnapshot().Count);
     }
 
-    public bool TryGetLevelObjectiveLines(out List<string> objectiveLines)
+    public bool TryGetLevelObjectives(out IReadOnlyList<LevelObjectiveState> objectives)
     {
-        objectiveLines = null;
+        objectives = null;
         if (!LogicGameEndService.IsInitialized)
             return false;
-
-        var lines = new List<string>(4);
-        int currentDay = Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
-
-        if (LogicGameEndService.EnableOccupySpecificBuildings)
-        {
-            if (LogicGameEndService.EnableArriveAmountDays)
-            {
-                lines.Add(string.Format(
-                    LocalizationTextDataModel.GetText(ObjectiveOccupyBeforeDayTextId),
-                    LogicGameEndService.ArriveAmountDaysValue,
-                    GetRemainingDays(LogicGameEndService.ArriveAmountDaysValue, currentDay)));
-            }
-            else
-            {
-                lines.Add(LocalizationTextDataModel.GetText(ObjectiveOccupyTextId));
-            }
-        }
-
-        if (LogicGameEndService.EnableSurviveAmountDays)
-        {
-            lines.Add(string.Format(
-                LocalizationTextDataModel.GetText(ObjectiveSurviveToDayTextId),
-                LogicGameEndService.SurviveAmountDaysValue,
-                GetRemainingDays(LogicGameEndService.SurviveAmountDaysValue, currentDay)));
-        }
-
-        if (LogicGameEndService.EnableLoseSpecificBuildings)
-            lines.Add(LocalizationTextDataModel.GetText(ObjectiveDefendBaseTextId));
-
-        if (lines.Count == 0)
+        objectives = LogicGameEndService.GetObjectiveSnapshot();
+        if (objectives.Count == 0)
             return false;
-
-        objectiveLines = lines;
         return true;
     }
 
@@ -135,6 +94,7 @@ public class GameEndManager : GameFrameworkComponent
         if (m_EndEventSubscribed)
             return;
         LogicGameEndService.GameEnded += OnLogicGameEnded;
+        LogicGameEndService.ObjectivesChanged += OnLogicObjectivesChanged;
         m_EndEventSubscribed = true;
     }
 
@@ -143,6 +103,7 @@ public class GameEndManager : GameFrameworkComponent
         if (!m_EndEventSubscribed)
             return;
         LogicGameEndService.GameEnded -= OnLogicGameEnded;
+        LogicGameEndService.ObjectivesChanged -= OnLogicObjectivesChanged;
         m_EndEventSubscribed = false;
     }
 
@@ -151,38 +112,48 @@ public class GameEndManager : GameFrameworkComponent
         m_PendingEndPresentation.Enqueue(result);
     }
 
+    private void OnLogicObjectivesChanged()
+    {
+        m_ObjectivesPresentationDirty = true;
+    }
+
     public void UpdatePresentation()
     {
         if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("GameEndManager.UpdatePresentation cannot run during a logic frame.");
 
+        if (m_ObjectivesPresentationDirty)
+        {
+            m_ObjectivesPresentationDirty = false;
+            GF.Event.Fire(this, LevelObjectivesChangedEventArgs.Create());
+        }
         while (m_PendingEndPresentation.Count > 0)
             PresentGameEnd(m_PendingEndPresentation.Dequeue());
     }
 
     private void PresentGameEnd(LogicGameEndResult result)
     {
-        if (result.IsWin)
-            RecordCareerWin();
+        CareerWinRecordResult? careerResult = result.IsWin ? RecordCareerWin() : null;
+        CareerSettlementPresentationService.SetLatest(careerResult);
         HandleGameEndPresentation(result.IsWin);
         if (result.IsWin)
         {
-            GF.Event.Fire(this, GameEndResultEventArgs.CreateWin(result.VictoryCondition));
-            Log.Info("[GameEndManager] GameEnd WIN by {0}, logicFrame={1}.", result.VictoryCondition, LogicGameEndService.LastAppliedFrame);
+            GF.Event.Fire(this, GameEndResultEventArgs.CreateWin());
+            Log.Info("[GameEndManager] GameEnd WIN, logicFrame={0}.", LogicGameEndService.LastAppliedFrame);
         }
         else
         {
-            GF.Event.Fire(this, GameEndResultEventArgs.CreateFail(result.FailCondition));
-            Log.Info("[GameEndManager] GameEnd FAIL by {0}, logicFrame={1}.", result.FailCondition, LogicGameEndService.LastAppliedFrame);
+            GF.Event.Fire(this, GameEndResultEventArgs.CreateFail(result.FailedObjectiveDefinitionId));
+            Log.Info("[GameEndManager] GameEnd FAIL by objective={0}, logicFrame={1}.", result.FailedObjectiveDefinitionId, LogicGameEndService.LastAppliedFrame);
         }
     }
 
-    private static void RecordCareerWin()
+    private static CareerWinRecordResult? RecordCareerWin()
     {
         if (!CareerRunSettings.HasActiveRun)
         {
             Log.Info("[Career] Win was not recorded because the level was entered without career run settings.");
-            return;
+            return null;
         }
 
         IReadOnlyList<LevelTagTable> activeTags = LevelTagRuntime.GetActiveTags();
@@ -202,18 +173,19 @@ public class GameEndManager : GameFrameworkComponent
         CareerWinRecordResult record = progress.RecordWin(
             CareerRunSettings.CareerLevelIdentifier,
             CareerRunSettings.IsVariableExperiment,
-            offsetRate);
+            offsetRate,
+            LogicGameEndService.GetCompletedOptionalExperience());
         Log.Info(
-            "[Career] Win recorded. level={0}, experiment={1}, firstClear={2}, offset={3}, firstOffsetReward={4}, unlockedIndustries={5}, earned={6}, spent={7}, available={8}.",
+            "[Career] Win recorded. level={0}, experiment={1}, firstClear={2}, offset={3}, experience={4}, totalExperience={5}, grade={6}->{7}, unlockedIndustries={8}.",
             record.LevelIdentifier,
             record.IsExperiment,
             record.FirstClear,
             record.OffsetRate,
-            record.FirstOffsetReward,
-            string.Join(",", record.UnlockedArchetypes),
-            progress.GetEarnedPointCount(),
-            progress.GetSpentPointCount(),
-            progress.GetAvailablePointCount());
+            record.TotalExperienceGained,
+            progress.Experience,
+            record.PreviousGrade,
+            record.CurrentGrade,
+            string.Join(",", record.UnlockedArchetypes));
 
         for (int i = 0; i < record.UnlockedArchetypes.Count; i++)
         {
@@ -224,11 +196,15 @@ public class GameEndManager : GameFrameworkComponent
                 industryName,
                 "\u65b0\u7684\u521d\u59cb\u884c\u4e1a\u5df2\u52a0\u5165\u5173\u5361\u9009\u9879\u3002"));
         }
-    }
-
-    private static int GetRemainingDays(int targetDay, int currentDay)
-    {
-        return Math.Max(1, targetDay - currentDay + 1);
+        for (int i = 0; i < record.UnlockedLevelTags.Count; i++)
+        {
+            LevelTagTable tag = record.UnlockedLevelTags[i];
+            UnlockPresentationService.Enqueue(new UnlockPayload(
+                UnlockPayloadType.LevelTag,
+                LocalizationTextDataModel.GetText(tag.NameKey),
+                DescriptionValueFormatter.LocalizeAndFill(tag.DescKey, tag.UniqueValues)));
+        }
+        return record;
     }
 
     private void HandleGameEndPresentation(bool isWin)

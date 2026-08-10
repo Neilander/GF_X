@@ -242,6 +242,14 @@ public sealed class TutorialSystemTests
             item.SetTutorialObjective("Objective", TutorialObjectiveStatus.Failed);
             Assert.AreEqual(string.Empty, GetText(checkmark));
             StringAssert.Contains("<s>Objective</s>", GetText(instance.GetComponent("TextMeshProUGUI")));
+
+            item.SetSectionTitle("Section");
+            Assert.IsFalse(checkbox.gameObject.activeSelf);
+            Assert.AreEqual("Section", GetText(instance.GetComponent("TextMeshProUGUI")));
+
+            item.SetLevelObjective("Objective", LevelObjectiveStatus.Active);
+            Assert.IsTrue(checkbox.gameObject.activeSelf);
+            Assert.AreEqual("Objective", GetText(instance.GetComponent("TextMeshProUGUI")));
         }
         finally
         {
@@ -264,6 +272,18 @@ public sealed class TutorialSystemTests
         Assert.AreEqual("i18n", objectiveHeader[4], "ObjectiveTable.TextKey must be scanned as localization.");
         for (int i = 0; i < objectiveHeader.Length - 1; i++)
             Assert.AreNotEqual("i18n", objectiveHeader[i], $"ObjectiveTable column {i} must not be scanned as localization.");
+
+        string miscTable = System.IO.File.ReadAllText(
+            "Assets/AAAGame/DataTable/Text/LocalizationTextTable_Misc.txt");
+        StringAssert.Contains("GoalUI_PrimaryTitle\tGoalUI.PrimaryTitle", miscTable);
+        StringAssert.Contains("GoalUI_OptionalTitle\tGoalUI.OptionalTitle", miscTable);
+        StringAssert.Contains("GoalUI_OptionalExperience\tGoalUI.OptionalExperience", miscTable);
+
+        string language = System.IO.File.ReadAllText(
+            "Assets/AAAGame/Language/ChineseSimplified.json");
+        StringAssert.Contains("\"GoalUI.PrimaryTitle\":\"主要目标\"", language);
+        StringAssert.Contains("\"GoalUI.OptionalTitle\":\"可选目标\"", language);
+        StringAssert.Contains("\"GoalUI.OptionalExperience\":\"（+{0}经验）\"", language);
     }
 
     private static string GetText(Component textComponent)

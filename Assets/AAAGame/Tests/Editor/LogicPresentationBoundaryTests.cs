@@ -27,6 +27,10 @@ public sealed class LogicPresentationBoundaryTests
     [Test]
     public void StrongholdCapture_CommitsLogicWithoutViewsAndQueuesPresentation()
     {
+        LogicTestInGameDataModelAuthority.Ensure(
+            GamePhase.Defend,
+            nameof(LogicPresentationBoundaryTests));
+
         const string strongholdId = "SH_VIEWLESS_CAPTURE";
         LogicStrongholdMap.Initialize(
             FixVector2.Zero,
@@ -439,7 +443,7 @@ public sealed class LogicPresentationBoundaryTests
 
             Assert.DoesNotThrow(() => callback.Invoke(
                 manager,
-                new object[] { LogicGameEndResult.CreateWin(VictoryConditionType.CompleteTutorial) }));
+                new object[] { LogicGameEndResult.CreateWin() }));
 
             var queue = queueField.GetValue(manager) as System.Collections.ICollection;
             Assert.NotNull(queue);

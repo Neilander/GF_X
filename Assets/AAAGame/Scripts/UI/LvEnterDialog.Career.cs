@@ -26,6 +26,7 @@ public partial class LvEnterDialog
     {
         CareerRunSettings.CancelRun();
         m_IsVariableExperiment = false;
+        BuildMissionBriefingUI();
         BuildCareerEntryRoot();
         RefreshCareerEntryUI();
     }
@@ -47,6 +48,7 @@ public partial class LvEnterDialog
         m_AvailableArchetypes.Clear();
         m_SelectedArchetype = Archetype.None;
         m_IndustryVisibilityRequestVersion++;
+        ShutdownMissionBriefingUI();
     }
 
     private void BuildCareerEntryRoot()
@@ -113,7 +115,7 @@ public partial class LvEnterDialog
     {
         bool hasExperimentConfig = CareerConfigRuntime.TryGetExperiment(
             s_LevelIdentifier,
-            out VariableExperimentTable experiment);
+            out LevelTable experiment);
         bool isTutorial = CareerConfigRuntime.IsTutorialLevel(s_LevelIdentifier);
         CareerProgressDataModel progress = GF.DataModel.GetOrCreate<CareerProgressDataModel>();
         bool isExperimentUnlocked = hasExperimentConfig
@@ -147,7 +149,7 @@ public partial class LvEnterDialog
         {
             if (!hasExperimentConfig)
                 throw new InvalidOperationException($"Level '{s_LevelIdentifier}' has no variable experiment config.");
-            rule = CareerConfigRuntime.GetRuleRequired(experiment.RuleIdentifier);
+            rule = CareerConfigRuntime.GetRuleRequired(experiment.VariableRuleIdentifier);
             if (rule.ForcedArchetype != Archetype.None)
             {
                 m_AvailableArchetypes.Clear();
@@ -185,6 +187,7 @@ public partial class LvEnterDialog
         int requestVersion = ++m_IndustryVisibilityRequestVersion;
         if (!isTutorial)
             RefreshIndustryVisibilityAsync(requestVersion).Forget();
+        RefreshMissionBriefingContent();
     }
 
     private async UniTaskVoid RefreshIndustryVisibilityAsync(int requestVersion)
@@ -244,10 +247,11 @@ public partial class LvEnterDialog
         string experiments = JoinSorted(progress.GetClearedExperimentsForDebug());
         var lines = new List<string>
         {
+            $"\u9002\u914d\u5ea6: {progress.Experience}   Grade {progress.CurrentGrade}",
             $"\u5df2\u901a\u8fc7\u5173\u5361: {cleared}",
             $"\u5df2\u901a\u8fc7\u53d8\u91cf\u8bd5\u9a8c: {experiments}",
             $"\u6210\u957f\u70b9: \u83b7\u5f97 {progress.GetEarnedPointCount()} / \u5df2\u7528 {progress.GetSpentPointCount()} / \u53ef\u7528 {progress.GetAvailablePointCount()}",
-            $"\u504f\u79fb\u7387\u5956\u52b1\u95e8\u69db: {CareerConfigRuntime.OffsetPointThreshold}"
+            $"\u89d2\u6807\u9608\u503c: {CareerConfigRuntime.OffsetBadgeBronzeThreshold}/{CareerConfigRuntime.OffsetBadgeSilverThreshold}/{CareerConfigRuntime.OffsetBadgeGoldThreshold}/{CareerConfigRuntime.OffsetBadgeDiamondThreshold}"
         };
         HashSet<string> allLevels = new(progress.GetClearedLevelsForDebug(), StringComparer.Ordinal);
         allLevels.UnionWith(progress.GetClearedExperimentsForDebug());

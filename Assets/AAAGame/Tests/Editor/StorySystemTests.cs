@@ -27,12 +27,21 @@ public sealed class StorySystemTests
                 row.ParseDataRow(line, null);
                 return row;
             });
+        StoryCommTable[] communications = LoadRows<StoryCommTable>(
+            "DataTable/Story/StoryCommTable.txt",
+            line =>
+            {
+                var row = new StoryCommTable();
+                row.ParseDataRow(line, null);
+                return row;
+            });
 
         StoryScriptTable[] l1 = StoryTableQuery.GetScriptRows(scripts, "Story_L1");
         StoryScriptTable[] l2 = StoryTableQuery.GetScriptRows(scripts, "Story_L2");
         StoryTriggerTable l1Trigger = StoryTableQuery.FindTrigger(triggers, "Lv_1", StoryTiming.AfterLevelWin);
         StoryTriggerTable l2Trigger = StoryTableQuery.FindTrigger(triggers, "Lv_2", StoryTiming.AfterLevelWin);
         StoryTriggerTable lTestTrigger = StoryTableQuery.FindTrigger(triggers, "LvTest", StoryTiming.AfterLevelWin);
+        StoryCommTable[] lTestCommunications = StoryTableQuery.GetCommunicationRows(communications, "LvTest");
 
         CollectionAssert.AreEqual(new[] { 1, 2, 3, 4 }, l1.Select(row => row.Order));
         CollectionAssert.AreEqual(new[] { 1, 2, 3, 4 }, l2.Select(row => row.Order));
@@ -44,6 +53,11 @@ public sealed class StorySystemTests
         Assert.IsTrue(l1Trigger.OnceOnly);
         Assert.IsTrue(l2Trigger.OnceOnly);
         Assert.IsNull(StoryTableQuery.FindTrigger(triggers, "Lv_1", StoryTiming.AfterLevelFail));
+        CollectionAssert.AreEqual(
+            new[] { StoryCommSlot.Primary, StoryCommSlot.Secondary },
+            lTestCommunications.Select(row => row.Slot));
+        Assert.AreEqual("Story.Comm.LTest.Primary", lTestCommunications[0].TextKey);
+        Assert.AreEqual(StorySignalState.Normal, lTestCommunications[1].SignalState);
     }
 
     [Test]

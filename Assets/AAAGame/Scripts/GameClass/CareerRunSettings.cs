@@ -69,11 +69,9 @@ public static class CareerRunSettings
         if (!isVariableExperiment)
             return sourceLevel.Identifier;
 
-        if (!CareerConfigRuntime.TryGetExperiment(levelIdentifier, out VariableExperimentTable experiment))
+        if (!CareerConfigRuntime.TryGetExperiment(levelIdentifier, out LevelTable experiment))
             throw new InvalidOperationException($"Level '{levelIdentifier}' has no variable experiment config.");
-        return string.IsNullOrWhiteSpace(experiment.LevelConfigIdentifier)
-            ? sourceLevel.Identifier
-            : CareerConfigRuntime.GetLevelRequired(experiment.LevelConfigIdentifier).Identifier;
+        return CareerConfigRuntime.GetVariableLevelRequired(experiment).Identifier;
     }
 
     public static string BeginRun(string levelIdentifier, bool isVariableExperiment, Archetype startingArchetype)
@@ -88,9 +86,9 @@ public static class CareerRunSettings
         string runtimeLevelIdentifier = ResolveRuntimeLevelIdentifier(levelIdentifier, isVariableExperiment);
         if (isVariableExperiment)
         {
-            if (!CareerConfigRuntime.TryGetExperiment(levelIdentifier, out VariableExperimentTable experiment))
+            if (!CareerConfigRuntime.TryGetExperiment(levelIdentifier, out LevelTable experiment))
                 throw new InvalidOperationException($"Level '{levelIdentifier}' has no variable experiment config.");
-            rule = CareerConfigRuntime.GetRuleRequired(experiment.RuleIdentifier);
+            rule = CareerConfigRuntime.GetRuleRequired(experiment.VariableRuleIdentifier);
             if (rule.ForcedArchetype != Archetype.None && startingArchetype != rule.ForcedArchetype)
             {
                 throw new InvalidOperationException(

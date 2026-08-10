@@ -1,4 +1,7 @@
 using GameFramework;
+using System.Collections.Generic;
+using TMPro;
+using UnityEngine;
 using UnityEngine.UI;
 using UnityGameFramework.Runtime;
 
@@ -11,6 +14,7 @@ public partial class GameOverUIForm : UIFormBase
     {
         base.OnOpen(userData);
         RefreshResultView();
+        ShowCareerSettlement();
         BindButtons();
         LevelSelectionService.LevelLoadCompleted += OnLevelLoadCompleted;
         UnlockPresentationService.ShowPending(transform);
@@ -46,6 +50,43 @@ public partial class GameOverUIForm : UIFormBase
         {
             varShibai.SetActive(!isWin);
         }
+    }
+
+    private void ShowCareerSettlement()
+    {
+        CareerWinRecordResult? result = CareerSettlementPresentationService.ConsumeLatest();
+        if (!result.HasValue || result.Value.Ignored || varShengli == null)
+            return;
+
+        RectTransform panel = new GameObject("CareerSettlement", typeof(RectTransform)).GetComponent<RectTransform>();
+        panel.SetParent(transform, false);
+        panel.anchorMin = new Vector2(0.5f, 0.5f);
+        panel.anchorMax = new Vector2(0.5f, 0.5f);
+        panel.sizeDelta = new Vector2(620f, 250f);
+        Image background = panel.gameObject.AddComponent<Image>();
+        background.color = new Color(0.08f, 0.09f, 0.11f, 0.96f);
+        VerticalLayoutGroup layout = panel.gameObject.AddComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(18, 18, 14, 14);
+        layout.spacing = 5f;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        CareerWinRecordResult value = result.Value;
+        CreateSettlementText(panel, $"EXP +{value.TotalExperienceGained}   Grade {value.PreviousGrade} -> {value.CurrentGrade}", 26, 42f);
+        CreateSettlementText(panel, $"Base {value.ClearExperience}  Optional {value.OptionalExperience}  First {value.FirstClearExperience}", 18, 34f);
+        CreateSettlementText(panel, $"Offset multiplier x{value.ExperienceMultiplier}", 18, 34f);
+    }
+
+    private static void CreateSettlementText(Transform parent, string value, int fontSize, float height)
+    {
+        RectTransform rect = new GameObject("SettlementText", typeof(RectTransform)).GetComponent<RectTransform>();
+        rect.SetParent(parent, false);
+        LayoutElement element = rect.gameObject.AddComponent<LayoutElement>();
+        element.preferredHeight = height;
+        TextMeshProUGUI text = rect.gameObject.AddComponent<TextMeshProUGUI>();
+        text.text = value;
+        text.fontSize = fontSize;
+        text.color = Color.white;
+        text.alignment = TextAlignmentOptions.Center;
     }
 
     private void BindButtons()

@@ -1,4 +1,4 @@
-#	行动目标定义表			i18n
+#	目标定义表			i18n
 #	ID		Identifier	TextKey
 #	int		string	string
 #		备注	代码内唯一标识	目标文本本地化键

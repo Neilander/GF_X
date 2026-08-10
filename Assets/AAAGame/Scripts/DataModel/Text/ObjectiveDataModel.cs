@@ -6,6 +6,7 @@ using GameFramework.DataTable;
 public sealed class ObjectiveDataModel : DataModelBase
 {
     private Dictionary<string, ObjectiveTable> m_Rows;
+    private Dictionary<int, ObjectiveTable> m_RowsById;
 
     protected override void OnCreate(RefParams userdata)
     {
@@ -14,6 +15,7 @@ public sealed class ObjectiveDataModel : DataModelBase
             throw new InvalidOperationException("ObjectiveDataModel requires the ObjectiveTable data table.");
 
         m_Rows = new Dictionary<string, ObjectiveTable>(StringComparer.Ordinal);
+        m_RowsById = new Dictionary<int, ObjectiveTable>();
         ObjectiveTable[] rows = table.GetAllDataRows();
         for (int i = 0; i < rows.Length; i++)
         {
@@ -24,6 +26,8 @@ public sealed class ObjectiveDataModel : DataModelBase
                 throw new InvalidOperationException($"ObjectiveTable row '{row.Identifier}' has an empty text key.");
             if (!m_Rows.TryAdd(row.Identifier, row))
                 throw new InvalidOperationException($"ObjectiveTable contains duplicate identifier '{row.Identifier}'.");
+            if (!m_RowsById.TryAdd(row.Id, row))
+                throw new InvalidOperationException($"ObjectiveTable contains duplicate id '{row.Id}'.");
         }
     }
 
@@ -31,6 +35,8 @@ public sealed class ObjectiveDataModel : DataModelBase
     {
         m_Rows?.Clear();
         m_Rows = null;
+        m_RowsById?.Clear();
+        m_RowsById = null;
     }
 
     public static string GetText(string identifier, params object[] formatArgs)
@@ -47,5 +53,17 @@ public sealed class ObjectiveDataModel : DataModelBase
         return formatArgs != null && formatArgs.Length > 0
             ? string.Format(text, formatArgs)
             : text;
+    }
+
+    public static string GetText(int definitionId, Fix64[] uniqueValues)
+    {
+        if (definitionId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(definitionId));
+
+        ObjectiveDataModel model = GF.DataModel.GetDataModel<ObjectiveDataModel>()
+                                   ?? throw new InvalidOperationException("ObjectiveDataModel has not been initialized.");
+        if (model.m_RowsById == null || !model.m_RowsById.TryGetValue(definitionId, out ObjectiveTable row))
+            throw new InvalidOperationException($"ObjectiveTable does not contain id '{definitionId}'.");
+        return DescriptionValueFormatter.LocalizeAndFill(row.TextKey, uniqueValues);
     }
 }

@@ -1,4 +1,4 @@
-﻿using GameFramework;
+using GameFramework;
 using GameFramework.Event;
 
 public class GameEndResultEventArgs : GameEventArgs
@@ -7,31 +7,27 @@ public class GameEndResultEventArgs : GameEventArgs
     public override int Id => EventId;
 
     public bool IsWin { get; private set; }
-    public VictoryConditionType? VictoryCondition { get; private set; }
-    public FailConditionType? FailCondition { get; private set; }
+    public int FailedObjectiveDefinitionId { get; private set; }
 
-    public static GameEndResultEventArgs CreateWin(VictoryConditionType condition)
+    public static GameEndResultEventArgs CreateWin()
     {
-        var e = ReferencePool.Acquire<GameEndResultEventArgs>();
-        e.IsWin = true;
-        e.VictoryCondition = condition;
-        e.FailCondition = null;
-        return e;
+        var instance = ReferencePool.Acquire<GameEndResultEventArgs>();
+        instance.IsWin = true;
+        instance.FailedObjectiveDefinitionId = 0;
+        return instance;
     }
 
-    public static GameEndResultEventArgs CreateFail(FailConditionType condition)
+    public static GameEndResultEventArgs CreateFail(int failedObjectiveDefinitionId)
     {
-        var e = ReferencePool.Acquire<GameEndResultEventArgs>();
-        e.IsWin = false;
-        e.VictoryCondition = null;
-        e.FailCondition = condition;
-        return e;
+        var instance = ReferencePool.Acquire<GameEndResultEventArgs>();
+        instance.IsWin = false;
+        instance.FailedObjectiveDefinitionId = failedObjectiveDefinitionId;
+        return instance;
     }
 
     public override void Clear()
     {
         IsWin = false;
-        VictoryCondition = null;
-        FailCondition = null;
+        FailedObjectiveDefinitionId = 0;
     }
 }

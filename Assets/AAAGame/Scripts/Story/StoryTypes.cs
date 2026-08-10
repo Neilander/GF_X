@@ -18,3 +18,17 @@ public enum StoryDynamicRef
     None,
     LastCapturedFactionVoice
 }
+
+public enum StoryCommSlot
+{
+    Primary,
+    Secondary
+}
+
+public enum StorySignalState
+{
+    Normal,
+    Corrupted,
+    Weak,
+    Fragment
+}

@@ -11,6 +11,10 @@ using UnityGameFramework.Runtime;
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName)]
 public partial class GoalUIForm : UIFormBase
 {
+	private const string PrimaryTitleTextId = "GoalUI_PrimaryTitle";
+	private const string OptionalTitleTextId = "GoalUI_OptionalTitle";
+	private const string OptionalExperienceTextId = "GoalUI_OptionalExperience";
+
 	private bool m_IsExpanded = true;
 
 	protected override void OnOpen(object userData)
@@ -22,18 +26,25 @@ public partial class GoalUIForm : UIFormBase
 		ApplyExpandedState();
 		GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
 		GF.Event.Subscribe(TutorialObjectivesChangedEventArgs.EventId, OnTutorialObjectivesChanged);
+		GF.Event.Subscribe(LevelObjectivesChangedEventArgs.EventId, OnLevelObjectivesChanged);
 	}
 
 	protected override void OnClose(bool isShutdown, object userData)
 	{
 		GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
 		GF.Event.Unsubscribe(TutorialObjectivesChangedEventArgs.EventId, OnTutorialObjectivesChanged);
+		GF.Event.Unsubscribe(LevelObjectivesChangedEventArgs.EventId, OnLevelObjectivesChanged);
 		UnbindButtons();
 		UnspawnAllItem<UIItemObject>(varGoalConditionItem);
 		base.OnClose(isShutdown, userData);
 	}
 
 	private void OnTutorialObjectivesChanged(object sender, GameEventArgs e)
+	{
+		RefreshGoalList();
+	}
+
+	private void OnLevelObjectivesChanged(object sender, GameEventArgs e)
 	{
 		RefreshGoalList();
 	}
@@ -94,24 +105,57 @@ public partial class GoalUIForm : UIFormBase
 			return;
 		}
 
-		if (!gameEndManager.TryGetLevelObjectiveLines(out var objectiveLines) || objectiveLines == null)
+		if (!gameEndManager.TryGetLevelObjectives(out IReadOnlyList<LevelObjectiveState> levelObjectives))
 		{
 			Log.Warning("[GoalUIForm] RefreshGoalList skipped: no displayable objectives.");
 			return;
 		}
 
-		for (int i = 0; i < objectiveLines.Count; i++)
+		SpawnLevelObjectiveSection(levelObjectives, true, PrimaryTitleTextId);
+		SpawnLevelObjectiveSection(levelObjectives, false, OptionalTitleTextId);
+	}
+
+	private void SpawnLevelObjectiveSection(
+		IReadOnlyList<LevelObjectiveState> objectives,
+		bool isPrimary,
+		string titleTextId)
+	{
+		bool hasObjectives = false;
+		for (int i = 0; i < objectives.Count; i++)
 		{
-			string line = objectiveLines[i];
-			if (string.IsNullOrWhiteSpace(line))
+			if (objectives[i].Definition.IsPrimary == isPrimary)
 			{
+				hasObjectives = true;
+				break;
+			}
+		}
+		if (!hasObjectives)
+			return;
+
+		var titleObject = SpawnItem<UIItemObject>(varGoalConditionItem, varTextPanel.transform);
+		if (titleObject?.itemLogic is GoalConditionItem titleItem)
+			titleItem.SetSectionTitle(LocalizationTextDataModel.GetText(titleTextId));
+
+		for (int i = 0; i < objectives.Count; i++)
+		{
+			LevelObjectiveState objective = objectives[i];
+			if (objective.Definition.IsPrimary != isPrimary)
 				continue;
+
+			string line = ObjectiveDataModel.GetText(
+				objective.Definition.DefinitionId,
+				objective.Definition.UniqueValues);
+			if (!isPrimary && objective.Definition.Experience > 0)
+			{
+				line += string.Format(
+					LocalizationTextDataModel.GetText(OptionalExperienceTextId),
+					objective.Definition.Experience);
 			}
 
 			var itemObject = SpawnItem<UIItemObject>(varGoalConditionItem, varTextPanel.transform);
 			if (itemObject?.itemLogic is GoalConditionItem goalConditionItem)
 			{
-				goalConditionItem.SetText(line);
+				goalConditionItem.SetLevelObjective(line, objective.Status);
 			}
 		}
 	}

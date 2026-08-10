@@ -776,7 +776,9 @@ public sealed class LogicMigrationAuthorityBoundaryTests
             row => row.UniqueValues != null && row.UniqueValues.Length > 0);
         LevelTable level = Array.Find(
             levelRows,
-            row => row.VictoryConditions != null && row.VictoryConditions.Length > 0);
+            row => row.OptionalObjective1Id > 0
+                   && row.OptionalObjective1UniqueValues != null
+                   && row.OptionalObjective1UniqueValues.Length > 0);
         Assert.NotNull(building);
         Assert.NotNull(skill);
         Assert.NotNull(levelTag);
@@ -784,7 +786,7 @@ public sealed class LogicMigrationAuthorityBoundaryTests
         long buildingValue = building.UniqueValues[0].RawValue;
         long skillValue = skill.Lv1UniqueValues[0].RawValue;
         long levelTagValue = levelTag.UniqueValues[0].RawValue;
-        VictoryConditionType victoryCondition = level.VictoryConditions[0];
+        long objectiveValue = level.OptionalObjective1UniqueValues[0].RawValue;
 
         LogicRuntimeDataTableCache.PrepareForEditorTests(
             Array.Empty<CharacterDataDetail>(),
@@ -801,9 +803,9 @@ public sealed class LogicMigrationAuthorityBoundaryTests
             building.UniqueValues[0] = Fix64.FromRaw(checked(buildingValue + 1));
             skill.Lv1UniqueValues[0] = Fix64.FromRaw(checked(skillValue + 1));
             levelTag.UniqueValues[0] = Fix64.FromRaw(checked(levelTagValue + 1));
-            level.VictoryConditions[0] = (VictoryConditionType)((int)victoryCondition + 1);
+            level.OptionalObjective1UniqueValues[0] = Fix64.FromRaw(checked(objectiveValue + 1));
             LevelData levelData = LevelData.FromRow(cachedLevel);
-            cachedLevel.VictoryConditions[0] = (VictoryConditionType)((int)victoryCondition + 2);
+            cachedLevel.OptionalObjective1UniqueValues[0] = Fix64.FromRaw(checked(objectiveValue + 2));
 
             Assert.AreNotSame(building, cachedBuilding);
             Assert.AreNotSame(building.UniqueValues, cachedBuilding.UniqueValues);
@@ -815,10 +817,10 @@ public sealed class LogicMigrationAuthorityBoundaryTests
             Assert.AreNotSame(levelTag.UniqueValues, cachedLevelTag.UniqueValues);
             Assert.AreEqual(levelTagValue, cachedLevelTag.UniqueValues[0].RawValue);
             Assert.AreNotSame(level, cachedLevel);
-            Assert.AreNotSame(level.VictoryConditions, cachedLevel.VictoryConditions);
-            Assert.AreEqual((int)victoryCondition + 2, (int)cachedLevel.VictoryConditions[0]);
-            Assert.AreNotSame(cachedLevel.VictoryConditions, levelData.VictoryConditions);
-            Assert.AreEqual(victoryCondition, levelData.VictoryConditions[0]);
+            Assert.AreNotSame(level.OptionalObjective1UniqueValues, cachedLevel.OptionalObjective1UniqueValues);
+            Assert.AreEqual(objectiveValue + 2, cachedLevel.OptionalObjective1UniqueValues[0].RawValue);
+            Assert.AreNotSame(cachedLevel.OptionalObjective1UniqueValues, levelData.OptionalObjectives[0].UniqueValues);
+            Assert.AreEqual(objectiveValue, levelData.OptionalObjectives[0].UniqueValues[0].RawValue);
         }
         finally
         {

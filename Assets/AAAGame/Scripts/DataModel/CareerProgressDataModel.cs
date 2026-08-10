@@ -18,13 +18,28 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
     [JsonProperty]
     private Dictionary<string, int> m_GrowthLevels;
 
+    [JsonProperty]
+    private int m_Experience;
+
     protected override void OnInitialDataModel()
     {
         m_ClearedLevels = new HashSet<string>(StringComparer.Ordinal);
         m_ClearedExperiments = new HashSet<string>(StringComparer.Ordinal);
         m_MaxOffsetRates = new Dictionary<string, int>(StringComparer.Ordinal);
         m_GrowthLevels = new Dictionary<string, int>(StringComparer.Ordinal);
+        m_Experience = 0;
     }
+
+    public int Experience
+    {
+        get
+        {
+            EnsureLoaded();
+            return m_Experience;
+        }
+    }
+
+    public int CurrentGrade => CareerConfigRuntime.GetGradeForExperience(Experience);
 
     public bool HasClearedLevel(string levelIdentifier)
     {
@@ -51,6 +66,12 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
         return m_MaxOffsetRates.TryGetValue(RequireLevelIdentifier(levelIdentifier), out int value) ? value : 0;
     }
 
+    public bool TryGetMaxOffsetRate(string levelIdentifier, out int offsetRate)
+    {
+        EnsureLoaded();
+        return m_MaxOffsetRates.TryGetValue(RequireLevelIdentifier(levelIdentifier), out offsetRate);
+    }
+
     public int GetGrowthLevel(string identifier)
     {
         EnsureLoaded();
@@ -63,11 +84,8 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
         EnsureLoaded();
         int offsetRewards = 0;
         foreach (KeyValuePair<string, int> pair in m_MaxOffsetRates)
-        {
-            if (pair.Value >= CareerConfigRuntime.OffsetPointThreshold)
-                offsetRewards++;
-        }
-        return checked(m_ClearedLevels.Count + m_ClearedExperiments.Count + offsetRewards);
+            offsetRewards = checked(offsetRewards + CareerConfigRuntime.GetOffsetBadgePointCount(pair.Value));
+        return checked(m_ClearedExperiments.Count + offsetRewards);
     }
 
     public int GetSpentPointCount()
@@ -113,37 +131,75 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
 
     public CareerWinRecordResult RecordWin(string levelIdentifier, bool isExperiment, int offsetRate)
     {
+        return RecordWin(levelIdentifier, isExperiment, offsetRate, 0);
+    }
+
+    public CareerWinRecordResult RecordWin(
+        string levelIdentifier,
+        bool isExperiment,
+        int offsetRate,
+        int completedOptionalExperience)
+    {
         EnsureLoaded();
         string level = RequireLevelIdentifier(levelIdentifier);
         if (!CareerConfigRuntime.IsCareerLevel(level))
-            return CareerWinRecordResult.CreateIgnored(level, isExperiment, offsetRate);
+            return CareerWinRecordResult.CreateIgnored(level, isExperiment, offsetRate, CurrentGrade);
         if (offsetRate < 0)
             throw new ArgumentOutOfRangeException(nameof(offsetRate), offsetRate, "Offset rate cannot be negative.");
+        if (completedOptionalExperience < 0)
+            throw new ArgumentOutOfRangeException(nameof(completedOptionalExperience));
 
+        LevelTable levelRow = CareerConfigRuntime.GetLevelRequired(level);
+        int previousGrade = CurrentGrade;
         bool firstClear = isExperiment
             ? m_ClearedExperiments.Add(level)
             : m_ClearedLevels.Add(level);
-        int previousOffset = GetMaxOffsetRate(level);
-        bool offsetImproved = offsetRate > previousOffset;
+        bool hadOffsetRecord = m_MaxOffsetRates.TryGetValue(level, out int previousOffset);
+        int previousBadgePoints = hadOffsetRecord
+            ? CareerConfigRuntime.GetOffsetBadgePointCount(previousOffset)
+            : 0;
+        bool offsetImproved = !hadOffsetRecord || offsetRate > previousOffset;
         if (offsetImproved)
             m_MaxOffsetRates[level] = offsetRate;
 
         IReadOnlyList<Archetype> unlockedArchetypes = Array.Empty<Archetype>();
         if (firstClear && !isExperiment)
-            unlockedArchetypes = CareerConfigRuntime.GetLevelRequired(level).UnlockArchetype;
+            unlockedArchetypes = levelRow.UnlockArchetype;
 
-        bool firstOffsetReward = previousOffset < CareerConfigRuntime.OffsetPointThreshold
-                                 && offsetRate >= CareerConfigRuntime.OffsetPointThreshold;
-        if (firstClear || offsetImproved)
+        int firstClearExperience = firstClear
+            ? isExperiment ? levelRow.VariableFirstClearExperience : levelRow.FirstClearExperience
+            : 0;
+        int clearExperience = isExperiment ? levelRow.VariableClearExperience : levelRow.ClearExperience;
+        Fix64 offset = (Fix64)offsetRate;
+        Fix64 multiplier = Fix64.One + CareerConfigRuntime.OffsetRateExpCoefficient * offset * offset;
+        int multipliedExperience = (int)Fix64.Floor((Fix64)checked(clearExperience + completedOptionalExperience) * multiplier);
+        int totalExperienceGained = checked(firstClearExperience + multipliedExperience);
+        m_Experience = checked(m_Experience + totalExperienceGained);
+        int currentGrade = CurrentGrade;
+        IReadOnlyList<LevelTagTable> unlockedLevelTags =
+            CareerConfigRuntime.GetTagsUnlockedBetweenGrades(previousGrade, currentGrade);
+
+        int currentBadgePoints = CareerConfigRuntime.GetOffsetBadgePointCount(Math.Max(previousOffset, offsetRate));
+        int offsetBadgePointsGained = currentBadgePoints - previousBadgePoints;
+        if (firstClear || offsetImproved || totalExperienceGained > 0)
             Save();
 
         return new CareerWinRecordResult(
             level,
             isExperiment,
             firstClear,
-            firstOffsetReward,
+            offsetBadgePointsGained,
             offsetRate,
             unlockedArchetypes,
+            firstClearExperience,
+            clearExperience,
+            completedOptionalExperience,
+            multiplier,
+            multipliedExperience,
+            totalExperienceGained,
+            previousGrade,
+            currentGrade,
+            unlockedLevelTags,
             false);
     }
 
@@ -210,6 +266,8 @@ public sealed class CareerProgressDataModel : DataModelStorageBase
     {
         if (m_ClearedLevels == null || m_ClearedExperiments == null || m_MaxOffsetRates == null || m_GrowthLevels == null)
             throw new InvalidOperationException("Career progress data is incomplete.");
+        if (m_Experience < 0)
+            throw new InvalidOperationException("Career progress experience cannot be negative.");
     }
 
     private static int GetCostToLevel(MetaGrowthTable row, int level)
@@ -243,37 +301,73 @@ public readonly struct CareerWinRecordResult
         string levelIdentifier,
         bool isExperiment,
         bool firstClear,
-        bool firstOffsetReward,
+        int offsetBadgePointsGained,
         int offsetRate,
         IReadOnlyList<Archetype> unlockedArchetypes,
+        int firstClearExperience,
+        int clearExperience,
+        int optionalExperience,
+        Fix64 experienceMultiplier,
+        int multipliedExperience,
+        int totalExperienceGained,
+        int previousGrade,
+        int currentGrade,
+        IReadOnlyList<LevelTagTable> unlockedLevelTags,
         bool ignored)
     {
         LevelIdentifier = levelIdentifier;
         IsExperiment = isExperiment;
         FirstClear = firstClear;
-        FirstOffsetReward = firstOffsetReward;
+        OffsetBadgePointsGained = offsetBadgePointsGained;
         OffsetRate = offsetRate;
         UnlockedArchetypes = unlockedArchetypes ?? throw new ArgumentNullException(nameof(unlockedArchetypes));
+        FirstClearExperience = firstClearExperience;
+        ClearExperience = clearExperience;
+        OptionalExperience = optionalExperience;
+        ExperienceMultiplier = experienceMultiplier;
+        MultipliedExperience = multipliedExperience;
+        TotalExperienceGained = totalExperienceGained;
+        PreviousGrade = previousGrade;
+        CurrentGrade = currentGrade;
+        UnlockedLevelTags = unlockedLevelTags ?? throw new ArgumentNullException(nameof(unlockedLevelTags));
         Ignored = ignored;
     }
 
     public string LevelIdentifier { get; }
     public bool IsExperiment { get; }
     public bool FirstClear { get; }
-    public bool FirstOffsetReward { get; }
+    public int OffsetBadgePointsGained { get; }
     public int OffsetRate { get; }
     public IReadOnlyList<Archetype> UnlockedArchetypes { get; }
+    public int FirstClearExperience { get; }
+    public int ClearExperience { get; }
+    public int OptionalExperience { get; }
+    public Fix64 ExperienceMultiplier { get; }
+    public int MultipliedExperience { get; }
+    public int TotalExperienceGained { get; }
+    public int PreviousGrade { get; }
+    public int CurrentGrade { get; }
+    public IReadOnlyList<LevelTagTable> UnlockedLevelTags { get; }
     public bool Ignored { get; }
 
-    public static CareerWinRecordResult CreateIgnored(string levelIdentifier, bool isExperiment, int offsetRate)
+    public static CareerWinRecordResult CreateIgnored(string levelIdentifier, bool isExperiment, int offsetRate, int currentGrade)
     {
         return new CareerWinRecordResult(
             levelIdentifier,
             isExperiment,
             false,
-            false,
+            0,
             offsetRate,
             Array.Empty<Archetype>(),
+            0,
+            0,
+            0,
+            Fix64.One,
+            0,
+            0,
+            currentGrade,
+            currentGrade,
+            Array.Empty<LevelTagTable>(),
             true);
     }
 }

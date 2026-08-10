@@ -484,7 +484,7 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         CloseAllTips();
         Stage = TutorialStage.Completed;
         QueuePhaseGuideChanged();
-        LogicGameEndService.CompleteScriptedWin(VictoryConditionType.CompleteTutorial);
+        LogicGameEndService.CompleteScriptedObjective(LevelObjectiveIds.UpgradeCodingCoreLevel3);
     }
 
     private void OnLogicPhaseApplied(GamePhase oldPhase, GamePhase newPhase)

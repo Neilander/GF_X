@@ -20,6 +20,7 @@ public partial class GoalConditionItem : UIItemBase
         {
             varGoalConditionItem.text = text;
             varGoalConditionItem.color = Color.white;
+            varGoalConditionItem.fontStyle = FontStyles.Normal;
         }
         if (m_Checkmark != null)
             m_Checkmark.text = string.Empty;
@@ -29,15 +30,40 @@ public partial class GoalConditionItem : UIItemBase
 
     public void SetTutorialObjective(string text, TutorialObjectiveStatus status)
     {
+        SetObjectiveState(
+            text,
+            status == TutorialObjectiveStatus.Completed,
+            status == TutorialObjectiveStatus.Failed);
+    }
+
+    public void SetLevelObjective(string text, LevelObjectiveStatus status)
+    {
+        SetObjectiveState(
+            text,
+            status == LevelObjectiveStatus.Completed,
+            status == LevelObjectiveStatus.Failed);
+    }
+
+    public void SetSectionTitle(string text)
+    {
+        if (varGoalConditionItem == null || varIcon == null)
+            throw new InvalidOperationException("GoalConditionItem requires both text and icon references.");
+
+        varIcon.enabled = false;
+        if (m_TutorialCheckbox != null)
+            m_TutorialCheckbox.SetActive(false);
+        varGoalConditionItem.text = text;
+        varGoalConditionItem.color = Color.white;
+        varGoalConditionItem.fontStyle = FontStyles.Bold;
+    }
+
+    private void SetObjectiveState(string text, bool completed, bool failed)
+    {
         if (varGoalConditionItem == null || varIcon == null)
             throw new InvalidOperationException("GoalConditionItem requires both text and icon references.");
 
         EnsureTutorialCheckbox();
-        bool completed = status == TutorialObjectiveStatus.Completed;
-        bool failed = status == TutorialObjectiveStatus.Failed;
-        Color rowColor = status == TutorialObjectiveStatus.Active
-            ? Color.white
-            : new Color(0.55f, 0.55f, 0.55f, 1f);
+        Color rowColor = completed || failed ? new Color(0.55f, 0.55f, 0.55f, 1f) : Color.white;
 
         varIcon.enabled = false;
         m_TutorialCheckbox.SetActive(true);
@@ -46,6 +72,7 @@ public partial class GoalConditionItem : UIItemBase
         m_Checkmark.text = completed ? "\u2713" : string.Empty;
         m_Checkmark.color = rowColor;
         varGoalConditionItem.color = rowColor;
+        varGoalConditionItem.fontStyle = FontStyles.Normal;
         varGoalConditionItem.text = failed ? $"<s>{text}</s>" : text;
     }
 

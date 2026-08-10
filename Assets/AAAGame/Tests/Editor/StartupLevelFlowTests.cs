@@ -5,6 +5,24 @@ using UnityEngine;
 public sealed class StartupLevelFlowTests
 {
     [Test]
+    public void GoalUI_OpensOnlyAfterLoadingPresentationCompletes()
+    {
+        string generalSetup = File.ReadAllText(
+            Path.Combine(Application.dataPath, "AAAGame", "Scripts", "UTManagers", "GeneralSetup.cs"));
+        int completionHandler = generalSetup.IndexOf("private void OnLevelLoadCompleted()", System.StringComparison.Ordinal);
+        int openGoal = generalSetup.IndexOf(
+            "GF.UI.OpenUIForm(UIViews.GoalUIForm);",
+            System.StringComparison.Ordinal);
+
+        Assert.That(generalSetup, Does.Contain("LevelSelectionService.LevelLoadCompleted += OnLevelLoadCompleted;"));
+        Assert.That(completionHandler, Is.GreaterThanOrEqualTo(0));
+        Assert.That(openGoal, Is.GreaterThan(completionHandler));
+        Assert.That(
+            generalSetup.LastIndexOf("GF.UI.OpenUIForm(UIViews.GoalUIForm);", System.StringComparison.Ordinal),
+            Is.EqualTo(openGoal));
+    }
+
+    [Test]
     public void LaunchStartup_UsesRuntimeOwnedLevelSelectionChain()
     {
         string scriptsRoot = Path.Combine(Application.dataPath, "AAAGame", "Scripts");

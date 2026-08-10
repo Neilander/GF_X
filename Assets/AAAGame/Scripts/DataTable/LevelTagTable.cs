@@ -118,6 +118,15 @@ public class LevelTagTable : DataRowBase
             private set;
         }
 
+        /// <summary>
+        /// 解锁所需等级
+        /// </summary>
+        public int UnlockGrade
+        {
+            get;
+            private set;
+        }
+
         public override bool ParseDataRow(string dataRowString, object userData)
         {
             string[] columnStrings = dataRowString.Split(DataTableExtension.DataSplitSeparators);
@@ -141,7 +150,7 @@ public class LevelTagTable : DataRowBase
             ExceptLevelID = DataTableExtension.ParseArray<string>(columnStrings[index++]);
             IsPositiveTag = DataTableExtension.ParseBoolean(columnStrings[index++]);
             Score = DataTableExtension.ParseInt32(columnStrings[index++]);
-            index++;
+            UnlockGrade = DataTableExtension.ParseInt32(columnStrings[index++]);
 
             return true;
         }
@@ -163,6 +172,7 @@ public class LevelTagTable : DataRowBase
                     ExceptLevelID = binaryReader.ReadArray<string>();
                     IsPositiveTag = binaryReader.ReadBoolean();
                     Score = binaryReader.Read7BitEncodedInt32();
+                    UnlockGrade = binaryReader.Read7BitEncodedInt32();
                 }
             }
 

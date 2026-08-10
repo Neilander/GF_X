@@ -1,0 +1,26 @@
+#	关前通讯表				i18n		i18n	
+#	ID		LevelIdentifier	Slot	SpeakerKey	PortraitPath	TextKey	SignalState
+#	int		string	enum	string	string	string	enum
+#	唯一编号	备注	关卡标识	通讯位置	说话人名称（多语言）	立绘路径，可留空	通讯正文（多语言）	信号状态
+	1	L1 主通讯	Lv_1	StoryCommSlot.Primary	Story.Speaker.Director		Story.Comm.L1.Primary	StorySignalState.Normal
+	2	L1 次通讯	Lv_1	StoryCommSlot.Secondary	Story.Speaker.Broker		Story.Comm.L1.Secondary	StorySignalState.Normal
+	3	L2 主通讯	Lv_2	StoryCommSlot.Primary	Story.Speaker.Director		Story.Comm.L2.Primary	StorySignalState.Normal
+	4	L2 次通讯	Lv_2	StoryCommSlot.Secondary	Story.Speaker.Broker		Story.Comm.L2.Secondary	StorySignalState.Normal
+	5	L3 主通讯	Lv_3	StoryCommSlot.Primary	Story.Speaker.Director		Story.Comm.L3.Primary	StorySignalState.Normal
+	6	L3 次通讯	Lv_3	StoryCommSlot.Secondary	Story.Speaker.Broker		Story.Comm.L3.Secondary	StorySignalState.Normal
+	7	L4 主通讯	Lv_4	StoryCommSlot.Primary	Story.Speaker.Director		Story.Comm.L4.Primary	StorySignalState.Normal
+	8	L4 次通讯	Lv_4	StoryCommSlot.Secondary	Story.Speaker.Broker		Story.Comm.L4.Secondary	StorySignalState.Normal
+	9	L5 主通讯	Lv_5	StoryCommSlot.Primary	Story.Speaker.Director		Story.Comm.L5.Primary	StorySignalState.Normal
+	10	L5 次通讯	Lv_5	StoryCommSlot.Secondary	Story.Speaker.Broker		Story.Comm.L5.Secondary	StorySignalState.Normal
+	11	L6 主通讯	Lv_6	StoryCommSlot.Primary	Story.Speaker.Director		Story.Comm.L6.Primary	StorySignalState.Normal
+	12	L6 次通讯	Lv_6	StoryCommSlot.Secondary	Story.Speaker.Broker		Story.Comm.L6.Secondary	StorySignalState.Normal
+	13	L7 主通讯	Lv_7	StoryCommSlot.Primary	Story.Speaker.Director		Story.Comm.L7.Primary	StorySignalState.Normal
+	14	L7 次通讯	Lv_7	StoryCommSlot.Secondary	Story.Speaker.Broker		Story.Comm.L7.Secondary	StorySignalState.Normal
+	15	L8 主通讯	Lv_8	StoryCommSlot.Primary	Story.Speaker.Director		Story.Comm.L8.Primary	StorySignalState.Normal
+	16	L8 次通讯	Lv_8	StoryCommSlot.Secondary	Story.Speaker.Broker		Story.Comm.L8.Secondary	StorySignalState.Normal
+	17	L9 主通讯	Lv_9	StoryCommSlot.Primary	Story.Speaker.Director		Story.Comm.L9.Primary	StorySignalState.Normal
+	18	L9 次通讯	Lv_9	StoryCommSlot.Secondary	Story.Speaker.Broker		Story.Comm.L9.Secondary	StorySignalState.Normal
+	19	L10 主通讯	Lv_10	StoryCommSlot.Primary	Story.Speaker.Director		Story.Comm.L10.Primary	StorySignalState.Corrupted
+	20	L10 次通讯	Lv_10	StoryCommSlot.Secondary	Story.Speaker.Broker		Story.Comm.L10.Secondary	StorySignalState.Normal
+	21	LTest 主通讯	LvTest	StoryCommSlot.Primary	Story.Speaker.Director		Story.Comm.LTest.Primary	StorySignalState.Normal
+	22	LTest 次通讯	LvTest	StoryCommSlot.Secondary	Story.Speaker.Broker		Story.Comm.LTest.Secondary	StorySignalState.Normal

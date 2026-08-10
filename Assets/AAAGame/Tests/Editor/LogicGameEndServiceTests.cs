@@ -35,11 +35,7 @@ public sealed class LogicGameEndServiceTests
     public void ViewlessEnemyTargetCapturedOnExactLogicFrame_Wins()
     {
         LogicEntityState target = CreateBuilding("target-enemy", EntitySideHelper.EnemyFactionId, true);
-        LogicGameEndService.Initialize(CreateLevel(
-            new[] { VictoryConditionType.OccupySpecificBuildings },
-            0,
-            Array.Empty<FailConditionType>(),
-            0));
+        LogicGameEndService.Initialize(CreateCaptureLevel());
         LogicGameEndService.RegisterInitialConditionBuilding(target.BuildingInstanceId, target.OwnerFactionId);
         PublishEntities();
 
@@ -71,11 +67,7 @@ public sealed class LogicGameEndServiceTests
         attack.Init(combatant);
         move.Init(combatant);
 
-        LogicGameEndService.Initialize(CreateLevel(
-            new[] { VictoryConditionType.OccupySpecificBuildings },
-            0,
-            Array.Empty<FailConditionType>(),
-            0));
+        LogicGameEndService.Initialize(CreateCaptureLevel());
         LogicGameEndService.RegisterInitialConditionBuilding(target.BuildingInstanceId, target.OwnerFactionId);
         PublishEntities();
 
@@ -107,12 +99,7 @@ public sealed class LogicGameEndServiceTests
     public void ViewlessPlayerTargetDisabledOnExactLogicFrame_Fails()
     {
         LogicEntityState target = CreateBuilding("target-player", EntitySideHelper.PlayerFactionId, true);
-        LogicGameEndService.Initialize(
-            CreateLevel(
-                Array.Empty<VictoryConditionType>(),
-                0,
-                new[] { FailConditionType.LoseSpecificBuildings },
-                0));
+        LogicGameEndService.Initialize(CreateDefendLevel());
         LogicGameEndService.RegisterInitialConditionBuilding(target.BuildingInstanceId, target.OwnerFactionId);
         PublishEntities();
 
@@ -132,11 +119,7 @@ public sealed class LogicGameEndServiceTests
     {
         LogicEntityState initialTarget = CreateBuilding("target-player-initial", EntitySideHelper.PlayerFactionId, true);
         LogicEntityState capturedCore = CreateBuilding("captured-core", EntitySideHelper.EnemyFactionId, false);
-        LogicGameEndService.Initialize(CreateLevel(
-            Array.Empty<VictoryConditionType>(),
-            0,
-            new[] { FailConditionType.LoseSpecificBuildings },
-            0));
+        LogicGameEndService.Initialize(CreateDefendLevel());
         LogicGameEndService.RegisterInitialConditionBuilding(
             initialTarget.BuildingInstanceId,
             initialTarget.OwnerFactionId);
@@ -172,11 +155,7 @@ public sealed class LogicGameEndServiceTests
     public void RegisteringTargetsDoesNotEvaluateBeforeFirstCompleteTick()
     {
         LogicEntityState target = CreateBuilding("target-late", EntitySideHelper.EnemyFactionId, true);
-        LogicGameEndService.Initialize(CreateLevel(
-            new[] { VictoryConditionType.OccupySpecificBuildings },
-            0,
-            Array.Empty<FailConditionType>(),
-            0));
+        LogicGameEndService.Initialize(CreateCaptureLevel());
         LogicGameEndService.RegisterInitialConditionBuilding(target.BuildingInstanceId, target.OwnerFactionId);
         PublishEntities();
         target.SetOwnerFaction(EntitySideHelper.PlayerFactionId);
@@ -191,11 +170,7 @@ public sealed class LogicGameEndServiceTests
     [Test]
     public void DayConditionReadsLogicStateWithoutEventPump()
     {
-        LogicGameEndService.Initialize(CreateLevel(
-            new[] { VictoryConditionType.SurviveAmountDays },
-            1,
-            Array.Empty<FailConditionType>(),
-            0));
+        LogicGameEndService.Initialize(CreateSurviveDaysLevel(1));
         InGameDataModel.SetValue(IngameValueType.Day, 2, false);
 
         LogicTimeControlService.BeginFrame(1);
@@ -206,14 +181,9 @@ public sealed class LogicGameEndServiceTests
     }
 
     [Test]
-    public void ScriptedTutorialCompletion_ProducesCompleteTutorialWin()
+    public void ScriptedTutorialCompletion_CompletesConfiguredObjectiveAndWins()
     {
-        LevelData level = CreateLevel(
-            new[] { VictoryConditionType.CompleteTutorial },
-            0,
-            Array.Empty<FailConditionType>(),
-            0);
-        SetPrivate(level, nameof(LevelData.Identifier), "Lv_1");
+        LevelData level = CreateTutorialLevel("Lv_1");
         LogicGameEndService.Initialize(level);
 
         LogicGameEndResult? captured = null;
@@ -221,7 +191,7 @@ public sealed class LogicGameEndServiceTests
         LogicGameEndService.GameEnded += Capture;
         try
         {
-            LogicGameEndService.CompleteScriptedWin(VictoryConditionType.CompleteTutorial);
+            LogicGameEndService.CompleteScriptedObjective(LevelObjectiveIds.UpgradeCodingCoreLevel3);
         }
         finally
         {
@@ -232,20 +202,18 @@ public sealed class LogicGameEndServiceTests
         Assert.IsTrue(LogicGameEndService.IsWin);
         Assert.IsTrue(captured.HasValue);
         Assert.IsTrue(captured.Value.IsWin);
-        Assert.AreEqual(VictoryConditionType.CompleteTutorial, captured.Value.VictoryCondition);
+        Assert.AreEqual(0, captured.Value.FailedObjectiveDefinitionId);
+        Assert.AreEqual(
+            LevelObjectiveStatus.Completed,
+            LogicGameEndService.GetObjectiveSnapshot()[0].Status);
     }
 
     [Test]
     public void RuntimeScheduler_StopsAfterGameEndWithoutPausingPresentationTime()
     {
-        LevelData level = CreateLevel(
-            new[] { VictoryConditionType.CompleteTutorial },
-            0,
-            Array.Empty<FailConditionType>(),
-            0);
-        SetPrivate(level, nameof(LevelData.Identifier), "Lv_1");
+        LevelData level = CreateTutorialLevel("Lv_1");
         LogicGameEndService.Initialize(level);
-        LogicGameEndService.CompleteScriptedWin(VictoryConditionType.CompleteTutorial);
+        LogicGameEndService.CompleteScriptedObjective(LevelObjectiveIds.UpgradeCodingCoreLevel3);
 
         MethodInfo prepareNextFrame = typeof(RuntimeProcedureBase).GetMethod(
             "PrepareNextLogicFrame",
@@ -263,11 +231,7 @@ public sealed class LogicGameEndServiceTests
     {
         LogicEntityState first = CreateBuilding("target-z", EntitySideHelper.EnemyFactionId, true);
         LogicEntityState second = CreateBuilding("target-a", EntitySideHelper.EnemyFactionId, true);
-        LevelData level = CreateLevel(
-            new[] { VictoryConditionType.OccupySpecificBuildings },
-            0,
-            Array.Empty<FailConditionType>(),
-            0);
+        LevelData level = CreateCaptureLevel();
         LogicGameEndService.Initialize(level);
         LogicGameEndService.RegisterInitialConditionBuilding(first.BuildingInstanceId, first.OwnerFactionId);
         LogicGameEndService.RegisterInitialConditionBuilding(second.BuildingInstanceId, second.OwnerFactionId);
@@ -289,11 +253,7 @@ public sealed class LogicGameEndServiceTests
     {
         LogicEntityState first = CreateBuilding("target-z", EntitySideHelper.EnemyFactionId, true);
         LogicEntityState second = CreateBuilding("target-a", EntitySideHelper.EnemyFactionId, true);
-        LogicGameEndService.Initialize(CreateLevel(
-            new[] { VictoryConditionType.OccupySpecificBuildings },
-            0,
-            Array.Empty<FailConditionType>(),
-            0));
+        LogicGameEndService.Initialize(CreateCaptureLevel());
         LogicGameEndService.RegisterInitialConditionBuilding(first.BuildingInstanceId, first.OwnerFactionId);
         LogicGameEndService.RegisterInitialConditionBuilding(second.BuildingInstanceId, second.OwnerFactionId);
         PublishEntities();
@@ -313,11 +273,7 @@ public sealed class LogicGameEndServiceTests
     public void DefendFallbackResolution_UsesLogicAuthorityWithoutGameEndManagerView()
     {
         LogicEntityState target = CreateBuilding("target-player", EntitySideHelper.PlayerFactionId, true);
-        LogicGameEndService.Initialize(CreateLevel(
-            Array.Empty<VictoryConditionType>(),
-            0,
-            new[] { FailConditionType.LoseSpecificBuildings },
-            0));
+        LogicGameEndService.Initialize(CreateDefendLevel());
         LogicGameEndService.RegisterInitialConditionBuilding(target.BuildingInstanceId, target.OwnerFactionId);
         PublishEntities();
         Assert.IsNull(GameEndManager.Current);
@@ -349,16 +305,104 @@ public sealed class LogicGameEndServiceTests
     [Test]
     public void InvalidRegistrationAndMissingTargetFailLoudly()
     {
-        LogicGameEndService.Initialize(CreateLevel(
-            new[] { VictoryConditionType.OccupySpecificBuildings },
-            0,
-            Array.Empty<FailConditionType>(),
-            0));
+        LogicGameEndService.Initialize(CreateCaptureLevel());
         Assert.Throws<ArgumentException>(() =>
             LogicGameEndService.RegisterInitialConditionBuilding("", EntitySideHelper.EnemyFactionId));
         LogicGameEndService.RegisterInitialConditionBuilding("missing", EntitySideHelper.EnemyFactionId);
         LogicTimeControlService.BeginFrame(1);
         Assert.Throws<InvalidOperationException>(() => LogicGameEndService.ApplyFrame(1));
+    }
+
+    [Test]
+    public void MultiplePrimaryObjectives_AllMustCompleteBeforeWin()
+    {
+        LogicEntityState target = CreateBuilding("target-enemy", EntitySideHelper.EnemyFactionId, true);
+        LogicGameEndService.Initialize(LevelData.CreateForTests(
+            "MultiplePrimaryObjectives",
+            new[]
+            {
+                CreateObjective(1, true, LevelObjectiveIds.CaptureSpecificStrongholds,
+                    LevelObjectiveTargetIds.InitialEnemyConditionBuildings),
+                CreateObjective(2, true, LevelObjectiveIds.SurviveDays,
+                    LevelObjectiveTargetIds.Day, 2),
+            }));
+        LogicGameEndService.RegisterInitialConditionBuilding(target.BuildingInstanceId, target.OwnerFactionId);
+        PublishEntities();
+
+        target.SetOwnerFaction(EntitySideHelper.PlayerFactionId);
+        LogicGameEndService.ResolveCapturedEnemyTarget(target);
+        LogicTimeControlService.BeginFrame(1);
+        LogicGameEndService.ApplyFrame(1);
+
+        Assert.IsFalse(LogicGameEndService.IsGameEnded);
+        Assert.AreEqual(LevelObjectiveStatus.Completed, LogicGameEndService.GetObjectiveSnapshot()[0].Status);
+        Assert.AreEqual(LevelObjectiveStatus.Active, LogicGameEndService.GetObjectiveSnapshot()[1].Status);
+
+        InGameDataModel.SetValue(IngameValueType.Day, 3, false);
+        LogicTimeControlService.BeginFrame(2);
+        LogicGameEndService.ApplyFrame(2);
+
+        Assert.IsTrue(LogicGameEndService.IsGameEnded);
+        Assert.IsTrue(LogicGameEndService.IsWin);
+    }
+
+    [Test]
+    public void IncompleteOptionalObjective_DoesNotBlockWinAndIsMarkedFailed()
+    {
+        LogicEntityState target = CreateBuilding("target-enemy", EntitySideHelper.EnemyFactionId, true);
+        LogicGameEndService.Initialize(LevelData.CreateForTests(
+            "IncompleteOptionalObjective",
+            new[]
+            {
+                CreateObjective(1, true, LevelObjectiveIds.CaptureSpecificStrongholds,
+                    LevelObjectiveTargetIds.InitialEnemyConditionBuildings),
+            },
+            new[]
+            {
+                CreateObjective(1, false, LevelObjectiveIds.SurviveDays,
+                    LevelObjectiveTargetIds.Day, 5, 30),
+            }));
+        LogicGameEndService.RegisterInitialConditionBuilding(target.BuildingInstanceId, target.OwnerFactionId);
+        PublishEntities();
+
+        target.SetOwnerFaction(EntitySideHelper.PlayerFactionId);
+        LogicGameEndService.ResolveCapturedEnemyTarget(target);
+        LogicTimeControlService.BeginFrame(1);
+        LogicGameEndService.ApplyFrame(1);
+
+        Assert.IsTrue(LogicGameEndService.IsWin);
+        Assert.AreEqual(LevelObjectiveStatus.Failed, LogicGameEndService.GetObjectiveSnapshot()[1].Status);
+        Assert.AreEqual(0, LogicGameEndService.GetCompletedOptionalExperience());
+    }
+
+    [Test]
+    public void CompletedOptionalObjective_ContributesConfiguredExperience()
+    {
+        LogicEntityState target = CreateBuilding("target-enemy", EntitySideHelper.EnemyFactionId, true);
+        LogicGameEndService.Initialize(LevelData.CreateForTests(
+            "CompletedOptionalObjective",
+            new[]
+            {
+                CreateObjective(1, true, LevelObjectiveIds.CaptureSpecificStrongholds,
+                    LevelObjectiveTargetIds.InitialEnemyConditionBuildings),
+            },
+            new[]
+            {
+                CreateObjective(1, false, LevelObjectiveIds.SurviveDays,
+                    LevelObjectiveTargetIds.Day, 1, 30),
+            }));
+        LogicGameEndService.RegisterInitialConditionBuilding(target.BuildingInstanceId, target.OwnerFactionId);
+        PublishEntities();
+        InGameDataModel.SetValue(IngameValueType.Day, 2, false);
+
+        target.SetOwnerFaction(EntitySideHelper.PlayerFactionId);
+        LogicGameEndService.ResolveCapturedEnemyTarget(target);
+        LogicTimeControlService.BeginFrame(1);
+        LogicGameEndService.ApplyFrame(1);
+
+        Assert.IsTrue(LogicGameEndService.IsWin);
+        Assert.AreEqual(LevelObjectiveStatus.Completed, LogicGameEndService.GetObjectiveSnapshot()[1].Status);
+        Assert.AreEqual(30, LogicGameEndService.GetCompletedOptionalExperience());
     }
 
     private static LogicEntityState CreateBuilding(string instanceId, int ownerFactionId, bool gameEndCondition)
@@ -409,25 +453,68 @@ public sealed class LogicGameEndServiceTests
         LogicEntityLifecycleService.CommitPendingInitializationEntities();
     }
 
-    private static LevelData CreateLevel(
-        VictoryConditionType[] victoryConditions,
-        int victoryValue,
-        FailConditionType[] failConditions,
-        int failValue)
+    private static LevelData CreateCaptureLevel()
     {
-        var level = new LevelData();
-        SetPrivate(level, nameof(LevelData.Identifier), "LogicGameEndServiceTests");
-        SetPrivate(level, nameof(LevelData.VictoryConditions), victoryConditions);
-        SetPrivate(level, nameof(LevelData.VictoryValue), victoryValue);
-        SetPrivate(level, nameof(LevelData.LoseConditions), failConditions);
-        SetPrivate(level, nameof(LevelData.LoseValue), failValue);
-        return level;
+        return LevelData.CreateForTests(
+            "LogicGameEndServiceTests",
+            new[]
+            {
+                CreateObjective(1, true, LevelObjectiveIds.CaptureSpecificStrongholds,
+                    LevelObjectiveTargetIds.InitialEnemyConditionBuildings),
+            });
     }
 
-    private static void SetPrivate<T>(LevelData level, string propertyName, T value)
+    private static LevelData CreateDefendLevel()
     {
-        typeof(LevelData).GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public)
-            .SetValue(level, value, null);
+        return LevelData.CreateForTests(
+            "LogicGameEndServiceTests",
+            new[]
+            {
+                CreateObjective(1, true, LevelObjectiveIds.DefendBase,
+                    LevelObjectiveTargetIds.InitialPlayerConditionBuildings),
+                CreateObjective(2, true, LevelObjectiveIds.UpgradeCodingCoreLevel3,
+                    LevelObjectiveTargetIds.Tutorial),
+            });
+    }
+
+    private static LevelData CreateSurviveDaysLevel(int days)
+    {
+        return LevelData.CreateForTests(
+            "LogicGameEndServiceTests",
+            new[]
+            {
+                CreateObjective(1, true, LevelObjectiveIds.SurviveDays,
+                    LevelObjectiveTargetIds.Day, days),
+            });
+    }
+
+    private static LevelData CreateTutorialLevel(string identifier)
+    {
+        return LevelData.CreateForTests(
+            identifier,
+            new[]
+            {
+                CreateObjective(1, true, LevelObjectiveIds.UpgradeCodingCoreLevel3,
+                    LevelObjectiveTargetIds.Tutorial),
+            });
+    }
+
+    private static LevelObjectiveDefinition CreateObjective(
+        int slot,
+        bool isPrimary,
+        int definitionId,
+        string targetId,
+        int uniqueValue = 0,
+        int experience = 0)
+    {
+        Fix64[] values = uniqueValue == 0 ? Array.Empty<Fix64>() : new[] { (Fix64)uniqueValue };
+        return new LevelObjectiveDefinition(
+            slot,
+            isPrimary,
+            definitionId,
+            new[] { targetId },
+            values,
+            experience);
     }
 
     private static BuildingData CreateBuildingData(string identifier)

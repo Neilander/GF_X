@@ -12,13 +12,16 @@ using UnityGameFramework.Runtime;
 public sealed class CareerSystemsTests
 {
     private Dictionary<string, LevelTable> m_PreviousLevels;
-    private Dictionary<string, VariableExperimentTable> m_PreviousExperiments;
     private Dictionary<string, VariableExperimentRuleTable> m_PreviousRules;
     private Dictionary<string, MetaGrowthTable> m_PreviousGrowthRows;
+    private Dictionary<int, GradeExperienceTable> m_PreviousGradeExperience;
+    private Dictionary<int, LevelTagTable> m_PreviousLevelTags;
     private List<MetaGrowthTable> m_PreviousSortedGrowthRows;
+    private List<GradeExperienceTable> m_PreviousSortedGradeExperience;
     private List<Archetype> m_PreviousArchetypeOrder;
     private bool m_PreviousPrepared;
-    private int m_PreviousOffsetThreshold;
+    private int[] m_PreviousOffsetBadgeThresholds;
+    private Fix64 m_PreviousOffsetExperienceCoefficient;
 
     [SetUp]
     public void SetUp()
@@ -46,6 +49,23 @@ public sealed class CareerSystemsTests
         Assert.AreEqual(Archetype.Coding, levels["Lv_2"].DefaultArchetype);
         Assert.AreEqual(Archetype.Sightseeing, levels["Lv_3"].DefaultArchetype);
         Assert.AreEqual(1000, levels["LvTest"].Id);
+        LevelData tutorialLevel = LevelData.FromRow(levels["Lv_1"]);
+        CollectionAssert.AreEqual(
+            new[] { LevelObjectiveIds.UpgradeCodingCoreLevel3 },
+            tutorialLevel.PrimaryObjectives.Select(value => value.DefinitionId));
+        LevelData levelTwo = LevelData.FromRow(levels["Lv_2"]);
+        CollectionAssert.AreEqual(
+            new[] { LevelObjectiveIds.CaptureSpecificStrongholds, LevelObjectiveIds.DefendBase },
+            levelTwo.PrimaryObjectives.Select(value => value.DefinitionId));
+        CollectionAssert.AreEqual(
+            new[] { LevelObjectiveIds.SurviveDays, LevelObjectiveIds.ProtectStronghold },
+            levelTwo.OptionalObjectives.Select(value => value.DefinitionId));
+        CollectionAssert.AreEqual(new[] { 15, 10 }, levelTwo.OptionalObjectives.Select(value => value.Experience));
+        CollectionAssert.AreEqual(new[] { (Fix64)2 }, levelTwo.OptionalObjectives[0].UniqueValues);
+        LevelData levelThree = LevelData.FromRow(levels["Lv_3"]);
+        CollectionAssert.AreEqual(
+            new[] { LevelObjectiveIds.CaptureStrongholdCount, LevelObjectiveIds.SurviveDays },
+            levelThree.OptionalObjectives.Select(value => value.DefinitionId));
         CollectionAssert.AreEqual(
             new[]
             {
@@ -63,14 +83,14 @@ public sealed class CareerSystemsTests
             },
             CareerConfigRuntime.ArchetypeOrder);
 
-        Dictionary<string, VariableExperimentTable> experiments = GetStaticDictionary<VariableExperimentTable>("s_Experiments");
-        VariableExperimentTable levelOneExperiment = experiments["Lv_1"];
-        Assert.IsEmpty(levelOneExperiment.LevelConfigIdentifier);
-        Assert.AreEqual("VariableRule_OneHealthCoding", levelOneExperiment.RuleIdentifier);
-        Assert.AreEqual("LvTest", experiments["Lv_2"].LevelConfigIdentifier);
-        Assert.AreEqual("VariableRule_VariantTerrain", experiments["Lv_2"].RuleIdentifier);
+        Dictionary<string, LevelTable> experiments = GetStaticDictionary<LevelTable>("s_Experiments");
+        LevelTable levelOneExperiment = experiments["Lv_1"];
+        Assert.IsEmpty(levelOneExperiment.VariableLevelConfigIdentifier);
+        Assert.AreEqual("VariableRule_OneHealthCoding", levelOneExperiment.VariableRuleIdentifier);
+        Assert.AreEqual("LvTest", experiments["Lv_2"].VariableLevelConfigIdentifier);
+        Assert.AreEqual("VariableRule_VariantTerrain", experiments["Lv_2"].VariableRuleIdentifier);
 
-        VariableExperimentRuleTable rule = CareerConfigRuntime.GetRuleRequired(levelOneExperiment.RuleIdentifier);
+        VariableExperimentRuleTable rule = CareerConfigRuntime.GetRuleRequired(levelOneExperiment.VariableRuleIdentifier);
         Assert.AreEqual("VariableExperiment_Name_OneHealthCoding", rule.NameKey);
         Assert.AreEqual("VariableExperiment_Desc_OneHealthCoding", rule.DescKey);
         Assert.AreEqual(Archetype.Coding, rule.ForcedArchetype);
@@ -124,8 +144,15 @@ public sealed class CareerSystemsTests
         AssertGrowth(growthRows, "InitialFrequency", 5, 5, 2);
 
         string gameConfig = File.ReadAllText(Path.Combine(Application.dataPath, "AAAGame/Config/GameConfig.txt"));
-        StringAssert.Contains("OffsetRateRequiredForGrowthPoint", gameConfig);
-        Assert.AreEqual(10, CareerConfigRuntime.OffsetPointThreshold);
+        StringAssert.DoesNotContain("OffsetRateRequiredForGrowthPoint", gameConfig);
+        Assert.AreEqual(10, CareerConfigRuntime.OffsetBadgeBronzeThreshold);
+        Assert.AreEqual(18, CareerConfigRuntime.OffsetBadgeSilverThreshold);
+        Assert.AreEqual(24, CareerConfigRuntime.OffsetBadgeGoldThreshold);
+        Assert.AreEqual(28, CareerConfigRuntime.OffsetBadgeDiamondThreshold);
+        Assert.AreEqual(Fix64.Parse("0.1"), CareerConfigRuntime.OffsetRateExpCoefficient);
+        CollectionAssert.AreEqual(
+            new[] { 0, 100, 250, 450, 700, 1000 },
+            CareerConfigRuntime.GradeExperienceRows.Select(row => row.RequiredTotalExperience));
 
         List<BuildingTable> buildingRows = LoadRows<BuildingTable>("AAAGame/DataTable/Build/BuildingTable.txt");
         Assert.AreEqual("Buil_ResearchCenter_Lv1",
@@ -156,23 +183,23 @@ public sealed class CareerSystemsTests
 
         CareerWinRecordResult firstNormal = progress.RecordWin("Lv_1", false, 10);
         Assert.IsTrue(firstNormal.FirstClear);
-        Assert.IsTrue(firstNormal.FirstOffsetReward);
+        Assert.AreEqual(2, firstNormal.OffsetBadgePointsGained);
         Assert.IsTrue(progress.IsVariableExperimentUnlocked("Lv_1"));
         CollectionAssert.AreEqual(new[] { Archetype.Coding }, firstNormal.UnlockedArchetypes);
         Assert.AreEqual(2, progress.GetEarnedPointCount());
 
         CareerWinRecordResult repeatNormal = progress.RecordWin("Lv_1", false, 20);
         Assert.IsFalse(repeatNormal.FirstClear);
-        Assert.IsFalse(repeatNormal.FirstOffsetReward);
-        Assert.AreEqual(2, progress.GetEarnedPointCount(), "Improving the same level offset must not award another point.");
+        Assert.AreEqual(1, repeatNormal.OffsetBadgePointsGained);
+        Assert.AreEqual(3, progress.GetEarnedPointCount());
 
         CareerWinRecordResult firstExperiment = progress.RecordWin("Lv_1", true, 0);
         Assert.IsTrue(firstExperiment.FirstClear);
         Assert.IsEmpty(firstExperiment.UnlockedArchetypes);
-        Assert.AreEqual(3, progress.GetEarnedPointCount());
+        Assert.AreEqual(4, progress.GetEarnedPointCount());
 
         progress.RecordWin("Lv_2", true, 10);
-        Assert.AreEqual(5, progress.GetEarnedPointCount());
+        Assert.AreEqual(7, progress.GetEarnedPointCount());
         CollectionAssert.AreEquivalent(
             new[] { Archetype.Coding },
             progress.GetUnlockedArchetypes(),
@@ -180,13 +207,85 @@ public sealed class CareerSystemsTests
 
         progress.RecordWin("Lv_2", false, 0);
         CollectionAssert.Contains(progress.GetUnlockedArchetypes(), Archetype.Sightseeing);
-        Assert.AreEqual(6, progress.GetEarnedPointCount());
+        Assert.AreEqual(7, progress.GetEarnedPointCount());
 
         CareerWinRecordResult multiUnlock = progress.RecordWin("Lv_8", false, 0);
         CollectionAssert.AreEqual(new[] { Archetype.Medical, Archetype.Sports }, multiUnlock.UnlockedArchetypes);
         CollectionAssert.IsSubsetOf(
             new[] { Archetype.Medical, Archetype.Sports },
             progress.GetUnlockedArchetypes());
+        Assert.AreEqual(8, progress.GetEarnedPointCount());
+    }
+
+    [Test]
+    public void OffsetBadgePoints_AreDerivedFromHighestRecordedTier()
+    {
+        CareerProgressDataModel progress = CreateProgressModel();
+
+        CareerWinRecordResult plain = progress.RecordWin("Lv_1", false, 0);
+        Assert.AreEqual(1, plain.OffsetBadgePointsGained);
+        Assert.AreEqual(1, progress.GetEarnedPointCount());
+
+        CareerWinRecordResult bronze = progress.RecordWin("Lv_1", false, 10);
+        Assert.AreEqual(1, bronze.OffsetBadgePointsGained);
+        Assert.AreEqual(2, progress.GetEarnedPointCount());
+
+        CareerWinRecordResult gold = progress.RecordWin("Lv_1", false, 24);
+        Assert.AreEqual(2, gold.OffsetBadgePointsGained);
+        Assert.AreEqual(4, progress.GetEarnedPointCount());
+
+        CareerWinRecordResult diamond = progress.RecordWin("Lv_1", false, 28);
+        Assert.AreEqual(1, diamond.OffsetBadgePointsGained);
+        Assert.AreEqual(5, progress.GetEarnedPointCount());
+
+        CareerProgressDataModel directDiamond = CreateProgressModel();
+        Assert.AreEqual(5, directDiamond.RecordWin("Lv_1", false, 28).OffsetBadgePointsGained);
+        Assert.AreEqual(5, directDiamond.GetEarnedPointCount());
+    }
+
+    [Test]
+    public void RecordWin_AwardsExperienceAppliesMultiplierAndUnlocksGradeTags()
+    {
+        CareerProgressDataModel progress = CreateProgressModel();
+        Assert.AreEqual(0, progress.Experience);
+        Assert.AreEqual(1, progress.CurrentGrade);
+
+        CareerWinRecordResult first = progress.RecordWin("Lv_1", false, 0, 15);
+        Assert.AreEqual(50, first.FirstClearExperience);
+        Assert.AreEqual(20, first.ClearExperience);
+        Assert.AreEqual(15, first.OptionalExperience);
+        Assert.AreEqual(Fix64.One, first.ExperienceMultiplier);
+        Assert.AreEqual(35, first.MultipliedExperience);
+        Assert.AreEqual(85, first.TotalExperienceGained);
+        Assert.AreEqual(85, progress.Experience);
+        Assert.AreEqual(1, first.PreviousGrade);
+        Assert.AreEqual(1, first.CurrentGrade);
+        Assert.IsEmpty(first.UnlockedLevelTags);
+
+        CareerWinRecordResult second = progress.RecordWin("Lv_2", false, 2, 10);
+        Assert.AreEqual(
+            Fix64.One + CareerConfigRuntime.OffsetRateExpCoefficient * (Fix64)2 * (Fix64)2,
+            second.ExperienceMultiplier);
+        Assert.AreEqual(42, second.MultipliedExperience);
+        Assert.AreEqual(92, second.TotalExperienceGained);
+        Assert.AreEqual(177, progress.Experience);
+        Assert.AreEqual(1, second.PreviousGrade);
+        Assert.AreEqual(2, second.CurrentGrade);
+        CollectionAssert.AreEqual(
+            GetStaticDictionary<int, LevelTagTable>("s_LevelTagsById").Values
+                .Where(row => row.IsPositiveTag && row.UnlockGrade == 2)
+                .OrderBy(row => row.Id)
+                .Select(row => row.Id),
+            second.UnlockedLevelTags.Select(row => row.Id));
+
+        CareerWinRecordResult repeated = progress.RecordWin("Lv_2", false, 0, 0);
+        Assert.AreEqual(0, repeated.FirstClearExperience);
+        Assert.AreEqual(20, repeated.TotalExperienceGained);
+
+        CareerWinRecordResult variable = progress.RecordWin("Lv_3", true, 0, 15);
+        Assert.AreEqual(40, variable.FirstClearExperience);
+        Assert.AreEqual(15, variable.ClearExperience);
+        Assert.AreEqual(70, variable.TotalExperienceGained);
     }
 
     [Test]
@@ -226,10 +325,12 @@ public sealed class CareerSystemsTests
         Assert.AreEqual(Fix64.One, CareerRuntimeEffects.GetVariableUnitMaxHealth());
         Assert.AreEqual(Fix64.Zero, CareerRuntimeEffects.GetEffectValue(MetaGrowthEffectType.HeroAttackPercent));
 
-        VariableExperimentTable overrideExperiment = ParseRow<VariableExperimentTable>(
-            "\t99\tOverride test\tLv_1\tLv_2\tVariableRule_OneHealthCoding");
-        Dictionary<string, VariableExperimentTable> experiments = GetStaticDictionary<VariableExperimentTable>("s_Experiments");
-        experiments["Lv_1"] = overrideExperiment;
+        string levelOneLine = File.ReadLines(Path.Combine(Application.dataPath, "AAAGame/DataTable/LevelTable.txt"))
+            .Single(line => line.Contains("\tLv_1\t", StringComparison.Ordinal));
+        LevelTable overrideLevel = ParseRow<LevelTable>(levelOneLine);
+        SetInstanceProperty(overrideLevel, nameof(LevelTable.VariableLevelConfigIdentifier), "Lv_2");
+        Dictionary<string, LevelTable> experiments = GetStaticDictionary<LevelTable>("s_Experiments");
+        experiments["Lv_1"] = overrideLevel;
 
         CareerRunSettings.CancelRun();
         runtimeLevel = CareerRunSettings.BeginRun("Lv_1", true, Archetype.Coding);
@@ -385,23 +486,42 @@ public sealed class CareerSystemsTests
     private void SnapshotCareerConfig()
     {
         m_PreviousLevels = new Dictionary<string, LevelTable>(GetStaticDictionary<LevelTable>("s_Levels"), StringComparer.Ordinal);
-        m_PreviousExperiments = new Dictionary<string, VariableExperimentTable>(GetStaticDictionary<VariableExperimentTable>("s_Experiments"), StringComparer.Ordinal);
         m_PreviousRules = new Dictionary<string, VariableExperimentRuleTable>(GetStaticDictionary<VariableExperimentRuleTable>("s_Rules"), StringComparer.Ordinal);
         m_PreviousGrowthRows = new Dictionary<string, MetaGrowthTable>(GetStaticDictionary<MetaGrowthTable>("s_GrowthRows"), StringComparer.Ordinal);
+        m_PreviousGradeExperience = new Dictionary<int, GradeExperienceTable>(GetStaticDictionary<int, GradeExperienceTable>("s_GradeExperience"));
+        m_PreviousLevelTags = new Dictionary<int, LevelTagTable>(GetStaticDictionary<int, LevelTagTable>("s_LevelTagsById"));
         m_PreviousSortedGrowthRows = new List<MetaGrowthTable>(GetStaticList<MetaGrowthTable>("s_SortedGrowthRows"));
+        m_PreviousSortedGradeExperience = new List<GradeExperienceTable>(GetStaticList<GradeExperienceTable>("s_SortedGradeExperience"));
         m_PreviousArchetypeOrder = new List<Archetype>(GetStaticList<Archetype>("s_ArchetypeOrder"));
         m_PreviousPrepared = CareerConfigRuntime.IsPrepared;
-        m_PreviousOffsetThreshold = CareerConfigRuntime.OffsetPointThreshold;
+        m_PreviousOffsetBadgeThresholds = new[]
+        {
+            CareerConfigRuntime.OffsetBadgeBronzeThreshold,
+            CareerConfigRuntime.OffsetBadgeSilverThreshold,
+            CareerConfigRuntime.OffsetBadgeGoldThreshold,
+            CareerConfigRuntime.OffsetBadgeDiamondThreshold
+        };
+        m_PreviousOffsetExperienceCoefficient = CareerConfigRuntime.OffsetRateExpCoefficient;
     }
 
     private static void InstallCareerConfigFromGeneratedTables()
     {
         ReplaceDictionary(GetStaticDictionary<LevelTable>("s_Levels"),
             LoadRows<LevelTable>("AAAGame/DataTable/LevelTable.txt").ToDictionary(row => row.Identifier, StringComparer.Ordinal));
-        ReplaceDictionary(GetStaticDictionary<VariableExperimentTable>("s_Experiments"),
-            LoadRows<VariableExperimentTable>("AAAGame/DataTable/VariableExperimentTable.txt").ToDictionary(row => row.LevelIdentifier, StringComparer.Ordinal));
+        ReplaceDictionary(GetStaticDictionary<LevelTable>("s_Experiments"),
+            LoadRows<LevelTable>("AAAGame/DataTable/LevelTable.txt")
+                .Where(row => !string.IsNullOrWhiteSpace(row.VariableRuleIdentifier))
+                .ToDictionary(row => row.Identifier, StringComparer.Ordinal));
         ReplaceDictionary(GetStaticDictionary<VariableExperimentRuleTable>("s_Rules"),
             LoadRows<VariableExperimentRuleTable>("AAAGame/DataTable/VariableExperimentRuleTable.txt").ToDictionary(row => row.Identifier, StringComparer.Ordinal));
+
+        List<GradeExperienceTable> gradeRows = LoadRows<GradeExperienceTable>("AAAGame/DataTable/GradeExperienceTable.txt")
+            .OrderBy(row => row.Id)
+            .ToList();
+        ReplaceDictionary(GetStaticDictionary<int, GradeExperienceTable>("s_GradeExperience"),
+            gradeRows.ToDictionary(row => row.Id));
+        ReplaceDictionary(GetStaticDictionary<int, LevelTagTable>("s_LevelTagsById"),
+            LoadRows<LevelTagTable>("AAAGame/DataTable/LevelTagTable.txt").ToDictionary(row => row.Id));
 
         List<MetaGrowthTable> growthRows = LoadRows<MetaGrowthTable>("AAAGame/DataTable/MetaGrowthTable.txt")
             .OrderBy(row => row.Id)
@@ -411,6 +531,9 @@ public sealed class CareerSystemsTests
         List<MetaGrowthTable> sorted = GetStaticList<MetaGrowthTable>("s_SortedGrowthRows");
         sorted.Clear();
         sorted.AddRange(growthRows);
+        List<GradeExperienceTable> sortedGrades = GetStaticList<GradeExperienceTable>("s_SortedGradeExperience");
+        sortedGrades.Clear();
+        sortedGrades.AddRange(gradeRows);
         List<Archetype> archetypeOrder = GetStaticList<Archetype>("s_ArchetypeOrder");
         archetypeOrder.Clear();
         foreach (LevelTable level in GetStaticDictionary<LevelTable>("s_Levels").Values.OrderBy(row => row.Id))
@@ -418,23 +541,35 @@ public sealed class CareerSystemsTests
         archetypeOrder.Reverse();
         archetypeOrder.Add(Archetype.Common);
         SetStaticAutoProperty("IsPrepared", true);
-        SetStaticAutoProperty("OffsetPointThreshold", 10);
+        SetStaticAutoProperty("OffsetBadgeBronzeThreshold", 10);
+        SetStaticAutoProperty("OffsetBadgeSilverThreshold", 18);
+        SetStaticAutoProperty("OffsetBadgeGoldThreshold", 24);
+        SetStaticAutoProperty("OffsetBadgeDiamondThreshold", 28);
+        SetStaticAutoProperty("OffsetRateExpCoefficient", Fix64.Parse("0.1"));
     }
 
     private void RestoreCareerConfig()
     {
         ReplaceDictionary(GetStaticDictionary<LevelTable>("s_Levels"), m_PreviousLevels);
-        ReplaceDictionary(GetStaticDictionary<VariableExperimentTable>("s_Experiments"), m_PreviousExperiments);
         ReplaceDictionary(GetStaticDictionary<VariableExperimentRuleTable>("s_Rules"), m_PreviousRules);
         ReplaceDictionary(GetStaticDictionary<MetaGrowthTable>("s_GrowthRows"), m_PreviousGrowthRows);
+        ReplaceDictionary(GetStaticDictionary<int, GradeExperienceTable>("s_GradeExperience"), m_PreviousGradeExperience);
+        ReplaceDictionary(GetStaticDictionary<int, LevelTagTable>("s_LevelTagsById"), m_PreviousLevelTags);
         List<MetaGrowthTable> sorted = GetStaticList<MetaGrowthTable>("s_SortedGrowthRows");
         sorted.Clear();
         sorted.AddRange(m_PreviousSortedGrowthRows);
+        List<GradeExperienceTable> sortedGrades = GetStaticList<GradeExperienceTable>("s_SortedGradeExperience");
+        sortedGrades.Clear();
+        sortedGrades.AddRange(m_PreviousSortedGradeExperience);
         List<Archetype> archetypeOrder = GetStaticList<Archetype>("s_ArchetypeOrder");
         archetypeOrder.Clear();
         archetypeOrder.AddRange(m_PreviousArchetypeOrder);
         SetStaticAutoProperty("IsPrepared", m_PreviousPrepared);
-        SetStaticAutoProperty("OffsetPointThreshold", m_PreviousOffsetThreshold);
+        SetStaticAutoProperty("OffsetBadgeBronzeThreshold", m_PreviousOffsetBadgeThresholds[0]);
+        SetStaticAutoProperty("OffsetBadgeSilverThreshold", m_PreviousOffsetBadgeThresholds[1]);
+        SetStaticAutoProperty("OffsetBadgeGoldThreshold", m_PreviousOffsetBadgeThresholds[2]);
+        SetStaticAutoProperty("OffsetBadgeDiamondThreshold", m_PreviousOffsetBadgeThresholds[3]);
+        SetStaticAutoProperty("OffsetRateExpCoefficient", m_PreviousOffsetExperienceCoefficient);
     }
 
     private static List<TRow> LoadRows<TRow>(string relativePath)
@@ -468,6 +603,14 @@ public sealed class CareerSystemsTests
             ?? throw new InvalidOperationException($"CareerConfigRuntime.{fieldName} was not found."));
     }
 
+    private static Dictionary<TKey, TRow> GetStaticDictionary<TKey, TRow>(string fieldName)
+    {
+        return (Dictionary<TKey, TRow>)(typeof(CareerConfigRuntime).GetField(
+            fieldName,
+            BindingFlags.Static | BindingFlags.NonPublic)?.GetValue(null)
+            ?? throw new InvalidOperationException($"CareerConfigRuntime.{fieldName} was not found."));
+    }
+
     private static List<TRow> GetStaticList<TRow>(string fieldName)
     {
         return (List<TRow>)(typeof(CareerConfigRuntime).GetField(
@@ -485,6 +628,15 @@ public sealed class CareerSystemsTests
             target.Add(pair.Key, pair.Value);
     }
 
+    private static void ReplaceDictionary<TKey, TRow>(
+        Dictionary<TKey, TRow> target,
+        IReadOnlyDictionary<TKey, TRow> source)
+    {
+        target.Clear();
+        foreach (KeyValuePair<TKey, TRow> pair in source)
+            target.Add(pair.Key, pair.Value);
+    }
+
     private static void SetStaticAutoProperty(string propertyName, object value)
     {
         FieldInfo field = typeof(CareerConfigRuntime).GetField(
@@ -492,6 +644,13 @@ public sealed class CareerSystemsTests
             BindingFlags.Static | BindingFlags.NonPublic)
             ?? throw new InvalidOperationException($"CareerConfigRuntime.{propertyName} backing field was not found.");
         field.SetValue(null, value);
+    }
+
+    private static void SetInstanceProperty<TRow>(TRow row, string propertyName, object value)
+    {
+        PropertyInfo property = typeof(TRow).GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public)
+            ?? throw new InvalidOperationException($"{typeof(TRow).Name}.{propertyName} was not found.");
+        property.SetValue(row, value, null);
     }
 
     private static void ResetRunSettings()

@@ -61,4 +61,44 @@ public static class StoryTableQuery
 
         return match;
     }
+
+    public static StoryCommTable[] GetCommunicationRows(
+        IEnumerable<StoryCommTable> source,
+        string levelIdentifier)
+    {
+        if (source == null)
+            throw new ArgumentNullException(nameof(source));
+        if (string.IsNullOrWhiteSpace(levelIdentifier))
+            throw new ArgumentException("Story communication level identifier is empty.", nameof(levelIdentifier));
+
+        StoryCommTable primary = null;
+        StoryCommTable secondary = null;
+        foreach (StoryCommTable row in source)
+        {
+            if (!string.Equals(row.LevelIdentifier, levelIdentifier, StringComparison.Ordinal))
+                continue;
+            if (string.IsNullOrWhiteSpace(row.SpeakerKey) || string.IsNullOrWhiteSpace(row.TextKey))
+                throw new InvalidOperationException($"Story communication row {row.Id} has an empty localization key.");
+
+            switch (row.Slot)
+            {
+                case StoryCommSlot.Primary:
+                    if (primary != null)
+                        throw new InvalidOperationException($"Level '{levelIdentifier}' has multiple primary communications.");
+                    primary = row;
+                    break;
+                case StoryCommSlot.Secondary:
+                    if (secondary != null)
+                        throw new InvalidOperationException($"Level '{levelIdentifier}' has multiple secondary communications.");
+                    secondary = row;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(row.Slot), row.Slot, "Unsupported story communication slot.");
+            }
+        }
+
+        if (primary == null || secondary == null)
+            throw new InvalidOperationException($"Level '{levelIdentifier}' requires one primary and one secondary communication.");
+        return new[] { primary, secondary };
+    }
 }

@@ -6,7 +6,8 @@ using UnityEngine.UI;
 
 public enum UnlockPayloadType
 {
-    Industry
+    Industry,
+    LevelTag
 }
 
 public readonly struct UnlockPayload

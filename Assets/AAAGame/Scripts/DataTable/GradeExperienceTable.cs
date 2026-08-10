@@ -15,13 +15,13 @@ using UnityGameFramework.Runtime;
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName | Obfuz.ObfuzScope.MethodName)]
 #endif
 /// <summary>
-/// 目标定义表
+/// 等级经验对照表
 /// </summary>
-public class ObjectiveTable : DataRowBase
+public class GradeExperienceTable : DataRowBase
 {
 	private int m_Id = 0;
 	/// <summary>
-    /// 
+    /// 等级
     /// </summary>
     public override int Id
     {
@@ -29,18 +29,9 @@ public class ObjectiveTable : DataRowBase
     }
 
         /// <summary>
-        /// 代码内唯一标识
+        /// 升到该等级所需累计经验
         /// </summary>
-        public string Identifier
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 目标文本本地化键
-        /// </summary>
-        public string TextKey
+        public int RequiredTotalExperience
         {
             get;
             private set;
@@ -58,8 +49,7 @@ public class ObjectiveTable : DataRowBase
             index++;
             m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
             index++;
-            Identifier = columnStrings[index++];
-            TextKey = columnStrings[index++];
+            RequiredTotalExperience = DataTableExtension.ParseInt32(columnStrings[index++]);
 
             return true;
         }
@@ -71,8 +61,7 @@ public class ObjectiveTable : DataRowBase
                 using (BinaryReader binaryReader = new BinaryReader(memoryStream, Encoding.UTF8))
                 {
                     m_Id = binaryReader.Read7BitEncodedInt32();
-                    Identifier = binaryReader.ReadString();
-                    TextKey = binaryReader.ReadString();
+                    RequiredTotalExperience = binaryReader.Read7BitEncodedInt32();
                 }
             }
 

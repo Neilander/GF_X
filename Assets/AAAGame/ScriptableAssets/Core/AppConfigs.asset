@@ -17,10 +17,10 @@ MonoBehaviour:
   - CameraViewTable
   - CharacterDataDetail
   - LevelTable
+  - GradeExperienceTable
   - LevelTagTable
   - MetaGrowthTable
   - VariableExperimentRuleTable
-  - VariableExperimentTable
   - Build/BuildingTable
   - Core/EntityGroupTable
   - Core/LanguagesTable
@@ -39,6 +39,7 @@ MonoBehaviour:
   - Text/ObjectiveTable
   - Text/TipsTable
   - Story/StoryScriptTable
+  - Story/StoryCommTable
   - Story/StoryTriggerTable
   mConfigs:
   - GameConfig

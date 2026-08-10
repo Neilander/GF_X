@@ -15,13 +15,13 @@ using UnityGameFramework.Runtime;
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName | Obfuz.ObfuzScope.MethodName)]
 #endif
 /// <summary>
-/// 变量试验关卡配置表
+/// 关前通讯表
 /// </summary>
-public class VariableExperimentTable : DataRowBase
+public class StoryCommTable : DataRowBase
 {
 	private int m_Id = 0;
 	/// <summary>
-    /// 行号
+    /// 唯一编号
     /// </summary>
     public override int Id
     {
@@ -29,7 +29,7 @@ public class VariableExperimentTable : DataRowBase
     }
 
         /// <summary>
-        /// 原始生涯关卡
+        /// 关卡标识
         /// </summary>
         public string LevelIdentifier
         {
@@ -38,18 +38,45 @@ public class VariableExperimentTable : DataRowBase
         }
 
         /// <summary>
-        /// 可选关卡配置（空则使用原关卡）
+        /// 通讯位置
         /// </summary>
-        public string LevelConfigIdentifier
+        public StoryCommSlot Slot
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 规则配置标识
+        /// 说话人名称（多语言）
         /// </summary>
-        public string RuleIdentifier
+        public string SpeakerKey
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 立绘路径，可留空
+        /// </summary>
+        public string PortraitPath
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 通讯正文（多语言）
+        /// </summary>
+        public string TextKey
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 信号状态
+        /// </summary>
+        public StorySignalState SignalState
         {
             get;
             private set;
@@ -68,8 +95,11 @@ public class VariableExperimentTable : DataRowBase
             m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
             index++;
             LevelIdentifier = columnStrings[index++];
-            LevelConfigIdentifier = columnStrings[index++];
-            RuleIdentifier = columnStrings[index++];
+            Slot = DataTableExtension.ParseEnum<StoryCommSlot>(columnStrings[index++]);
+            SpeakerKey = columnStrings[index++];
+            PortraitPath = columnStrings[index++];
+            TextKey = columnStrings[index++];
+            SignalState = DataTableExtension.ParseEnum<StorySignalState>(columnStrings[index++]);
 
             return true;
         }
@@ -82,8 +112,11 @@ public class VariableExperimentTable : DataRowBase
                 {
                     m_Id = binaryReader.Read7BitEncodedInt32();
                     LevelIdentifier = binaryReader.ReadString();
-                    LevelConfigIdentifier = binaryReader.ReadString();
-                    RuleIdentifier = binaryReader.ReadString();
+                    Slot = binaryReader.ReadEnum<StoryCommSlot>();
+                    SpeakerKey = binaryReader.ReadString();
+                    PortraitPath = binaryReader.ReadString();
+                    TextKey = binaryReader.ReadString();
+                    SignalState = binaryReader.ReadEnum<StorySignalState>();
                 }
             }
 

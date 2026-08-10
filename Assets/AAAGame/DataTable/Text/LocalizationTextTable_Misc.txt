@@ -45,3 +45,6 @@
 	41	局外成长描述_InitialFrequency	MetaGrowth_Desc_InitialFrequency	MetaGrowth_Desc_InitialFrequency
 	42	变量试验名称_地形变体	VariableExperiment_Name_VariantTerrain	VariableExperiment_Name_VariantTerrain
 	43	变量试验描述_地形变体	VariableExperiment_Desc_VariantTerrain	VariableExperiment_Desc_VariantTerrain
+	44	目标栏_主要目标标题	GoalUI_PrimaryTitle	GoalUI.PrimaryTitle
+	45	目标栏_可选目标标题	GoalUI_OptionalTitle	GoalUI.OptionalTitle
+	46	目标栏_可选目标经验	GoalUI_OptionalExperience	GoalUI.OptionalExperience

@@ -49,9 +49,10 @@ public partial class LvEnterDialog : UIFormBase
     private void SpawnTags()
     {
         var table = GF.DataTable.GetDataTable<LevelTagTable>();
+        int playerGrade = GF.DataModel.GetOrCreate<CareerProgressDataModel>().CurrentGrade;
         foreach (var row in table.GetAllDataRows())
         {
-            if (!CareerConfigRuntime.IsTagAvailableForLevel(row, s_LevelIdentifier))
+            if (!CareerConfigRuntime.IsTagAvailableForLevel(row, s_LevelIdentifier, playerGrade))
                 continue;
 
             var item = SpawnItem<UIItemObject>(varLvTagItem,
@@ -120,6 +121,7 @@ public partial class LvEnterDialog : UIFormBase
         int negLevel = m_NegativeItems.Where(i => m_SelectedIds.Contains(i.TagId)).Sum(i => i.TagLevel);
         varNegativeSelectNumText.text =
             $"{LocalizationTextDataModel.GetText("LvTag_Negative")} {negLevel}";
+        RefreshMissionStatistics();
     }
 
     private void OnEnterClick()

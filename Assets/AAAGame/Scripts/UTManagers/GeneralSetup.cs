@@ -20,6 +20,7 @@ public partial class GeneralSetup : GameFrameworkComponent
     private bool m_PlayerReady;
     private bool m_SetupInProgress;
     private bool m_ShowEntitySubscribed;
+    private bool m_LevelLoadCompletedSubscribed;
     private LevelEntity m_LevelEntity;
     private Stopwatch m_SetupStopwatch;
 
@@ -54,6 +55,11 @@ public partial class GeneralSetup : GameFrameworkComponent
             GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
             m_ShowEntitySubscribed = true;
         }
+        if (!m_LevelLoadCompletedSubscribed)
+        {
+            LevelSelectionService.LevelLoadCompleted += OnLevelLoadCompleted;
+            m_LevelLoadCompletedSubscribed = true;
+        }
         LogSetupTiming("show-entity-subscribed");
 
         var lvData = LevelData.FromRow(lvRow);
@@ -76,7 +82,6 @@ public partial class GeneralSetup : GameFrameworkComponent
 
         BootstrapSideTipsManager();
         GF.UI.OpenUIForm(UIViews.SideTipsUIForm);
-        GF.UI.OpenUIForm(UIViews.GoalUIForm);
         LogSetupTiming("setup-ui-requested");
 
         PlayBgm();
@@ -101,6 +106,7 @@ public partial class GeneralSetup : GameFrameworkComponent
             GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
             m_ShowEntitySubscribed = false;
         }
+        UnsubscribeLevelLoadCompleted();
 
         if (m_LevelEntity != null)
         {
@@ -300,6 +306,24 @@ public partial class GeneralSetup : GameFrameworkComponent
         Log.Info("[GeneralSetup] Core runtime systems are ready.");
         LogSetupTiming("completed");
         OnGeneralSetupCompleted?.Invoke();
+    }
+
+    private void OnLevelLoadCompleted()
+    {
+        if (!m_InitialPhaseEntered)
+            throw new InvalidOperationException("Goal UI cannot open before the level runtime is ready.");
+
+        UnsubscribeLevelLoadCompleted();
+        GF.UI.OpenUIForm(UIViews.GoalUIForm);
+    }
+
+    private void UnsubscribeLevelLoadCompleted()
+    {
+        if (!m_LevelLoadCompletedSubscribed)
+            return;
+
+        LevelSelectionService.LevelLoadCompleted -= OnLevelLoadCompleted;
+        m_LevelLoadCompletedSubscribed = false;
     }
 
     private void LogSetupTiming(string stage)
