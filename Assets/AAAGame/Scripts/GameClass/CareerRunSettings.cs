@@ -119,27 +119,35 @@ public static class CareerRunSettings
         string keepsakeIdentifier)
     {
         CareerConfigRuntime.GetLevelRequired(levelIdentifier);
-        if (startingArchetype == Archetype.None || startingArchetype == Archetype.Common)
+        string runtimeLevelIdentifier = ResolveRuntimeLevelIdentifier(levelIdentifier, isVariableExperiment);
+        LevelTable runtimeLevel = CareerConfigRuntime.GetLevelRequired(runtimeLevelIdentifier);
+        bool hasStartingIndustry = runtimeLevel.DefaultArchetype != Archetype.None;
+        if (hasStartingIndustry && (startingArchetype == Archetype.None || startingArchetype == Archetype.Common))
             throw new InvalidOperationException($"Starting industry '{startingArchetype}' is not selectable.");
-        if (CareerConfigRuntime.IsTutorialLevel(levelIdentifier) && startingArchetype != Archetype.Coding)
-            throw new InvalidOperationException("Tutorial level requires the Coding starting industry.");
+        if (!hasStartingIndustry && startingArchetype != Archetype.None)
+        {
+            throw new InvalidOperationException(
+                $"Level '{runtimeLevelIdentifier}' has no starting industry, but '{startingArchetype}' was selected.");
+        }
         KeepsakeTable keepsake = KeepsakeConfigRuntime.GetRequired(keepsakeIdentifier);
 
         VariableExperimentRuleTable rule = null;
-        string runtimeLevelIdentifier = ResolveRuntimeLevelIdentifier(levelIdentifier, isVariableExperiment);
         if (isVariableExperiment)
         {
             if (!CareerConfigRuntime.TryGetExperiment(levelIdentifier, out LevelTable experiment))
                 throw new InvalidOperationException($"Level '{levelIdentifier}' has no variable experiment config.");
             rule = CareerConfigRuntime.GetRuleRequired(experiment.VariableRuleIdentifier);
-            if (rule.ForcedArchetype != Archetype.None && startingArchetype != rule.ForcedArchetype)
+            if (hasStartingIndustry
+                && rule.ForcedArchetype != Archetype.None
+                && startingArchetype != rule.ForcedArchetype)
             {
                 throw new InvalidOperationException(
                     $"Variable experiment '{levelIdentifier}' requires starting industry '{rule.ForcedArchetype}'.");
             }
         }
 
-        s_LastSelections[levelIdentifier] = startingArchetype;
+        if (startingArchetype != Archetype.None)
+            s_LastSelections[levelIdentifier] = startingArchetype;
         s_LastKeepsakeSelections[levelIdentifier] = keepsake.Identifier;
         CareerLevelIdentifier = levelIdentifier;
         RuntimeLevelIdentifier = runtimeLevelIdentifier;

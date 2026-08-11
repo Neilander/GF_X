@@ -14,8 +14,7 @@ namespace AAAGame.Tools.Editor
         {
             EnsureFolder(OutputFolder);
             Material material = LoadTerrainMaterial();
-            CreateOrReplaceRamp("Ramp45", 1f, material);
-            CreateOrReplaceRamp("Ramp2x1", 2f, material);
+            CreateOrReplaceRamp("Ramp", material);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log("[LDtk Slope] Generated placeholder ramp prefabs in " + OutputFolder);
@@ -33,7 +32,7 @@ namespace AAAGame.Tools.Editor
             return renderer.sharedMaterial;
         }
 
-        private static void CreateOrReplaceRamp(string name, float length, Material material)
+        private static void CreateOrReplaceRamp(string name, Material material)
         {
             string meshPath = OutputFolder + "/" + name + "Mesh.asset";
             string prefabPath = OutputFolder + "/" + name + ".prefab";
@@ -44,7 +43,7 @@ namespace AAAGame.Tools.Editor
                 AssetDatabase.CreateAsset(mesh, meshPath);
             }
 
-            WriteWedgeMesh(mesh, length);
+            WriteWedgeMesh(mesh);
             var root = new GameObject(name);
             try
             {
@@ -64,36 +63,73 @@ namespace AAAGame.Tools.Editor
             }
         }
 
-        private static void WriteWedgeMesh(Mesh mesh, float length)
+        private static void WriteWedgeMesh(Mesh mesh)
         {
             float halfWidth = 0.5f;
-            float halfLength = length * 0.5f;
+            float halfLength = 0.5f;
             mesh.Clear();
             mesh.vertices = new[]
             {
+                // Bottom
                 new Vector3(-halfWidth, 0f, -halfLength),
                 new Vector3(halfWidth, 0f, -halfLength),
+                new Vector3(halfWidth, 0f, halfLength),
+                new Vector3(-halfWidth, 0f, halfLength),
+
+                // Slope
+                new Vector3(-halfWidth, 0f, -halfLength),
+                new Vector3(-halfWidth, 1f, halfLength),
+                new Vector3(halfWidth, 1f, halfLength),
+                new Vector3(halfWidth, 0f, -halfLength),
+
+                // High end
                 new Vector3(-halfWidth, 0f, halfLength),
                 new Vector3(halfWidth, 0f, halfLength),
+                new Vector3(halfWidth, 1f, halfLength),
                 new Vector3(-halfWidth, 1f, halfLength),
-                new Vector3(halfWidth, 1f, halfLength)
+
+                // Left side
+                new Vector3(-halfWidth, 0f, -halfLength),
+                new Vector3(-halfWidth, 0f, halfLength),
+                new Vector3(-halfWidth, 1f, halfLength),
+
+                // Right side
+                new Vector3(halfWidth, 0f, -halfLength),
+                new Vector3(halfWidth, 1f, halfLength),
+                new Vector3(halfWidth, 0f, halfLength)
             };
             mesh.triangles = new[]
             {
-                0, 1, 3, 0, 3, 2,
-                0, 5, 1, 0, 4, 5,
-                2, 3, 5, 2, 5, 4,
-                0, 2, 4,
-                1, 5, 3
+                0, 1, 2, 0, 2, 3,
+                4, 6, 7, 4, 5, 6,
+                8, 9, 10, 8, 10, 11,
+                12, 13, 14,
+                15, 16, 17
             };
             mesh.uv = new[]
             {
                 new Vector2(0f, 0f),
                 new Vector2(1f, 0f),
-                new Vector2(0f, 1f),
                 new Vector2(1f, 1f),
                 new Vector2(0f, 1f),
-                new Vector2(1f, 1f)
+
+                new Vector2(0f, 0f),
+                new Vector2(0f, 1f),
+                new Vector2(1f, 1f),
+                new Vector2(1f, 0f),
+
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(1f, 1f),
+                new Vector2(0f, 1f),
+
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(1f, 1f),
+
+                new Vector2(0f, 0f),
+                new Vector2(1f, 1f),
+                new Vector2(1f, 0f)
             };
             mesh.RecalculateNormals();
             mesh.RecalculateTangents();

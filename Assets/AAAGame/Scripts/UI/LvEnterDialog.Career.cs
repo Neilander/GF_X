@@ -165,12 +165,16 @@ public partial class LvEnterDialog
 
         m_AvailableArchetypes.Clear();
         m_AvailableArchetypes.AddRange(progress.GetUnlockedArchetypes());
-        LevelTable sourceLevel = CareerConfigRuntime.GetLevelRequired(s_LevelIdentifier);
-        if (!isTutorial)
+        string runtimeLevelIdentifier = CareerRunSettings.ResolveRuntimeLevelIdentifier(
+            s_LevelIdentifier,
+            m_IsVariableExperiment);
+        LevelTable runtimeLevel = CareerConfigRuntime.GetLevelRequired(runtimeLevelIdentifier);
+        bool hasStartingIndustry = runtimeLevel.DefaultArchetype != Archetype.None;
+        if (hasStartingIndustry)
         {
             CareerRunSettings.EnsureDefaultSelectionAvailable(
                 m_AvailableArchetypes,
-                sourceLevel.DefaultArchetype);
+                runtimeLevel.DefaultArchetype);
         }
 
         VariableExperimentRuleTable rule = null;
@@ -179,7 +183,7 @@ public partial class LvEnterDialog
             if (!hasExperimentConfig)
                 throw new InvalidOperationException($"Level '{s_LevelIdentifier}' has no variable experiment config.");
             rule = CareerConfigRuntime.GetRuleRequired(experiment.VariableRuleIdentifier);
-            if (rule.ForcedArchetype != Archetype.None)
+            if (hasStartingIndustry && rule.ForcedArchetype != Archetype.None)
             {
                 m_AvailableArchetypes.Clear();
                 m_AvailableArchetypes.Add(rule.ForcedArchetype);
@@ -192,17 +196,16 @@ public partial class LvEnterDialog
             varInfoDesc.text = string.Empty;
         }
 
-        if (isTutorial)
+        if (!hasStartingIndustry)
         {
             m_AvailableArchetypes.Clear();
-            m_AvailableArchetypes.Add(Archetype.Coding);
-            m_SelectedArchetype = Archetype.Coding;
+            m_SelectedArchetype = Archetype.None;
         }
         else
         {
             Archetype defaultArchetype = rule != null && rule.ForcedArchetype != Archetype.None
                 ? rule.ForcedArchetype
-                : sourceLevel.DefaultArchetype;
+                : runtimeLevel.DefaultArchetype;
             m_SelectedArchetype = CareerRunSettings.ResolveRememberedSelection(
                 s_LevelIdentifier,
                 m_AvailableArchetypes,
@@ -210,12 +213,13 @@ public partial class LvEnterDialog
         }
         m_IndustryTitle.gameObject.SetActive(false);
         m_IndustryList.gameObject.SetActive(false);
-        m_IndustryTitle.text = $"\u521d\u59cb\u884c\u4e1a: {GetIndustryName(m_SelectedArchetype)}";
+        m_IndustryTitle.text = hasStartingIndustry
+            ? $"\u521d\u59cb\u884c\u4e1a: {GetIndustryName(m_SelectedArchetype)}"
+            : string.Empty;
         RebuildIndustryButtons();
 
         int requestVersion = ++m_IndustryVisibilityRequestVersion;
-        if (!isTutorial)
-            RefreshIndustryVisibilityAsync(requestVersion).Forget();
+        RefreshIndustryVisibilityAsync(requestVersion).Forget();
         RefreshMissionBriefingContent();
     }
 
@@ -228,6 +232,17 @@ public partial class LvEnterDialog
                 m_IsVariableExperiment);
             if (requestVersion != m_IndustryVisibilityRequestVersion || m_IndustryTitle == null || m_IndustryList == null)
                 return;
+
+            string runtimeLevelIdentifier = CareerRunSettings.ResolveRuntimeLevelIdentifier(
+                s_LevelIdentifier,
+                m_IsVariableExperiment);
+            LevelTable runtimeLevel = CareerConfigRuntime.GetLevelRequired(runtimeLevelIdentifier);
+            bool hasConfiguredStartingIndustry = runtimeLevel.DefaultArchetype != Archetype.None;
+            if (hasInitialBase != hasConfiguredStartingIndustry)
+            {
+                throw new InvalidOperationException(
+                    $"Level '{runtimeLevelIdentifier}' initial-base prefab state does not match DefaultArchetype '{runtimeLevel.DefaultArchetype}'.");
+            }
 
             m_IndustryTitle.gameObject.SetActive(hasInitialBase);
             m_IndustryList.gameObject.SetActive(hasInitialBase);

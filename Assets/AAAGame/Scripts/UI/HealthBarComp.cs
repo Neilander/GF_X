@@ -43,6 +43,7 @@ public class HealthBarComp : MonoBehaviour
     private bool _pendingDestroy;
     private bool _isFriendly;
     private bool _visibleByFog = true;
+    private bool _visibleByLevelLoad = true;
     private readonly List<Image> _ammoSegments = new List<Image>();
 
     /// <summary>
@@ -63,8 +64,8 @@ public class HealthBarComp : MonoBehaviour
             ownerCanvas = GetComponent<Canvas>();
 
         _visibleByFog = true;
-        if (ownerCanvas != null)
-            ownerCanvas.enabled = true;
+        _visibleByLevelLoad = !LevelSelectionService.IsLevelLoading;
+        ApplyCanvasVisibility();
 
         _isFriendly = ResolveIsFriendlyFromTarget(followTarget, _isFriendly);
         UpdateFillColor();
@@ -129,16 +130,13 @@ public class HealthBarComp : MonoBehaviour
             return;
         }
 
-        if (!_visibleByFog)
+        if (!IsPresentationVisible)
         {
-            if (ownerCanvas != null && ownerCanvas.enabled)
-                ownerCanvas.enabled = false;
-
+            ApplyCanvasVisibility();
             return;
         }
 
-        if (ownerCanvas != null && !ownerCanvas.enabled)
-            ownerCanvas.enabled = true;
+        ApplyCanvasVisibility();
 
         if (_followTarget == null) return;
         if (_positionTarget == null)
@@ -364,7 +362,8 @@ public class HealthBarComp : MonoBehaviour
         if (cached.ownerCanvas == null)
             throw new System.InvalidOperationException($"HealthBar owner canvas is missing. entityId={entityId}.");
 
-        return cached._visibleByFog == visible && cached.ownerCanvas.enabled == visible;
+        return cached._visibleByFog == visible
+               && cached.ownerCanvas.enabled == (visible && cached._visibleByLevelLoad);
     }
 
     public static void ResetFogVisibilityDiagnostics()
@@ -403,12 +402,33 @@ public class HealthBarComp : MonoBehaviour
         }
     }
 
+    internal static void SetLevelLoading(bool isLoading)
+    {
+        int updatedCount = 0;
+        foreach (HealthBarComp comp in ActiveBars.Values)
+        {
+            if (comp == null)
+                continue;
+
+            comp._visibleByLevelLoad = !isLoading;
+            comp.ApplyCanvasVisibility();
+            updatedCount++;
+        }
+
+        Log.Info(
+            "[HealthBarLoading] loading={0}, activeBars={1}, updatedBars={2}.",
+            isLoading,
+            ActiveBars.Count,
+            updatedCount);
+    }
+
     private void SetFogVisibleInternal(bool visible)
     {
         long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         try
         {
-            if (_visibleByFog == visible && ownerCanvas != null && ownerCanvas.enabled == visible)
+            bool shouldEnableCanvas = visible && _visibleByLevelLoad;
+            if (_visibleByFog == visible && ownerCanvas != null && ownerCanvas.enabled == shouldEnableCanvas)
             {
                 s_fogVisibleNoOps++;
                 return;
@@ -419,9 +439,12 @@ public class HealthBarComp : MonoBehaviour
             if (ownerCanvas == null)
                 ownerCanvas = GetComponent<Canvas>();
 
-            if (ownerCanvas != null && ownerCanvas.enabled != visible)
+            if (ownerCanvas == null)
+                throw new System.InvalidOperationException($"HealthBar owner canvas is missing. entityId={_entityId}.");
+
+            if (ownerCanvas.enabled != shouldEnableCanvas)
             {
-                ownerCanvas.enabled = visible;
+                ownerCanvas.enabled = shouldEnableCanvas;
                 s_fogVisibleCanvasWrites++;
             }
             else
@@ -433,6 +456,18 @@ public class HealthBarComp : MonoBehaviour
         {
             s_fogVisibleInternalTicks += System.Diagnostics.Stopwatch.GetTimestamp() - startTicks;
         }
+    }
+
+    private bool IsPresentationVisible => _visibleByFog && _visibleByLevelLoad;
+
+    private void ApplyCanvasVisibility()
+    {
+        if (ownerCanvas == null)
+            ownerCanvas = GetComponent<Canvas>();
+        if (ownerCanvas == null)
+            throw new System.InvalidOperationException($"HealthBar owner canvas is missing. entityId={_entityId}.");
+
+        ownerCanvas.enabled = IsPresentationVisible;
     }
 
     private void UpdateFillColor()

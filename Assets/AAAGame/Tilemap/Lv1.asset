@@ -1,5 +1,36 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!114 &-9139646465337606553
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aa6d10c4aac2a4440a141c607b715097, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  random:
+    state: 495877002
+  guid: 29639d72-5bdc-4bae-9eff-1caed3f66600
+  layerName: Plane_H1
+  icon: {fileID: 0}
+  isEnabled: 1
+  layerColor: {r: 1, g: 1, b: 1, a: 1}
+  previewTexture: {fileID: 0}
+  randomSeedOverride: 0
+  customRandomSeed: 0
+  customSeed: 0
+  defaultLayerHeight: 1.4
+  lockFromPaint: 0
+  foldoutState: 1
+  tileMapModifiers: []
+  showDebugGrid: 0
+  configuration: {fileID: 11400000}
+  serializedPaintPositions: []
+  serializedWorldPositions: []
 --- !u!114 &-9048560326444747118
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -832,10 +863,6 @@ MonoBehaviour:
   - {x: 20, y: 25}
   - {x: 21, y: 25}
   - {x: 22, y: 25}
-  - {x: 23, y: 25}
-  - {x: 24, y: 25}
-  - {x: 25, y: 25}
-  - {x: 26, y: 25}
   - {x: 27, y: 25}
   - {x: 28, y: 25}
   - {x: 29, y: 25}
@@ -1826,10 +1853,6 @@ MonoBehaviour:
   - {x: 20, y: 25}
   - {x: 21, y: 25}
   - {x: 22, y: 25}
-  - {x: 23, y: 25}
-  - {x: 24, y: 25}
-  - {x: 25, y: 25}
-  - {x: 26, y: 25}
   - {x: 27, y: 25}
   - {x: 28, y: 25}
   - {x: 29, y: 25}
@@ -2030,7 +2053,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 755229098
+    state: 3247436282
   isEnabled: 1
   layerName: Build Plane_H0
   guid: 1c43cd3c-7ad2-460b-8d60-d2bccaafb00a
@@ -2804,8 +2827,6 @@ MonoBehaviour:
   - {x: 27, y: 26}
   - {x: 28, y: 26}
   - {x: 29, y: 26}
-  - {x: 25, y: 25}
-  - {x: 26, y: 25}
   - {x: 27, y: 25}
   - {x: 28, y: 25}
   - {x: 29, y: 25}
@@ -2908,8 +2929,6 @@ MonoBehaviour:
   - {x: 20, y: 25}
   - {x: 21, y: 25}
   - {x: 22, y: 25}
-  - {x: 23, y: 25}
-  - {x: 24, y: 25}
   - {x: 20, y: 28}
   - {x: 19, y: 23}
   - {x: 19, y: 22}
@@ -16867,8 +16886,8 @@ MonoBehaviour:
     worldMapPosition: {x: 24, y: 26}
     yRotation: 0
     yRotationOffset: 0
-    configuration: 15
-    tileType: 5
+    configuration: 3
+    tileType: 4
     location:
       north: 0
       west: 0
@@ -16883,8 +16902,8 @@ MonoBehaviour:
     worldMapPosition: {x: 25, y: 26}
     yRotation: 0
     yRotationOffset: 0
-    configuration: 15
-    tileType: 5
+    configuration: 3
+    tileType: 4
     location:
       north: 0
       west: 0
@@ -16897,10 +16916,10 @@ MonoBehaviour:
   - isAssigned: 1
     tilePosition: {x: 26.5, y: 25.5}
     worldMapPosition: {x: 26, y: 26}
-    yRotation: 0
+    yRotation: 90
     yRotationOffset: 0
-    configuration: 15
-    tileType: 5
+    configuration: 11
+    tileType: 2
     location:
       north: 0
       west: 0
@@ -16943,44 +16962,12 @@ MonoBehaviour:
       southWest: 0
       southEast: 0
   - isAssigned: 1
-    tilePosition: {x: 24.5, y: 24.5}
-    worldMapPosition: {x: 24, y: 25}
-    yRotation: 0
-    yRotationOffset: 0
-    configuration: 3
-    tileType: 4
-    location:
-      north: 0
-      west: 0
-      east: 0
-      south: 0
-      northWest: 0
-      northEast: 0
-      southWest: 0
-      southEast: 0
-  - isAssigned: 1
-    tilePosition: {x: 25.5, y: 24.5}
-    worldMapPosition: {x: 25, y: 25}
-    yRotation: 0
-    yRotationOffset: 0
-    configuration: 3
-    tileType: 4
-    location:
-      north: 0
-      west: 0
-      east: 0
-      south: 0
-      northWest: 0
-      northEast: 0
-      southWest: 0
-      southEast: 0
-  - isAssigned: 1
     tilePosition: {x: 26.5, y: 24.5}
-    worldMapPosition: {x: 26, y: 25}
+    worldMapPosition: {x: 27, y: 25}
     yRotation: 90
     yRotationOffset: 0
-    configuration: 11
-    tileType: 2
+    configuration: 10
+    tileType: 4
     location:
       north: 0
       west: 0
@@ -18435,8 +18422,8 @@ MonoBehaviour:
     worldMapPosition: {x: 22, y: 26}
     yRotation: 0
     yRotationOffset: 0
-    configuration: 15
-    tileType: 5
+    configuration: 7
+    tileType: 2
     location:
       north: 0
       west: 0
@@ -18451,8 +18438,8 @@ MonoBehaviour:
     worldMapPosition: {x: 23, y: 26}
     yRotation: 0
     yRotationOffset: 0
-    configuration: 15
-    tileType: 5
+    configuration: 3
+    tileType: 4
     location:
       north: 0
       west: 0
@@ -18513,25 +18500,9 @@ MonoBehaviour:
   - isAssigned: 1
     tilePosition: {x: 22.5, y: 24.5}
     worldMapPosition: {x: 22, y: 25}
-    yRotation: 0
+    yRotation: 270
     yRotationOffset: 0
-    configuration: 7
-    tileType: 2
-    location:
-      north: 0
-      west: 0
-      east: 0
-      south: 0
-      northWest: 0
-      northEast: 0
-      southWest: 0
-      southEast: 0
-  - isAssigned: 1
-    tilePosition: {x: 23.5, y: 24.5}
-    worldMapPosition: {x: 23, y: 25}
-    yRotation: 0
-    yRotationOffset: 0
-    configuration: 3
+    configuration: 5
     tileType: 4
     location:
       north: 0
@@ -21887,6 +21858,84 @@ MonoBehaviour:
       southWest: 0
       southEast: 0
   allPositions: []
+--- !u!114 &-6988986657961392362
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aa6d10c4aac2a4440a141c607b715097, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  random:
+    state: 495877002
+  guid: 98a5c925-fcb0-429d-a561-fdc6120ca53e
+  layerName: Slope
+  icon: {fileID: 0}
+  isEnabled: 1
+  layerColor: {r: 1, g: 1, b: 1, a: 1}
+  previewTexture: {fileID: 0}
+  randomSeedOverride: 0
+  customRandomSeed: 0
+  customSeed: 0
+  defaultLayerHeight: 0
+  lockFromPaint: 0
+  foldoutState: 1
+  tileMapModifiers: []
+  showDebugGrid: 0
+  configuration: {fileID: 11400000}
+  serializedPaintPositions: []
+  serializedWorldPositions: []
+--- !u!114 &-6635235900513850249
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fdd06192dba66ce44b5caabc403e8577, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  random:
+    state: 0
+  isEnabled: 1
+  layerName: Build Slope
+  guid: 07bf1550-c551-495b-a4fe-16d1e035e0a0
+  assignedBlueprintLayerGuid: 98a5c925-fcb0-429d-a561-fdc6120ca53e
+  currentBlueprintLayer: {fileID: -6988986657961392362}
+  foldoutState: 0
+  useMultiLayers: 0
+  masks: []
+  hierarchyLayerID: 07bf1550-c551-495b-a4fe-16d1e035e0a0
+  lastHierarchyLayerID: 
+  slopeLayer: {fileID: -6988986657961392362}
+  platformLevels:
+  - height: 0
+    layer: {fileID: -9048560326444747118}
+  - height: 1
+    layer: {fileID: -9139646465337606553}
+  - height: 2
+    layer: {fileID: -3774275071782968286}
+  - height: 3
+    layer: {fileID: 6001165229908772463}
+  - height: 4
+    layer: {fileID: 1721964313545808421}
+  - height: 5
+    layer: {fileID: 5697028222669055135}
+  rampPrefab: {fileID: 1161294492486270937, guid: 4ad6e098939ab3b44aef4eb9b3f79d18, type: 3}
+  highEndExtension: 0.19999999
+  maximumSlopeAngle: 45
+  surfaceBaseHeight: 3.7
+  surfaceHeightStep: 1.4
+  layerOffset: {x: 0, y: 0, z: 0}
+  objectLayer:
+    serializedVersion: 2
+    m_Bits: 12
 --- !u!114 &-4965519060905173942
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -33774,6 +33823,268 @@ MonoBehaviour:
   - {x: 73, y: 0}
   - {x: 74, y: 0}
   - {x: 75, y: 0}
+--- !u!114 &-4146902954664746766
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bf349aeb98a48044286534ac213409e1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  random:
+    state: 3247436282
+  isEnabled: 1
+  layerName: Build Plane_H2
+  guid: 9f065762-8d8e-4a55-8778-4208252b45f0
+  assignedBlueprintLayerGuid: f0087766-c017-40cf-a02d-423e6b9b83f0
+  currentBlueprintLayer: {fileID: -3774275071782968286}
+  foldoutState: 1
+  useMultiLayers: 1
+  masks: []
+  hierarchyLayerID: 9f065762-8d8e-4a55-8778-4208252b45f0
+  lastHierarchyLayerID: 
+  configuration: {fileID: 11400000}
+  useDualGrid: 1
+  meshGenerationOverride: 1
+  mergeTiles: 1
+  shadowCastingMode: 1
+  objectLayer:
+    serializedVersion: 2
+    m_Bits: 12
+  colliderType: 1
+  tileColliderHeight: 0
+  tileColliderExtrusionHeight: 0
+  invertCollisionWalls: 0
+  tilePresetsTop:
+  - preset: {fileID: 11400000, guid: fd63f2b10e947b942a33201c2df69fdf, type: 2}
+    tileHeight: 0
+    weight: 1
+  tilePresetsMiddle:
+  - preset: {fileID: 11400000, guid: 397d1e1e1a8291349bdcf5f6c8c3a311, type: 2}
+    tileHeight: 0
+    weight: 1
+  tilePresetsBottom: []
+  scaleTileToCellSize: 1
+  layerYOffset: 0
+  scaleOffset: {x: 1, y: 1, z: 1}
+  addGrassRenderer: 0
+  grassPointCount: 0
+  grassShadowCastingMode: 0
+  grassMaterial_A: {fileID: 0}
+  grassMaterial_B: {fileID: 0}
+  grassBladeMesh_A: {fileID: 0}
+  grassBladeMesh_B: {fileID: 0}
+  grassMeshAWeight: 0
+  grassMeshBWeight: 0
+  tileLayers:
+  - name: 
+    heightOffset: 0
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 1
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 2
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 3
+    ignoreFillTiles: 0
+    layerOverrides: []
+  serializedWorldPositions: []
+  serializedTiles: []
+  allPositions: []
+--- !u!114 &-3850371353100239335
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bf349aeb98a48044286534ac213409e1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  random:
+    state: 3247436282
+  isEnabled: 1
+  layerName: Build Plane_H3
+  guid: ee14bb9d-f500-4917-9034-d6db29058c20
+  assignedBlueprintLayerGuid: 526dae9e-6272-451e-ae44-b2c837ef5488
+  currentBlueprintLayer: {fileID: 6001165229908772463}
+  foldoutState: 1
+  useMultiLayers: 1
+  masks: []
+  hierarchyLayerID: ee14bb9d-f500-4917-9034-d6db29058c20
+  lastHierarchyLayerID: 
+  configuration: {fileID: 11400000}
+  useDualGrid: 1
+  meshGenerationOverride: 1
+  mergeTiles: 1
+  shadowCastingMode: 1
+  objectLayer:
+    serializedVersion: 2
+    m_Bits: 12
+  colliderType: 1
+  tileColliderHeight: 0
+  tileColliderExtrusionHeight: 0
+  invertCollisionWalls: 0
+  tilePresetsTop:
+  - preset: {fileID: 11400000, guid: fd63f2b10e947b942a33201c2df69fdf, type: 2}
+    tileHeight: 0
+    weight: 1
+  tilePresetsMiddle:
+  - preset: {fileID: 11400000, guid: 397d1e1e1a8291349bdcf5f6c8c3a311, type: 2}
+    tileHeight: 0
+    weight: 1
+  tilePresetsBottom: []
+  scaleTileToCellSize: 1
+  layerYOffset: 0
+  scaleOffset: {x: 1, y: 1, z: 1}
+  addGrassRenderer: 0
+  grassPointCount: 0
+  grassShadowCastingMode: 0
+  grassMaterial_A: {fileID: 0}
+  grassMaterial_B: {fileID: 0}
+  grassBladeMesh_A: {fileID: 0}
+  grassBladeMesh_B: {fileID: 0}
+  grassMeshAWeight: 0
+  grassMeshBWeight: 0
+  tileLayers:
+  - name: 
+    heightOffset: 0
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 1
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 2
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 3
+    ignoreFillTiles: 0
+    layerOverrides: []
+  serializedWorldPositions: []
+  serializedTiles: []
+  allPositions: []
+--- !u!114 &-3774275071782968286
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aa6d10c4aac2a4440a141c607b715097, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  random:
+    state: 495877002
+  guid: f0087766-c017-40cf-a02d-423e6b9b83f0
+  layerName: Plane_H2
+  icon: {fileID: 0}
+  isEnabled: 1
+  layerColor: {r: 1, g: 1, b: 1, a: 1}
+  previewTexture: {fileID: 0}
+  randomSeedOverride: 0
+  customRandomSeed: 0
+  customSeed: 0
+  defaultLayerHeight: 2.8
+  lockFromPaint: 0
+  foldoutState: 1
+  tileMapModifiers: []
+  showDebugGrid: 0
+  configuration: {fileID: 11400000}
+  serializedPaintPositions: []
+  serializedWorldPositions: []
+--- !u!114 &-1291463047377995153
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bf349aeb98a48044286534ac213409e1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  random:
+    state: 3247436282
+  isEnabled: 1
+  layerName: Build Plane_H1
+  guid: 14abe938-2990-4151-85fa-44322b88f6c9
+  assignedBlueprintLayerGuid: 29639d72-5bdc-4bae-9eff-1caed3f66600
+  currentBlueprintLayer: {fileID: -9139646465337606553}
+  foldoutState: 1
+  useMultiLayers: 1
+  masks: []
+  hierarchyLayerID: 14abe938-2990-4151-85fa-44322b88f6c9
+  lastHierarchyLayerID: 
+  configuration: {fileID: 11400000}
+  useDualGrid: 1
+  meshGenerationOverride: 1
+  mergeTiles: 1
+  shadowCastingMode: 1
+  objectLayer:
+    serializedVersion: 2
+    m_Bits: 12
+  colliderType: 1
+  tileColliderHeight: 0
+  tileColliderExtrusionHeight: 0
+  invertCollisionWalls: 0
+  tilePresetsTop:
+  - preset: {fileID: 11400000, guid: fd63f2b10e947b942a33201c2df69fdf, type: 2}
+    tileHeight: 0
+    weight: 1
+  tilePresetsMiddle:
+  - preset: {fileID: 11400000, guid: 397d1e1e1a8291349bdcf5f6c8c3a311, type: 2}
+    tileHeight: 0
+    weight: 1
+  tilePresetsBottom: []
+  scaleTileToCellSize: 1
+  layerYOffset: 0
+  scaleOffset: {x: 1, y: 1, z: 1}
+  addGrassRenderer: 0
+  grassPointCount: 0
+  grassShadowCastingMode: 0
+  grassMaterial_A: {fileID: 0}
+  grassMaterial_B: {fileID: 0}
+  grassBladeMesh_A: {fileID: 0}
+  grassBladeMesh_B: {fileID: 0}
+  grassMeshAWeight: 0
+  grassMeshBWeight: 0
+  tileLayers:
+  - name: 
+    heightOffset: 0
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 1
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 2
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 3
+    ignoreFillTiles: 0
+    layerOverrides: []
+  serializedWorldPositions: []
+  serializedTiles: []
+  allPositions: []
 --- !u!114 &-1227434316112768527
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -33855,7 +34166,7 @@ MonoBehaviour:
   clusterCellSize: 5
   useGlobalRandomSeed: 0
   globalRandomSeed: 1
-  currentRandomSeed: 2295964332
+  currentRandomSeed: 32696527
   layerChanged: 1
   showGizmos: 0
   showPaintGrid: 1
@@ -33876,6 +34187,12 @@ MonoBehaviour:
     - {fileID: 5144891850618815891}
     - {fileID: 5369136733432475144}
     - {fileID: 8486860818850869271}
+    - {fileID: -9139646465337606553}
+    - {fileID: -3774275071782968286}
+    - {fileID: 6001165229908772463}
+    - {fileID: 1721964313545808421}
+    - {fileID: 5697028222669055135}
+    - {fileID: -6988986657961392362}
   buildLayerFolders:
   - folderName: New Folder
     guid: 29f7624c-cadc-4d7e-89d2-2c1c365b10fd
@@ -33883,6 +34200,12 @@ MonoBehaviour:
     buildLayers:
     - {fileID: -8097663193631360743}
     - {fileID: 8810723828833850738}
+    - {fileID: -1291463047377995153}
+    - {fileID: -4146902954664746766}
+    - {fileID: -3850371353100239335}
+    - {fileID: 5682075702448981388}
+    - {fileID: 6454951378148301936}
+    - {fileID: -6635235900513850249}
   selectedTileMapLayerGuid: 
   random:
     state: 0
@@ -33895,6 +34218,37 @@ MonoBehaviour:
   tileColliderHeight: 0
   tileColliderExtrusionHeight: 0
   invertCollisionWalls: 0
+--- !u!114 &1721964313545808421
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aa6d10c4aac2a4440a141c607b715097, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  random:
+    state: 495877002
+  guid: 88570617-6bfe-438a-bd66-4b7f1bf9b647
+  layerName: Plane_H4
+  icon: {fileID: 0}
+  isEnabled: 1
+  layerColor: {r: 1, g: 1, b: 1, a: 1}
+  previewTexture: {fileID: 0}
+  randomSeedOverride: 0
+  customRandomSeed: 0
+  customSeed: 0
+  defaultLayerHeight: 5.6
+  lockFromPaint: 0
+  foldoutState: 1
+  tileMapModifiers: []
+  showDebugGrid: 0
+  configuration: {fileID: 11400000}
+  serializedPaintPositions: []
+  serializedWorldPositions: []
 --- !u!114 &4647114350144498822
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -35002,6 +35356,222 @@ MonoBehaviour:
   - {x: 39, y: 25}
   - {x: 38, y: 24}
   - {x: 39, y: 24}
+--- !u!114 &5682075702448981388
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bf349aeb98a48044286534ac213409e1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  random:
+    state: 3247436282
+  isEnabled: 1
+  layerName: Build Plane_H4
+  guid: 3b659b01-1f51-46ca-b684-2b25ae61bea7
+  assignedBlueprintLayerGuid: 88570617-6bfe-438a-bd66-4b7f1bf9b647
+  currentBlueprintLayer: {fileID: 1721964313545808421}
+  foldoutState: 1
+  useMultiLayers: 1
+  masks: []
+  hierarchyLayerID: 3b659b01-1f51-46ca-b684-2b25ae61bea7
+  lastHierarchyLayerID: 
+  configuration: {fileID: 11400000}
+  useDualGrid: 1
+  meshGenerationOverride: 1
+  mergeTiles: 1
+  shadowCastingMode: 1
+  objectLayer:
+    serializedVersion: 2
+    m_Bits: 12
+  colliderType: 1
+  tileColliderHeight: 0
+  tileColliderExtrusionHeight: 0
+  invertCollisionWalls: 0
+  tilePresetsTop:
+  - preset: {fileID: 11400000, guid: fd63f2b10e947b942a33201c2df69fdf, type: 2}
+    tileHeight: 0
+    weight: 1
+  tilePresetsMiddle:
+  - preset: {fileID: 11400000, guid: 397d1e1e1a8291349bdcf5f6c8c3a311, type: 2}
+    tileHeight: 0
+    weight: 1
+  tilePresetsBottom: []
+  scaleTileToCellSize: 1
+  layerYOffset: 0
+  scaleOffset: {x: 1, y: 1, z: 1}
+  addGrassRenderer: 0
+  grassPointCount: 0
+  grassShadowCastingMode: 0
+  grassMaterial_A: {fileID: 0}
+  grassMaterial_B: {fileID: 0}
+  grassBladeMesh_A: {fileID: 0}
+  grassBladeMesh_B: {fileID: 0}
+  grassMeshAWeight: 0
+  grassMeshBWeight: 0
+  tileLayers:
+  - name: 
+    heightOffset: 0
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 1
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 2
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 3
+    ignoreFillTiles: 0
+    layerOverrides: []
+  serializedWorldPositions: []
+  serializedTiles: []
+  allPositions: []
+--- !u!114 &5697028222669055135
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aa6d10c4aac2a4440a141c607b715097, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  random:
+    state: 495877002
+  guid: 5b59fff9-ba31-418f-8ca1-f66d1df3f6e4
+  layerName: Plane_H5
+  icon: {fileID: 0}
+  isEnabled: 1
+  layerColor: {r: 1, g: 1, b: 1, a: 1}
+  previewTexture: {fileID: 0}
+  randomSeedOverride: 0
+  customRandomSeed: 0
+  customSeed: 0
+  defaultLayerHeight: 7
+  lockFromPaint: 0
+  foldoutState: 1
+  tileMapModifiers: []
+  showDebugGrid: 0
+  configuration: {fileID: 11400000}
+  serializedPaintPositions: []
+  serializedWorldPositions: []
+--- !u!114 &6001165229908772463
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aa6d10c4aac2a4440a141c607b715097, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  random:
+    state: 495877002
+  guid: 526dae9e-6272-451e-ae44-b2c837ef5488
+  layerName: Plane_H3
+  icon: {fileID: 0}
+  isEnabled: 1
+  layerColor: {r: 1, g: 1, b: 1, a: 1}
+  previewTexture: {fileID: 0}
+  randomSeedOverride: 0
+  customRandomSeed: 0
+  customSeed: 0
+  defaultLayerHeight: 4.2
+  lockFromPaint: 0
+  foldoutState: 1
+  tileMapModifiers: []
+  showDebugGrid: 0
+  configuration: {fileID: 11400000}
+  serializedPaintPositions: []
+  serializedWorldPositions: []
+--- !u!114 &6454951378148301936
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bf349aeb98a48044286534ac213409e1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  random:
+    state: 3247436282
+  isEnabled: 1
+  layerName: Build Plane_H5
+  guid: 47922fce-3f50-4203-9bfc-d1bcc8e78db7
+  assignedBlueprintLayerGuid: 5b59fff9-ba31-418f-8ca1-f66d1df3f6e4
+  currentBlueprintLayer: {fileID: 5697028222669055135}
+  foldoutState: 1
+  useMultiLayers: 1
+  masks: []
+  hierarchyLayerID: 47922fce-3f50-4203-9bfc-d1bcc8e78db7
+  lastHierarchyLayerID: 
+  configuration: {fileID: 11400000}
+  useDualGrid: 1
+  meshGenerationOverride: 1
+  mergeTiles: 1
+  shadowCastingMode: 1
+  objectLayer:
+    serializedVersion: 2
+    m_Bits: 12
+  colliderType: 1
+  tileColliderHeight: 0
+  tileColliderExtrusionHeight: 0
+  invertCollisionWalls: 0
+  tilePresetsTop:
+  - preset: {fileID: 11400000, guid: fd63f2b10e947b942a33201c2df69fdf, type: 2}
+    tileHeight: 0
+    weight: 1
+  tilePresetsMiddle:
+  - preset: {fileID: 11400000, guid: 397d1e1e1a8291349bdcf5f6c8c3a311, type: 2}
+    tileHeight: 0
+    weight: 1
+  tilePresetsBottom: []
+  scaleTileToCellSize: 1
+  layerYOffset: 0
+  scaleOffset: {x: 1, y: 1, z: 1}
+  addGrassRenderer: 0
+  grassPointCount: 0
+  grassShadowCastingMode: 0
+  grassMaterial_A: {fileID: 0}
+  grassMaterial_B: {fileID: 0}
+  grassBladeMesh_A: {fileID: 0}
+  grassBladeMesh_B: {fileID: 0}
+  grassMeshAWeight: 0
+  grassMeshBWeight: 0
+  tileLayers:
+  - name: 
+    heightOffset: 0
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 1
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 2
+    ignoreFillTiles: 0
+    layerOverrides: []
+  - name: 
+    heightOffset: 3
+    ignoreFillTiles: 0
+    layerOverrides: []
+  serializedWorldPositions: []
+  serializedTiles: []
+  allPositions: []
 --- !u!114 &8486860818850869271
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -35286,7 +35856,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 755229098
+    state: 3247436282
   isEnabled: 1
   layerName: Build Water
   guid: f8f48311-d058-47b7-bffa-f8ef335c4e6c

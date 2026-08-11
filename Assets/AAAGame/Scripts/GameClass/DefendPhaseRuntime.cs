@@ -204,7 +204,7 @@ public static class DefendPhaseRuntime
             : 1UL;
     }
 
-    public static void StartTutorialTriggeredFirstDefense()
+    public static void StartTutorialTriggeredFirstDefense(string strongholdId)
     {
         if (!s_TutorialFirstDefenseWaiting || s_TutorialFirstDefenseActive)
             throw new InvalidOperationException("Tutorial first defense is not waiting for its trigger.");
@@ -212,10 +212,10 @@ public static class DefendPhaseRuntime
             throw new InvalidOperationException("Tutorial first defense can only start during the Defend phase.");
         if (EntityRegistry.Player == null || !EntityRegistry.Player.Alive)
             throw new InvalidOperationException("Tutorial first defense requires a live player.");
-        if (!LogicStrongholdMap.TryResolveStrongholdId(EntityRegistry.Player.PositionFixed, out string strongholdId))
-            throw new InvalidOperationException("Tutorial first defense trigger is outside every stronghold.");
+        if (string.IsNullOrWhiteSpace(strongholdId))
+            throw new ArgumentException("Tutorial first defense requires a stronghold ID.", nameof(strongholdId));
         if (LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId) != EntitySideHelper.PlayerFactionId)
-            throw new InvalidOperationException($"Tutorial first defense trigger stronghold '{strongholdId}' is not player owned.");
+            throw new InvalidOperationException($"Tutorial first defense stronghold '{strongholdId}' is not player owned.");
 
         Fix64 assignedSpeed = DistanceUnitConverter.ConvertFromWorld(s_MinSpeedWorld, s_DistanceConversionRate);
         if (assignedSpeed <= Fix64.Zero)
@@ -240,8 +240,7 @@ public static class DefendPhaseRuntime
                 unitLevel: point.UnitLevel,
                 spawned: entityId =>
                 {
-                    if (!s_AliveEnemyLogicEntityIds.Add(entityId.Value))
-                        throw new InvalidOperationException($"Tutorial first defense produced duplicate entity id {entityId.Value}.");
+                    TrackSpawnedDefendEnemy(entityId, "Tutorial first defense");
                     spawnedCount++;
                 },
                 configureParams: entityParams => entityParams.DefendAssignedSpeed = assignedSpeed);
@@ -313,10 +312,19 @@ public static class DefendPhaseRuntime
         }
 
         LogDefendSpawnEvent(evt, entityId);
+        TrackSpawnedDefendEnemy(entityId, "Scheduled defense");
+    }
+
+    private static void TrackSpawnedDefendEnemy(LogicEntityId entityId, string source)
+    {
+        if (!entityId.IsValid)
+            throw new ArgumentException("Spawned defend enemy id is invalid.", nameof(entityId));
+        if (string.IsNullOrWhiteSpace(source))
+            throw new ArgumentException("Spawned defend enemy source is empty.", nameof(source));
         if (!s_AliveEnemyLogicEntityIds.Add(entityId.Value))
-            throw new InvalidOperationException($"DefendPhaseRuntime produced duplicate enemy logic entity id {entityId.Value}.");
+            throw new InvalidOperationException($"{source} produced duplicate enemy logic entity id {entityId.Value}.");
         if (!s_AcceleratedEnemyLogicEntityIds.Add(entityId.Value))
-            throw new InvalidOperationException($"DefendPhaseRuntime produced duplicate accelerated enemy logic entity id {entityId.Value}.");
+            throw new InvalidOperationException($"{source} produced duplicate accelerated enemy logic entity id {entityId.Value}.");
     }
 
     public static bool TryGetNextDefendPreviewSpawnEntries(List<DefendPreviewSpawnEntry> results)

@@ -152,6 +152,54 @@ public class MoveExecutor : MonoBehaviour
         CommitPreparedInternal();
     }
 
+    public void SyncPresentationPosition(Vector3 logicPosition, float deltaTime)
+    {
+        if (_controller == null)
+            throw new System.InvalidOperationException("MoveExecutor.SyncPresentationPosition failed: CharacterController is missing.");
+        if (!_controller.enabled)
+            throw new System.InvalidOperationException("MoveExecutor.SyncPresentationPosition failed: CharacterController is disabled.");
+        if (deltaTime <= 0f || float.IsNaN(deltaTime) || float.IsInfinity(deltaTime))
+            throw new System.ArgumentOutOfRangeException(nameof(deltaTime), deltaTime, "Presentation deltaTime must be finite and positive.");
+        if (!IsFinite(logicPosition))
+            throw new System.ArgumentOutOfRangeException(nameof(logicPosition), logicPosition, "Logic presentation position must be finite.");
+
+        Vector3 currentPosition = transform.position;
+        Vector3 horizontalDisplacement = new Vector3(
+            logicPosition.x - currentPosition.x,
+            0f,
+            logicPosition.z - currentPosition.z);
+        UpdateGravity(deltaTime);
+        Vector3 verticalDisplacement = Vector3.up * _gravityVelocity * deltaTime;
+        Vector3 finalDisplacement = horizontalDisplacement + verticalDisplacement;
+
+        DebugRequestedHorizontalDisplacement = horizontalDisplacement;
+        DebugConstrainedHorizontalDisplacement = horizontalDisplacement;
+        DebugVerticalDisplacement = verticalDisplacement;
+        DebugFinalDisplacement = finalDisplacement;
+        DebugNavigationConstraintEnabled = false;
+        DebugLastControllerHitName = string.Empty;
+        DebugLastControllerHitNormal = Vector3.zero;
+        DebugLastControllerHitMoveDirection = Vector3.zero;
+
+        Vector3 beforeMovePosition = transform.position;
+        long controllerMoveStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        _controller.Move(finalDisplacement);
+        UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
+            UnityGameFramework.Runtime.MainThreadPerfScope.MoveExecutorControllerMove,
+            System.Diagnostics.Stopwatch.GetTimestamp() - controllerMoveStartTicks);
+
+        Vector3 actualDisplacement = transform.position - beforeMovePosition;
+        DebugActualHorizontalDisplacement = new Vector3(actualDisplacement.x, 0f, actualDisplacement.z);
+        _isMovingThisFrame = horizontalDisplacement.sqrMagnitude > 0.0001f;
+    }
+
+    private static bool IsFinite(Vector3 value)
+    {
+        return !float.IsNaN(value.x) && !float.IsInfinity(value.x)
+            && !float.IsNaN(value.y) && !float.IsInfinity(value.y)
+            && !float.IsNaN(value.z) && !float.IsInfinity(value.z);
+    }
+
     private void PrepareInternal(float deltaTime, Vector3 frameStartPosition, bool allowMovement)
     {
         if (deltaTime <= 0f || float.IsNaN(deltaTime) || float.IsInfinity(deltaTime))

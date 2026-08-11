@@ -48,6 +48,7 @@ public sealed class CareerSystemsTests
     {
         Dictionary<string, LevelTable> levels = GetStaticDictionary<LevelTable>("s_Levels");
         CollectionAssert.AreEqual(new[] { Archetype.Coding }, levels["Lv_1"].UnlockArchetype);
+        Assert.AreEqual(Archetype.None, levels["Lv_1"].DefaultArchetype);
         CollectionAssert.AreEqual(new[] { Archetype.Sightseeing }, levels["Lv_2"].UnlockArchetype);
         CollectionAssert.AreEqual(new[] { Archetype.Delivery }, levels["Lv_3"].UnlockArchetype);
         CollectionAssert.AreEqual(new[] { Archetype.Medical, Archetype.Sports }, levels["Lv_8"].UnlockArchetype);
@@ -431,7 +432,7 @@ public sealed class CareerSystemsTests
     [Test]
     public void VariableExperiment_UsesRuleAndOptionalLevelOverride()
     {
-        string runtimeLevel = CareerRunSettings.BeginRun("Lv_1", true, Archetype.Coding);
+        string runtimeLevel = CareerRunSettings.BeginRun("Lv_1", true, Archetype.None);
         Assert.AreEqual("Lv_1", runtimeLevel, "An empty optional level config must use the original level.");
         Assert.IsTrue(CareerRunSettings.IsVariableExperiment);
         Assert.AreEqual(Fix64.One, CareerRuntimeEffects.GetVariableUnitMaxHealth());
@@ -472,13 +473,13 @@ public sealed class CareerSystemsTests
         Assert.AreEqual(Fix64.Zero, CareerRuntimeEffects.GetEffectValue(MetaGrowthEffectType.HeroAttackPercent));
 
         CareerRunSettings.CancelRun();
-        CareerRunSettings.BeginRun("Lv_1", false, Archetype.Coding);
+        CareerRunSettings.BeginRun("Lv_1", false, Archetype.None);
         Assert.IsFalse(CareerRuntimeEffects.ShouldApplyGrowthForActiveRun());
         Assert.AreEqual(Fix64.Zero, CareerRuntimeEffects.GetEffectValue(MetaGrowthEffectType.HeroAttackPercent));
     }
 
     [Test]
-    public void TutorialLevel_UsesCodingAndRejectsAllTagsThroughLogic()
+    public void TutorialLevel_HasNoStartingIndustryAndRejectsAllTagsThroughLogic()
     {
         Assert.IsTrue(CareerConfigRuntime.IsTutorialLevel("Lv_1"));
         Assert.IsFalse(CareerConfigRuntime.IsTutorialLevel("Lv_2"));
@@ -495,12 +496,36 @@ public sealed class CareerSystemsTests
         Assert.IsFalse(CareerConfigRuntime.IsTagAvailableForLevel(scopedTag, "Lv_3"));
         Assert.IsFalse(CareerConfigRuntime.IsTagAvailableForLevel(scopedTag, "Lv_4"));
 
-        Assert.AreEqual("Lv_1", CareerRunSettings.BeginRun("Lv_1", false, Archetype.Coding));
-        Assert.AreEqual(Archetype.Coding, CareerRunSettings.StartingArchetype);
+        Assert.AreEqual("Lv_1", CareerRunSettings.BeginRun("Lv_1", false, Archetype.None));
+        Assert.AreEqual(Archetype.None, CareerRunSettings.StartingArchetype);
         Assert.Throws<InvalidOperationException>(() => LevelTagRuntime.SetActiveTagIds(new[] { generatedTags[0].Id }));
         Assert.Throws<InvalidOperationException>(() => LevelTagRuntime.SetActiveTagIdentifiers(new[] { generatedTags[0].Identifier }));
         Assert.Throws<InvalidOperationException>(() =>
+            CareerRunSettings.BeginRun("Lv_1", false, Archetype.Coding));
+        Assert.Throws<InvalidOperationException>(() =>
             CareerRunSettings.BeginRun("Lv_1", false, Archetype.Sightseeing));
+    }
+
+    [Test]
+    public void StartingIndustry_DoesNotGrantBuildArchetypeWithoutBaseMilestone()
+    {
+        CareerRunSettings.BeginRun("Lv_2", false, Archetype.Coding);
+        Assert.AreEqual(Archetype.Coding, CareerRunSettings.StartingArchetype);
+
+        MethodInfo collectMethod = typeof(BuildManager).GetMethod(
+            "CollectPlayerUnlockedBaseArches",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(collectMethod);
+
+        var withoutBase = (HashSet<Archetype>)collectMethod.Invoke(
+            null,
+            new object[] { new Func<Archetype, bool>(_ => false) });
+        CollectionAssert.AreEquivalent(new[] { Archetype.Common }, withoutBase);
+
+        var withCodingBase = (HashSet<Archetype>)collectMethod.Invoke(
+            null,
+            new object[] { new Func<Archetype, bool>(archetype => archetype == Archetype.Coding) });
+        CollectionAssert.AreEquivalent(new[] { Archetype.Common, Archetype.Coding }, withCodingBase);
     }
 
     [Test]

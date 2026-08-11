@@ -403,7 +403,7 @@ public class MAEntity : CompCreature, IEntityContext
     {
         base.OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
         SyncRenderInterpolationFromLogicState();
-        SyncPresenterPoseFromLogicState();
+        SyncPresenterPoseFromLogicState(realElapseSeconds);
 		FlushLogicPresentationEvents();
         SyncActionPresentation();
         if (_logicState != null && _logicState.IsSpawnCommitted)
@@ -485,14 +485,22 @@ public class MAEntity : CompCreature, IEntityContext
         transform.rotation = Quaternion.LookRotation(new Vector3((float)forward.x, 0f, (float)forward.y));
     }
 
-    private void SyncPresenterPoseFromLogicState()
+    private void SyncPresenterPoseFromLogicState(float realElapseSeconds)
     {
         if (_logicState == null || !_logicState.IsSpawnCommitted)
             return;
 
         FixVector2 position = _logicState.Position;
         Vector3 currentPosition = transform.position;
-        transform.position = new Vector3((float)position.x, currentPosition.y, (float)position.y);
+        Vector3 logicPosition = new Vector3((float)position.x, currentPosition.y, (float)position.y);
+        if (cController != null)
+        {
+            _moveExecutor.SyncPresentationPosition(logicPosition, realElapseSeconds);
+        }
+        else
+        {
+            transform.position = logicPosition;
+        }
 
         FixVector2 forward = _logicState.Forward;
         if (FixVector2.SqrMagnitude(forward) > Fix64.Zero)

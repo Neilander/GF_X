@@ -320,8 +320,8 @@ public static class CareerConfigRuntime
 
     private static void ValidateLevelRow(LevelTable row)
     {
-        if (!IsTutorialLevel(row.Identifier) && (row.DefaultArchetype == Archetype.None || row.DefaultArchetype == Archetype.Common))
-            throw new InvalidOperationException($"Career level '{row.Identifier}' requires a selectable default starting industry.");
+        if (row.DefaultArchetype == Archetype.Common)
+            throw new InvalidOperationException($"Career level '{row.Identifier}' cannot use Common as its default starting industry.");
         Archetype[] unlocks = row.UnlockArchetype ?? Array.Empty<Archetype>();
         var seen = new HashSet<Archetype>();
         for (int i = 0; i < unlocks.Length; i++)

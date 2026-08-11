@@ -8,16 +8,17 @@ namespace AAAGame.Tilemap
 {
     public sealed class LdtkSlopeLayout
     {
-        public readonly List<LdtkSlopeSegment> segments = new List<LdtkSlopeSegment>();
+        public readonly List<LdtkSlopeRamp> ramps = new List<LdtkSlopeRamp>();
         public readonly Dictionary<Vector2, int> requiredPlatformHeights = new Dictionary<Vector2, int>();
     }
 
-    public sealed class LdtkSlopeSegment
+    public sealed class LdtkSlopeRamp
     {
         public Vector2 direction;
         public Vector2 anchor;
         public int lowHeight;
         public int run;
+        public int rise;
     }
 
     public static class LdtkSlopeLayoutResolver
@@ -34,14 +35,16 @@ namespace AAAGame.Tilemap
         {
             public Vector2 direction;
             public int lowHeight;
+            public int run;
             public int rise;
-            public int segmentRun;
             public List<Vector2> lowEdgeCells;
         }
 
         public static bool TryResolve(
             HashSet<Vector2> slopeCells,
             Dictionary<Vector2, int> topPlatformHeights,
+            float highEndExtension,
+            float maximumSlopeAngle,
             out LdtkSlopeLayout layout,
             out string error)
         {
@@ -56,6 +59,18 @@ namespace AAAGame.Tilemap
             if (topPlatformHeights == null)
             {
                 error = "Platform heights are missing.";
+                return false;
+            }
+
+            if (highEndExtension < 0f)
+            {
+                error = "Slope high-end extension cannot be negative: " + highEndExtension + ".";
+                return false;
+            }
+
+            if (maximumSlopeAngle <= 0f || maximumSlopeAngle > 90f)
+            {
+                error = "Maximum walkable slope angle must be in (0, 90]: " + maximumSlopeAngle + ".";
                 return false;
             }
 
@@ -81,11 +96,22 @@ namespace AAAGame.Tilemap
                 if (candidates.Count != 1)
                 {
                     error = "Slope direction/height cannot be inferred uniquely for cells: " + FormatCells(component) +
-                            ". Each component must be a straight rectangular run with run:rise equal to 1:1 or 2:1, and both ends must touch uniform platform heights.";
+                            ". Each component must be a straight rectangular run, and both ends must touch uniform platform heights.";
                     return false;
                 }
 
-                if (!AppendSegments(component, candidates[0], topPlatformHeights, result, out error))
+                ComponentResolution resolution = candidates[0];
+                float slopeAngle = Mathf.Atan2(resolution.rise, resolution.run + highEndExtension) * Mathf.Rad2Deg;
+                if (slopeAngle > maximumSlopeAngle + 0.001f)
+                {
+                    error = "Slope cells " + FormatCells(component) + " produce a " +
+                            slopeAngle.ToString("0.##") + " degree ramp (run " + resolution.run +
+                            ", rise " + resolution.rise + "), exceeding the unit walkable limit of " +
+                            maximumSlopeAngle.ToString("0.##") + " degrees.";
+                    return false;
+                }
+
+                if (!AppendRamp(component, resolution, topPlatformHeights, result, out error))
                 {
                     return false;
                 }
@@ -171,7 +197,7 @@ namespace AAAGame.Tilemap
             }
 
             int rise = highHeight.Value - lowHeight.Value;
-            if (rise <= 0 || (run != rise && run != rise * 2))
+            if (rise <= 0)
             {
                 return false;
             }
@@ -180,14 +206,14 @@ namespace AAAGame.Tilemap
             {
                 direction = direction,
                 lowHeight = lowHeight.Value,
+                run = run,
                 rise = rise,
-                segmentRun = run / rise,
                 lowEdgeCells = lowEdgeCells
             };
             return true;
         }
 
-        private static bool AppendSegments(
+        private static bool AppendRamp(
             HashSet<Vector2> component,
             ComponentResolution resolution,
             Dictionary<Vector2, int> topPlatformHeights,
@@ -197,37 +223,34 @@ namespace AAAGame.Tilemap
             error = null;
             foreach (Vector2 lowEdgeCell in resolution.lowEdgeCells)
             {
-                for (int step = 0; step < resolution.rise; step++)
+                for (int offset = 0; offset < resolution.run; offset++)
                 {
-                    Vector2 firstCell = lowEdgeCell + resolution.direction * (step * resolution.segmentRun);
-                    int requiredHeight = resolution.lowHeight + step;
-                    for (int offset = 0; offset < resolution.segmentRun; offset++)
+                    Vector2 cell = lowEdgeCell + resolution.direction * offset;
+                    int requiredHeight = resolution.lowHeight + offset * resolution.rise / resolution.run;
+                    if (!component.Contains(cell))
                     {
-                        Vector2 cell = firstCell + resolution.direction * offset;
-                        if (!component.Contains(cell))
-                        {
-                            error = "Slope component is not rectangular at " + FormatCell(cell) + ".";
-                            return false;
-                        }
-
-                        if (topPlatformHeights.TryGetValue(cell, out int explicitHeight) && explicitHeight > requiredHeight)
-                        {
-                            error = "Slope cell " + FormatCell(cell) + " requires support at Plane_H" + requiredHeight +
-                                    ", but its top platform is Plane_H" + explicitHeight + ".";
-                            return false;
-                        }
-
-                        layout.requiredPlatformHeights[cell] = requiredHeight;
+                        error = "Slope component is not rectangular at " + FormatCell(cell) + ".";
+                        return false;
                     }
 
-                    layout.segments.Add(new LdtkSlopeSegment
+                    if (topPlatformHeights.TryGetValue(cell, out int explicitHeight) && explicitHeight > requiredHeight)
                     {
-                        direction = resolution.direction,
-                        anchor = firstCell + resolution.direction * ((resolution.segmentRun - 1) * 0.5f),
-                        lowHeight = requiredHeight,
-                        run = resolution.segmentRun
-                    });
+                        error = "Slope cell " + FormatCell(cell) + " requires support at Plane_H" + requiredHeight +
+                                ", but its top platform is Plane_H" + explicitHeight + ".";
+                        return false;
+                    }
+
+                    layout.requiredPlatformHeights[cell] = requiredHeight;
                 }
+
+                layout.ramps.Add(new LdtkSlopeRamp
+                {
+                    direction = resolution.direction,
+                    anchor = lowEdgeCell + resolution.direction * ((resolution.run - 1) * 0.5f),
+                    lowHeight = resolution.lowHeight,
+                    run = resolution.run,
+                    rise = resolution.rise
+                });
             }
 
             return true;
@@ -283,8 +306,9 @@ namespace AAAGame.Tilemap
 
         public BlueprintLayer slopeLayer;
         public List<PlatformLevel> platformLevels = new List<PlatformLevel>();
-        public GameObject ramp45Prefab;
-        public GameObject ramp2x1Prefab;
+        public GameObject rampPrefab;
+        public float highEndExtension;
+        public float maximumSlopeAngle = 45f;
         public float surfaceBaseHeight;
         public float surfaceHeightStep = 1f;
         public Vector3 layerOffset = Vector3.zero;
@@ -325,9 +349,19 @@ namespace AAAGame.Tilemap
                 throw new InvalidOperationException("Slope build layer has no slope blueprint: " + layerName);
             }
 
-            if (ramp45Prefab == null || ramp2x1Prefab == null)
+            if (rampPrefab == null)
             {
-                throw new InvalidOperationException("Slope build layer requires both ramp prefabs: " + layerName);
+                throw new InvalidOperationException("Slope build layer requires a ramp prefab: " + layerName);
+            }
+
+            if (highEndExtension < 0f)
+            {
+                throw new InvalidOperationException("Slope build layer has a negative high-end extension: " + highEndExtension + ".");
+            }
+
+            if (maximumSlopeAngle <= 0f || maximumSlopeAngle > 90f)
+            {
+                throw new InvalidOperationException("Slope build layer has an invalid maximum slope angle: " + maximumSlopeAngle + ".");
             }
 
             slopeLayerObject = GetLayerObject(owner);
@@ -355,7 +389,13 @@ namespace AAAGame.Tilemap
             }
 
             Dictionary<Vector2, int> topHeights = LdtkSlopeLayoutResolver.GetTopPlatformHeights(levels);
-            if (!LdtkSlopeLayoutResolver.TryResolve(slopeLayer.allPositions.ToHashSet(), topHeights, out LdtkSlopeLayout layout, out string error))
+            if (!LdtkSlopeLayoutResolver.TryResolve(
+                    slopeLayer.allPositions.ToHashSet(),
+                    topHeights,
+                    highEndExtension,
+                    maximumSlopeAngle,
+                    out LdtkSlopeLayout layout,
+                    out string error))
             {
                 throw new InvalidOperationException(error);
             }
@@ -366,17 +406,17 @@ namespace AAAGame.Tilemap
                 throw new InvalidOperationException("Slope build layer has an invalid object layer: " + targetLayer + ".");
             }
 
-            var spawnedSegments = new HashSet<(Vector2 anchor, Vector2 direction, int lowHeight, int run)>();
-            foreach (LdtkSlopeSegment segment in layout.segments)
+            var spawnedRamps = new HashSet<(Vector2 anchor, Vector2 direction, int lowHeight, int run, int rise)>();
+            foreach (LdtkSlopeRamp ramp in layout.ramps)
             {
-                Vector2 lateral = new Vector2(-segment.direction.y, segment.direction.x);
+                Vector2 lateral = new Vector2(-ramp.direction.y, ramp.direction.x);
                 for (int side = -1; side <= 1; side += 2)
                 {
-                    Vector2 dualGridAnchor = segment.anchor + lateral * (side * 0.5f);
-                    var key = (dualGridAnchor, segment.direction, segment.lowHeight, segment.run);
-                    if (spawnedSegments.Add(key))
+                    Vector2 dualGridAnchor = ramp.anchor + lateral * (side * 0.5f);
+                    var key = (dualGridAnchor, ramp.direction, ramp.lowHeight, ramp.run, ramp.rise);
+                    if (spawnedRamps.Add(key))
                     {
-                        SpawnSegment(segment, dualGridAnchor, configuration.cellSize, targetLayer, slopeLayerObject.transform);
+                        SpawnRamp(ramp, dualGridAnchor, configuration.cellSize, targetLayer, slopeLayerObject.transform);
                     }
                 }
             }
@@ -398,21 +438,23 @@ namespace AAAGame.Tilemap
             }
         }
 
-        private void SpawnSegment(LdtkSlopeSegment segment, Vector2 dualGridAnchor, float cellSize, int targetLayer, Transform parent)
+        private void SpawnRamp(LdtkSlopeRamp ramp, Vector2 dualGridAnchor, float cellSize, int targetLayer, Transform parent)
         {
-            GameObject prefab = segment.run == 1 ? ramp45Prefab : ramp2x1Prefab;
-            float y = surfaceBaseHeight + segment.lowHeight * surfaceHeightStep + layerOffset.y;
-            Vector2 alignedAnchor = dualGridAnchor - segment.direction * 0.5f;
-            GameObject instance = UnityEngine.Object.Instantiate(prefab, parent);
-            instance.name = prefab.name + "_" + alignedAnchor.x.ToString("0.#") + "_" + alignedAnchor.y.ToString("0.#");
+            float y = surfaceBaseHeight + ramp.lowHeight * surfaceHeightStep + layerOffset.y;
+            Vector2 alignedAnchor = dualGridAnchor - ramp.direction * 0.5f + ramp.direction * (highEndExtension * 0.5f);
+            GameObject instance = UnityEngine.Object.Instantiate(rampPrefab, parent);
+            instance.name = rampPrefab.name + "_" + alignedAnchor.x.ToString("0.#") + "_" + alignedAnchor.y.ToString("0.#");
             instance.transform.localPosition = new Vector3(
                 alignedAnchor.x * cellSize + layerOffset.x,
                 y,
                 alignedAnchor.y * cellSize + layerOffset.z);
             instance.transform.localRotation = Quaternion.LookRotation(
-                new Vector3(segment.direction.x, 0f, segment.direction.y),
+                new Vector3(ramp.direction.x, 0f, ramp.direction.y),
                 Vector3.up);
-            instance.transform.localScale = Vector3.one * cellSize;
+            instance.transform.localScale = new Vector3(
+                cellSize,
+                ramp.rise * cellSize,
+                (ramp.run + highEndExtension) * cellSize);
             SetLayerRecursively(instance.transform, targetLayer);
         }
 

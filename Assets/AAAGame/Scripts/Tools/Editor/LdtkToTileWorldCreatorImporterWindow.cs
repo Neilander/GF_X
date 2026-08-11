@@ -13,6 +13,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace AAAGame.Tools.Editor
 {
@@ -41,9 +42,10 @@ namespace AAAGame.Tools.Editor
         private const int EnemyStrongholdFaction = 1;
         private const int MinimumPlatformHeight = 0;
         private const int MaximumPlatformHeight = 5;
-        private const string Ramp45PrefabPath = "Assets/AAAGame/Models/SlopePlaceholder/Ramp45.prefab";
-        private const string Ramp2x1PrefabPath = "Assets/AAAGame/Models/SlopePlaceholder/Ramp2x1.prefab";
+        private const string RampPrefabPath = "Assets/AAAGame/Models/SlopePlaceholder/Ramp.prefab";
+        private const string LastLdtkPathPreference = "AAAGame.LdtkToTileWorldCreator.LastLdtkPath";
 
+        [SerializeField]
         private UnityEngine.Object ldtkLevelAsset;
         private Configuration templateConfiguration;
         private Configuration configuration;
@@ -61,6 +63,7 @@ namespace AAAGame.Tools.Editor
         private Vector2 scrollPosition;
         private string lastReport;
         private GameObject temporaryManagerObject;
+        private GUIStyle reportTextAreaStyle;
 
         [MenuItem("Tools/LDtk To TileWorldCreator")]
         private static void Open()
@@ -71,10 +74,23 @@ namespace AAAGame.Tools.Editor
 
         private void OnEnable()
         {
+            string savedLdtkPath = EditorPrefs.GetString(LastLdtkPathPreference, string.Empty);
+            if (!string.IsNullOrEmpty(savedLdtkPath))
+            {
+                ldtkLevelAsset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(savedLdtkPath);
+                if (ldtkLevelAsset == null)
+                {
+                    Debug.LogWarning("[LDtk Import] Saved LDtk path is no longer available: " + savedLdtkPath);
+                    EditorPrefs.DeleteKey(LastLdtkPathPreference);
+                }
+            }
+
             if (ldtkLevelAsset == null)
             {
                 ldtkLevelAsset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(DefaultLdtkPath);
             }
+
+            SaveSelectedLdtkPath();
 
             if (templateConfiguration == null)
             {
@@ -92,73 +108,86 @@ namespace AAAGame.Tools.Editor
         private void OnGUI()
         {
             scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
-
-            EditorGUILayout.LabelField("Source", EditorStyles.boldLabel);
-            EditorGUI.BeginChangeCheck();
-            ldtkLevelAsset = EditorGUILayout.ObjectField("LDtk level json", ldtkLevelAsset, typeof(UnityEngine.Object), false);
-            if (EditorGUI.EndChangeCheck() && autoResolveForSelectedLdtk)
+            float scrollContentWidth = Mathf.Max(1f, position.width - 24f);
+            using (new EditorGUILayout.VerticalScope(GUILayout.Width(scrollContentWidth)))
             {
-                AutoResolveReferences(createMissingAssets: false, createSceneManager: false, out _);
-            }
-
-            configuration = (Configuration)EditorGUILayout.ObjectField("TWC configuration", configuration, typeof(Configuration), false);
-            templateConfiguration = (Configuration)EditorGUILayout.ObjectField("TWC template", templateConfiguration, typeof(Configuration), false);
-            manager = (TileWorldCreatorManager)EditorGUILayout.ObjectField("TWC manager", manager, typeof(TileWorldCreatorManager), true);
-
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                if (GUILayout.Button("Auto Setup Selected LDtk"))
+                EditorGUILayout.LabelField("Source", EditorStyles.boldLabel);
+                EditorGUI.BeginChangeCheck();
+                ldtkLevelAsset = EditorGUILayout.ObjectField("LDtk level json", ldtkLevelAsset, typeof(UnityEngine.Object), false);
+                if (EditorGUI.EndChangeCheck())
                 {
-                    AutoResolveReferences(autoCreateMissingAssets, autoCreateSceneManager, out string report);
-                    lastReport = report;
+                    SaveSelectedLdtkPath();
+                    if (autoResolveForSelectedLdtk)
+                    {
+                        AutoResolveReferences(createMissingAssets: false, createSceneManager: false, out _);
+                    }
                 }
 
-                if (GUILayout.Button("Create/Select TWC Asset"))
+                configuration = (Configuration)EditorGUILayout.ObjectField("TWC configuration", configuration, typeof(Configuration), false);
+                templateConfiguration = (Configuration)EditorGUILayout.ObjectField("TWC template", templateConfiguration, typeof(Configuration), false);
+                manager = (TileWorldCreatorManager)EditorGUILayout.ObjectField("TWC manager", manager, typeof(TileWorldCreatorManager), true);
+
+                if (position.width >= 680f)
                 {
-                    CreateOrSelectTargetFromTemplate();
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        DrawSourceActionButtons(GUILayout.ExpandWidth(true));
+                    }
+                }
+                else
+                {
+                    using (new EditorGUILayout.VerticalScope())
+                    {
+                        DrawSourceActionButtons(GUILayout.Width(Mathf.Min(240f, scrollContentWidth)));
+                    }
                 }
 
-                if (GUILayout.Button("Find/Create Manager"))
+                EditorGUILayout.Space(6f);
+                EditorGUILayout.LabelField("Import Rules", EditorStyles.boldLabel);
+                autoResolveForSelectedLdtk = EditorGUILayout.Toggle("Auto select by LDtk", autoResolveForSelectedLdtk);
+                autoCreateMissingAssets = EditorGUILayout.Toggle("Auto create assets", autoCreateMissingAssets);
+                autoCreateSceneManager = EditorGUILayout.Toggle("Auto create manager", autoCreateSceneManager);
+                syncBuildSettingsFromTemplate = EditorGUILayout.Toggle("Sync build settings", syncBuildSettingsFromTemplate);
+                EditorGUILayout.HelpBox("Plane_H0..Plane_H5 define platform heights; overlapping cells use the highest layer for slope inference. Each straight rectangular Slope component becomes one continuous ramp at the angle inferred from its run and platform height difference. Ramps steeper than the project's walkable NavMesh slope are rejected. Slope support cells are added to the inferred platform layers automatically.", MessageType.Info);
+                resizeConfiguration = EditorGUILayout.Toggle("Resize configuration", resizeConfiguration);
+                clearBlueprintModifiers = EditorGUILayout.Toggle("Clear blueprint modifiers", clearBlueprintModifiers);
+
+                EditorGUILayout.Space(6f);
+                EditorGUILayout.LabelField("Entity Preset Points", EditorStyles.boldLabel);
+                importEntityPresetPoints = EditorGUILayout.Toggle("Import entity points", importEntityPresetPoints);
+                using (new EditorGUI.DisabledScope(!importEntityPresetPoints))
                 {
-                    manager = FindOrCreateManager(createSceneManager: true, out string managerReport, out _);
-                    lastReport = managerReport;
-                }
-            }
+                    levelPrefabTarget = (GameObject)EditorGUILayout.ObjectField("Level prefab target", levelPrefabTarget, typeof(GameObject), false);
+                    levelPrefabTemplate = (GameObject)EditorGUILayout.ObjectField("Level prefab template", levelPrefabTemplate, typeof(GameObject), false);
+                    entityPresetPointPrefab = (GameObject)EditorGUILayout.ObjectField("Point prefab", entityPresetPointPrefab, typeof(GameObject), false);
 
-            EditorGUILayout.Space(6f);
-            EditorGUILayout.LabelField("Import Rules", EditorStyles.boldLabel);
-            autoResolveForSelectedLdtk = EditorGUILayout.Toggle("Auto select by LDtk", autoResolveForSelectedLdtk);
-            autoCreateMissingAssets = EditorGUILayout.Toggle("Auto create assets", autoCreateMissingAssets);
-            autoCreateSceneManager = EditorGUILayout.Toggle("Auto create manager", autoCreateSceneManager);
-            syncBuildSettingsFromTemplate = EditorGUILayout.Toggle("Sync build settings", syncBuildSettingsFromTemplate);
-            EditorGUILayout.HelpBox("Plane_H0..Plane_H5 define platform heights; overlapping cells use the highest layer for slope inference. Each straight Slope component must have run:rise 1:1 or 2:1. Slope support cells are added to the inferred platform layers automatically.", MessageType.Info);
-            resizeConfiguration = EditorGUILayout.Toggle("Resize configuration", resizeConfiguration);
-            clearBlueprintModifiers = EditorGUILayout.Toggle("Clear blueprint modifiers", clearBlueprintModifiers);
-
-            EditorGUILayout.Space(6f);
-            EditorGUILayout.LabelField("Entity Preset Points", EditorStyles.boldLabel);
-            importEntityPresetPoints = EditorGUILayout.Toggle("Import entity points", importEntityPresetPoints);
-            using (new EditorGUI.DisabledScope(!importEntityPresetPoints))
-            {
-                levelPrefabTarget = (GameObject)EditorGUILayout.ObjectField("Level prefab target", levelPrefabTarget, typeof(GameObject), false);
-                levelPrefabTemplate = (GameObject)EditorGUILayout.ObjectField("Level prefab template", levelPrefabTemplate, typeof(GameObject), false);
-                entityPresetPointPrefab = (GameObject)EditorGUILayout.ObjectField("Point prefab", entityPresetPointPrefab, typeof(GameObject), false);
-
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    if (GUILayout.Button("Create/Select Level Prefab From Level_2 Template"))
+                    if (GUILayout.Button(
+                            "Create/Select Level Prefab From Level_2 Template",
+                            GUILayout.Width(Mathf.Min(360f, scrollContentWidth))))
                     {
                         CreateOrSelectLevelPrefabFromTemplate();
                     }
+                }
 
-                    if (GUILayout.Button("Generate Level Prefab Only"))
-                    {
-                        ImportEntityPresetPointsOnly();
-                    }
+                if (!string.IsNullOrEmpty(lastReport))
+                {
+                    EditorGUILayout.Space(8f);
+                    reportTextAreaStyle = reportTextAreaStyle ?? new GUIStyle(EditorStyles.textArea) { wordWrap = true };
+                    EditorGUILayout.TextArea(lastReport, reportTextAreaStyle, GUILayout.Height(120f));
                 }
             }
 
-            EditorGUILayout.Space(8f);
+            EditorGUILayout.EndScrollView();
+
+            EditorGUILayout.Space(4f);
+            using (new EditorGUI.DisabledScope(!importEntityPresetPoints))
+            {
+                if (GUILayout.Button("Generate Level Prefab Only", GUILayout.Height(26f)))
+                {
+                    ImportEntityPresetPointsOnly();
+                }
+            }
+
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("Import Blueprint Only", GUILayout.Height(30f)))
@@ -171,14 +200,43 @@ namespace AAAGame.Tools.Editor
                     Import(generateBuildLayers: true);
                 }
             }
+        }
 
-            if (!string.IsNullOrEmpty(lastReport))
+        private void DrawSourceActionButtons(GUILayoutOption width)
+        {
+            if (GUILayout.Button("Auto Setup Selected LDtk", width))
             {
-                EditorGUILayout.Space(8f);
-                EditorGUILayout.TextArea(lastReport, GUILayout.MinHeight(120f));
+                AutoResolveReferences(autoCreateMissingAssets, autoCreateSceneManager, out string report);
+                lastReport = report;
             }
 
-            EditorGUILayout.EndScrollView();
+            if (GUILayout.Button("Create/Select TWC Asset", width))
+            {
+                CreateOrSelectTargetFromTemplate();
+            }
+
+            if (GUILayout.Button("Find/Create Manager", width))
+            {
+                manager = FindOrCreateManager(createSceneManager: true, out string managerReport, out _);
+                lastReport = managerReport;
+            }
+        }
+
+        private void SaveSelectedLdtkPath()
+        {
+            if (ldtkLevelAsset == null)
+            {
+                EditorPrefs.DeleteKey(LastLdtkPathPreference);
+                return;
+            }
+
+            string path = AssetDatabase.GetAssetPath(ldtkLevelAsset);
+            if (string.IsNullOrEmpty(path))
+            {
+                throw new InvalidOperationException("Selected LDtk asset has no project path.");
+            }
+
+            EditorPrefs.SetString(LastLdtkPathPreference, path);
         }
 
         private void Import(bool generateBuildLayers)
@@ -1002,7 +1060,13 @@ namespace AAAGame.Tools.Editor
             var levels = platforms.Select(platform =>
                 new KeyValuePair<int, IEnumerable<Vector2>>(platform.height, platform.cells));
             Dictionary<Vector2, int> topHeights = LdtkSlopeLayoutResolver.GetTopPlatformHeights(levels);
-            if (!LdtkSlopeLayoutResolver.TryResolve(slopeCells, topHeights, out LdtkSlopeLayout layout, out string error))
+            if (!LdtkSlopeLayoutResolver.TryResolve(
+                    slopeCells,
+                    topHeights,
+                    0f,
+                    90f,
+                    out LdtkSlopeLayout layout,
+                    out string error))
             {
                 EditorUtility.DisplayDialog("LDtk import failed", error, "OK");
                 return false;
@@ -1387,19 +1451,35 @@ namespace AAAGame.Tools.Editor
                 changes.Add("Created Build Slope");
             }
 
-            GameObject ramp45 = AssetDatabase.LoadAssetAtPath<GameObject>(Ramp45PrefabPath);
-            GameObject ramp2x1 = AssetDatabase.LoadAssetAtPath<GameObject>(Ramp2x1PrefabPath);
-            if (ramp45 == null || ramp2x1 == null)
+            GameObject ramp = AssetDatabase.LoadAssetAtPath<GameObject>(RampPrefabPath);
+            if (ramp == null)
             {
                 EditorUtility.DisplayDialog(
                     "LDtk import failed",
-                    "Slope placeholder prefabs are missing. Run Tools/TileWorldCreator/Generate Slope Placeholder Prefabs first.",
+                    "Slope placeholder prefab is missing. Run Tools/TileWorldCreator/Generate Slope Placeholder Prefabs first.",
                     "OK");
                 return false;
             }
 
-            if (!TryCalculatePlatformSurfaceBase(buildTemplate, planeTemplate, plan.cellSize, out float surfaceBaseHeight))
+            if (!TryCalculatePlatformSurfaceBase(buildTemplate, planeTemplate, plan.cellSize, out float surfaceBaseHeight) ||
+                !TryCalculateSlopeHighEndExtension(buildTemplate, plan.cellSize, out float highEndExtension) ||
+                !TryCalculateMaximumWalkableSlopeAngle(out float maximumSlopeAngle))
             {
+                return false;
+            }
+
+            Dictionary<Vector2, int> importedTopHeights = LdtkSlopeLayoutResolver.GetTopPlatformHeights(
+                plan.platforms.Select(platform =>
+                    new KeyValuePair<int, IEnumerable<Vector2>>(platform.height, platform.cells)));
+            if (!LdtkSlopeLayoutResolver.TryResolve(
+                    plan.slopeCells,
+                    importedTopHeights,
+                    highEndExtension,
+                    maximumSlopeAngle,
+                    out _,
+                    out string slopeError))
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", slopeError, "OK");
                 return false;
             }
 
@@ -1410,14 +1490,18 @@ namespace AAAGame.Tools.Editor
                 .OrderBy(pair => pair.Key)
                 .Select(pair => new LdtkSlopeBuildLayer.PlatformLevel { height = pair.Key, layer = pair.Value })
                 .ToList();
-            slopeBuildLayer.ramp45Prefab = ramp45;
-            slopeBuildLayer.ramp2x1Prefab = ramp2x1;
+            slopeBuildLayer.rampPrefab = ramp;
+            slopeBuildLayer.highEndExtension = highEndExtension;
+            slopeBuildLayer.maximumSlopeAngle = maximumSlopeAngle;
             slopeBuildLayer.surfaceBaseHeight = surfaceBaseHeight;
             slopeBuildLayer.surfaceHeightStep = plan.cellSize;
             slopeBuildLayer.objectLayer = buildTemplate.meshGenerationOverride
                 ? buildTemplate.objectLayer
                 : configuration.objectLayer;
             slopeBuildLayer.isEnabled = true;
+            Debug.Log(
+                "[LDtk Slope] Configured continuous ramp: highEndExtension=" + highEndExtension.ToString("0.###") +
+                " cells, maximumSlopeAngle=" + maximumSlopeAngle.ToString("0.##") + " degrees.");
 
             EditorUtility.SetDirty(slopeLayer);
             EditorUtility.SetDirty(slopeBuildLayer);
@@ -1489,6 +1573,7 @@ namespace AAAGame.Tools.Editor
                     blueprint.ClearLayer(false);
                     EditorUtility.SetDirty(blueprint);
                 }
+
             }
         }
 
@@ -1521,6 +1606,85 @@ namespace AAAGame.Tools.Editor
             float meshScale = buildLayer.scaleTileToCellSize ? cellSize : 1f;
             surfaceBaseHeight = blueprintLayer.defaultLayerHeight + buildLayer.layerYOffset + topLayerOffset +
                                 bounds.max.y * buildLayer.scaleOffset.y * meshScale;
+            return true;
+        }
+
+        private static bool TryCalculateSlopeHighEndExtension(
+            TilesBuildLayer buildLayer,
+            float cellSize,
+            out float highEndExtension)
+        {
+            highEndExtension = 0f;
+            if (cellSize <= 0f)
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", "TWC cell size must be positive to measure the slope connection.", "OK");
+                return false;
+            }
+
+            TilesBuildLayer.TilePresetSelection selection = buildLayer.tilePresetsTop?.FirstOrDefault(item => item?.preset != null);
+            if (selection?.preset == null)
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", "Build Plane_H0 has no top tile preset for slope connection measurement.", "OK");
+                return false;
+            }
+
+            GameObject fillPrefab = selection.preset.GetTile(TilePreset.TileType.DUALGRD_fill, out _);
+            GameObject edgePrefab = selection.preset.GetTile(TilePreset.TileType.DUALGRD_edge, out _);
+            if (fillPrefab == null || edgePrefab == null ||
+                !TryGetPrefabLocalBounds(fillPrefab, out Bounds fillBounds) ||
+                !TryGetPrefabLocalBounds(edgePrefab, out Bounds edgeBounds))
+            {
+                EditorUtility.DisplayDialog(
+                    "LDtk import failed",
+                    "Build Plane_H0 dual-grid fill/edge prefabs are missing or have no measurable mesh.",
+                    "OK");
+                return false;
+            }
+
+            float scaleX = Mathf.Abs(buildLayer.scaleOffset.x) * (buildLayer.scaleTileToCellSize ? 1f : 1f / cellSize);
+            float scaleZ = Mathf.Abs(buildLayer.scaleOffset.z) * (buildLayer.scaleTileToCellSize ? 1f : 1f / cellSize);
+            highEndExtension = Mathf.Max(
+                (fillBounds.max.x - edgeBounds.max.x) * scaleX,
+                (edgeBounds.min.x - fillBounds.min.x) * scaleX,
+                (fillBounds.max.z - edgeBounds.max.z) * scaleZ,
+                (edgeBounds.min.z - fillBounds.min.z) * scaleZ);
+            if (highEndExtension <= 0.0001f)
+            {
+                EditorUtility.DisplayDialog(
+                    "LDtk import failed",
+                    "Build Plane_H0 dual-grid edge prefab has no measurable inward offset relative to its fill prefab.",
+                    "OK");
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool TryCalculateMaximumWalkableSlopeAngle(out float maximumSlopeAngle)
+        {
+            maximumSlopeAngle = float.PositiveInfinity;
+            int settingsCount = NavMesh.GetSettingsCount();
+            if (settingsCount == 0)
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", "The project has no NavMesh agent settings.", "OK");
+                return false;
+            }
+
+            for (int i = 0; i < settingsCount; i++)
+            {
+                NavMeshBuildSettings settings = NavMesh.GetSettingsByIndex(i);
+                if (settings.agentSlope <= 0f)
+                {
+                    EditorUtility.DisplayDialog(
+                        "LDtk import failed",
+                        "NavMesh agent type " + settings.agentTypeID + " has an invalid walkable slope: " + settings.agentSlope + ".",
+                        "OK");
+                    return false;
+                }
+
+                maximumSlopeAngle = Mathf.Min(maximumSlopeAngle, settings.agentSlope);
+            }
+
             return true;
         }
 
@@ -2727,12 +2891,28 @@ namespace AAAGame.Tools.Editor
                 isGameEndConditionBuilding = isGameEndConditionBuilding,
                 useCustomCoinReserves = useCustomCoinReserves,
                 customCoinReserves = customCoinReserves,
-                localPosition = new Vector3(
-                    entity.px[0] / (float)gridSize * cellSize,
-                    0f,
-                    (pixelHeight - entity.px[1]) / (float)gridSize * cellSize)
+                localPosition = ConvertLdtkPivotToLocalPosition(
+                    entity.px[0],
+                    entity.px[1],
+                    gridSize,
+                    pixelHeight,
+                    cellSize)
             };
             return true;
+        }
+
+        private static Vector3 ConvertLdtkPivotToLocalPosition(
+            int pixelX,
+            int pixelY,
+            int gridSize,
+            int pixelHeight,
+            float cellSize)
+        {
+            float halfCellSize = cellSize * 0.5f;
+            return new Vector3(
+                pixelX / (float)gridSize * cellSize - halfCellSize,
+                0f,
+                (pixelHeight - pixelY) / (float)gridSize * cellSize - halfCellSize);
         }
 
         private static string NormalizeBuildingIdentifier(string identifier)

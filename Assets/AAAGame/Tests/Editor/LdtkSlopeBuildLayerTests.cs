@@ -10,10 +10,11 @@ using UnityEngine;
 [TestFixture]
 public sealed class LdtkSlopeBuildLayerTests
 {
-    private const string Ramp45Path = "Assets/AAAGame/Models/SlopePlaceholder/Ramp45.prefab";
-    private const string Ramp2x1Path = "Assets/AAAGame/Models/SlopePlaceholder/Ramp2x1.prefab";
+    private const string RampPath = "Assets/AAAGame/Models/SlopePlaceholder/Ramp.prefab";
     private const float CellSize = 1.4f;
     private const float SurfaceBase = 3.7f;
+    private const float HighEndExtension = 0.2f;
+    private const float MaximumSlopeAngle = 45f;
 
     private Configuration configuration;
     private Dictionary<int, BlueprintLayer> platformLayers;
@@ -45,14 +46,14 @@ public sealed class LdtkSlopeBuildLayerTests
             buildLayer.platformLevels.Add(new LdtkSlopeBuildLayer.PlatformLevel { height = height, layer = layer });
         }
 
-        buildLayer.ramp45Prefab = AssetDatabase.LoadAssetAtPath<GameObject>(Ramp45Path);
-        buildLayer.ramp2x1Prefab = AssetDatabase.LoadAssetAtPath<GameObject>(Ramp2x1Path);
+        buildLayer.rampPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(RampPath);
+        buildLayer.highEndExtension = HighEndExtension;
+        buildLayer.maximumSlopeAngle = MaximumSlopeAngle;
         buildLayer.surfaceBaseHeight = SurfaceBase;
         buildLayer.surfaceHeightStep = CellSize;
         buildLayer.objectLayer = LayerMask.NameToLayer("Ground");
 
-        Assert.That(buildLayer.ramp45Prefab, Is.Not.Null);
-        Assert.That(buildLayer.ramp2x1Prefab, Is.Not.Null);
+        Assert.That(buildLayer.rampPrefab, Is.Not.Null);
     }
 
     [TearDown]
@@ -70,7 +71,7 @@ public sealed class LdtkSlopeBuildLayerTests
     }
 
     [Test]
-    public void ExecuteLayer_OneCellRun_BuildsExact45DegreeCollider()
+    public void ExecuteLayer_OneCellRun_ExtendsOnlyTheHighEndToMeetInsetPlatform()
     {
         AddPlatform(0, new Vector2(-1f, 0f));
         AddSlope(Vector2.zero);
@@ -83,16 +84,18 @@ public sealed class LdtkSlopeBuildLayerTests
         MeshCollider collider = colliders[0];
         Assert.That(collider, Is.Not.Null);
         Assert.That(collider.sharedMesh, Is.SameAs(collider.GetComponent<MeshFilter>().sharedMesh));
-        AssertVector(collider.transform.localPosition, new Vector3(-CellSize * 0.5f, SurfaceBase, -CellSize * 0.5f));
+        AssertVector(collider.transform.localPosition, new Vector3(-CellSize * 0.4f, SurfaceBase, -CellSize * 0.5f));
         AssertVector(collider.transform.forward, Vector3.right);
-        AssertVector(collider.GetComponent<MeshRenderer>().bounds.size, new Vector3(CellSize, CellSize, CellSize));
+        AssertVector(collider.GetComponent<MeshRenderer>().bounds.size, new Vector3(CellSize * 1.2f, CellSize, CellSize));
         Physics.SyncTransforms();
         Bounds combinedBounds = colliders[0].bounds;
         for (int i = 1; i < colliders.Length; i++)
         {
             combinedBounds.Encapsulate(colliders[i].bounds);
         }
-        AssertVector(combinedBounds.size, new Vector3(CellSize, CellSize, CellSize * 2f));
+        AssertVector(combinedBounds.size, new Vector3(CellSize * 1.2f, CellSize, CellSize * 2f));
+        Assert.That(combinedBounds.min.x, Is.EqualTo(-CellSize).Within(0.001f));
+        Assert.That(combinedBounds.max.x, Is.EqualTo(CellSize * HighEndExtension).Within(0.001f));
         Assert.That(colliders.All(item => item.gameObject.layer == LayerMask.NameToLayer("Ground")), Is.True);
         Assert.That(
             collider.Raycast(
@@ -114,7 +117,7 @@ public sealed class LdtkSlopeBuildLayerTests
     }
 
     [Test]
-    public void ExecuteLayer_TwoCellRun_BuildsSingleCentered2x1Collider()
+    public void ExecuteLayer_TwoCellRun_BuildsOneContinuousRampPerDualGridLane()
     {
         AddPlatform(0, new Vector2(-1f, 0f));
         AddSlope(new Vector2(0f, 0f), new Vector2(1f, 0f));
@@ -124,13 +127,13 @@ public sealed class LdtkSlopeBuildLayerTests
 
         MeshCollider[] colliders = managerObject.GetComponentsInChildren<MeshCollider>(true);
         Assert.That(colliders, Has.Length.EqualTo(2));
-        Assert.That(colliders.All(item => Mathf.Abs(item.transform.localPosition.x) < 0.001f), Is.True);
+        Assert.That(colliders.All(item => Mathf.Abs(item.transform.localPosition.x - CellSize * 0.1f) < 0.001f), Is.True);
         Assert.That(colliders.Select(item => item.transform.localPosition.z), Is.EquivalentTo(new[] { -CellSize * 0.5f, CellSize * 0.5f }));
-        Assert.That(colliders.All(item => item.GetComponent<MeshRenderer>().bounds.size == new Vector3(CellSize * 2f, CellSize, CellSize)), Is.True);
+        Assert.That(colliders.All(item => Mathf.Abs(item.GetComponent<MeshRenderer>().bounds.size.x - CellSize * 2.2f) < 0.001f), Is.True);
     }
 
     [Test]
-    public void ExecuteLayer_TwoLevel45DegreeRun_BuildsOneRampPerHeight()
+    public void ExecuteLayer_TwoLevel45DegreeRun_BuildsOneContinuousRampForTheWholeRise()
     {
         AddPlatform(0, new Vector2(-1f, 0f));
         AddSlope(new Vector2(0f, 0f), new Vector2(1f, 0f));
@@ -139,14 +142,27 @@ public sealed class LdtkSlopeBuildLayerTests
         buildLayer.ExecuteLayer(configuration, managerObject, manager);
 
         MeshCollider[] colliders = OrderedColliders();
-        Assert.That(colliders, Has.Length.EqualTo(4));
-        Assert.That(colliders.Count(item => Mathf.Abs(item.transform.localPosition.x + CellSize * 0.5f) < 0.001f), Is.EqualTo(2));
-        Assert.That(colliders.Count(item => Mathf.Abs(item.transform.localPosition.x - CellSize * 0.5f) < 0.001f), Is.EqualTo(2));
-        Assert.That(colliders.All(item => Mathf.Abs(item.GetComponent<MeshRenderer>().bounds.size.x - CellSize) < 0.001f), Is.True);
+        Assert.That(colliders, Has.Length.EqualTo(2));
+        Assert.That(colliders.All(item => Mathf.Abs(item.transform.localPosition.x - CellSize * 0.1f) < 0.001f), Is.True);
+        Assert.That(colliders.All(item => Mathf.Abs(item.GetComponent<MeshRenderer>().bounds.size.x - CellSize * 2.2f) < 0.001f), Is.True);
+        Assert.That(colliders.All(item => Mathf.Abs(item.GetComponent<MeshRenderer>().bounds.size.y - CellSize * 2f) < 0.001f), Is.True);
+        Assert.That(colliders.All(item => item.sharedMesh == item.GetComponent<MeshFilter>().sharedMesh), Is.True);
+
+        Physics.SyncTransforms();
+        MeshCollider collider = colliders[0];
+        foreach (float localZ in new[] { -0.45f, -0.2f, 0f, 0.2f, 0.45f })
+        {
+            Ray ray = new Ray(collider.transform.TransformPoint(new Vector3(0f, 2f, localZ)), -collider.transform.up);
+            Assert.That(collider.Raycast(ray, out RaycastHit hit, CellSize * 5f), Is.True, "No ramp surface at local z=" + localZ);
+            Assert.That(
+                collider.transform.InverseTransformPoint(hit.point).y,
+                Is.EqualTo(localZ + 0.5f).Within(0.01f),
+                "Ramp surface is discontinuous at local z=" + localZ);
+        }
     }
 
     [Test]
-    public void ExecuteLayer_TwoLevelShallowRun_BuildsOne2x1RampPerHeight()
+    public void ExecuteLayer_TwoLevelShallowRun_BuildsOneContinuousRampForTheWholeRise()
     {
         AddPlatform(0, new Vector2(-1f, 0f));
         AddSlope(
@@ -159,14 +175,14 @@ public sealed class LdtkSlopeBuildLayerTests
         buildLayer.ExecuteLayer(configuration, managerObject, manager);
 
         MeshCollider[] colliders = OrderedColliders();
-        Assert.That(colliders, Has.Length.EqualTo(4));
-        Assert.That(colliders.Count(item => Mathf.Abs(item.transform.localPosition.x) < 0.001f), Is.EqualTo(2));
-        Assert.That(colliders.Count(item => Mathf.Abs(item.transform.localPosition.x - CellSize * 2f) < 0.001f), Is.EqualTo(2));
-        Assert.That(colliders.All(item => Mathf.Abs(item.GetComponent<MeshRenderer>().bounds.size.x - CellSize * 2f) < 0.001f), Is.True);
+        Assert.That(colliders, Has.Length.EqualTo(2));
+        Assert.That(colliders.All(item => Mathf.Abs(item.transform.localPosition.x - CellSize * 1.1f) < 0.001f), Is.True);
+        Assert.That(colliders.All(item => Mathf.Abs(item.GetComponent<MeshRenderer>().bounds.size.x - CellSize * 4.2f) < 0.001f), Is.True);
+        Assert.That(colliders.All(item => Mathf.Abs(item.GetComponent<MeshRenderer>().bounds.size.y - CellSize * 2f) < 0.001f), Is.True);
     }
 
     [Test]
-    public void ExecuteLayer_TwoCellsWide_BuildsEveryLaneAndHeight()
+    public void ExecuteLayer_TwoCellsWide_BuildsEachDualGridLaneOnce()
     {
         AddPlatform(0, new Vector2(-1f, 0f), new Vector2(-1f, 1f));
         AddSlope(
@@ -179,9 +195,9 @@ public sealed class LdtkSlopeBuildLayerTests
         buildLayer.ExecuteLayer(configuration, managerObject, manager);
 
         MeshCollider[] colliders = managerObject.GetComponentsInChildren<MeshCollider>(true);
-        Assert.That(colliders, Has.Length.EqualTo(6));
-        Assert.That(colliders.Count(item => Mathf.Abs(item.transform.localPosition.y - SurfaceBase) < 0.001f), Is.EqualTo(3));
-        Assert.That(colliders.Count(item => Mathf.Abs(item.transform.localPosition.y - SurfaceBase - CellSize) < 0.001f), Is.EqualTo(3));
+        Assert.That(colliders, Has.Length.EqualTo(3));
+        Assert.That(colliders.All(item => Mathf.Abs(item.transform.localPosition.y - SurfaceBase) < 0.001f), Is.True);
+        Assert.That(colliders.All(item => Mathf.Abs(item.GetComponent<MeshRenderer>().bounds.size.y - CellSize * 2f) < 0.001f), Is.True);
         Assert.That(colliders.All(item => Vector3.Dot(item.transform.forward, Vector3.right) > 0.999f), Is.True);
     }
 
@@ -194,7 +210,13 @@ public sealed class LdtkSlopeBuildLayerTests
         AddSlope(new Vector2(0f, 0f), new Vector2(1f, 0f));
 
         Dictionary<Vector2, int> topHeights = GetTopHeights();
-        bool success = LdtkSlopeLayoutResolver.TryResolve(slopeLayer.allPositions.ToHashSet(), topHeights, out LdtkSlopeLayout layout, out string error);
+        bool success = LdtkSlopeLayoutResolver.TryResolve(
+            slopeLayer.allPositions.ToHashSet(),
+            topHeights,
+            HighEndExtension,
+            MaximumSlopeAngle,
+            out LdtkSlopeLayout layout,
+            out string error);
 
         Assert.That(success, Is.True, error);
         Assert.That(topHeights[new Vector2(-1f, 0f)], Is.EqualTo(1));
@@ -213,6 +235,8 @@ public sealed class LdtkSlopeBuildLayerTests
         bool success = LdtkSlopeLayoutResolver.TryResolve(
             slopeLayer.allPositions.ToHashSet(),
             GetTopHeights(),
+            HighEndExtension,
+            MaximumSlopeAngle,
             out _,
             out string error);
 
@@ -222,19 +246,59 @@ public sealed class LdtkSlopeBuildLayerTests
         StringAssert.Contains("top platform is Plane_H2", error);
     }
 
-    [TestCase(1, 2)]
-    [TestCase(3, 2)]
-    public void ExecuteLayer_InvalidRunRiseRatio_ThrowsWithCellCoordinates(int run, int rise)
+    [Test]
+    public void Resolve_ArbitraryThreeByTwoRamp_InfersProportionalSupportHeights()
     {
         AddPlatform(0, new Vector2(-1f, 0f));
-        AddSlope(Enumerable.Range(0, run).Select(x => new Vector2(x, 0f)).ToArray());
-        AddPlatform(rise, new Vector2(run, 0f));
+        AddSlope(new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(2f, 0f));
+        AddPlatform(2, new Vector2(3f, 0f));
+
+        bool success = LdtkSlopeLayoutResolver.TryResolve(
+            slopeLayer.allPositions.ToHashSet(),
+            GetTopHeights(),
+            HighEndExtension,
+            MaximumSlopeAngle,
+            out LdtkSlopeLayout layout,
+            out string error);
+
+        Assert.That(success, Is.True, error);
+        Assert.That(layout.ramps, Has.Count.EqualTo(1));
+        Assert.That(layout.ramps[0].run, Is.EqualTo(3));
+        Assert.That(layout.ramps[0].rise, Is.EqualTo(2));
+        Assert.That(layout.requiredPlatformHeights[new Vector2(0f, 0f)], Is.EqualTo(0));
+        Assert.That(layout.requiredPlatformHeights[new Vector2(1f, 0f)], Is.EqualTo(0));
+        Assert.That(layout.requiredPlatformHeights[new Vector2(2f, 0f)], Is.EqualTo(1));
+    }
+
+    [Test]
+    public void ExecuteLayer_OneByTwoRamp_UsesSameWedgeWhenUnitSlopeLimitAllowsIt()
+    {
+        AddPlatform(0, new Vector2(-1f, 0f));
+        AddSlope(Vector2.zero);
+        AddPlatform(2, new Vector2(1f, 0f));
+        buildLayer.maximumSlopeAngle = 65f;
+
+        buildLayer.ExecuteLayer(configuration, managerObject, manager);
+
+        MeshCollider[] colliders = OrderedColliders();
+        Assert.That(colliders, Has.Length.EqualTo(2));
+        Assert.That(colliders.All(item => Mathf.Abs(item.GetComponent<MeshRenderer>().bounds.size.x - CellSize * 1.2f) < 0.001f), Is.True);
+        Assert.That(colliders.All(item => Mathf.Abs(item.GetComponent<MeshRenderer>().bounds.size.y - CellSize * 2f) < 0.001f), Is.True);
+    }
+
+    [Test]
+    public void ExecuteLayer_SlopeSteeperThanUnitLimit_ThrowsMeasuredAngleAndCells()
+    {
+        AddPlatform(0, new Vector2(-1f, 0f));
+        AddSlope(Vector2.zero);
+        AddPlatform(2, new Vector2(1f, 0f));
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
             () => buildLayer.ExecuteLayer(configuration, managerObject, manager));
 
         StringAssert.Contains("(0,0)", exception.Message);
-        StringAssert.Contains("run:rise equal to 1:1 or 2:1", exception.Message);
+        StringAssert.Contains("59.04 degree", exception.Message);
+        StringAssert.Contains("45 degrees", exception.Message);
     }
 
     [Test]

@@ -596,6 +596,19 @@ public class BuildManager : GameFrameworkComponent
         if (m_PlayerUnlockedBaseArchesCache != null)
             return m_PlayerUnlockedBaseArchesCache;
 
+        m_PlayerUnlockedBaseArchesCache = CollectPlayerUnlockedBaseArches(
+            archetype => m_BaseMilestoneTechService.HasArchetypeBaseLevelTech(
+                archetype,
+                1,
+                EntitySideHelper.PlayerFactionId));
+        return m_PlayerUnlockedBaseArchesCache;
+    }
+
+    private static HashSet<Archetype> CollectPlayerUnlockedBaseArches(Func<Archetype, bool> hasBaseLevelOneMilestone)
+    {
+        if (hasBaseLevelOneMilestone == null)
+            throw new ArgumentNullException(nameof(hasBaseLevelOneMilestone));
+
         var arches = new HashSet<Archetype>();
         foreach (Archetype arche in Enum.GetValues(typeof(Archetype)))
         {
@@ -603,20 +616,11 @@ public class BuildManager : GameFrameworkComponent
                 continue;
 
             if (arche == Archetype.Common
-                || m_BaseMilestoneTechService.HasArchetypeBaseLevelTech(arche, 1, EntitySideHelper.PlayerFactionId))
+                || hasBaseLevelOneMilestone(arche))
                 arches.Add(arche);
         }
 
-        if (CareerRunSettings.HasActiveRun)
-        {
-            Archetype startingArchetype = CareerRunSettings.StartingArchetype;
-            if (startingArchetype == Archetype.None || startingArchetype == Archetype.Common)
-                throw new InvalidOperationException($"Active career run has invalid starting industry '{startingArchetype}'.");
-            arches.Add(startingArchetype);
-        }
-
-        m_PlayerUnlockedBaseArchesCache = arches;
-        return m_PlayerUnlockedBaseArchesCache;
+        return arches;
     }
 
     private IEnumerable<BuildingData> GetCachedLv0ConstructCandidates(BuilType buildType)

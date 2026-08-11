@@ -145,6 +145,7 @@ public static class LevelSelectionService
     internal static void NotifyLevelLoadStarted()
     {
         IsLevelLoading = true;
+        HealthBarComp.SetLevelLoading(true);
         LevelLoadStarted?.Invoke();
         NotifyLevelLoadProgress(0f);
     }
@@ -167,6 +168,7 @@ public static class LevelSelectionService
     {
         IsLevelLoading = false;
         RestoreHiddenLoadingRenderers();
+        HealthBarComp.SetLevelLoading(false);
         NotifyLevelLoadProgress(1f);
         LevelLoadCompleted?.Invoke();
     }
@@ -175,6 +177,7 @@ public static class LevelSelectionService
     {
         IsLevelLoading = false;
         RestoreHiddenLoadingRenderers();
+        HealthBarComp.SetLevelLoading(false);
         LevelLoadFailed?.Invoke(errorMessage);
     }
 

@@ -8,9 +8,7 @@ internal static class EditorRuntimeLevelEntry
         try
         {
             LevelTable level = CareerConfigRuntime.GetLevelRequired(levelIdentifier);
-            Archetype archetype = CareerConfigRuntime.IsTutorialLevel(levelIdentifier)
-                ? Archetype.Coding
-                : level.DefaultArchetype;
+            Archetype archetype = level.DefaultArchetype;
             CareerRunSettings.BeginRun(levelIdentifier, false, archetype);
             LevelTagRuntime.SetActiveTagIds(Array.Empty<int>());
             if (LevelSelectionService.TryEnterPreparedCareerRun(out errorMessage))

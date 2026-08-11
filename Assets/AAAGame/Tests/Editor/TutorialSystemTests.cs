@@ -78,6 +78,35 @@ public sealed class TutorialSystemTests
     }
 
     [Test]
+    public void TutorialFirstDefense_ResolvesStrongholdFromDestinationPosition()
+    {
+        LogicStrongholdMap.Initialize(
+            FixVector2.Zero,
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            Fix64.One,
+            new[]
+            {
+                new LogicStrongholdCellDefinition("friendly", 2, 0, EntitySideHelper.PlayerFactionId),
+            });
+        try
+        {
+            System.Reflection.MethodInfo resolve = typeof(TutorialManager).GetMethod(
+                "ResolveFirstDefenseStrongholdId",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+            Assert.IsNotNull(resolve);
+            Assert.AreEqual(
+                "friendly",
+                resolve.Invoke(null, new object[] { new FixVector2((Fix64)2, Fix64.Zero) }));
+        }
+        finally
+        {
+            LogicStrongholdMap.Clear();
+        }
+    }
+
+    [Test]
     public void TutorialRules_ExposeOnlyAuthoredPhaseActions()
     {
         Assert.IsTrue(TutorialManager.IsPhaseSwitchGuidedStage(TutorialStage.AwaitFirstBuildPhase));
@@ -157,8 +186,8 @@ public sealed class TutorialSystemTests
         Assert.IsNotNull(destination);
         Assert.AreEqual(0, destination.DestinationId);
         Assert.AreEqual(250f, destination.DestinationRadius);
-        Assert.AreEqual(41.3f, destination.transform.localPosition.x, 0.001f);
-        Assert.AreEqual(38.5f, destination.transform.localPosition.z, 0.001f);
+        Assert.AreEqual(39.2f, destination.transform.localPosition.x, 0.001f);
+        Assert.AreEqual(37.8f, destination.transform.localPosition.z, 0.001f);
     }
 
     [Test]

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -230,6 +231,41 @@ public class LogicFrameRuntimeTests
     public void DefendWaveGrowthUsesFixedRoundToNearest(int count, float scale, int expected)
     {
         Assert.AreEqual(expected, DefendPhaseRuntime.GetEditorTestScaledSpawnCount(count, (Fix64)scale));
+    }
+
+    [Test]
+    public void DefendSpawnTracking_QueuesSpawnSpeedForVisibilityRelease()
+    {
+        DefendPhaseRuntime.CancelRuntime();
+        try
+        {
+            MethodInfo trackMethod = typeof(DefendPhaseRuntime).GetMethod(
+                "TrackSpawnedDefendEnemy",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            FieldInfo aliveField = typeof(DefendPhaseRuntime).GetField(
+                "s_AliveEnemyLogicEntityIds",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            FieldInfo acceleratedField = typeof(DefendPhaseRuntime).GetField(
+                "s_AcceleratedEnemyLogicEntityIds",
+                BindingFlags.Static | BindingFlags.NonPublic);
+
+            Assert.NotNull(trackMethod);
+            Assert.NotNull(aliveField);
+            Assert.NotNull(acceleratedField);
+
+            const int entityId = 91001;
+            trackMethod.Invoke(null, new object[] { new LogicEntityId(entityId), "Tutorial first defense" });
+
+            var aliveIds = (HashSet<int>)aliveField.GetValue(null);
+            var acceleratedIds = (HashSet<int>)acceleratedField.GetValue(null);
+            Assert.IsTrue(aliveIds.Contains(entityId));
+            Assert.IsTrue(acceleratedIds.Contains(entityId),
+                "Every defend enemy with a spawn-speed override must be queued for release on authoritative visibility.");
+        }
+        finally
+        {
+            DefendPhaseRuntime.CancelRuntime();
+        }
     }
 
     [TestCase(1.5f, 2)]

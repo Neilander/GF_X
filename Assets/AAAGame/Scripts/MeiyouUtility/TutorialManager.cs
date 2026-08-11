@@ -344,7 +344,7 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         Log.Info("[Tutorial] Initialized Level_1 tutorial. stage={0}.", Stage);
     }
 
-    private void StartFirstDefense(Component triggerSource)
+    private void StartFirstDefense(string strongholdId)
     {
         TutorialObjectiveService.SetStatus(GoalReach, TutorialObjectiveStatus.Completed);
         ObjectiveDestinationService.Clear();
@@ -353,11 +353,11 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         TutorialObjectiveService.Replace(
             Objective(GoalProtect, "ProtectStronghold"));
         ShowTip("TutorialEnemyAttack");
-        DefendPhaseRuntime.StartTutorialTriggeredFirstDefense();
+        DefendPhaseRuntime.StartTutorialTriggeredFirstDefense(strongholdId);
         QueuePhaseGuideChanged();
         Log.Info(
-            "[Tutorial] Friendly stronghold reached; triggered first defense. source={0}.",
-            triggerSource != null ? triggerSource.name : "<logic>");
+            "[Tutorial] First-defense destination reached; triggered defense for stronghold={0}.",
+            strongholdId);
     }
 
     private void TickReachFriendlyStronghold()
@@ -370,7 +370,18 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         if (!ObjectiveDestinationService.IsReached(player.PositionFixed))
             return;
 
-        StartFirstDefense(null);
+        string strongholdId = ResolveFirstDefenseStrongholdId(ObjectiveDestinationService.ActivePosition);
+        StartFirstDefense(strongholdId);
+    }
+
+    private static string ResolveFirstDefenseStrongholdId(FixVector2 destinationPosition)
+    {
+        if (!LogicStrongholdMap.TryResolveStrongholdId(destinationPosition, out string strongholdId))
+            throw new InvalidOperationException("Tutorial first-defense destination is outside every stronghold.");
+        if (LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId) != EntitySideHelper.PlayerFactionId)
+            throw new InvalidOperationException(
+                $"Tutorial first-defense destination stronghold '{strongholdId}' is not player owned.");
+        return strongholdId;
     }
 
     private void TickEnemyStrongholdEntry()
