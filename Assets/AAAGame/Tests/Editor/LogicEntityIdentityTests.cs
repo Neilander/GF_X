@@ -24,6 +24,16 @@ public class LogicEntityIdentityTests
         public override void OnHealed(Fix64 amount) => TotalHealed += amount;
     }
 
+    private sealed class AlwaysAttackingProbe : IAtkComp
+    {
+        public bool IsAttacking => true;
+        public void Init(IEntityContext ctx) { }
+        public void Attack(Fix64 deltaTime) { }
+        public void InterruptAttack(AttackInterruptReason reason = AttackInterruptReason.Forced) { }
+        public void ShutDown() { }
+        public void Resume() { }
+    }
+
     [SetUp]
     public void SetUp()
     {
@@ -34,6 +44,7 @@ public class LogicEntityIdentityTests
         LogicPhaseCommandService.BeginTimeline();
         LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
         LogicEntityLifecycleService.BeginTimeline();
+        TeleportationPointService.ClearPhaseBlocks();
     }
 
     [TearDown]
@@ -43,6 +54,7 @@ public class LogicEntityIdentityTests
         LogicEntityLifecycleService.EndTimeline();
         LogicPhaseCommandService.EndTimeline();
         LogicTimeControlService.EndTimeline();
+        TeleportationPointService.ClearPhaseBlocks();
         LevelTagRuntime.ClearActiveTags();
     }
 
@@ -516,6 +528,62 @@ public class LogicEntityIdentityTests
         {
             LogicEntityLifecycleService.CommandRecorded -= OnRecorded;
         }
+    }
+
+    [Test]
+    public void DefendEnemyTargeting_AppliesConfiguredBuildingExtraThreat()
+    {
+        LogicEntityState attacker = CreateConfiguredStateForSide(
+            "Unit_DefendThreatAttacker",
+            SideType.EnemySide);
+        LogicEntityState closerBuilding = CreateBuildingQueryState(
+            "building-defend-threat",
+            new FixVector2(Fix64.One, Fix64.Zero));
+        LogicEntityState fartherUnit = CreateConfiguredStateForSide(
+            "Unit_DefendThreatTarget",
+            SideType.PlayerSide,
+            new FixVector2((Fix64)3, Fix64.Zero));
+        closerBuilding.TauntLevel = 1;
+        fartherUnit.TauntLevel = 1;
+        ActivateRequestedState(attacker.EntityId, 1);
+
+        CharacterTargetingComp targeting = CreateCharacterTargeting(attacker);
+        attacker.SetTargetingComp(targeting);
+        targeting.UseDefendEnemyMode(closerBuilding);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(fartherUnit, targeting.CurrentTarget,
+            "BuildingExtraThreat=-5000 must make a same-taunt unit outrank a closer building through the shared threat formula.");
+    }
+
+    [Test]
+    public void DefendEnemyTargeting_BuildingExtraThreatTriggersAdditionalPursuit()
+    {
+        LogicEntityState attacker = CreateConfiguredStateForSide(
+            "Unit_DefendBuildingPursuitAttacker",
+            SideType.EnemySide);
+        LogicEntityState currentBuilding = CreateBuildingQueryState(
+            "building-defend-current-target",
+            new FixVector2(Fix64.One, Fix64.Zero));
+        LogicEntityState pursuitUnit = CreateConfiguredStateForSide(
+            "Unit_DefendBuildingPursuitTarget",
+            SideType.PlayerSide,
+            new FixVector2((Fix64)10, Fix64.Zero));
+        currentBuilding.TauntLevel = 1;
+        pursuitUnit.TauntLevel = 1;
+        var attack = new AlwaysAttackingProbe();
+        attack.Init(attacker);
+        attacker.SetAtkComp(attack);
+        ActivateRequestedState(attacker.EntityId, 1);
+
+        CharacterTargetingComp targeting = CreateCharacterTargeting(attacker);
+        attacker.SetTargetingComp(targeting);
+        targeting.UseDefendEnemyMode(currentBuilding);
+        targeting.CurrentTarget = currentBuilding;
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(pursuitUnit, targeting.CurrentTarget,
+            "Configured unit-over-building threat must use the same attackRange + pursuitDistance interruption rule.");
     }
 
     [Test]
@@ -1187,6 +1255,75 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void EnemyBuilding_RemainsDisabledAcrossBuildPhaseTransition()
+    {
+        LogicEntityState state = CreateConfiguredStateForSide(
+            "Building_Enemy_NoPhaseRestore",
+            SideType.EnemySide);
+        state.ConfigureBuilding(
+            CreateTestBuildingData("Building_Enemy_NoPhaseRestore"),
+            "building-enemy-no-phase-restore",
+            null,
+            EntitySideHelper.EnemyFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        ActivateRequestedState(state.EntityId, 1);
+        state.TakeDamage((Fix64)150, HealthModifyType.empty);
+        Assert.IsTrue(state.IsDisabled);
+
+        LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.BuildBeforeInvade);
+        LogicTimeControlService.BeginFrame(2);
+        LogicPhaseCommandService.ApplyFrameForTests(2, _ => { });
+
+        Assert.IsTrue(state.IsDisabled);
+        Assert.IsFalse(state.Alive);
+        Assert.AreEqual(Fix64.Zero, state.HealthValue);
+    }
+
+    [Test]
+    public void BuildingDamage_BelowDefenseStillDealsConfiguredMinimumDamage()
+    {
+        LogicEntityState state = CreateConfiguredState("Building_MinimumDamage", false, defense: (Fix64)10);
+        state.ConfigureBuilding(
+            CreateTestBuildingData("Building_MinimumDamage"),
+            "building-minimum-damage",
+            null,
+            EntitySideHelper.PlayerFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        ActivateRequestedState(state.EntityId, 1);
+
+        state.TakeDamage((Fix64)5, HealthModifyType.reduce);
+
+        Assert.AreEqual((Fix64)99, state.HealthValue);
+    }
+
+    [Test]
+    public void InvincibleBuilding_IgnoresConfiguredMinimumDamage()
+    {
+        LogicEntityState state = CreateConfiguredState("Building_MinimumDamage_Invincible", false);
+        state.ConfigureBuilding(
+            CreateTestBuildingData("Building_MinimumDamage_Invincible"),
+            "building-minimum-damage-invincible",
+            null,
+            EntitySideHelper.PlayerFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        ActivateRequestedState(state.EntityId, 1);
+        Assert.IsTrue(state.RegisterInvincibleSource("minimum-damage-test"));
+
+        state.TakeDamage((Fix64)5, HealthModifyType.reduce);
+
+        Assert.AreEqual((Fix64)100, state.HealthValue);
+    }
+
+    [Test]
     public void ViewlessProductionBuilding_ConfiguresLogicOwnedProductionState()
     {
         LogicEntityState state = CreateConfiguredState("Buil_MiningRig_Lv1", false);
@@ -1533,6 +1670,97 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void CostChangingPhaseBuilding_ShowsDemolishWithoutRefund()
+    {
+        LogicEntityState researchCenter = CreateConfiguredState("Building_CostChanging_Undo", false);
+        researchCenter.ConfigureBuilding(
+            CreateCostBuildingData("Building_CostChanging_Undo", Archetype.Coding, 100, BuilType.Base),
+            "building-cost-changing-undo",
+            "stronghold-cost-changing-undo",
+            EntitySideHelper.PlayerFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        ActivateRequestedState(researchCenter.EntityId, 1);
+        InGameDataModel.RecordBuildingPhaseModification(
+            researchCenter.BuildingInstanceId,
+            "Buil_ResearchCenter_Lv1",
+            8);
+        InGameDataModel.RecordBuildingPhaseTech(
+            researchCenter.BuildingInstanceId,
+            "Tech_Buil_ResearchCenter_Lv2_Opt2");
+
+        var managerObject = new GameObject("BuildManager_CostChangingUndo_Test");
+        try
+        {
+            BuildManager manager = managerObject.AddComponent<BuildManager>();
+            LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.BuildBeforeInvade);
+            LogicTimeControlService.BeginFrame(2);
+            LogicPhaseCommandService.ApplyFrameForTests(2, _ => { });
+
+            Assert.IsTrue(manager.CanRecycleBuilding(researchCenter));
+            Assert.IsFalse(manager.IsBuildingPhaseUndo(researchCenter));
+            Assert.AreEqual(0, manager.CalculateRecycleRefund(researchCenter));
+            Assert.IsTrue(InGameDataModel.TryGetBuildingPhaseUndo(
+                researchCenter.BuildingInstanceId,
+                out _,
+                out int recordedCost));
+            Assert.AreEqual(8, recordedCost);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(managerObject);
+        }
+    }
+
+    [Test]
+    public void CostDiscount_UnregisterRestoresLaterBuildingPrice()
+    {
+        LogicEntityState coding = CreateConfiguredState("Building_Cost_Unregister_Coding", false);
+        coding.ConfigureBuilding(
+            CreateCostBuildingData("Building_Cost_Unregister_Coding", Archetype.Coding, 100),
+            "building-cost-unregister-coding",
+            "stronghold-cost-unregister",
+            EntitySideHelper.PlayerFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        LogicEntityState medical = CreateConfiguredState("Building_Cost_Unregister_Medical", false);
+        medical.ConfigureBuilding(
+            CreateCostBuildingData("Building_Cost_Unregister_Medical", Archetype.Medical, 100),
+            "building-cost-unregister-medical",
+            coding.StrongholdId,
+            coding.OwnerFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        ActivateRequestedState(coding.EntityId, 1);
+
+        BuildingData target = CreateCostBuildingData("Building_Cost_Unregister_Target", Archetype.Security, 100);
+        BuildingCostModifierService.Clear();
+        BuildingCostModifierService.RegisterStrongholdArchetypeDiscount(
+            coding.StrongholdId,
+            "Tech_Cost_Discount",
+            coding.OwnerFactionId,
+            10);
+        Assert.AreEqual(80, BuildingCostModifierService.CalculateBuildingCost(
+            target,
+            coding.StrongholdId,
+            coding.OwnerFactionId));
+
+        Assert.AreEqual(1, BuildingCostModifierService.UnregisterTechDiscount(
+            "Tech_Cost_Discount",
+            coding.OwnerFactionId));
+        Assert.AreEqual(100, BuildingCostModifierService.CalculateBuildingCost(
+            target,
+            coding.StrongholdId,
+            coding.OwnerFactionId));
+    }
+
+    [Test]
     public void BuildingLogicQuery_UsesViewlessStrongholdFactionAndArchetypeState()
     {
         LogicEntityState source = CreateConfiguredState("Building_Query_Source", false);
@@ -1876,6 +2104,72 @@ public class LogicEntityIdentityTests
             UnityEngine.Object.DestroyImmediate(levelObject);
             LogicStrongholdMap.Clear();
         }
+    }
+
+    [Test]
+    public void PlayerStronghold_AllOrdinaryBuildingsDisabled_DisablesPermanentBuildingAndBlocksTeleport()
+    {
+        const string strongholdId = "stronghold-player-collapse";
+        LogicEntityState first = CreateConfiguredState("Building_PlayerCollapse_First", false);
+        first.ConfigureBuilding(
+            CreateTestBuildingData("Building_PlayerCollapse_First"),
+            "building-player-collapse-first",
+            strongholdId,
+            EntitySideHelper.PlayerFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        ActivateRequestedState(first.EntityId, 1);
+
+        LogicEntityState second = CreateConfiguredState("Building_PlayerCollapse_Second", false);
+        second.ConfigureBuilding(
+            CreateTestBuildingData("Building_PlayerCollapse_Second"),
+            "building-player-collapse-second",
+            strongholdId,
+            EntitySideHelper.PlayerFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        ActivateRequestedState(second.EntityId, 2);
+
+        LogicEntityState permanent = CreateConfiguredState("Building_PlayerCollapse_Permanent", false);
+        permanent.ConfigureBuilding(
+            CreateTestBuildingData("Building_PlayerCollapse_Permanent"),
+            "building-player-collapse-permanent",
+            strongholdId,
+            EntitySideHelper.PlayerFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        permanent.BuffComp.AddBuff(
+            BuffData.Create(
+                "building-player-collapse-invincible",
+                Fix64.Zero,
+                true,
+                1,
+                new List<BuffCallback>
+                {
+                    new BuildingInvincibleSourceBuff("building-player-collapse-invincible-source"),
+                }),
+            permanent);
+        ActivateRequestedState(permanent.EntityId, 3);
+        Assert.IsTrue(permanent.IsPermanentlyInvincible);
+
+        first.TakeDamage((Fix64)150, HealthModifyType.empty);
+        LevelEntity.TryCollapsePlayerStrongholdPermanentBuildings(first);
+        Assert.IsFalse(permanent.IsDisabled);
+        Assert.IsFalse(TeleportationPointService.IsStrongholdTeleportBlocked(strongholdId));
+
+        second.TakeDamage((Fix64)150, HealthModifyType.empty);
+        LevelEntity.TryCollapsePlayerStrongholdPermanentBuildings(second);
+
+        Assert.IsTrue(permanent.IsDisabled);
+        Assert.IsFalse(permanent.Alive);
+        Assert.AreEqual(Fix64.Zero, permanent.HealthValue);
+        Assert.IsTrue(TeleportationPointService.IsStrongholdTeleportBlocked(strongholdId));
     }
 
     [Test]
@@ -2487,7 +2781,11 @@ public class LogicEntityIdentityTests
         }
     }
 
-    private static LogicEntityState CreateConfiguredState(string characterKey, bool isHero, Fix64? speed = null)
+    private static LogicEntityState CreateConfiguredState(
+        string characterKey,
+        bool isHero,
+        Fix64? speed = null,
+        Fix64? defense = null)
     {
         var descriptor = new LogicEntitySpawnDescriptor(
             FixVector2.Zero,
@@ -2502,7 +2800,9 @@ public class LogicEntityIdentityTests
                     null,
                     new CreaturePropertyManager(property =>
                     property == CreatureMainProperty.Health ? (Fix64)100
-                        : property == CreatureMainProperty.Speed && speed.HasValue ? speed.Value : Fix64.Zero),
+                        : property == CreatureMainProperty.Speed && speed.HasValue ? speed.Value
+                        : property == CreatureMainProperty.Def && defense.HasValue ? defense.Value
+                        : Fix64.Zero),
                     0,
                     true,
                     null,
@@ -2533,10 +2833,13 @@ public class LogicEntityIdentityTests
         };
     }
 
-    private static LogicEntityState CreateConfiguredStateForSide(string characterKey, SideType side)
+    private static LogicEntityState CreateConfiguredStateForSide(
+        string characterKey,
+        SideType side,
+        FixVector2? position = null)
     {
         var descriptor = new LogicEntitySpawnDescriptor(
-            FixVector2.Zero,
+            position ?? FixVector2.Zero,
             new FixVector2(Fix64.Zero, Fix64.One),
             side,
             characterKey);

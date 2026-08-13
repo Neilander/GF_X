@@ -11,12 +11,22 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
 
     private IEntityContext _ctx;
     private IEntityContext _currentTarget;
+    private IEntityContext _additionalPursuitTarget;
+    private bool _hasAttackedCurrentTarget;
     private TargetingMode _targetingMode;
     private IEntityContext _defendFallbackTarget;
     public IEntityContext CurrentTarget
     {
         get => _currentTarget;
-        set => _currentTarget = value;
+        set
+        {
+            if (ReferenceEquals(_currentTarget, value))
+                return;
+
+            _currentTarget = value;
+            _additionalPursuitTarget = null;
+            _hasAttackedCurrentTarget = false;
+        }
     }
     public IEntityContext FollowTarget { get; private set; }
 
@@ -44,6 +54,8 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
     {
         _targetingMode = TargetingMode.Default;
         _defendFallbackTarget = null;
+        _additionalPursuitTarget = null;
+        _hasAttackedCurrentTarget = false;
     }
 
     public void UseDefendEnemyMode(IEntityContext fallbackTarget)
@@ -51,6 +63,8 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         _targetingMode = TargetingMode.DefendEnemy;
         _defendFallbackTarget = fallbackTarget;
         _lastAttacker = null;
+        _additionalPursuitTarget = null;
+        _hasAttackedCurrentTarget = false;
     }
 
     public void Init(IEntityContext ctx)
@@ -59,6 +73,8 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         CurrentTarget = null;
         FollowTarget = null;
         _lastAttacker = null;
+        _additionalPursuitTarget = null;
+        _hasAttackedCurrentTarget = false;
         _scanTimer = Fix64.Zero;
         _targetingMode = TargetingMode.Default;
         _defendFallbackTarget = null;
@@ -141,10 +157,17 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         }
 
         bool useAttackRangeOnlyForThisUnit = ShouldUseAttackRangeOnly(_ctx);
+        bool isBuilding = _ctx.IsLogicBuilding();
         Fix64 effectiveAttackRange = GetEffectiveAttackRange();
+        Fix64 additionalPursuitRange = isBuilding
+            ? effectiveAttackRange
+            : effectiveAttackRange + TargetThreatUtility.ReadAdditionalPursuitDistanceWorld();
+
+        if (CurrentTarget != null && _ctx.AtkComp != null && _ctx.AtkComp.IsAttacking)
+            _hasAttackedCurrentTarget = true;
 
         Fix64 currentTargetDist = Fix64.FromRaw(long.MaxValue);
-        int currentTargetTaunt = -1;
+        Fix64 currentTargetPriorityThreat = -Fix64.FromRaw(long.MaxValue);
         bool lostCurrentTarget = false;
 
         // 1. 维护当前敌人目标
@@ -159,7 +182,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
                 CurrentTarget = null;
                 lostCurrentTarget = true;
                 currentTargetDist = Fix64.FromRaw(long.MaxValue);
-                currentTargetTaunt = -1;
+                currentTargetPriorityThreat = -Fix64.FromRaw(long.MaxValue);
                 if (useAttackRangeOnlyForThisUnit && _lastAttacker != null)
                     ClearAggro();
             }
@@ -167,8 +190,11 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
             {
                 Fix64 dist = _ctx.LogicFrameDistanceToTargetSurfaceFixed(CurrentTarget);
                 currentTargetDist = dist;
-                currentTargetTaunt = GetTauntLevel(CurrentTarget);
-                Fix64 targetRetentionRange = useAttackRangeOnlyForThisUnit ? effectiveAttackRange : m_ForgetRange;
+                Fix64 targetRetentionRange = useAttackRangeOnlyForThisUnit
+                    ? effectiveAttackRange
+                    : ReferenceEquals(CurrentTarget, _additionalPursuitTarget)
+                        ? Fix64.Max(m_ForgetRange, additionalPursuitRange)
+                        : m_ForgetRange;
                 // 视线外仇恨特例：CurrentTarget 是 fallback 来的 attacker → 跳过距离过滤，让单位一路追上去
                 bool isAggroFallback = !useAttackRangeOnlyForThisUnit && (CurrentTarget == _lastAttacker);
                 bool dropByDistance = !isAggroFallback && dist > targetRetentionRange;
@@ -179,7 +205,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
                     CurrentTarget = null;
                     lostCurrentTarget = true;
                     currentTargetDist = Fix64.FromRaw(long.MaxValue);
-                    currentTargetTaunt = -1;
+                    currentTargetPriorityThreat = -Fix64.FromRaw(long.MaxValue);
                     if (useAttackRangeOnlyForThisUnit && _lastAttacker != null)
                         ClearAggro();
                 }
@@ -211,18 +237,30 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         {
             _scanTimer = Fix64.Zero;
 
-            // 找敌人：遍历 EntityRegistry，嘲讽等级优先，同等级选最近
-            IEntityContext nearest = null;
+            // 找敌人：遍历 EntityRegistry，按配置仇恨值选择目标
+            IEntityContext bestTarget = null;
             Fix64 scanRange = useAttackRangeOnlyForThisUnit
                 ? effectiveAttackRange
                 : Fix64.Max(m_AggroRange, effectiveAttackRange);
-            Fix64 nearestDist = scanRange;
-            int nearestTaunt = -1;
+            Fix64 bestDistance = scanRange;
+            Fix64 bestThreat = -Fix64.FromRaw(long.MaxValue);
+            Fix64 threatPerLevel = TargetThreatUtility.ReadThreatPerLevel();
+            Fix64 buildingExtraThreat = TargetThreatUtility.ReadBuildingExtraThreat();
+            if (CurrentTarget != null)
+            {
+                currentTargetPriorityThreat = TargetThreatUtility.CalculatePriorityThreat(
+                    _ctx,
+                    CurrentTarget,
+                    threatPerLevel,
+                    buildingExtraThreat);
+            }
+            bool targetLockedByAttack = _hasAttackedCurrentTarget
+                                        || (_ctx.AtkComp != null && _ctx.AtkComp.IsAttacking);
 
-            // 攻击中抢目标：额外记录攻击范围内“嘲讽最高、同嘲讽最近”的候选
-            IEntityContext inAttackRangeCandidate = null;
-            Fix64 inAttackRangeDist = effectiveAttackRange;
-            int inAttackRangeTaunt = -1;
+            IEntityContext interruptTarget = null;
+            Fix64 interruptDistance = Fix64.Zero;
+            Fix64 interruptThreat = -Fix64.FromRaw(long.MaxValue);
+            Fix64 interruptPriorityThreat = Fix64.Zero;
 
             var all = EntityRegistry.AllEntities;
             for (int i = 0; i < all.Count; i++)
@@ -233,39 +271,46 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
                 if (!EntityCombatTeamHelper.IsEnemy(_ctx, other)) continue;
 
                 Fix64 dist = _ctx.LogicFrameDistanceToTargetSurfaceFixed(other);
-                if (dist >= scanRange) continue;
+                if (dist > scanRange) continue;
 
-                // 读嘲讽等级
-                int taunt = GetTauntLevel(other);
-
-                // 嘲讽等级更高 → 无条件替换
-                // 嘲讽等级相同 → 选更近的
-                if (taunt > nearestTaunt
-                    || (taunt == nearestTaunt && (dist < nearestDist
-                        || (dist == nearestDist && HasLowerLogicId(other, nearest)))))
+                Fix64 priorityThreat = TargetThreatUtility.CalculatePriorityThreat(
+                    _ctx,
+                    other,
+                    threatPerLevel,
+                    buildingExtraThreat);
+                Fix64 threat = TargetThreatUtility.CalculateThreat(
+                    _ctx,
+                    other,
+                    dist,
+                    threatPerLevel,
+                    buildingExtraThreat);
+                if (TargetThreatUtility.HasHigherPriority(threat, other, bestThreat, bestTarget))
                 {
-                    nearestTaunt = taunt;
-                    nearestDist = dist;
-                    nearest = other;
+                    bestThreat = threat;
+                    bestDistance = dist;
+                    bestTarget = other;
                 }
 
-                if (dist <= effectiveAttackRange
-                    && (taunt > inAttackRangeTaunt
-                        || (taunt == inAttackRangeTaunt && (dist < inAttackRangeDist
-                            || (dist == inAttackRangeDist && HasLowerLogicId(other, inAttackRangeCandidate))))))
+                if (!isBuilding
+                    && targetLockedByAttack
+                    && priorityThreat > currentTargetPriorityThreat
+                    && dist <= additionalPursuitRange
+                    && TargetThreatUtility.HasHigherPriority(threat, other, interruptThreat, interruptTarget))
                 {
-                    inAttackRangeTaunt = taunt;
-                    inAttackRangeDist = dist;
-                    inAttackRangeCandidate = other;
+                    interruptPriorityThreat = priorityThreat;
+                    interruptThreat = threat;
+                    interruptDistance = dist;
+                    interruptTarget = other;
                 }
             }
 
             if (CurrentTarget == null)
             {
-                if (nearest != null)
+                if (bestTarget != null)
                 {
-                    GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 锁定敌人 {nearest} | dist={nearestDist:F1} scanRange={scanRange:F1}");
-                    CurrentTarget = nearest;
+                    GameDebugSettings.Log(DebugCategory.Targeting,
+                        $"{_ctx} 锁定敌人 {bestTarget} | dist={bestDistance:F1} threat={bestThreat} scanRange={scanRange:F1}");
+                    CurrentTarget = bestTarget;
                     // 走正常索敌了，受击仇恨记忆作废（即使 nearest 就是 _lastAttacker 本人，也清掉，让后续切换走正常规则）
                     if (_lastAttacker != null) ClearAggro();
                 }
@@ -277,49 +322,80 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
                         $"{_ctx} fallback 到受击 attacker {_lastAttacker} | dist={_ctx.LogicFrameDistanceToTargetSurface(_lastAttacker):F1}");
                 }
             }
-            else if (nearest != null && nearest != CurrentTarget)
+            else
             {
-                bool isAttacking = _ctx.AtkComp != null && _ctx.AtkComp.IsAttacking;
-                bool sameTaunt = nearestTaunt == currentTargetTaunt;
-                bool higherTaunt = nearestTaunt > currentTargetTaunt;
-
-                // 规则：
-                // 1) 攻击前：同嘲讽仅切更近；不同嘲讽可在大范围内切更高嘲讽。
-                // 2) 攻击中：只允许在攻击范围内切到更高嘲讽目标。
-                bool switchByCloserBeforeAttack = !isAttacking && sameTaunt && (nearestDist + Fix64.FromRaw(410) < currentTargetDist);
-                bool switchByHigherTauntBeforeAttack = !isAttacking && higherTaunt;
-                bool switchByHigherTauntInAttackRange = isAttacking
-                                                       && inAttackRangeCandidate != null
-                                                       && inAttackRangeCandidate != CurrentTarget
-                                                       && inAttackRangeTaunt > currentTargetTaunt;
-
                 IEntityContext switchTarget = null;
                 Fix64 switchDist = Fix64.Zero;
-                int switchTaunt = 0;
+                Fix64 switchThreat = Fix64.Zero;
+                Fix64 switchPriorityThreat = Fix64.Zero;
                 string switchReason = null;
 
-                if (switchByHigherTauntInAttackRange)
+                if (isBuilding && bestTarget != null && bestTarget != CurrentTarget)
                 {
-                    switchTarget = inAttackRangeCandidate;
-                    switchDist = inAttackRangeDist;
-                    switchTaunt = inAttackRangeTaunt;
-                    switchReason = "attacking_higher_taunt_in_attack_range";
+                    Fix64 currentThreat = TargetThreatUtility.CalculateThreat(
+                        _ctx,
+                        CurrentTarget,
+                        currentTargetDist,
+                        threatPerLevel,
+                        buildingExtraThreat);
+                    if (TargetThreatUtility.HasHigherPriority(
+                            bestThreat,
+                            bestTarget,
+                            currentThreat,
+                            CurrentTarget))
+                    {
+                        switchTarget = bestTarget;
+                        switchDist = bestDistance;
+                        switchThreat = bestThreat;
+                        switchPriorityThreat = TargetThreatUtility.CalculatePriorityThreat(
+                            _ctx,
+                            bestTarget,
+                            threatPerLevel,
+                            buildingExtraThreat);
+                        switchReason = "attack_range_only_higher_threat";
+                    }
                 }
-                else if (switchByHigherTauntBeforeAttack || switchByCloserBeforeAttack)
+                else if (targetLockedByAttack && interruptTarget != null)
                 {
-                    switchTarget = nearest;
-                    switchDist = nearestDist;
-                    switchTaunt = nearestTaunt;
-                    switchReason = switchByHigherTauntBeforeAttack
-                        ? "pre_attack_higher_taunt_in_scan_range"
-                        : "pre_attack_same_taunt_closer_target";
+                    switchTarget = interruptTarget;
+                    switchDist = interruptDistance;
+                    switchThreat = interruptThreat;
+                    switchPriorityThreat = interruptPriorityThreat;
+                    switchReason = "attacking_higher_priority_threat_in_pursuit_range";
+                }
+                else if (!targetLockedByAttack && bestTarget != null && bestTarget != CurrentTarget)
+                {
+                    Fix64 currentThreat = TargetThreatUtility.CalculateThreat(
+                        _ctx,
+                        CurrentTarget,
+                        currentTargetDist,
+                        threatPerLevel,
+                        buildingExtraThreat);
+                    if (TargetThreatUtility.HasHigherPriority(
+                            bestThreat,
+                            bestTarget,
+                            currentThreat,
+                            CurrentTarget))
+                    {
+                        switchTarget = bestTarget;
+                        switchDist = bestDistance;
+                        switchThreat = bestThreat;
+                        switchPriorityThreat = TargetThreatUtility.CalculatePriorityThreat(
+                            _ctx,
+                            bestTarget,
+                            threatPerLevel,
+                            buildingExtraThreat);
+                        switchReason = "searching_higher_threat";
+                    }
                 }
 
                 if (switchTarget != null)
                 {
                     GameDebugSettings.Log(DebugCategory.Targeting,
-                        $"{_ctx} 切换敌人 {CurrentTarget} -> {switchTarget} | currentDist={currentTargetDist:F1} newDist={switchDist:F1} currentTaunt={currentTargetTaunt} newTaunt={switchTaunt} attacking={isAttacking} reason={switchReason}");
+                        $"{_ctx} 切换敌人 {CurrentTarget} -> {switchTarget} | currentDist={currentTargetDist:F1} newDist={switchDist:F1} currentPriorityThreat={currentTargetPriorityThreat} newPriorityThreat={switchPriorityThreat} newThreat={switchThreat} attackLocked={targetLockedByAttack} reason={switchReason}");
                     CurrentTarget = switchTarget;
+                    if (switchReason == "attacking_higher_priority_threat_in_pursuit_range")
+                        _additionalPursuitTarget = switchTarget;
                     // 已切到正常扫描的目标 → 清掉受击仇恨记忆（即使切到的就是 _lastAttacker 本人也清，让后续完全走正常规则）
                     if (_lastAttacker != null) ClearAggro();
                 }
@@ -353,6 +429,8 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         CurrentTarget = null;
         FollowTarget = null;
         _lastAttacker = null;
+        _additionalPursuitTarget = null;
+        _hasAttackedCurrentTarget = false;
         _defendFallbackTarget = null;
         _targetingMode = TargetingMode.Default;
     }
@@ -362,6 +440,11 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
     {
         Fix64 effectiveAttackRange = GetEffectiveAttackRange();
         Fix64 scanRange = Fix64.Max(m_AggroRange, effectiveAttackRange);
+        Fix64 additionalPursuitRange = effectiveAttackRange
+                                       + TargetThreatUtility.ReadAdditionalPursuitDistanceWorld();
+
+        if (CurrentTarget != null && _ctx.AtkComp != null && _ctx.AtkComp.IsAttacking)
+            _hasAttackedCurrentTarget = true;
 
         _scanTimer += deltaTime;
         if (_scanTimer < SCAN_INTERVAL)
@@ -369,9 +452,26 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
 
         _scanTimer = Fix64.Zero;
 
+        if (CurrentTarget != null && !IsCurrentDefendTargetStillValid(CurrentTarget, scanRange))
+            CurrentTarget = null;
+
+        bool targetLockedByAttack = _hasAttackedCurrentTarget
+                                    || (_ctx.AtkComp != null && _ctx.AtkComp.IsAttacking);
+        Fix64 threatPerLevel = TargetThreatUtility.ReadThreatPerLevel();
+        Fix64 buildingExtraThreat = TargetThreatUtility.ReadBuildingExtraThreat();
+        Fix64 currentPriorityThreat = CurrentTarget != null
+            ? TargetThreatUtility.CalculatePriorityThreat(
+                _ctx,
+                CurrentTarget,
+                threatPerLevel,
+                buildingExtraThreat)
+            : -Fix64.FromRaw(long.MaxValue);
+
         IEntityContext bestTarget = null;
-        Fix64 bestDistance = Fix64.FromRaw(long.MaxValue);
-        int bestPriority = int.MaxValue;
+        Fix64 bestDistance = scanRange;
+        Fix64 bestThreat = -Fix64.FromRaw(long.MaxValue);
+        IEntityContext interruptTarget = null;
+        Fix64 interruptThreat = -Fix64.FromRaw(long.MaxValue);
 
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
@@ -388,28 +488,65 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
             if (distance > scanRange)
                 continue;
 
-            int priority = GetDefendEnemyPriority(other);
-            if (priority < 0)
+            if (!IsEligibleDefendEnemyTarget(other))
                 continue;
 
-            if (priority < bestPriority
-                || (priority == bestPriority && (distance < bestDistance
-                    || (distance == bestDistance && HasLowerLogicId(other, bestTarget)))))
+            Fix64 threat = TargetThreatUtility.CalculateThreat(
+                _ctx,
+                other,
+                distance,
+                threatPerLevel,
+                buildingExtraThreat);
+            if (TargetThreatUtility.HasHigherPriority(threat, other, bestThreat, bestTarget))
             {
-                bestPriority = priority;
                 bestDistance = distance;
+                bestThreat = threat;
                 bestTarget = other;
+            }
+
+            Fix64 priorityThreat = TargetThreatUtility.CalculatePriorityThreat(
+                _ctx,
+                other,
+                threatPerLevel,
+                buildingExtraThreat);
+            if (targetLockedByAttack
+                && priorityThreat > currentPriorityThreat
+                && distance <= additionalPursuitRange
+                && TargetThreatUtility.HasHigherPriority(threat, other, interruptThreat, interruptTarget))
+            {
+                interruptThreat = threat;
+                interruptTarget = other;
             }
         }
 
-        IEntityContext desiredTarget = bestTarget;
-        if (desiredTarget == null && IsDefendFallbackTargetValid())
-            desiredTarget = _defendFallbackTarget;
+        if (CurrentTarget == null)
+        {
+            CurrentTarget = bestTarget ?? (IsDefendFallbackTargetValid() ? _defendFallbackTarget : null);
+            return;
+        }
 
-        if (CurrentTarget != null && desiredTarget == null && IsCurrentDefendTargetStillValid(CurrentTarget, scanRange))
+        if (targetLockedByAttack)
+        {
+            if (interruptTarget != null && !ReferenceEquals(interruptTarget, CurrentTarget))
+            {
+                CurrentTarget = interruptTarget;
+                _additionalPursuitTarget = interruptTarget;
+            }
+            return;
+        }
+
+        IEntityContext desiredTarget = bestTarget ?? (IsDefendFallbackTargetValid() ? _defendFallbackTarget : null);
+        if (desiredTarget == null || ReferenceEquals(CurrentTarget, desiredTarget))
             return;
 
-        if (!ReferenceEquals(CurrentTarget, desiredTarget))
+        Fix64 currentDistance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(CurrentTarget);
+        Fix64 currentThreat = TargetThreatUtility.CalculateThreat(
+            _ctx,
+            CurrentTarget,
+            currentDistance,
+            threatPerLevel,
+            buildingExtraThreat);
+        if (TargetThreatUtility.HasHigherPriority(bestThreat, desiredTarget, currentThreat, CurrentTarget))
             CurrentTarget = desiredTarget;
     }
 
@@ -421,12 +558,15 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         if (ReferenceEquals(target, _defendFallbackTarget))
             return IsDefendFallbackTargetValid();
 
-        int priority = GetDefendEnemyPriority(target);
-        if (priority < 0)
+        if (!IsEligibleDefendEnemyTarget(target))
             return false;
 
         Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(target);
-        return distance <= Fix64.Max(m_ForgetRange, scanRange);
+        Fix64 retentionRange = ReferenceEquals(target, _additionalPursuitTarget)
+            ? Fix64.Max(Fix64.Max(m_ForgetRange, scanRange), GetEffectiveAttackRange()
+                + TargetThreatUtility.ReadAdditionalPursuitDistanceWorld())
+            : Fix64.Max(m_ForgetRange, scanRange);
+        return distance <= retentionRange;
     }
 
     private bool IsDefendFallbackTargetValid()
@@ -440,28 +580,27 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         return EntityCombatTeamHelper.IsEnemy(_ctx, _defendFallbackTarget);
     }
 
-    private int GetDefendEnemyPriority(IEntityContext target)
+    private bool IsEligibleDefendEnemyTarget(IEntityContext target)
     {
         if (target == null)
-            return -1;
+            return false;
 
         if (target.TryGetLogicBuilding(out IBuildingLogicContext building))
         {
-            int taunt = GetTauntLevel(target);
+            int taunt = TargetThreatUtility.GetThreatLevel(_ctx, target);
             if (taunt > 0)
-                return 1;
+                return true;
 
             if (building.BuildingData != null && building.BuildingData.Type == BuilType.Def)
-                return 3;
+                return true;
 
             if (ReferenceEquals(target, _defendFallbackTarget))
-                return 4;
+                return true;
 
-            return -1;
+            return false;
         }
 
-        int unitTaunt = GetTauntLevel(target);
-        return unitTaunt > 1 ? 0 : 2;
+        return true;
     }
 
     private Fix64 GetEffectiveAttackRange()
@@ -508,7 +647,9 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         hasher.Add(_scanTimer.RawValue);
         hasher.Add(GetLogicId(FollowTarget));
         hasher.Add(GetLogicId(_lastAttacker));
+        hasher.Add(GetLogicId(_additionalPursuitTarget));
         hasher.Add(GetLogicId(_defendFallbackTarget));
+        hasher.Add(_hasAttackedCurrentTarget);
         hasher.Add(EnableAggroFallback);
         hasher.Add(m_AggroRange.RawValue);
         hasher.Add(m_ForgetRange.RawValue);

@@ -15,6 +15,8 @@ public static class DistanceUnitConverter
 #if UNITY_EDITOR
     private static readonly System.Collections.Generic.Dictionary<string, Fix64> s_EditorTestPositiveFixedConfigs =
         new System.Collections.Generic.Dictionary<string, Fix64>(System.StringComparer.Ordinal);
+    private static readonly System.Collections.Generic.Dictionary<string, Fix64> s_EditorTestFixedConfigs =
+        new System.Collections.Generic.Dictionary<string, Fix64>(System.StringComparer.Ordinal);
     private static bool s_HasEditorTestDistanceConversionRateText;
     private static string s_EditorTestDistanceConversionRateText;
     private static decimal s_EditorTestDistanceConversionRate;
@@ -79,6 +81,20 @@ public static class DistanceUnitConverter
         if (value <= Fix64.Zero)
             throw new System.InvalidOperationException($"Fixed config '{configKey}' must be positive. raw={value.RawValue}.");
         return value;
+    }
+
+    public static Fix64 ReadRequiredFixedConfig(string configKey)
+    {
+        if (string.IsNullOrEmpty(configKey))
+            throw new System.ArgumentException("Fixed config key must not be null or empty.", nameof(configKey));
+#if UNITY_EDITOR
+        if (s_EditorTestFixedConfigs.TryGetValue(configKey, out Fix64 testValue))
+            return testValue;
+#endif
+        if (GF.Config == null)
+            throw new System.InvalidOperationException($"Fixed config '{configKey}' cannot be read before GF.Config is initialized.");
+
+        return ParseFixedConfigText(configKey, GF.Config.GetString(configKey));
     }
 
     public static Fix64 ParseFixedConfigText(string configKey, string configText)
@@ -206,6 +222,27 @@ public static class DistanceUnitConverter
             throw new System.ArgumentException("Editor test fixed config key must not be null or empty.", nameof(configKey));
 
         s_EditorTestPositiveFixedConfigs.Remove(configKey);
+    }
+
+    public static bool TryGetEditorTestFixedConfig(string configKey, out Fix64 value)
+    {
+        return s_EditorTestFixedConfigs.TryGetValue(configKey, out value);
+    }
+
+    public static void SetEditorTestFixedConfig(string configKey, Fix64 value)
+    {
+        if (string.IsNullOrEmpty(configKey))
+            throw new System.ArgumentException("Editor test fixed config key must not be null or empty.", nameof(configKey));
+
+        s_EditorTestFixedConfigs[configKey] = value;
+    }
+
+    public static void ClearEditorTestFixedConfig(string configKey)
+    {
+        if (string.IsNullOrEmpty(configKey))
+            throw new System.ArgumentException("Editor test fixed config key must not be null or empty.", nameof(configKey));
+
+        s_EditorTestFixedConfigs.Remove(configKey);
     }
 #endif
 }

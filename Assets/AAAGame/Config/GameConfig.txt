@@ -9,15 +9,16 @@
 	MediumUnitCollisionRadius	中型单位碰撞半径	22
 	LargeUnitCollisionRadius	重型单位碰撞半径	36
 	SuperLargeUnitCollisionRadius	超重型单位碰撞半径	54
-	DiscardResourceConversionRate	弃牌时转化资源量与人口之比	4
+	DiscardResourceConversionLevel1	1级牌弃牌转化资源量	1
+	DiscardResourceConversionLevel2	2级牌弃牌转化资源量	2
+	DiscardResourceConversionLevel3	3级牌弃牌转化资源量	3
 	InitMaxSupply	初始人口上限	10
 	BaseProvideSupply	每个基地每级提供的人口上限	10
 	HeroVisionRadius	英雄视野	1200
 	UnitVisionRadius	单位视野	900
 	BuildingVisionRadius	建筑视野	900
 	KillRewardSupplyRatio	击杀人口与奖励资源之比	10
-	ResourcePointInitialAmount	资源点初始资源量	60
-	BuildingRecycleRefundRate	回收建筑返还资源百分比	50
+	ResourcePointInitialAmount	资源点初始资源量	50
 	BaseCriticalDamageRate	基础暴击伤害百分比	50
 	MinimumDamagePerHit	单次伤害下限	1
 	KnockbackForceLevelM1	-1级推力	100
@@ -44,3 +45,7 @@
 	OffsetBadgeDiamondThreshold	关卡偏移率钻角标阈值	28
 	TauntAdditionalPursuitDistance	嘲讽额外追击距离	300
 	TauntThreatPerLevel	嘲讽每级仇恨值	10000
+	BuildingExtraThreat	建筑额外仇恨值	-5000
+	DemolishedProdRevenueLossRate	生产建筑损毁当天损失收入百分比	50
+	DemolishEnemyProdReward	敌方生产建筑损毁提供奖励	2
+	CombatTeleportationWindUp	战斗阶段传送前摇	1

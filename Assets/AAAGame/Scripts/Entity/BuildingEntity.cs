@@ -44,6 +44,9 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     public bool IsPermanentlyInvincible => LogicState != null
         ? LogicState.IsPermanentlyInvincible
         : throw new System.InvalidOperationException("BuildingEntity.IsPermanentlyInvincible requires a bound logic state.");
+    public bool IsStealthed => LogicState != null
+        ? LogicState.IsStealthed
+        : throw new System.InvalidOperationException("BuildingEntity.IsStealthed requires a bound logic state.");
     public bool IsHealthBarSuppressedByBuff => _healthBarSuppressedByBuff || _stealthHealthBarSuppressed;
     public bool IsHealthBarSuppressedByPhaseBuff => _healthBarSuppressedByBuff;
     internal bool IsHiddenFromPlayerByStealth => _permanentStealthVisibility
@@ -58,6 +61,7 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     int IBuildingLogicContext.OwnerFactionId => LogicState.OwnerFactionId;
     IReadOnlyList<LogicInteractionOptionDescriptor> IBuildingLogicContext.InteractionOptions => LogicState.InteractionOptions;
     bool IBuildingLogicContext.BlocksLogicMovement => LogicState.BlocksLogicMovement;
+    IReadOnlyList<LogicCombatShape> IBuildingLogicContext.LogicObstacleShapes => LogicState.LogicObstacleShapes;
     bool IBuildingLogicContext.IsGameEndConditionBuilding => LogicState.IsGameEndConditionBuilding;
     bool IBuildingLogicContext.IsNavigationStaticBaked => LogicState.IsNavigationStaticBaked;
     event System.Action<int, int> IBuildingLogicContext.OwnerFactionChanged

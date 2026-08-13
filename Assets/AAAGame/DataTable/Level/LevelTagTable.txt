@@ -29,11 +29,9 @@
 	25	基站扩容	核心建筑每级提供的频段+{0}	3		LvTag_BaseStationExpansion	UI/LvTag/BaseStationExpansion	LvTag_Name_BaseStationExpansion	LvTag_Desc_BaseStationExpansion			True		5
 	26	征兵令	所有单位牌的兵力+{0}%，但所有军事建筑的建造价格+{1}橙髓	33,1		LvTag_ConscriptionOrder	UI/LvTag/ConscriptionOrder	LvTag_Name_ConscriptionOrder	LvTag_Desc_ConscriptionOrder			True		5
 	27	越级审批	建筑升级所需的核心建筑等级-{0}	1		LvTag_FastTrackApproval	UI/LvTag/FastTrackApproval	LvTag_Name_FastTrackApproval	LvTag_Desc_FastTrackApproval			True		5
-	28	废品回收	建筑回收返还橙髓的比例+{0}%	50		LvTag_ScrapRecycling	UI/LvTag/ScrapRecycling	LvTag_Name_ScrapRecycling	LvTag_Desc_ScrapRecycling			True		5
 	29	产业扶持	生产建筑的建造价格-{0}橙髓	1		LvTag_IndustrialSupport	UI/LvTag/IndustrialSupport	LvTag_Name_IndustrialSupport	LvTag_Desc_IndustrialSupport			True		5
 	31	投名状	敌方据点在被我方占领后的{0}天内，训练的单位+{1}%攻击，+{2}%生命上限	2,30,50		LvTag_PledgeOfLoyalty	UI/LvTag/PledgeOfLoyalty	LvTag_Name_PledgeOfLoyalty	LvTag_Desc_PledgeOfLoyalty			True		6
 	32	战利品劣化	杀敌转化为每1橙髓所需的频段+{0}	2		LvTag_LootDeterioration	UI/LvTag/LootDeterioration	LvTag_Name_LootDeterioration	LvTag_Desc_LootDeterioration			False	1	1
-	33	通信损耗	弃牌转化为每1橙髓所需的频段+{0}	1		LvTag_CommunicationLoss	UI/LvTag/CommunicationLoss	LvTag_Name_CommunicationLoss	LvTag_Desc_CommunicationLoss			False	1	1
 	34	编制缩减	手牌上限-{0}张	1		LvTag_ForceReduction	UI/LvTag/ForceReduction	LvTag_Name_ForceReduction	LvTag_Desc_ForceReduction			False	1	1
 	35	严密布控	敌方建筑阻止单位部署的范围扩大{0}%	60		LvTag_TightSecurity	UI/LvTag/TightSecurity	LvTag_Name_TightSecurity	LvTag_Desc_TightSecurity			False	1	1
 	36	补给匮乏	每天的基础橙髓收获-{0}	1		LvTag_SupplyShortage	UI/LvTag/SupplyShortage	LvTag_Name_SupplyShortage	LvTag_Desc_SupplyShortage			False	1	1
@@ -51,8 +49,6 @@
 	48	劣质基站I	核心建筑每级提供的频段-{0}	1	2	LvTag_InferiorBaseStationI	UI/LvTag/InferiorBaseStationI	LvTag_Name_InferiorBaseStationI	LvTag_Desc_InferiorBaseStationI			False	1	1
 	49	劣质基站II	核心建筑每级提供的频段-{0}	2	2	LvTag_InferiorBaseStationII	UI/LvTag/InferiorBaseStationII	LvTag_Name_InferiorBaseStationII	LvTag_Desc_InferiorBaseStationII			False	2	1
 	50	劣质基站III	核心建筑每级提供的频段-{0}	3	2	LvTag_InferiorBaseStationIII	UI/LvTag/InferiorBaseStationIII	LvTag_Name_InferiorBaseStationIII	LvTag_Desc_InferiorBaseStationIII			False	3	1
-	51	折价回收I	建筑回收返还橙髓的比例-{0}%	25	3	LvTag_DiscountedRecyclingI	UI/LvTag/DiscountedRecyclingI	LvTag_Name_DiscountedRecyclingI	LvTag_Desc_DiscountedRecyclingI			False	1	1
-	52	折价回收II	建筑回收返还橙髓的比例-{0}%	40	3	LvTag_DiscountedRecyclingII	UI/LvTag/DiscountedRecyclingII	LvTag_Name_DiscountedRecyclingII	LvTag_Desc_DiscountedRecyclingII			False	2	1
 	53	施工打点I	建筑升为3级的价格+{0}橙髓	1	4	LvTag_ConstructionKickbackI	UI/LvTag/ConstructionKickbackI	LvTag_Name_ConstructionKickbackI	LvTag_Desc_ConstructionKickbackI			False	1	1
 	54	施工打点II	建筑升级的价格+{0}橙髓	1	4	LvTag_ConstructionKickbackII	UI/LvTag/ConstructionKickbackII	LvTag_Name_ConstructionKickbackII	LvTag_Desc_ConstructionKickbackII			False	2	1
 	55	施工打点III	建筑建造和升级的价格+{0}橙髓	1	4	LvTag_ConstructionKickbackIII	UI/LvTag/ConstructionKickbackIII	LvTag_Name_ConstructionKickbackIII	LvTag_Desc_ConstructionKickbackIII			False	3	1

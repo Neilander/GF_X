@@ -281,6 +281,51 @@ public sealed class LogicCardPlacementAuthorityTests
     }
 
     [Test]
+    public void Evaluate_EnemyBuildingStealthToggleImmediatelyChangesForbiddenArea()
+    {
+        Fog3MapData map = CreateMap(12, 12);
+        MarkAllExplored(map);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)1);
+        LogicEntityState enemy = CreateBuilding(
+            12,
+            1,
+            EntitySideHelper.EnemyFactionId,
+            LogicCombatShape.AxisAlignedBox(
+                new FixVector2((Fix64)7, (Fix64)7),
+                new FixVector2(Fix64.One, Fix64.One)),
+            new[]
+            {
+                LogicCombatShape.AxisAlignedBox(
+                    new FixVector2((Fix64)7, (Fix64)7),
+                    new FixVector2(Fix64.One, Fix64.One)),
+            });
+        EntityRegistry.Register(enemy);
+        var placementPosition = new FixVector2((Fix64)10.5f, (Fix64)7);
+
+        Assert.AreEqual(
+            LogicCardPlacementInvalidReason.EnemyBuildingForbiddenArea,
+            LogicCardPlacementAuthority.Evaluate(placementPosition, (Fix64)0.5f, GamePhase.Invade));
+        Assert.IsTrue(LogicCardPlacementAuthority.GeneratesEnemyBuildingForbiddenZone(enemy));
+
+        ((IBuildingLogicContext)enemy).SetPermanentStealthByBuff(true);
+        Assert.IsTrue(((IBuildingLogicContext)enemy).IsStealthed);
+        Assert.IsFalse(LogicCardPlacementAuthority.GeneratesEnemyBuildingForbiddenZone(enemy));
+        Assert.AreEqual(
+            LogicCardPlacementInvalidReason.None,
+            LogicCardPlacementAuthority.Evaluate(placementPosition, (Fix64)0.5f, GamePhase.Invade));
+        Assert.IsTrue(LogicCardPlacementAuthority.IsInsideStealthedBuildingCollision(
+            new FixVector2((Fix64)7, (Fix64)7)));
+
+        ((IBuildingLogicContext)enemy).SetPermanentStealthByBuff(false);
+        Assert.IsTrue(LogicCardPlacementAuthority.GeneratesEnemyBuildingForbiddenZone(enemy));
+        Assert.AreEqual(
+            LogicCardPlacementInvalidReason.EnemyBuildingForbiddenArea,
+            LogicCardPlacementAuthority.Evaluate(placementPosition, (Fix64)0.5f, GamePhase.Invade));
+        Assert.IsFalse(LogicCardPlacementAuthority.IsInsideStealthedBuildingCollision(
+            new FixVector2((Fix64)7, (Fix64)7)));
+    }
+
+    [Test]
     public void DeterministicState_ChangesWhenExplorationChanges()
     {
         Fog3MapData map = CreateMap(3, 3);
@@ -473,7 +518,8 @@ public sealed class LogicCardPlacementAuthorityTests
         long id,
         int level,
         int ownerFactionId,
-        LogicCombatShape shape)
+        LogicCombatShape shape,
+        IReadOnlyList<LogicCombatShape> obstacleShapes = null)
     {
         LogicEntityState state = CreateUnit(
             id,
@@ -501,7 +547,7 @@ public sealed class LogicCardPlacementAuthorityTests
             "stronghold-card-placement",
             ownerFactionId,
             shape,
-            Array.Empty<LogicCombatShape>(),
+            obstacleShapes ?? Array.Empty<LogicCombatShape>(),
             Array.Empty<LogicInteractionOptionDescriptor>(),
             false,
             null);

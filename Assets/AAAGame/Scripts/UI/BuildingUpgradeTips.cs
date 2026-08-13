@@ -24,7 +24,8 @@ public partial class BuildingUpgradeTips : UIFormBase
     private const float HoldAlignedDurationSeconds = 2f;
     private const float HoldDurationMinSeconds = 1f;
     private const float RecycleHoldDurationSeconds = 2f;
-    private const string RecycleTextFormat = "回收  <sprite name=\"Coin\"> {0}";
+    private const string DemolishText = "拆除";
+    private const string UndoTextFormat = "撤销  <sprite name=\"Coin\"> {0}";
     private static readonly Color32 DefaultLitColor = new(250, 112, 36, 255);
 
     private static readonly char[] s_OptionMarks = { '\u03B1', '\u03B2', '\u03B3', '\u03B4' };
@@ -989,7 +990,12 @@ public partial class BuildingUpgradeTips : UIFormBase
         }
 
         if (varRecycleText != null)
-            varRecycleText.text = string.Format(RecycleTextFormat, ResolveRecycleRefund());
+        {
+            BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
+            varRecycleText.text = buildManager != null && buildManager.IsBuildingPhaseUndo(m_TargetBuilding)
+                ? string.Format(UndoTextFormat, ResolveRecycleRefund())
+                : DemolishText;
+        }
 
         if (varRecycleFill != null)
             varRecycleFill.fillAmount = Mathf.Clamp01(m_RecycleHoldProgress);

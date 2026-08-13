@@ -11,8 +11,6 @@ namespace AAAGame.Card
     /// </summary>
     public class CardSystemController
     {
-        private const string DiscardResourceConversionRateConfigKey = "DiscardResourceConversionRate";
-
         private enum CardPresentationEventKind
         {
             Drawn,
@@ -71,17 +69,22 @@ namespace AAAGame.Card
         private readonly List<ICardDataProvider> m_OwnedPlaceableCardProviders = new List<ICardDataProvider>();
         private readonly HashSet<string> m_OwnedPlaceableCardProviderKeys = new HashSet<string>();
         private ulong m_LastCardRuntimeId;
-        private int m_DiscardResourceConversionRate;
+        private int[] m_DiscardResourceByLevel;
         private readonly Queue<CardPresentationEvent> m_PendingPresentationEvents = new Queue<CardPresentationEvent>();
 
         /// <summary>
         /// 初始化
         /// </summary>
-        public void Initialize(int discardResourceConversionRate)
+        public void Initialize(int[] discardResourceByLevel)
         {
-            if (discardResourceConversionRate <= 0)
-                throw new ArgumentOutOfRangeException(nameof(discardResourceConversionRate));
-            m_DiscardResourceConversionRate = discardResourceConversionRate;
+            if (discardResourceByLevel == null || discardResourceByLevel.Length != 3)
+                throw new ArgumentException("Discard rewards must contain exactly three card levels.", nameof(discardResourceByLevel));
+            for (int i = 0; i < discardResourceByLevel.Length; i++)
+            {
+                if (discardResourceByLevel[i] < 0)
+                    throw new ArgumentOutOfRangeException(nameof(discardResourceByLevel));
+            }
+            m_DiscardResourceByLevel = (int[])discardResourceByLevel.Clone();
             m_PendingPresentationEvents.Clear();
             // 初始化模型
             m_HandModel = new PlayerHandModel(LevelTagRuntime.ModifyMaxHandCards(CardConst.MaxHandCards));
@@ -653,7 +656,9 @@ namespace AAAGame.Card
                 sourceBuildingInstanceId,
                 null,
                 true,
-                dataProvider.RequiredLv);
+                dataProvider.RequiredLv,
+                allowBlockedFormationCenter:
+                    LogicCardPlacementAuthority.IsInsideStealthedBuildingCollision(selectedPosition));
             if (!spawned)
             {
                 Log.Warning(
@@ -695,16 +700,28 @@ namespace AAAGame.Card
 
         private void ApplyDiscardResourceReward(CardModel cardModel)
         {
-            int occupiedSupply = Mathf.Max(0, cardModel.GetOccupiedSupply());
-            int conversionRate = LevelTagRuntime.ModifyDiscardRewardConversionRate(m_DiscardResourceConversionRate);
-            int gainedCoin = occupiedSupply / conversionRate;
-            Log.Info("[Card] Discard reward calc. card={0}, occupiedSupply={1}, rate={2}, gainedCoin={3}",
-                cardModel.GetCardName(), occupiedSupply, conversionRate, gainedCoin);
+            int cardLevel = cardModel.DataProvider?.RequiredLv
+                            ?? throw new InvalidOperationException($"Card {cardModel.RuntimeId} has no data provider.");
+            int gainedCoin = ResolveDiscardResourceReward(m_DiscardResourceByLevel, cardLevel);
+            Log.Info("[Card] Discard reward calc. card={0}, level={1}, gainedCoin={2}",
+                cardModel.GetCardName(), cardLevel, gainedCoin);
 
             if (gainedCoin <= 0)
                 return;
 
             RewardManager.HandleCardDiscardReward(cardModel, gainedCoin);
+        }
+
+        internal static int ResolveDiscardResourceReward(int[] rewardsByLevel, int cardLevel)
+        {
+            if (rewardsByLevel == null || rewardsByLevel.Length != 3)
+                throw new ArgumentException("Discard rewards must contain exactly three card levels.", nameof(rewardsByLevel));
+            if (cardLevel < 1 || cardLevel > rewardsByLevel.Length)
+                throw new InvalidOperationException($"Card discard level is unsupported. level={cardLevel}.");
+            int reward = rewardsByLevel[cardLevel - 1];
+            if (reward < 0)
+                throw new InvalidOperationException($"Card discard reward is negative. level={cardLevel}, reward={reward}.");
+            return reward;
         }
 
 

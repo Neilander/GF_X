@@ -31,13 +31,11 @@ public sealed class InGameDataCheckpoint
     internal InGameDataCheckpoint(
         int[] values,
         StageTechOwnership[] techOwnership,
-        StageStringIntValue[] productionReserves,
-        StageStringIntValue[] buildingCosts)
+        StageStringIntValue[] productionReserves)
     {
         Values = Array.AsReadOnly((int[])values.Clone());
         TechOwnership = Array.AsReadOnly((StageTechOwnership[])techOwnership.Clone());
         ProductionReserves = Array.AsReadOnly((StageStringIntValue[])productionReserves.Clone());
-        BuildingCosts = Array.AsReadOnly((StageStringIntValue[])buildingCosts.Clone());
 
         var hasher = new LogicStateHasher();
         WriteState(hasher);
@@ -47,7 +45,6 @@ public sealed class InGameDataCheckpoint
     public ReadOnlyCollection<int> Values { get; }
     public ReadOnlyCollection<StageTechOwnership> TechOwnership { get; }
     public ReadOnlyCollection<StageStringIntValue> ProductionReserves { get; }
-    public ReadOnlyCollection<StageStringIntValue> BuildingCosts { get; }
     public ulong ContentHash { get; }
 
     internal void WriteState(LogicStateHasher hasher)
@@ -68,7 +65,6 @@ public sealed class InGameDataCheckpoint
         }
 
         WriteValues(hasher, ProductionReserves);
-        WriteValues(hasher, BuildingCosts);
     }
 
     private static void WriteValues(LogicStateHasher hasher, ReadOnlyCollection<StageStringIntValue> values)
@@ -89,8 +85,7 @@ public partial class InGameDataModel
         InGameDataModel model = GetRequiredModel();
         if (model.m_IngameValue == null
             || model.m_TechOwnerContextsById == null
-            || model.m_ProductionBuildingCoinReservesByInstanceId == null
-            || model.m_BuildingCostSpentByInstanceId == null)
+            || model.m_ProductionBuildingCoinReservesByInstanceId == null)
         {
             throw new InvalidOperationException("Cannot capture an uninitialized InGameDataModel stage checkpoint.");
         }
@@ -120,8 +115,7 @@ public partial class InGameDataModel
         return new InGameDataCheckpoint(
             values,
             techOwnership,
-            CaptureStringIntValues(model.m_ProductionBuildingCoinReservesByInstanceId),
-            CaptureStringIntValues(model.m_BuildingCostSpentByInstanceId));
+            CaptureStringIntValues(model.m_ProductionBuildingCoinReservesByInstanceId));
     }
 
     public static void RestoreStageCheckpointState(InGameDataCheckpoint checkpoint, bool triggerEvents = true)
@@ -134,13 +128,11 @@ public partial class InGameDataModel
         Dictionary<IngameValueType, int> values = ValidateAndCreateValues(checkpoint.Values);
         Dictionary<string, HashSet<string>> techOwnership = ValidateAndCreateTechOwnership(checkpoint.TechOwnership);
         Dictionary<string, int> reserves = ValidateAndCreateStringIntValues(checkpoint.ProductionReserves, "production reserve");
-        Dictionary<string, int> costs = ValidateAndCreateStringIntValues(checkpoint.BuildingCosts, "building cost");
         var oldValues = new Dictionary<IngameValueType, int>(model.m_IngameValue);
 
         model.m_IngameValue = values;
         model.m_TechOwnerContextsById = techOwnership;
         model.m_ProductionBuildingCoinReservesByInstanceId = reserves;
-        model.m_BuildingCostSpentByInstanceId = costs;
         var unlockedTechIds = new List<string>(techOwnership.Keys);
         unlockedTechIds.Sort(StringComparer.Ordinal);
         model.UnlockedTechIds = unlockedTechIds.ToArray();

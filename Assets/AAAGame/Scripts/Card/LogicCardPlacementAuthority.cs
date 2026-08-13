@@ -181,18 +181,55 @@ namespace AAAGame.Card
                     throw new InvalidOperationException($"LogicCardPlacementAuthority found a null registry entity at index {i}.");
                 if (!entity.Alive || !entity.TryGetLogicBuilding(out IBuildingLogicContext building))
                     continue;
-                if (building.BuildingData.Lv == 0 || building.OwnerFactionId == EntitySideHelper.PlayerFactionId)
+                if (!GeneratesEnemyBuildingForbiddenZone(building))
                     continue;
-                if (building.OwnerFactionId < 0)
-                {
-                    throw new InvalidOperationException(
-                        $"Logic building {building.LogicEntityId.Value} has an invalid owner faction {building.OwnerFactionId}.");
-                }
                 if (building.CombatShape.DistanceToSurface(position) <= enemyPadding)
                     return LogicCardPlacementInvalidReason.EnemyBuildingForbiddenArea;
             }
 
             return LogicCardPlacementInvalidReason.None;
+        }
+
+        public static bool GeneratesEnemyBuildingForbiddenZone(IBuildingLogicContext building)
+        {
+            if (building == null)
+                throw new ArgumentNullException(nameof(building));
+            if (building.OwnerFactionId < 0)
+            {
+                throw new InvalidOperationException(
+                    $"Logic building {building.LogicEntityId.Value} has an invalid owner faction {building.OwnerFactionId}.");
+            }
+
+            return building.BuildingData.Lv > 0
+                   && building.OwnerFactionId != EntitySideHelper.PlayerFactionId
+                   && !building.IsStealthed;
+        }
+
+        public static bool IsInsideStealthedBuildingCollision(FixVector2 position)
+        {
+            IList<IEntityContext> entities = EntityRegistry.AllEntities;
+            for (int i = 0; i < entities.Count; i++)
+            {
+                IEntityContext entity = entities[i];
+                if (entity == null)
+                    throw new InvalidOperationException($"LogicCardPlacementAuthority found a null registry entity at index {i}.");
+                if (!entity.Alive
+                    || !entity.TryGetLogicBuilding(out IBuildingLogicContext building)
+                    || !building.IsStealthed
+                    || !building.BlocksLogicMovement)
+                {
+                    continue;
+                }
+
+                IReadOnlyList<LogicCombatShape> obstacleShapes = building.LogicObstacleShapes;
+                for (int shapeIndex = 0; shapeIndex < obstacleShapes.Count; shapeIndex++)
+                {
+                    if (obstacleShapes[shapeIndex].DistanceToSurface(position) <= Fix64.Zero)
+                        return true;
+                }
+            }
+
+            return false;
         }
 
         public static bool IsVisibleFromCurrentLogicRevealers(FixVector2 position)

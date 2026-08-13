@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using NUnit.Framework;
 using UnityEngine;
+using AAAGame.Card;
 
 [TestFixture]
 public sealed class LogicCardCommandServiceTests
@@ -143,6 +144,24 @@ public sealed class LogicCardCommandServiceTests
     {
         Assert.Throws<InvalidOperationException>(() =>
             RewardManager.HandleCardDiscardReward(null, 1));
+    }
+
+    [TestCase(1, 2)]
+    [TestCase(2, 5)]
+    [TestCase(3, 9)]
+    public void DiscardReward_UsesCardLevelInsteadOfOccupiedSupply(int cardLevel, int expectedReward)
+    {
+        Assert.AreEqual(
+            expectedReward,
+            CardSystemController.ResolveDiscardResourceReward(new[] { 2, 5, 9 }, cardLevel));
+    }
+
+    [TestCase(0)]
+    [TestCase(4)]
+    public void DiscardReward_RejectsUnsupportedCardLevel(int cardLevel)
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            CardSystemController.ResolveDiscardResourceReward(new[] { 2, 5, 9 }, cardLevel));
     }
 
     [Test]

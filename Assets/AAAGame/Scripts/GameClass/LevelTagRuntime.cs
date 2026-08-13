@@ -412,44 +412,12 @@ public static class LevelTagRuntime
         return Mathf.Max(0, result);
     }
 
-    public static int ModifyRecycleRefundRate(int baseRate)
-    {
-        int result = Mathf.Max(0, baseRate);
-        foreach (LevelTagTable tag in ResolveActiveTags())
-        {
-            switch (tag.Identifier)
-            {
-                case "LvTag_ScrapRecycling":
-                    result += IntValue(tag, 0);
-                    break;
-                case "LvTag_DiscountedRecyclingI":
-                case "LvTag_DiscountedRecyclingII":
-                    result -= IntValue(tag, 0);
-                    break;
-            }
-        }
-
-        return Mathf.Max(0, result);
-    }
-
     public static int ModifyKillRewardConversionRate(int baseRate)
     {
         int result = Mathf.Max(1, baseRate);
         foreach (LevelTagTable tag in ResolveActiveTags())
         {
             if (tag.Identifier == "LvTag_LootDeterioration")
-                result += IntValue(tag, 0);
-        }
-
-        return Mathf.Max(1, result);
-    }
-
-    public static int ModifyDiscardRewardConversionRate(int baseRate)
-    {
-        int result = Mathf.Max(1, baseRate);
-        foreach (LevelTagTable tag in ResolveActiveTags())
-        {
-            if (tag.Identifier == "LvTag_CommunicationLoss")
                 result += IntValue(tag, 0);
         }
 

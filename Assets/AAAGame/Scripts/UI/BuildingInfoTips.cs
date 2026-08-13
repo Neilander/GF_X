@@ -17,7 +17,8 @@ public partial class BuildingInfoTips : UIFormBase
     private const string SupplyIconPath = "UI/Icon/Supply.png";
     private const string CoinReservesPrefix = "剩余";
     private const float RecycleHoldDurationSeconds = 2f;
-    private const string RecycleTextFormat = "回收  <sprite name=\"Coin\"> {0}";
+    private const string DemolishText = "拆除";
+    private const string UndoTextFormat = "撤销  <sprite name=\"Coin\"> {0}";
 
     // 用 Unicode 转义避免文件编码导致的 αβγδ 乱码。
     private static readonly char[] s_OptionMarks = { '\u03B1', '\u03B2', '\u03B3', '\u03B4' };
@@ -368,7 +369,12 @@ public partial class BuildingInfoTips : UIFormBase
         }
 
         if (varRecycleText != null)
-            varRecycleText.text = string.Format(RecycleTextFormat, ResolveRecycleRefund());
+        {
+            BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
+            varRecycleText.text = buildManager != null && buildManager.IsBuildingPhaseUndo(m_TargetBuilding)
+                ? string.Format(UndoTextFormat, ResolveRecycleRefund())
+                : DemolishText;
+        }
 
         if (varRecycleFill != null)
             varRecycleFill.fillAmount = Mathf.Clamp01(m_RecycleHoldProgress);

@@ -6,17 +6,15 @@ using UnityGameFramework.Runtime;
 
 public class BuildManager : GameFrameworkComponent
 {
-    private const string BuildingRecycleRefundRateConfigKey = "BuildingRecycleRefundRate";
-
     private readonly BaseMilestoneTechService m_BaseMilestoneTechService = new("Tech_BaseBuilt_{0}_Lv{1}");
     private readonly Dictionary<Archetype, List<BuildingData>> m_Lv0ConstructCandidatesByArchetype = new();
     private HashSet<Archetype> m_PlayerUnlockedBaseArchesCache;
     private bool m_IsSubscribedLogicTechApplied;
     private bool m_IsSubscribedBuildingOwnership;
     private bool m_IsSubscribedInteractionCommands;
+    private bool m_IsSubscribedPhaseChanges;
     private TechManager m_TechManager;
     private GlobalBuffManager m_GlobalBuffManager;
-    private int m_BuildingRecycleRefundRate;
     private readonly Queue<string> m_PendingPresentationAudio = new Queue<string>();
 
     public bool HasConstructOption(IBuildingLogicContext owner)
@@ -131,6 +129,7 @@ public class BuildManager : GameFrameworkComponent
     private bool ApplyScheduledConstructBuilding(IBuildingLogicContext owner, string buildBuildingId)
     {
         EnsureInteractionApplyWindow();
+        int cost = GetBuildingCost(buildBuildingId, owner);
         bool built = BuildBuildingInternalFixed(
             buildBuildingId,
             owner.PositionFixed,
@@ -140,7 +139,13 @@ public class BuildManager : GameFrameworkComponent
             consumeCoins: true,
             currentInteractionFrameLifecycle: true).IsValid;
         if (built)
+        {
+            InGameDataModel.RecordBuildingPhaseModification(
+                owner.BuildingInstanceId,
+                owner.BuildingData.Identifier,
+                cost);
             m_PendingPresentationAudio.Enqueue("buildNormal");
+        }
         if (built)
             LogicEntityLifecycleService.RequestDespawnForCurrentInteractionFrame(owner.LogicEntityId);
 
@@ -236,7 +241,8 @@ public class BuildManager : GameFrameworkComponent
         if (owner.BuildingData.Lv <= 0)
             return false;
 
-        if (owner.BuildingData.Type == BuilType.Base)
+        if (owner.BuildingData.Type == BuilType.Base
+            && !HasBuildingCostModifierTech(owner.BuildingInstanceId))
             return false;
 
         if (LogicInteractionCommandService.IsActive
@@ -252,22 +258,17 @@ public class BuildManager : GameFrameworkComponent
     {
         if (owner == null || owner.BuildingData == null)
             return 0;
+        return InGameDataModel.TryGetBuildingPhaseUndo(owner.BuildingInstanceId, out _, out int refund)
+               && !IsBuildingPhaseUndoBlockedByCostModifier(owner)
+            ? refund
+            : 0;
+    }
 
-        int spent = InGameDataModel.GetBuildingCostSpent(owner.BuildingInstanceId);
-        if (spent <= 0)
-            spent = InGameDataModel.CalculateOriginalBuildingCostSum(owner.BuildingData);
-
-        if (spent <= 0)
-            return 0;
-
-        int refundRate = m_BuildingRecycleRefundRate;
-        refundRate = LevelTagRuntime.ModifyRecycleRefundRate(refundRate);
-        if (refundRate <= 0)
-            return 0;
-
-        long numerator = (long)spent * refundRate;
-        long refund = (numerator + 50L) / 100L;
-        return refund > int.MaxValue ? int.MaxValue : (int)refund;
+    public bool IsBuildingPhaseUndo(IBuildingLogicContext owner)
+    {
+        return owner != null
+               && InGameDataModel.TryGetBuildingPhaseUndo(owner.BuildingInstanceId, out _, out _)
+               && !IsBuildingPhaseUndoBlockedByCostModifier(owner);
     }
 
     public bool RecycleBuilding(IBuildingLogicContext owner)
@@ -288,15 +289,21 @@ public class BuildManager : GameFrameworkComponent
         if (!CanRecycleBuildingForApply(owner))
             return false;
 
-        string lv0BuildingId = ResolveLv0BuildingId(owner.BuildingData.Type);
-        if (string.IsNullOrWhiteSpace(lv0BuildingId))
+        bool isUndo = InGameDataModel.TryGetBuildingPhaseUndo(
+            owner.BuildingInstanceId,
+            out string phaseOriginalBuildingId,
+            out int refund)
+            && !IsBuildingPhaseUndoBlockedByCostModifier(owner);
+        if (!isUndo)
+            refund = 0;
+        string targetBuildingId = isUndo ? phaseOriginalBuildingId : ResolveLv0BuildingId(owner.BuildingData.Type);
+        if (string.IsNullOrWhiteSpace(targetBuildingId))
             return false;
 
         FixVector2 position = owner.PositionFixed;
         string buildingInstanceId = owner.BuildingInstanceId;
-        int refund = CalculateRecycleRefund(owner);
         LogicEntityId entityId = BuildBuildingInternalFixed(
-            lv0BuildingId,
+            targetBuildingId,
             position,
             0f,
             buildingInstanceId,
@@ -308,12 +315,17 @@ public class BuildManager : GameFrameworkComponent
         if (!entityId.IsValid)
             return false;
 
-        m_TechManager.RollbackTechsForBuilding(owner);
-        m_GlobalBuffManager.ClearBuildingRuntimeTechState(buildingInstanceId, owner.OwnerFactionId);
+        if (isUndo)
+            m_TechManager.RollbackPhaseTechsForBuilding(owner);
+        else
+        {
+            m_TechManager.RollbackTechsForBuilding(owner);
+            m_GlobalBuffManager.ClearBuildingRuntimeTechState(buildingInstanceId, owner.OwnerFactionId);
+        }
         OnBuildingDemolished(owner);
-        InGameDataModel.ResetBuildingCostSpent(buildingInstanceId);
+        InGameDataModel.ClearBuildingPhaseUndo(buildingInstanceId);
         LogicEntityLifecycleService.RequestDespawnForCurrentInteractionFrame(owner.LogicEntityId);
-        RewardManager.HandleBuildingRecycleReward(
+        RewardManager.HandleBuildingUndoReward(
             position,
             refund);
         m_PendingPresentationAudio.Enqueue("buildNormal");
@@ -554,9 +566,6 @@ public class BuildManager : GameFrameworkComponent
             if (buildingData.Type == BuilType.Prod)
                 InGameDataModel.EnsureProductionBuildingCoinReserves(resolvedBuildingInstanceId, initialCoinReserves);
 
-            if (consumeCoins)
-                InGameDataModel.RecordBuildingCostSpent(resolvedBuildingInstanceId, consumedCost);
-
             TryGrantBaseSupplyCapacity(buildingData, ownerFactionId, previousBaseLevel);
         }
 
@@ -755,6 +764,7 @@ public class BuildManager : GameFrameworkComponent
         TrySubscribeInteractionCommands();
         SubscribeLogicTechAppliedEvent();
         TrySubscribeBuildingOwnershipEvent();
+        TrySubscribePhaseChanges();
     }
 
     private void Start()
@@ -762,6 +772,7 @@ public class BuildManager : GameFrameworkComponent
         TrySubscribeInteractionCommands();
         SubscribeLogicTechAppliedEvent();
         TrySubscribeBuildingOwnershipEvent();
+        TrySubscribePhaseChanges();
     }
 
     public void UpdatePresentation()
@@ -783,10 +794,10 @@ public class BuildManager : GameFrameworkComponent
                               ?? throw new InvalidOperationException("BuildManager requires GlobalBuffManager during preload.");
         if (GF.Config == null)
             throw new InvalidOperationException("BuildManager requires initialized game config during preload.");
-        m_BuildingRecycleRefundRate = GF.Config.GetInt(BuildingRecycleRefundRateConfigKey, 0);
         TrySubscribeInteractionCommands();
         SubscribeLogicTechAppliedEvent();
         TrySubscribeBuildingOwnershipEvent();
+        TrySubscribePhaseChanges();
     }
 
     private void OnDestroy()
@@ -797,10 +808,13 @@ public class BuildManager : GameFrameworkComponent
             LogicTechEffectCommandService.EffectApplied -= OnLogicTechEffectApplied;
         if (m_IsSubscribedBuildingOwnership)
             LogicBuildingOwnershipEventService.OwnerFactionChanged -= OnLogicBuildingOwnerFactionChanged;
+        if (m_IsSubscribedPhaseChanges)
+            LogicPhaseCommandService.PhaseApplied -= OnPhaseApplied;
 
         m_IsSubscribedInteractionCommands = false;
         m_IsSubscribedLogicTechApplied = false;
         m_IsSubscribedBuildingOwnership = false;
+        m_IsSubscribedPhaseChanges = false;
         m_PendingPresentationAudio.Clear();
     }
 
@@ -858,15 +872,64 @@ public class BuildManager : GameFrameworkComponent
         }
     }
 
+    private void TrySubscribePhaseChanges()
+    {
+        if (m_IsSubscribedPhaseChanges)
+            return;
+        LogicPhaseCommandService.PhaseApplied += OnPhaseApplied;
+        m_IsSubscribedPhaseChanges = true;
+    }
+
+    private static void OnPhaseApplied(GamePhase oldPhase, GamePhase newPhase)
+    {
+        if (oldPhase != newPhase && InGameDataModel.IsBuildPhase(oldPhase))
+            InGameDataModel.ClearBuildingPhaseUndoRecords();
+    }
+
     private static bool CanRecycleBuildingForApply(IBuildingLogicContext owner)
     {
         if (owner == null || owner.BuildingData == null)
             return false;
         if (owner.OwnerFactionId != EntitySideHelper.PlayerFactionId)
             return false;
-        if (owner.BuildingData.Lv <= 0 || owner.BuildingData.Type == BuilType.Base)
+        if (owner.BuildingData.Lv <= 0)
+            return false;
+        if (owner.BuildingData.Type == BuilType.Base
+            && !HasBuildingCostModifierTech(owner.BuildingInstanceId))
             return false;
         return InGameDataModel.IsBuildPhase(LogicPhaseCommandService.GetRequiredCurrentPhase());
+    }
+
+    internal static bool IsBuildingPhaseUndoBlockedByCostModifier(IBuildingLogicContext owner)
+    {
+        if (owner == null || !InGameDataModel.TryGetBuildingPhaseUndo(owner.BuildingInstanceId, out _, out _))
+            return false;
+
+        IReadOnlyList<string> phaseTechIds = InGameDataModel.GetBuildingPhaseTechIds(owner.BuildingInstanceId);
+        for (int i = 0; i < phaseTechIds.Count; i++)
+        {
+            if (BuildingTechRuntimeEffect.ChangesBuildingCost(phaseTechIds[i]))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool HasBuildingCostModifierTech(string buildingInstanceId)
+    {
+        IReadOnlyList<string> phaseTechIds = InGameDataModel.GetBuildingPhaseTechIds(buildingInstanceId);
+        for (int i = 0; i < phaseTechIds.Count; i++)
+        {
+            if (BuildingTechRuntimeEffect.ChangesBuildingCost(phaseTechIds[i]))
+                return true;
+        }
+
+        List<string> unlockedTechIds = InGameDataModel.GetUnlockedTechIdsForBuilding(buildingInstanceId);
+        for (int i = 0; i < unlockedTechIds.Count; i++)
+        {
+            if (BuildingTechRuntimeEffect.ChangesBuildingCost(unlockedTechIds[i]))
+                return true;
+        }
+        return false;
     }
 
     private static void EnsureInteractionApplyWindow()
@@ -904,7 +967,6 @@ public class BuildManager : GameFrameworkComponent
         if (building.BuildingData == null)
             throw new InvalidOperationException($"Logic building {building.LogicEntityId.Value} has no BuildingData.");
 
-        InGameDataModel.EnsureBuildingCostSpentFromOriginalCosts(building.BuildingInstanceId, building.BuildingData);
     }
 
     private void ApplyBaseOwnershipEffects(

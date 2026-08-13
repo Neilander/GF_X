@@ -58,6 +58,13 @@ public static class LogicRewardStateService
 	}
 }
 
+internal enum ProductionBuildingDisabledResult
+{
+	Ignore,
+	RecordPlayerProductionLoss,
+	GrantEnemyProductionReward,
+}
+
 public class RewardManager : GameFrameworkComponent
 {
 	private readonly struct CoinFlyPresentationRequest
@@ -72,11 +79,12 @@ public class RewardManager : GameFrameworkComponent
 		public int CoinAmount { get; }
 	}
 
-	private const string DiscardResourceConversionRateConfigKey = "DiscardResourceConversionRate";
 	private const string KillRewardSupplyRatioConfigKey = "KillRewardSupplyRatio";
 	private const string BaseResourceIncomeDailyGrowthConfigKey = "BaseResourceIncomeDailyGrowth";
 	private const string DefendPhaseBaseResourceIncomeConfigKey = "DefendPhaseBaseResourceIncome";
 	private const string InvadePhaseIncomePerCapturedOutpostConfigKey = "InvadePhaseIncomePerCapturedOutpost";
+	private const string DemolishedProdRevenueLossRateConfigKey = "DemolishedProdRevenueLossRate";
+	private const string DemolishEnemyProdRewardConfigKey = "DemolishEnemyProdReward";
 	private const float CoinFlySpawnIntervalSeconds = 0.1f;
 
 	private static readonly Vector3 CoinSpawnOffset = new Vector3(0f, 1.2f, 0f);
@@ -90,7 +98,8 @@ public class RewardManager : GameFrameworkComponent
 	private int m_DefendPhaseBaseResourceIncome;
 	private int m_InvadePhaseIncomePerCapturedOutpost;
 	private int m_KillRewardSupplyRatio;
-	private int m_DiscardResourceConversionRate;
+	private int m_DemolishedProdRevenueLossRate;
+	private int m_DemolishEnemyProdReward;
 	private readonly Queue<CoinFlyPresentationRequest> m_PendingCoinFlyPresentation = new();
 
 	protected override void Awake()
@@ -169,18 +178,22 @@ public class RewardManager : GameFrameworkComponent
 		m_DefendPhaseBaseResourceIncome = GF.Config.GetInt(DefendPhaseBaseResourceIncomeConfigKey, 0);
 		m_InvadePhaseIncomePerCapturedOutpost = GF.Config.GetInt(InvadePhaseIncomePerCapturedOutpostConfigKey, 0);
 		m_KillRewardSupplyRatio = GF.Config.GetInt(KillRewardSupplyRatioConfigKey, 0);
-		m_DiscardResourceConversionRate = GF.Config.GetInt(DiscardResourceConversionRateConfigKey, 0);
+		m_DemolishedProdRevenueLossRate = GF.Config.GetInt(DemolishedProdRevenueLossRateConfigKey, -1);
+		m_DemolishEnemyProdReward = GF.Config.GetInt(DemolishEnemyProdRewardConfigKey, -1);
 		if (m_DefendPhaseBaseResourceIncome < 0
 			|| m_InvadePhaseIncomePerCapturedOutpost < 0
 			|| m_KillRewardSupplyRatio <= 0
-			|| m_DiscardResourceConversionRate <= 0)
+			|| m_DemolishedProdRevenueLossRate < 0
+			|| m_DemolishedProdRevenueLossRate > 100
+			|| m_DemolishEnemyProdReward < 0)
 		{
 			throw new InvalidOperationException(
 				$"RewardManager runtime config is invalid. defend={m_DefendPhaseBaseResourceIncome}, " +
 				$"invade={m_InvadePhaseIncomePerCapturedOutpost}, killRatio={m_KillRewardSupplyRatio}, " +
-				$"discardRate={m_DiscardResourceConversionRate}.");
+				$"prodLoss={m_DemolishedProdRevenueLossRate}, enemyProdReward={m_DemolishEnemyProdReward}.");
 		}
 		m_RuntimeDependenciesPrepared = true;
+		TrySubscribeEvents();
 	}
 
 	public static void HandleCardDiscardReward(CardModel cardModel, int gainedCoin)
@@ -210,26 +223,27 @@ public class RewardManager : GameFrameworkComponent
 		manager.GrantBuildPhaseIncomeFromPlayerProdBuildings();
 	}
 
-	public static void HandleBuildingRecycleReward(FixVector2 sourceWorldPosition, int gainedCoin)
+	public static void HandleBuildingUndoReward(FixVector2 sourceWorldPosition, int gainedCoin)
 	{
 		if (gainedCoin <= 0)
 			return;
 
 		if (!LogicInteractionCommandService.IsApplyingFrame)
-			throw new InvalidOperationException("Building recycle rewards may only be applied by LogicInteractionCommandService.");
+			throw new InvalidOperationException("Building undo rewards may only be applied by LogicInteractionCommandService.");
 
 		RewardManager manager = GetRuntimeManager()
-			?? throw new InvalidOperationException("Building recycle reward requires RewardManager.");
-		manager.GrantCoin(sourceWorldPosition, gainedCoin, "building_recycle");
+			?? throw new InvalidOperationException("Building undo reward requires RewardManager.");
+		manager.GrantCoin(sourceWorldPosition, gainedCoin, "building_undo");
 	}
 
 	private void TrySubscribeEvents()
 	{
-		if (m_LogicEventsSubscribed)
+		if (m_LogicEventsSubscribed || !m_RuntimeDependenciesPrepared)
 			return;
 
 		LogicUnitDeathEventService.UnitDied += OnLogicUnitDied;
 		LogicBuildingOwnershipEventService.OwnerFactionChanged += OnLogicBuildingOwnerFactionChanged;
+		LogicBuildingDisabledEventService.BuildingDisabled += OnLogicBuildingDisabled;
 		LogicPhaseCommandService.PhaseApplied += OnPhaseChanged;
 		m_LogicEventsSubscribed = true;
 	}
@@ -241,6 +255,7 @@ public class RewardManager : GameFrameworkComponent
 
 		LogicUnitDeathEventService.UnitDied -= OnLogicUnitDied;
 		LogicBuildingOwnershipEventService.OwnerFactionChanged -= OnLogicBuildingOwnerFactionChanged;
+		LogicBuildingDisabledEventService.BuildingDisabled -= OnLogicBuildingDisabled;
 		LogicPhaseCommandService.PhaseApplied -= OnPhaseChanged;
 
 		m_LogicEventsSubscribed = false;
@@ -251,7 +266,7 @@ public class RewardManager : GameFrameworkComponent
 		int oldFactionId,
 		int newFactionId)
 	{
-		if (LogicPhaseCommandService.GetRequiredCurrentPhase() != GamePhase.Invade)
+		if ((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase) != GamePhase.Invade)
 			return;
 
 		if (oldFactionId == EntitySideHelper.PlayerFactionId || newFactionId != EntitySideHelper.PlayerFactionId)
@@ -261,6 +276,42 @@ public class RewardManager : GameFrameworkComponent
 			throw new InvalidOperationException("Captured building ownership event has no stronghold id.");
 
 		LogicRewardStateService.RecordCapturedStronghold(building.StrongholdId);
+	}
+
+	private void OnLogicBuildingDisabled(IBuildingLogicContext building, IEntityContext attacker)
+	{
+		switch (ResolveProductionBuildingDisabledResult(building))
+		{
+			case ProductionBuildingDisabledResult.Ignore:
+				return;
+			case ProductionBuildingDisabledResult.RecordPlayerProductionLoss:
+				InGameDataModel.RecordDemolishedPlayerProductionBuilding(building.BuildingInstanceId);
+				return;
+			case ProductionBuildingDisabledResult.GrantEnemyProductionReward:
+				RequireRuntimeDependencies();
+				GrantCoin(building.PositionFixed, m_DemolishEnemyProdReward, "enemy_production_demolished");
+				return;
+			default:
+				throw new ArgumentOutOfRangeException();
+		}
+	}
+
+	internal static ProductionBuildingDisabledResult ResolveProductionBuildingDisabledResult(
+		IBuildingLogicContext building)
+	{
+		if (building == null)
+			throw new ArgumentNullException(nameof(building));
+		if (building.BuildingData == null)
+			throw new InvalidOperationException(
+				$"Disabled building has no building data. instance={building.BuildingInstanceId}.");
+		if (building.BuildingData.Type != BuilType.Prod)
+			return ProductionBuildingDisabledResult.Ignore;
+		if (building.OwnerFactionId == EntitySideHelper.PlayerFactionId)
+			return ProductionBuildingDisabledResult.RecordPlayerProductionLoss;
+		if (building.OwnerFactionId == EntitySideHelper.EnemyFactionId)
+			return ProductionBuildingDisabledResult.GrantEnemyProductionReward;
+		throw new InvalidOperationException(
+			$"Production building has invalid owner faction. instance={building.BuildingInstanceId}, faction={building.OwnerFactionId}.");
 	}
 
 	private void OnPhaseChanged(GamePhase oldPhase, GamePhase newPhase)
@@ -397,13 +448,25 @@ public class RewardManager : GameFrameworkComponent
 				|| building.BuildingData.Lv < 1)
 				continue;
 
-			int actualProduction = LogicBuildingProductionService.GrantProduction(building);
+			int rawProduction = LogicBuildingProductionService.GetProduction(building);
+			if (InGameDataModel.ConsumeDemolishedPlayerProductionBuilding(building.BuildingInstanceId))
+				rawProduction = CalculateProductionAfterDemolitionLoss(rawProduction, m_DemolishedProdRevenueLossRate);
+			int actualProduction = LogicBuildingProductionService.GrantProduction(building, rawProduction);
 			if (actualProduction <= 0)
 				continue;
 
 			totalProduction += actualProduction;
 			GrantCoin(building.PositionFixed, actualProduction, "build_phase_income");
 		}
+	}
+
+	internal static int CalculateProductionAfterDemolitionLoss(int production, int lossPercent)
+	{
+		if (production < 0)
+			throw new ArgumentOutOfRangeException(nameof(production));
+		if (lossPercent < 0 || lossPercent > 100)
+			throw new ArgumentOutOfRangeException(nameof(lossPercent));
+		return checked((int)(((long)production * (100 - lossPercent) + 99L) / 100L));
 	}
 
 	private void GrantCoin(FixVector2 sourceWorldPosition, int coinAmount, string reason)

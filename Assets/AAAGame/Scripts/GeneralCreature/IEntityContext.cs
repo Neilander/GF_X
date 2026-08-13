@@ -77,8 +77,10 @@ public interface IBuildingLogicContext : IEntityContext
     bool IsDisabled { get; }
     bool IsPhaseProtected { get; }
     bool IsPermanentlyInvincible { get; }
+    bool IsStealthed { get; }
     bool HasPermanentNoAttackCapability { get; }
     bool BlocksLogicMovement { get; }
+    IReadOnlyList<LogicCombatShape> LogicObstacleShapes { get; }
     bool IsGameEndConditionBuilding { get; }
     bool IsNavigationStaticBaked { get; }
     event System.Action<int, int> OwnerFactionChanged;

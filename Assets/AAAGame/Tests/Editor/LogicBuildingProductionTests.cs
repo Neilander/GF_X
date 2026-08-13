@@ -76,6 +76,111 @@ public sealed class LogicBuildingProductionTests
         StringAssert.Contains("m_PendingCoinFlyPresentation.Enqueue", source);
     }
 
+    [TestCase(3, 50, 2)]
+    [TestCase(1, 50, 1)]
+    [TestCase(10, 100, 0)]
+    public void DemolishedProductionLoss_RoundsRemainingProductionUp(
+        int production,
+        int lossPercent,
+        int expected)
+    {
+        Assert.AreEqual(
+            expected,
+            RewardManager.CalculateProductionAfterDemolitionLoss(production, lossPercent));
+    }
+
+    [Test]
+    public void PlayerProductionBuildingDisable_RecordsLossAndNeverGrantsDestructionReward()
+    {
+        m_RewardManagerObject = new GameObject("PlayerProductionDisable_RewardManager");
+        RewardManager manager = m_RewardManagerObject.AddComponent<RewardManager>();
+        SetPrivateField(manager, "m_RuntimeDependenciesPrepared", true);
+        SubscribeRewardManagerForTest(manager);
+        LogicEntityState building = CreateProductionBuilding(
+            "Buil_Prod_Test_Lv1",
+            "production-player-disabled",
+            10);
+
+        building.TakeDamage((Fix64)150, HealthModifyType.empty);
+
+        Assert.IsTrue(building.IsDisabled);
+        Assert.AreEqual(0, InGameDataModel.GetValue(IngameValueType.Coin));
+        Assert.IsTrue(InGameDataModel.ConsumeDemolishedPlayerProductionBuilding(
+            building.BuildingInstanceId));
+    }
+
+    [Test]
+    public void EnemyProductionBuildingDisable_GrantsRewardOnlyOnFirstDisable()
+    {
+        m_RewardManagerObject = new GameObject("EnemyProductionDisable_RewardManager");
+        RewardManager manager = m_RewardManagerObject.AddComponent<RewardManager>();
+        SetPrivateField(manager, "m_RuntimeDependenciesPrepared", true);
+        SetPrivateField(manager, "m_DemolishEnemyProdReward", 2);
+        SubscribeRewardManagerForTest(manager);
+        LogicEntityState building = CreateProductionBuilding(
+            "Buil_Prod_Test_Lv1",
+            "production-enemy-disabled",
+            10,
+            EntitySideHelper.EnemyFactionId);
+
+        building.TakeDamage((Fix64)150, HealthModifyType.empty);
+        building.TakeDamage((Fix64)150, HealthModifyType.empty);
+
+        Assert.IsTrue(building.IsDisabled);
+        Assert.AreEqual(2, InGameDataModel.GetValue(IngameValueType.Coin));
+        Assert.IsFalse(InGameDataModel.ConsumeDemolishedPlayerProductionBuilding(
+            building.BuildingInstanceId));
+    }
+
+    [Test]
+    public void BuildingPhaseUndo_AccumulatesCostsAndKeepsFirstPhaseForm()
+    {
+        const string buildingInstanceId = "building-phase-undo";
+        InGameDataModel.RecordBuildingPhaseModification(buildingInstanceId, "Buil_Test_Lv0", 3);
+        InGameDataModel.RecordBuildingPhaseModification(buildingInstanceId, "Buil_Test_Lv1", 4);
+        InGameDataModel.RecordBuildingPhaseTech(buildingInstanceId, "Tech_Test_Lv1");
+        InGameDataModel.RecordBuildingPhaseTech(buildingInstanceId, "Tech_Test_Lv2");
+
+        Assert.IsTrue(InGameDataModel.TryGetBuildingPhaseUndo(
+            buildingInstanceId,
+            out string originalBuildingId,
+            out int refund));
+        Assert.AreEqual("Buil_Test_Lv0", originalBuildingId);
+        Assert.AreEqual(7, refund);
+        CollectionAssert.AreEqual(
+            new[] { "Tech_Test_Lv1", "Tech_Test_Lv2" },
+            InGameDataModel.GetBuildingPhaseTechIds(buildingInstanceId));
+
+        InGameDataModel.ClearBuildingPhaseUndoRecords();
+        Assert.IsFalse(InGameDataModel.TryGetBuildingPhaseUndo(buildingInstanceId, out _, out _));
+    }
+
+    [Test]
+    public void BuildingPhaseCostModifier_UsesDemolishInsteadOfUndo()
+    {
+        const string buildingInstanceId = "building-cost-modifier-undo";
+        InGameDataModel.RecordBuildingPhaseModification(buildingInstanceId, "Buil_ResearchCenter_Lv1", 8);
+        InGameDataModel.RecordBuildingPhaseTech(
+            buildingInstanceId,
+            "Tech_Buil_ResearchCenter_Lv2_Opt2");
+
+        Assert.IsTrue(BuildingTechRuntimeEffect.ChangesBuildingCost(
+            "Tech_Buil_ResearchCenter_Lv2_Opt2"));
+    }
+
+    [Test]
+    public void BuildingPhaseUndo_RemainsAllowedForTechThatDoesNotChangeBuildingCosts()
+    {
+        const string buildingInstanceId = "building-normal-tech-undo";
+        InGameDataModel.RecordBuildingPhaseModification(buildingInstanceId, "Buil_ResearchCenter_Lv2", 16);
+        InGameDataModel.RecordBuildingPhaseTech(
+            buildingInstanceId,
+            "Tech_Buil_ResearchCenter_Lv3_Opt2");
+
+        Assert.IsFalse(BuildingTechRuntimeEffect.ChangesBuildingCost(
+            "Tech_Buil_ResearchCenter_Lv3_Opt2"));
+    }
+
     [Test]
     public void TroopConditions_UseCurrentFixedPositionAndStrongholdOwnerSide()
     {
@@ -340,12 +445,13 @@ public sealed class LogicBuildingProductionTests
     private static LogicEntityState CreateProductionBuilding(
         string identifier,
         string buildingInstanceId,
-        int production)
+        int production,
+        int ownerFactionId = EntitySideHelper.PlayerFactionId)
     {
         var descriptor = new LogicEntitySpawnDescriptor(
             FixVector2.Zero,
             new FixVector2(Fix64.Zero, Fix64.One),
-            SideType.PlayerSide,
+            EntitySideHelper.ToSide(ownerFactionId),
             identifier);
         LogicEntityId entityId = LogicEntityLifecycleService.RequestConfiguredSpawn(
             descriptor,
@@ -387,7 +493,7 @@ public sealed class LogicBuildingProductionTests
                         Array.Empty<string>()),
                     buildingInstanceId,
                     "SH_0_1",
-                    EntitySideHelper.PlayerFactionId,
+                    ownerFactionId,
                     LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
                     Array.Empty<LogicCombatShape>(),
                     Array.Empty<LogicInteractionOptionDescriptor>(),
@@ -517,6 +623,30 @@ public sealed class LogicBuildingProductionTests
             ?.GetValue(model) as Dictionary<string, int>;
         reserves?.Clear();
         InGameDataModel.SetStrongholds(new List<Stronghold>());
+    }
+
+    private static void SetPrivateField<T>(RewardManager manager, string fieldName, T value)
+    {
+        FieldInfo field = typeof(RewardManager).GetField(
+            fieldName,
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field, $"RewardManager field '{fieldName}' was not found.");
+        field.SetValue(manager, value);
+    }
+
+    private static void SubscribeRewardManagerForTest(RewardManager manager)
+    {
+        MethodInfo subscribe = typeof(RewardManager).GetMethod(
+            "TrySubscribeEvents",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(subscribe);
+        subscribe.Invoke(manager, null);
+
+        FieldInfo subscribed = typeof(RewardManager).GetField(
+            "m_LogicEventsSubscribed",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(subscribed);
+        Assert.IsTrue((bool)subscribed.GetValue(manager));
     }
 
     private static BuildingTable[] LoadBuildingRows()

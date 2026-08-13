@@ -118,7 +118,11 @@ public class TechManager : GameFrameworkComponent
         if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -upgradeCost, true))
             throw new InvalidOperationException("Upgrade transaction lost its validated coin balance before commit.");
 
-        InGameDataModel.RecordBuildingCostSpent(owner.BuildingInstanceId, upgradeCost);
+        InGameDataModel.RecordBuildingPhaseModification(
+            owner.BuildingInstanceId,
+            owner.BuildingData.Identifier,
+            upgradeCost);
+        InGameDataModel.RecordBuildingPhaseTech(owner.BuildingInstanceId, techId);
         if (!InGameDataModel.UnlockTechInCurrentInteractionFrame(
                 techId,
                 techData.IsStackable,
@@ -179,6 +183,25 @@ public class TechManager : GameFrameworkComponent
         if (rolledBack > 0)
             globalBuffManager.ClearBuildingRuntimeTechState(owner.BuildingInstanceId, owner.OwnerFactionId);
 
+        return rolledBack;
+    }
+
+    public int RollbackPhaseTechsForBuilding(IBuildingLogicContext owner)
+    {
+        if (owner == null || string.IsNullOrWhiteSpace(owner.BuildingInstanceId))
+            throw new ArgumentException("Building is required.", nameof(owner));
+
+        IReadOnlyList<string> techIds = InGameDataModel.GetBuildingPhaseTechIds(owner.BuildingInstanceId);
+        GlobalBuffManager globalBuffManager = RequireGlobalBuffManager();
+        int rolledBack = 0;
+        for (int i = techIds.Count - 1; i >= 0; i--)
+        {
+            string techId = techIds[i];
+            if (!InGameDataModel.ReduceTechStack(techId, owner.BuildingInstanceId, 1))
+                throw new InvalidOperationException($"Phase tech rollback failed. building={owner.BuildingInstanceId}, tech={techId}.");
+            globalBuffManager.UnregisterTechEffects(techId, owner.OwnerFactionId, owner.BuildingInstanceId);
+            rolledBack++;
+        }
         return rolledBack;
     }
 

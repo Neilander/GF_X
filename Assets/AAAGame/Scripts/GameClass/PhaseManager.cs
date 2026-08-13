@@ -197,8 +197,12 @@ public class PhaseManager : GameFrameworkComponent
 
         TryAdvanceDayOnBuildTransition(oldPhase, phase);
         InGameDataModel.SetPhase(phase);
+        if (LogicTeleportCommandService.IsActive)
+            LogicTeleportCommandService.InterruptAllCombatTeleports();
+        TeleportationPointService.ClearPhaseBlocks();
         if (InGameDataModel.IsBuildPhase(phase))
         {
+            RestorePlayerBuildingsForBuildPhase();
             LogicBuildingProductionService.PrepareBuildPhase(true);
             CommitBuildPhasePersistentState(oldPhase, false);
         }
@@ -221,6 +225,19 @@ public class PhaseManager : GameFrameworkComponent
         LogPhaseStep($"switch-total {oldPhase}->{phase}", totalWatch.ElapsedMilliseconds);
 
         Log.Debug($"Phase switched from {oldPhase} to {phase}");
+    }
+
+    private static void RestorePlayerBuildingsForBuildPhase()
+    {
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            if (entities[i] is IBuildingLogicContext building
+                && building.OwnerFactionId == EntitySideHelper.PlayerFactionId)
+            {
+                building.RestoreBuildingToFullHealth();
+            }
+        }
     }
 
     private static void RequireInitializedPhaseAuthority(GamePhase expectedPhase)

@@ -219,7 +219,14 @@ public static class LogicBuildingProductionService
 
     public static int GrantProduction(IBuildingLogicContext building)
     {
-        int raw = GetProduction(building);
+        return GrantProduction(building, GetProduction(building));
+    }
+
+    public static int GrantProduction(IBuildingLogicContext building, int raw)
+    {
+        EnsureProductionBuilding(building);
+        if (raw < 0)
+            throw new ArgumentOutOfRangeException(nameof(raw));
         if (raw <= 0)
             return 0;
 

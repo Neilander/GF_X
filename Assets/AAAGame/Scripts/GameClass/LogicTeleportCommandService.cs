@@ -9,13 +9,15 @@ public readonly struct LogicTeleportCommand
         ulong sequence,
         LogicEntityId entityId,
         FixVector2 destination,
-        string strongholdId)
+        string strongholdId,
+        bool includesPlayerUnits)
     {
         EffectiveFrame = effectiveFrame;
         Sequence = sequence;
         EntityId = entityId;
         Destination = destination;
         StrongholdId = strongholdId ?? throw new ArgumentNullException(nameof(strongholdId));
+        IncludesPlayerUnits = includesPlayerUnits;
     }
 
     public ulong EffectiveFrame { get; }
@@ -23,6 +25,7 @@ public readonly struct LogicTeleportCommand
     public LogicEntityId EntityId { get; }
     public FixVector2 Destination { get; }
     public string StrongholdId { get; }
+    public bool IncludesPlayerUnits { get; }
 }
 
 public static class LogicTeleportCommandService
@@ -71,15 +74,40 @@ public static class LogicTeleportCommandService
         FixVector2 destination,
         string strongholdId)
     {
+        return Schedule(entityId, destination, strongholdId, 1, false);
+    }
+
+    public static LogicTeleportCommand ScheduleCombatTeleport(
+        LogicEntityId entityId,
+        FixVector2 destination,
+        string strongholdId,
+        Fix64 windUp)
+    {
+        if (windUp <= Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(windUp));
+        long delayFrames = (long)Fix64.Ceiling(windUp / LogicFrameRuntime.FixedDeltaTime);
+        return Schedule(entityId, destination, strongholdId, delayFrames, true);
+    }
+
+    private static LogicTeleportCommand Schedule(
+        LogicEntityId entityId,
+        FixVector2 destination,
+        string strongholdId,
+        long delayFrames,
+        bool includesPlayerUnits)
+    {
         EnsureActive();
         ValidateCommand(entityId, strongholdId);
+        if (delayFrames <= 0)
+            throw new ArgumentOutOfRangeException(nameof(delayFrames));
 
         var command = new LogicTeleportCommand(
-            checked(LogicTimeControlService.CurrentFrame + 1),
+            checked(LogicTimeControlService.CurrentFrame + (ulong)delayFrames),
             checked(s_LastSequence + 1),
             entityId,
             destination,
-            strongholdId);
+            strongholdId,
+            includesPlayerUnits);
         s_LastSequence = command.Sequence;
         s_Pending.Add(command);
         s_History.Add(command);
@@ -188,8 +216,13 @@ public static class LogicTeleportCommandService
     private static void ApplyRuntimeCommand(LogicTeleportCommand command)
     {
         GamePhase phase = LogicPhaseCommandService.GetRequiredCurrentPhase();
-        if (!InGameDataModel.IsBuildPhase(phase))
-            throw new InvalidOperationException($"Teleport command requires a build phase. phase={phase}.");
+        bool isBuildPhase = InGameDataModel.IsBuildPhase(phase);
+        if (isBuildPhase == command.IncludesPlayerUnits)
+            throw new InvalidOperationException($"Teleport command phase no longer matches its cast mode. phase={phase}, combat={command.IncludesPlayerUnits}.");
+        if (command.IncludesPlayerUnits && !IsCombatCastStillValid(command.EntityId))
+            return;
+        if (TeleportationPointService.IsStrongholdTeleportBlocked(command.StrongholdId))
+            throw new InvalidOperationException($"Teleport command destination is blocked for this phase. id={command.StrongholdId}.");
         if (LogicStrongholdMap.GetOwnerFactionIdRequired(command.StrongholdId) != EntitySideHelper.PlayerFactionId)
             throw new InvalidOperationException($"Teleport command destination stronghold is not player-owned. id={command.StrongholdId}.");
         if (!LogicStrongholdMap.TryResolveStrongholdId(command.Destination, out string destinationStrongholdId)
@@ -219,6 +252,101 @@ public static class LogicTeleportCommandService
         }
 
         state.TeleportTo(command.Destination);
+        if (command.IncludesPlayerUnits)
+            TeleportAllPlayerUnitsAroundHero(state);
+    }
+
+    public static void InterruptCombatTeleport(LogicEntityId entityId)
+    {
+        EnsureActive();
+        for (int i = s_Pending.Count - 1; i >= 0; i--)
+        {
+            if (s_Pending[i].EntityId == entityId && s_Pending[i].IncludesPlayerUnits)
+                s_Pending.RemoveAt(i);
+        }
+    }
+
+    public static void InterruptAllCombatTeleports()
+    {
+        EnsureActive();
+        for (int i = s_Pending.Count - 1; i >= 0; i--)
+        {
+            if (s_Pending[i].IncludesPlayerUnits)
+                s_Pending.RemoveAt(i);
+        }
+    }
+
+    public static void InterruptCombatTeleportsToStronghold(string strongholdId)
+    {
+        EnsureActive();
+        if (string.IsNullOrWhiteSpace(strongholdId))
+            throw new ArgumentException("Stronghold id is required.", nameof(strongholdId));
+        for (int i = s_Pending.Count - 1; i >= 0; i--)
+        {
+            if (s_Pending[i].IncludesPlayerUnits
+                && string.Equals(s_Pending[i].StrongholdId, strongholdId, StringComparison.Ordinal))
+            {
+                s_Pending.RemoveAt(i);
+            }
+        }
+    }
+
+    private static bool IsCombatCastStillValid(LogicEntityId entityId)
+    {
+        return EntityRegistry.TryGet(entityId, out IEntityContext entity)
+               && entity.Alive
+               && entity is LogicEntityState state
+               && state.IsPlayerEntity
+               && state.IsHeroEntity;
+    }
+
+    private static void TeleportAllPlayerUnitsAroundHero(LogicEntityState hero)
+    {
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        int ordinal = 0;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            if (entities[i] is not LogicEntityState unit
+                || unit == hero
+                || unit.IsBuildingEntity
+                || !unit.Alive
+                || EntitySideHelper.ToFactionId(unit.Side) != EntitySideHelper.PlayerFactionId)
+            {
+                continue;
+            }
+
+            Fix64 ring = (Fix64)(1 + ordinal / 8) * DistanceUnitConverter.ConvertToWorld((Fix64)100);
+            FixVector2 offset = ResolveFormationOffset(ordinal % 8, ring);
+            FixVector2 candidate = hero.PositionFixed + offset;
+            if (!FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixed(
+                    candidate,
+                    unit.NavigationAgentTypeId,
+                    DistanceUnitConverter.ConvertToWorld((Fix64)300),
+                    unit.CombatShape.Radius,
+                    out FixVector2 destination))
+            {
+                throw new InvalidOperationException($"Combat teleport could not place player unit. entity={unit.LogicEntityId.Value}.");
+            }
+            unit.TeleportTo(destination);
+            ordinal++;
+        }
+    }
+
+    private static FixVector2 ResolveFormationOffset(int index, Fix64 radius)
+    {
+        Fix64 diagonal = radius * Fix64.Sqrt((Fix64)2) / (Fix64)2;
+        return index switch
+        {
+            0 => new FixVector2(radius, Fix64.Zero),
+            1 => new FixVector2(diagonal, diagonal),
+            2 => new FixVector2(Fix64.Zero, radius),
+            3 => new FixVector2(-diagonal, diagonal),
+            4 => new FixVector2(-radius, Fix64.Zero),
+            5 => new FixVector2(-diagonal, -diagonal),
+            6 => new FixVector2(Fix64.Zero, -radius),
+            7 => new FixVector2(diagonal, -diagonal),
+            _ => throw new ArgumentOutOfRangeException(nameof(index)),
+        };
     }
 
     private static void ValidateCommand(LogicEntityId entityId, string strongholdId)
@@ -252,6 +380,7 @@ public static class LogicTeleportCommandService
         hasher.Add(command.Destination.x.RawValue);
         hasher.Add(command.Destination.y.RawValue);
         hasher.Add(command.StrongholdId);
+        hasher.Add(command.IncludesPlayerUnits);
     }
 
     private static void ClearState()

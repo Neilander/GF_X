@@ -94,14 +94,7 @@ namespace AAAGame.Card
             building = null;
             if (!entity.Alive || !entity.TryGetLogicBuilding(out building))
                 return false;
-            if (building.BuildingData.Lv == 0)
-                return false;
-            if (building.OwnerFactionId < 0)
-            {
-                throw new InvalidOperationException(
-                    $"Logic building {building.LogicEntityId.Value} has invalid owner faction {building.OwnerFactionId}.");
-            }
-            return building.OwnerFactionId != EntitySideHelper.PlayerFactionId;
+            return LogicCardPlacementAuthority.GeneratesEnemyBuildingForbiddenZone(building);
         }
 
         private void UpdateOrCreateZoneVisual(int key, IBuildingLogicContext building)

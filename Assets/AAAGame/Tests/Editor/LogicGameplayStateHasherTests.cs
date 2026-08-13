@@ -448,12 +448,10 @@ public class LogicGameplayStateHasherTests
             InGameDataModel.SetValue(IngameValueType.MaxSupply, 30, false);
             InGameDataModel.SetValue(IngameValueType.CurrentSupply, 12, false);
             InGameDataModel.EnsureProductionBuildingCoinReserves("checkpoint-building", 99);
-            InGameDataModel.RecordBuildingCostSpent("checkpoint-building", 321);
             InGameDataCheckpoint checkpoint = InGameDataModel.CaptureStageCheckpointState();
 
             InGameDataModel.SetValue(IngameValueType.Coin, 1, false);
             InGameDataModel.ConsumeProductionBuildingCoinReserves("checkpoint-building", 80);
-            InGameDataModel.RecordBuildingCostSpent("checkpoint-building", 100);
             InGameDataModel.RestoreStageCheckpointState(checkpoint, false);
 
             Assert.AreEqual(GamePhase.BuildBeforeDefend, (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase));
@@ -462,7 +460,6 @@ public class LogicGameplayStateHasherTests
             Assert.AreEqual(12, InGameDataModel.GetValue(IngameValueType.CurrentSupply));
             Assert.AreEqual(30, InGameDataModel.GetValue(IngameValueType.MaxSupply));
             Assert.AreEqual(99, InGameDataModel.GetProductionBuildingCoinReserves("checkpoint-building"));
-            Assert.AreEqual(321, InGameDataModel.GetBuildingCostSpent("checkpoint-building"));
             Assert.AreEqual(checkpoint.ContentHash, InGameDataModel.CaptureStageCheckpointState().ContentHash);
         }
         finally

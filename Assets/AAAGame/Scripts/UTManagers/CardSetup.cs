@@ -28,7 +28,7 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
     private int m_CardUIFormId = -1;
     private readonly LogicCardAutoDrawClock m_AutoDrawClock = new LogicCardAutoDrawClock();
     private List<ICardDataProvider> m_PreloadedCardPool;
-	private int m_DiscardResourceConversionRate;
+	private int[] m_DiscardResourceByLevel;
 	private readonly Queue<CardUiPresentationRequest> m_PendingUiPresentation = new();
 	private readonly Queue<CardSystemController> m_PendingPresentationShutdown = new();
 
@@ -225,7 +225,7 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
         long stageStartTicks = Stopwatch.GetTimestamp();
         long stageStartBytes = System.GC.GetAllocatedBytesForCurrentThread();
         m_CardSystemController = new CardSystemController();
-        m_CardSystemController.Initialize(m_DiscardResourceConversionRate);
+        m_CardSystemController.Initialize(m_DiscardResourceByLevel);
         RecordPerf(MainThreadPerfScope.CardSetupController, stageStartTicks, stageStartBytes);
 
         if (m_PreloadedCardPool == null)
@@ -292,11 +292,16 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
 
         if (GF.Config == null)
             throw new System.InvalidOperationException("CardSetup cannot preload card runtime config before GF.Config is initialized.");
-        m_DiscardResourceConversionRate = GF.Config.GetInt("DiscardResourceConversionRate");
-        if (m_DiscardResourceConversionRate <= 0)
+        m_DiscardResourceByLevel = new[]
         {
-            throw new System.InvalidOperationException(
-                $"CardSetup discard conversion rate must be positive. value={m_DiscardResourceConversionRate}.");
+            GF.Config.GetInt("DiscardResourceConversionLevel1"),
+            GF.Config.GetInt("DiscardResourceConversionLevel2"),
+            GF.Config.GetInt("DiscardResourceConversionLevel3"),
+        };
+        for (int i = 0; i < m_DiscardResourceByLevel.Length; i++)
+        {
+            if (m_DiscardResourceByLevel[i] < 0)
+                throw new System.InvalidOperationException($"CardSetup discard reward must be non-negative. level={i + 1}.");
         }
 
         var watch = Stopwatch.StartNew();

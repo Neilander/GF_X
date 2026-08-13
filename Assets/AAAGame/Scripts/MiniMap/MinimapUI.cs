@@ -839,14 +839,15 @@ namespace AAAGame.MiniMap
             if (teleportationMarkers.Count == 0 || !LogicStrongholdMap.IsInitialized)
                 return;
 
-            bool canTeleport = isLargeMap && InGameDataModel.IsBuildPhase(PhaseManager.CurrentPhase);
             float size = isLargeMap ? TeleportationMarkerLargeSize : TeleportationMarkerSmallSize;
             for (int i = 0; i < teleportationMarkers.Count; i++)
             {
                 TeleportationMarker marker = teleportationMarkers[i];
                 bool isPlayerOwned = LogicStrongholdMap.GetOwnerFactionIdRequired(marker.StrongholdId)
                                      == EntitySideHelper.PlayerFactionId;
-                bool isClickable = isPlayerOwned && canTeleport;
+                bool isClickable = isLargeMap
+                                   && isPlayerOwned
+                                   && !TeleportationPointService.IsStrongholdTeleportBlocked(marker.StrongholdId);
                 marker.Rect.gameObject.SetActive(isPlayerOwned);
                 marker.Button.interactable = isClickable;
                 marker.Image.raycastTarget = isClickable;
@@ -864,8 +865,6 @@ namespace AAAGame.MiniMap
         {
             if (!isLargeMap || teleportationPointClicked == null)
                 throw new InvalidOperationException("Teleportation marker click requires an open large map.");
-            if (!InGameDataModel.IsBuildPhase(PhaseManager.CurrentPhase))
-                throw new InvalidOperationException($"Teleportation marker click requires a build phase. phase={PhaseManager.CurrentPhase}.");
             if (!TeleportationPointService.IsPlayerOwned(point))
                 throw new InvalidOperationException($"Teleportation marker '{point.name}' is no longer player-owned.");
 

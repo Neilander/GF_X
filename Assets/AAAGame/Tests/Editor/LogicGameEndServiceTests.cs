@@ -166,6 +166,42 @@ public sealed class LogicGameEndServiceTests
     }
 
     [Test]
+    public void TutorialCapturedStronghold_WithoutConditionCore_Throws()
+    {
+        LogicEntityState building = CreateBuilding(
+            "tutorial-captured-ordinary-building",
+            EntitySideHelper.EnemyFactionId,
+            false);
+        LogicGameEndService.Initialize(CreateTutorialLevel(CareerConfigRuntime.TutorialLevelIdentifier));
+        PublishEntities();
+        building.SetOwnerFaction(EntitySideHelper.PlayerFactionId);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            LevelEntity.ResolveCapturedStrongholdConditionBuilding(
+                building.StrongholdId,
+                EntityRegistry.AllEntities));
+
+        StringAssert.Contains("has no game-end condition core building", exception.Message);
+    }
+
+    [Test]
+    public void NonTutorialCapturedStronghold_WithoutConditionCore_DoesNotThrow()
+    {
+        LogicEntityState building = CreateBuilding(
+            "regular-captured-ordinary-building",
+            EntitySideHelper.EnemyFactionId,
+            false);
+        LogicGameEndService.Initialize(CreateCaptureLevel());
+        PublishEntities();
+        building.SetOwnerFaction(EntitySideHelper.PlayerFactionId);
+
+        Assert.DoesNotThrow(() =>
+            LevelEntity.ResolveCapturedStrongholdConditionBuilding(
+                building.StrongholdId,
+                EntityRegistry.AllEntities));
+    }
+
+    [Test]
     public void RegisteringTargetsDoesNotEvaluateBeforeFirstCompleteTick()
     {
         LogicEntityState target = CreateBuilding("target-late", EntitySideHelper.EnemyFactionId, true);

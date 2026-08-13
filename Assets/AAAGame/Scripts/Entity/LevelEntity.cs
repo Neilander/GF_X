@@ -582,6 +582,54 @@ public partial class LevelEntity : EntityBase
         if (activeLevelEntity != this)
             throw new InvalidOperationException("Inactive LevelEntity received a logic building disabled event.");
         TryCaptureStrongholdAfterBuildingDisabled(building, attacker);
+        TryCollapsePlayerStrongholdPermanentBuildings(building);
+    }
+
+    internal static void TryCollapsePlayerStrongholdPermanentBuildings(IBuildingLogicContext disabledBuilding)
+    {
+        if (disabledBuilding == null
+            || string.IsNullOrWhiteSpace(disabledBuilding.StrongholdId)
+            || disabledBuilding.OwnerFactionId != EntitySideHelper.PlayerFactionId
+            || InGameDataModel.IsBuildPhase(
+                (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase)))
+        {
+            return;
+        }
+
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        bool hasOrdinaryBuilding = false;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            if (entities[i] is not IBuildingLogicContext building
+                || !string.Equals(building.StrongholdId, disabledBuilding.StrongholdId, StringComparison.Ordinal)
+                || building.OwnerFactionId != EntitySideHelper.PlayerFactionId
+                || building.BuildingData == null
+                || building.BuildingData.Lv == 0
+                || building.IsPermanentlyInvincible)
+            {
+                continue;
+            }
+
+            hasOrdinaryBuilding = true;
+            if (!building.IsDisabled)
+                return;
+        }
+        if (!hasOrdinaryBuilding)
+            return;
+
+        TeleportationPointService.BlockStrongholdTeleport(disabledBuilding.StrongholdId);
+        for (int i = 0; i < entities.Count; i++)
+        {
+            if (entities[i] is not LogicEntityState building
+                || !building.IsBuildingEntity
+                || !building.IsPermanentlyInvincible
+                || building.OwnerFactionId != EntitySideHelper.PlayerFactionId
+                || !string.Equals(building.StrongholdId, disabledBuilding.StrongholdId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+            building.DisableForStrongholdCollapse();
+        }
     }
 
     private bool TryParseStrongholdLayerName(string layerName, out int factionId)
@@ -723,29 +771,7 @@ public partial class LevelEntity : EntityBase
         }
 
         if (capturedByPlayer)
-        {
-            bool resolvedConditionBuilding = false;
-            for (int i = 0; i < entities.Count; i++)
-            {
-                if (entities[i] is not IBuildingLogicContext building
-                    || !building.IsGameEndConditionBuilding
-                    || !string.Equals(building.StrongholdId, strongholdId, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                if (LogicGameEndService.IsPlayerTargetBuilding(building.BuildingInstanceId))
-                {
-                    resolvedConditionBuilding = true;
-                    continue;
-                }
-
-                LogicGameEndService.ResolveCapturedEnemyTarget(building);
-                resolvedConditionBuilding = true;
-            }
-            if (!resolvedConditionBuilding)
-                throw new InvalidOperationException($"Captured stronghold '{strongholdId}' has no game-end condition core building.");
-        }
+            ResolveCapturedStrongholdConditionBuilding(strongholdId, entities);
 
         Log.Info("Stronghold captured. id={0}, newOwnerFaction={1}",
             strongholdId,
@@ -753,6 +779,40 @@ public partial class LevelEntity : EntityBase
 
         m_PendingCapturePresentation.Enqueue(
             new StrongholdCapturePresentation(strongholdId, oldOwnerFactionId, newOwnerFactionId));
+    }
+
+    internal static void ResolveCapturedStrongholdConditionBuilding(
+        string strongholdId,
+        IList<IEntityContext> entities)
+    {
+        if (string.IsNullOrWhiteSpace(strongholdId))
+            throw new ArgumentException("Stronghold id is empty.", nameof(strongholdId));
+        if (entities == null)
+            throw new ArgumentNullException(nameof(entities));
+
+        bool resolvedConditionBuilding = false;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            if (entities[i] is not IBuildingLogicContext building
+                || !building.IsGameEndConditionBuilding
+                || !string.Equals(building.StrongholdId, strongholdId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            resolvedConditionBuilding = true;
+            if (LogicGameEndService.IsPlayerTargetBuilding(building.BuildingInstanceId))
+                continue;
+
+            LogicGameEndService.ResolveCapturedEnemyTarget(building);
+        }
+
+        if (!resolvedConditionBuilding
+            && CareerConfigRuntime.IsTutorialLevel(LogicGameEndService.CurrentLevelIdentifier))
+        {
+            throw new InvalidOperationException(
+                $"Captured tutorial stronghold '{strongholdId}' has no game-end condition core building.");
+        }
     }
 
     private void FlushStrongholdCapturePresentation()

@@ -456,6 +456,226 @@ public class SteeringMovementTests
     }
 
     [Test]
+    public void Targeting_SelectsHighestConfiguredThreatAcrossAggroRange()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        var closeTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        var distantTauntingTarget = MakeSoldier(new Vector3(3f, 0f, 0f), SideType.EnemySide);
+        closeTarget.TauntLevel = 1;
+        distantTauntingTarget.TauntLevel = 2;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(closeTarget);
+        EntityRegistry.Register(distantTauntingTarget);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)5 };
+        targeting.Init(self);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(distantTauntingTarget, targeting.CurrentTarget,
+            "Initial targeting must maximize tauntLevel * configuredThreat - gameDistance.");
+    }
+
+    [Test]
+    public void Targeting_UsesCombinedThreatInsteadOfLexicographicTauntPriority()
+    {
+        const string configKey = "TauntThreatPerLevel";
+        Assert.IsTrue(
+            DistanceUnitConverter.TryGetEditorTestPositiveFixedConfig(configKey, out Fix64 previousValue),
+            "Test setup requires a configured taunt threat value.");
+        DistanceUnitConverter.SetEditorTestPositiveFixedConfig(configKey, (Fix64)20);
+        try
+        {
+            var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+            var closeTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+            var distantHigherTauntTarget = MakeSoldier(new Vector3(3f, 0f, 0f), SideType.EnemySide);
+            closeTarget.TauntLevel = 1;
+            distantHigherTauntTarget.TauntLevel = 2;
+            EntityRegistry.Register(self);
+            EntityRegistry.Register(closeTarget);
+            EntityRegistry.Register(distantHigherTauntTarget);
+
+            var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)5 };
+            targeting.Init(self);
+            targeting.UpdateTargeting((Fix64)0.2f);
+
+            Assert.AreSame(closeTarget, targeting.CurrentTarget,
+                "A higher taunt level must lose when its level bonus is smaller than its extra game distance.");
+        }
+        finally
+        {
+            DistanceUnitConverter.SetEditorTestPositiveFixedConfig(configKey, previousValue);
+        }
+    }
+
+    [Test]
+    public void Attacking_SwitchesToHigherThreatLevelInsideAdditionalPursuitDistance()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        var tauntingTarget = MakeSoldier(new Vector3(10f, 0f, 0f), SideType.EnemySide);
+        currentTarget.TauntLevel = 1;
+        tauntingTarget.TauntLevel = 2;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(currentTarget);
+        EntityRegistry.Register(tauntingTarget);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)20 };
+        targeting.Init(self);
+        targeting.CurrentTarget = currentTarget;
+        SetAttacking(self, true);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(tauntingTarget, targeting.CurrentTarget,
+            "A higher threat level inside attackRange + configured pursuit distance must interrupt target lock.");
+    }
+
+    [Test]
+    public void Attacking_DoesNotSwitchBeyondAdditionalPursuitDistance()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        var distantTauntingTarget = MakeSoldier(new Vector3(18f, 0f, 0f), SideType.EnemySide);
+        currentTarget.TauntLevel = 1;
+        distantTauntingTarget.TauntLevel = 2;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(currentTarget);
+        EntityRegistry.Register(distantTauntingTarget);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)20 };
+        targeting.Init(self);
+        targeting.CurrentTarget = currentTarget;
+        SetAttacking(self, true);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(currentTarget, targeting.CurrentTarget,
+            "Target lock must remain when the higher threat level is beyond attackRange + configured pursuit distance.");
+    }
+
+    [Test]
+    public void Attacking_DoesNotSwitchToCloserTargetAtSameThreatLevel()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        var currentTarget = MakeSoldier(new Vector3(1.4f, 0f, 0f), SideType.EnemySide);
+        var closerTarget = MakeSoldier(new Vector3(0.8f, 0f, 0f), SideType.EnemySide);
+        currentTarget.TauntLevel = 1;
+        closerTarget.TauntLevel = 1;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(currentTarget);
+        EntityRegistry.Register(closerTarget);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)20 };
+        targeting.Init(self);
+        targeting.CurrentTarget = currentTarget;
+        SetAttacking(self, true);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(currentTarget, targeting.CurrentTarget,
+            "An active attack remains locked unless another target has a higher threat level.");
+    }
+
+    [Test]
+    public void AttackLock_RemainsBetweenAttackAnimations()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        var currentTarget = MakeSoldier(new Vector3(1.4f, 0f, 0f), SideType.EnemySide);
+        var closerTarget = MakeSoldier(new Vector3(0.8f, 0f, 0f), SideType.EnemySide);
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(currentTarget);
+        EntityRegistry.Register(closerTarget);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)20 };
+        targeting.Init(self);
+        targeting.CurrentTarget = currentTarget;
+        SetAttacking(self, true);
+        targeting.UpdateTargeting((Fix64)0.2f);
+        SetAttacking(self, false);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(currentTarget, targeting.CurrentTarget,
+            "Once an attack starts, target lock must remain between attack animations.");
+    }
+
+    [Test]
+    public void AdditionalPursuitTarget_RemainsValidOutsideLegacyForgetRange()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        var tauntingTarget = MakeSoldier(new Vector3(10f, 0f, 0f), SideType.EnemySide);
+        currentTarget.TauntLevel = 1;
+        tauntingTarget.TauntLevel = 2;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(currentTarget);
+        EntityRegistry.Register(tauntingTarget);
+
+        var targeting = new CharacterTargetingComp
+        {
+            AggroRangeFixed = (Fix64)20,
+            ForgetRangeFixed = (Fix64)8,
+        };
+        targeting.Init(self);
+        targeting.CurrentTarget = currentTarget;
+        SetAttacking(self, true);
+        targeting.UpdateTargeting((Fix64)0.2f);
+        targeting.UpdateTargeting(Fix64.One / (Fix64)60);
+
+        Assert.AreSame(tauntingTarget, targeting.CurrentTarget,
+            "A target acquired through additional pursuit must remain retained up to attackRange + pursuit distance.");
+    }
+
+    [Test]
+    public void DefendEnemyTargeting_AttackLockUsesAdditionalPursuitDistance()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.EnemySide);
+        var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.PlayerSide);
+        var tauntingTarget = MakeSoldier(new Vector3(10f, 0f, 0f), SideType.PlayerSide);
+        currentTarget.TauntLevel = 1;
+        tauntingTarget.TauntLevel = 2;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(currentTarget);
+        EntityRegistry.Register(tauntingTarget);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)20 };
+        targeting.Init(self);
+        targeting.UseDefendEnemyMode(null);
+        targeting.CurrentTarget = currentTarget;
+        SetAttacking(self, true);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(tauntingTarget, targeting.CurrentTarget,
+            "Defend-wave units must use the same taunt pursuit interruption rule.");
+    }
+
+    [Test]
+    public void BuildingTargeting_ChoosesHighestThreatOnlyInsideAttackRange()
+    {
+        var tower = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        tower.WeaponComp = CreateTestWeaponComp((Fix64)1.5f);
+        var inRangeTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        var outOfRangeTauntingTarget = MakeSoldier(new Vector3(10f, 0f, 0f), SideType.EnemySide);
+        inRangeTarget.TauntLevel = 1;
+        outOfRangeTauntingTarget.TauntLevel = 10;
+        EntityRegistry.Register(tower);
+        EntityRegistry.Register(inRangeTarget);
+        EntityRegistry.Register(outOfRangeTauntingTarget);
+
+        var targeting = new MeatRackTargetingComp();
+        targeting.Init(tower);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(inRangeTarget, targeting.CurrentTarget,
+            "Building targeting must not use the additional taunt pursuit distance.");
+    }
+
+    private static void SetAttacking(SimEntityContext entity, bool isAttacking)
+    {
+        var attack = entity.AtkComp as SimAtkComp;
+        Assert.NotNull(attack, "Test setup requires SimAtkComp.");
+        typeof(SimAtkComp)
+            .GetProperty(nameof(SimAtkComp.IsAttacking), BindingFlags.Instance | BindingFlags.Public)
+            .SetValue(attack, isAttacking);
+    }
+
+    [Test]
     public void Follow状态_进入领袖死区后停止主动靠近()
     {
         var player = MakeSoldier(new Vector3(0, 0, 0));

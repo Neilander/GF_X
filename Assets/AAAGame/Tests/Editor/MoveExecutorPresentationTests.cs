@@ -39,7 +39,7 @@ public sealed class MoveExecutorPresentationTests
     }
 
     [Test]
-    public void SyncPresentationPosition_StopsAtVerticalWall()
+    public void SyncPresentationPosition_UsesAuthoritativeHorizontalPositionAcrossWall()
     {
         GameObject floor = CreateCube("PresentationFloor", new Vector3(0f, -0.5f, -1f), new Vector3(4f, 1f, 4f));
         GameObject wall = CreateCube("PresentationWall", new Vector3(0f, 1f, 0f), new Vector3(4f, 2f, 0.2f));
@@ -60,7 +60,7 @@ public sealed class MoveExecutorPresentationTests
             for (int i = 0; i < 60; i++)
                 executor.SyncPresentationPosition(new Vector3(0f, 0f, 1f), 0.02f);
 
-            Assert.That(unit.transform.position.z, Is.LessThan(0f));
+            Assert.That(unit.transform.position.z, Is.EqualTo(1f).Within(0.001f));
         }
         finally
         {

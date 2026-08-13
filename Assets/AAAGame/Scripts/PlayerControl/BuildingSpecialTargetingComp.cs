@@ -3,8 +3,6 @@
 public sealed class MeatRackTargetingComp : ITargetingComp, ILogicDeterministicStateContributor
 {
     private static readonly Fix64 ScanInterval = Fix64.FromRaw(820);
-    private static readonly Fix64 TauntScoreScale = (Fix64)100000;
-
     private IEntityContext _ctx;
     private Fix64 _scanTimer;
 
@@ -58,6 +56,8 @@ public sealed class MeatRackTargetingComp : ITargetingComp, ILogicDeterministicS
 
         IEntityContext best = null;
         Fix64 bestScore = -Fix64.FromRaw(long.MaxValue);
+        Fix64 threatPerLevel = TargetThreatUtility.ReadThreatPerLevel();
+        Fix64 buildingExtraThreat = TargetThreatUtility.ReadBuildingExtraThreat();
         for (int i = 0; i < all.Count; i++)
         {
             IEntityContext candidate = all[i];
@@ -72,10 +72,13 @@ public sealed class MeatRackTargetingComp : ITargetingComp, ILogicDeterministicS
             if (distance > scanRange)
                 continue;
 
-            Fix64 score = (Fix64)GetTauntLevel(candidate) * TauntScoreScale + distance;
-            if (score > bestScore
-                || (score == bestScore
-                    && (best == null || candidate.LogicEntityId < best.LogicEntityId)))
+            Fix64 score = TargetThreatUtility.CalculateThreat(
+                _ctx,
+                candidate,
+                distance,
+                threatPerLevel,
+                buildingExtraThreat);
+            if (TargetThreatUtility.HasHigherPriority(score, candidate, bestScore, best))
             {
                 bestScore = score;
                 best = candidate;
@@ -89,11 +92,6 @@ public sealed class MeatRackTargetingComp : ITargetingComp, ILogicDeterministicS
     {
         Fix64 weaponRange = _ctx?.WeaponComp != null ? _ctx.WeaponComp.AttackRange : Fix64.FromRaw(6144);
         return weaponRange;
-    }
-
-    private static int GetTauntLevel(IEntityContext entity)
-    {
-        return entity?.TauntLevel ?? 0;
     }
 
     public void WriteDeterministicState(LogicStateHasher hasher)
@@ -179,8 +177,9 @@ public sealed class MonitorTargetingComp : ITargetingComp, ILogicDeterministicSt
             throw new System.InvalidOperationException("MonitorTargetingComp.FindFacingTarget failed: EntityRegistry.AllEntities is null.");
 
         IEntityContext best = null;
-        Fix64 bestDistance = scanRange;
-        int bestTaunt = -1;
+        Fix64 bestThreat = -Fix64.FromRaw(long.MaxValue);
+        Fix64 threatPerLevel = TargetThreatUtility.ReadThreatPerLevel();
+        Fix64 buildingExtraThreat = TargetThreatUtility.ReadBuildingExtraThreat();
         for (int i = 0; i < all.Count; i++)
         {
             IEntityContext candidate = all[i];
@@ -197,14 +196,15 @@ public sealed class MonitorTargetingComp : ITargetingComp, ILogicDeterministicSt
             if (distance > scanRange)
                 continue;
 
-            int taunt = candidate.TauntLevel;
-            if (taunt > bestTaunt
-                || (taunt == bestTaunt && (distance < bestDistance
-                    || (distance == bestDistance
-                        && (best == null || candidate.LogicEntityId < best.LogicEntityId)))))
+            Fix64 threat = TargetThreatUtility.CalculateThreat(
+                _ctx,
+                candidate,
+                distance,
+                threatPerLevel,
+                buildingExtraThreat);
+            if (TargetThreatUtility.HasHigherPriority(threat, candidate, bestThreat, best))
             {
-                bestTaunt = taunt;
-                bestDistance = distance;
+                bestThreat = threat;
                 best = candidate;
             }
         }

@@ -4082,6 +4082,96 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void ClusterSpawn部署在碰撞建筑上时会确定性散开到碰撞体外()
+    {
+        const int width = 14;
+        const int height = 14;
+        const int obstacleId = 82005;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        var center = new FixVector2((Fix64)6.5f, (Fix64)6.5f);
+        var halfExtents = new FixVector2(Fix64.FromRaw(4096), Fix64.FromRaw(3483));
+        Fix64 formationRadius = ClusterSpawnSystem.CalculateAutoSpawnRadiusFixed(6);
+        LogicCombatShape collisionShape = LogicCombatShape.AxisAlignedBox(center, halfExtents);
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(obstacleId, center, halfExtents);
+        ProcessRuntimeDirtyQueueUntilReady(1);
+
+        var blockedWithoutStealthPermission = new List<FixVector2>();
+        Assert.IsFalse(ClusterSpawnSystem.TryGetSpawnPositionsFixed(
+            center,
+            6,
+            formationRadius,
+            (Fix64)2,
+            blockedWithoutStealthPermission,
+            true,
+            0));
+
+        var firstPreview = new List<Vector3>();
+        var secondPreview = new List<Vector3>();
+        Assert.IsTrue(ClusterSpawnSystem.TryResolvePreviewSpawnPositions(
+            new Vector3((float)center.x, 0f, (float)center.y),
+            6,
+            (float)formationRadius,
+            2f,
+            (_, _) => true,
+            firstPreview,
+            out Vector3 firstResolvedCenter,
+            0,
+            true));
+        Assert.IsTrue(ClusterSpawnSystem.TryResolvePreviewSpawnPositions(
+            new Vector3((float)center.x, 0f, (float)center.y),
+            6,
+            (float)formationRadius,
+            2f,
+            (_, _) => true,
+            secondPreview,
+            out Vector3 secondResolvedCenter,
+            0,
+            true));
+        var first = new List<FixVector2>();
+        var second = new List<FixVector2>();
+        Assert.IsTrue(ClusterSpawnSystem.TryGetSpawnPositionsFixed(
+            new FixVector2((Fix64)firstResolvedCenter.x, (Fix64)firstResolvedCenter.z),
+            6,
+            formationRadius,
+            (Fix64)2,
+            first,
+            true,
+            0,
+            true));
+        Assert.IsTrue(ClusterSpawnSystem.TryGetSpawnPositionsFixed(
+            new FixVector2((Fix64)secondResolvedCenter.x, (Fix64)secondResolvedCenter.z),
+            6,
+            formationRadius,
+            (Fix64)2,
+            second,
+            true,
+            0,
+            true));
+        Assert.AreEqual(firstResolvedCenter.x, secondResolvedCenter.x);
+        Assert.AreEqual(firstResolvedCenter.z, secondResolvedCenter.z);
+        Assert.AreEqual(firstPreview.Count, secondPreview.Count);
+        for (int i = 0; i < firstPreview.Count; i++)
+            Assert.AreEqual(firstPreview[i], secondPreview[i]);
+        Assert.AreEqual(first.Count, second.Count);
+        for (int i = 0; i < first.Count; i++)
+        {
+            Assert.AreEqual(first[i].x.RawValue, ((Fix64)firstPreview[i].x).RawValue, $"preview x mismatch at {i}");
+            Assert.AreEqual(first[i].y.RawValue, ((Fix64)firstPreview[i].z).RawValue, $"preview y mismatch at {i}");
+            Assert.AreEqual(first[i].x.RawValue, second[i].x.RawValue, $"x raw mismatch at {i}");
+            Assert.AreEqual(first[i].y.RawValue, second[i].y.RawValue, $"y raw mismatch at {i}");
+            Assert.Greater(
+                collisionShape.DistanceToSurface(first[i]).RawValue,
+                Fix64.Zero.RawValue,
+                $"spawn {i} remains inside the building collision shape");
+        }
+    }
+
+    [Test]
     public void 非瓶颈普通寻路会输出正常速度()
     {
         const int width = 4;

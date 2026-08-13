@@ -61,8 +61,13 @@ public partial class InGameDataModel : DataModelBase
     private readonly HashSet<BuildingEntity> m_Buildings = new();
     // 建筑点位橙髓存量：key=BuildingInstanceId。升级/回收沿用同 id，因此存量可跨建筑形态保持。
     private Dictionary<string, int> m_ProductionBuildingCoinReservesByInstanceId = new(StringComparer.Ordinal);
-    // 建筑实际建造/升级花费：key=BuildingInstanceId。回收按历史实际花费返钱。
-    private Dictionary<string, int> m_BuildingCostSpentByInstanceId = new(StringComparer.Ordinal);
+    // 建筑实际建造/升级花费：key=BuildingInstanceId。
+    // 当前运营阶段内首次改造前的建筑与本阶段花费，用于撤销。
+    private Dictionary<string, string> m_BuildingPhaseOriginalIdByInstanceId = new(StringComparer.Ordinal);
+    private Dictionary<string, int> m_BuildingPhaseCostByInstanceId = new(StringComparer.Ordinal);
+    private Dictionary<string, List<string>> m_BuildingPhaseTechIdsByInstanceId = new(StringComparer.Ordinal);
+    // 当天战斗中损毁过的我方生产建筑。
+    private HashSet<string> m_DemolishedPlayerProductionBuildings = new(StringComparer.Ordinal);
     private int m_ResourcePointInitialAmount;
     private int m_BaseProvideSupplyPerLevel;
     private bool m_SupplyEventsSubscribed;
@@ -141,7 +146,10 @@ public partial class InGameDataModel : DataModelBase
         m_TechOwnerContextsById.Clear();
         m_Buildings.Clear();
         m_ProductionBuildingCoinReservesByInstanceId.Clear();
-        m_BuildingCostSpentByInstanceId.Clear();
+        m_BuildingPhaseOriginalIdByInstanceId.Clear();
+        m_BuildingPhaseCostByInstanceId.Clear();
+        m_BuildingPhaseTechIdsByInstanceId.Clear();
+        m_DemolishedPlayerProductionBuildings.Clear();
 
         for (int i = 0; i < m_Strongholds.Count; i++)
         {
@@ -298,93 +306,91 @@ public partial class InGameDataModel : DataModelBase
         return consumed;
     }
 
-    public static void RecordBuildingCostSpent(string buildingInstanceId, int cost)
-    {
-        if (string.IsNullOrWhiteSpace(buildingInstanceId) || cost <= 0)
-            return;
-
-        InGameDataModel dataModel = GetRequiredValueModel();
-
-        dataModel.m_BuildingCostSpentByInstanceId.TryGetValue(buildingInstanceId, out int current);
-        long total = (long)current + cost;
-        if (total > int.MaxValue)
-            throw new OverflowException(
-                $"Building cost history overflow. building={buildingInstanceId}, current={current}, added={cost}.");
-        dataModel.m_BuildingCostSpentByInstanceId[buildingInstanceId] = (int)total;
-    }
-
-    public static int GetBuildingCostSpent(string buildingInstanceId)
+    public static void RecordBuildingPhaseModification(string buildingInstanceId, string originalBuildingId, int cost)
     {
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
-            return 0;
+            throw new ArgumentException("Building instance id is required.", nameof(buildingInstanceId));
+        if (string.IsNullOrWhiteSpace(originalBuildingId))
+            throw new ArgumentException("Original building id is required.", nameof(originalBuildingId));
+        if (cost < 0)
+            throw new ArgumentOutOfRangeException(nameof(cost));
 
         InGameDataModel dataModel = GetRequiredValueModel();
-
-        return dataModel.m_BuildingCostSpentByInstanceId.TryGetValue(buildingInstanceId, out int cost)
-            ? Math.Max(0, cost)
-            : 0;
+        if (!dataModel.m_BuildingPhaseOriginalIdByInstanceId.ContainsKey(buildingInstanceId))
+            dataModel.m_BuildingPhaseOriginalIdByInstanceId.Add(buildingInstanceId, originalBuildingId);
+        dataModel.m_BuildingPhaseCostByInstanceId.TryGetValue(buildingInstanceId, out int current);
+        dataModel.m_BuildingPhaseCostByInstanceId[buildingInstanceId] = checked(current + cost);
     }
 
-    public static void EnsureBuildingCostSpentFromOriginalCosts(string buildingInstanceId, BuildingData buildingData)
-    {
-        if (string.IsNullOrWhiteSpace(buildingInstanceId) || buildingData == null || buildingData.Lv <= 0)
-            return;
-
-        if (GetBuildingCostSpent(buildingInstanceId) > 0)
-            return;
-
-        int originalCost = CalculateOriginalBuildingCostSum(buildingData);
-        if (originalCost <= 0)
-            return;
-
-        InGameDataModel dataModel = GetRequiredValueModel();
-
-        dataModel.m_BuildingCostSpentByInstanceId[buildingInstanceId] = originalCost;
-    }
-
-    public static void ResetBuildingCostSpent(string buildingInstanceId)
+    public static void RecordBuildingPhaseTech(string buildingInstanceId, string techId)
     {
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
-            return;
-
+            throw new ArgumentException("Building instance id is required.", nameof(buildingInstanceId));
+        if (string.IsNullOrWhiteSpace(techId))
+            throw new ArgumentException("Tech id is required.", nameof(techId));
         InGameDataModel dataModel = GetRequiredValueModel();
-
-        dataModel.m_BuildingCostSpentByInstanceId.Remove(buildingInstanceId);
-    }
-
-    public static int CalculateOriginalBuildingCostSum(BuildingData buildingData)
-    {
-        if (buildingData == null || buildingData.Lv <= 0)
-            return 0;
-
-        long total = 0;
-        for (int lv = 1; lv <= buildingData.Lv; lv++)
+        if (!dataModel.m_BuildingPhaseTechIdsByInstanceId.TryGetValue(buildingInstanceId, out List<string> techIds))
         {
-            string levelIdentifier = ReplaceBuildingLevel(buildingData.Identifier, lv);
-            BuildingData levelData = !string.IsNullOrWhiteSpace(levelIdentifier)
-                ? BuildingDataModel.GetBuildingData(levelIdentifier)
-                : null;
-            if (levelData == null)
-                continue;
+            techIds = new List<string>();
+            dataModel.m_BuildingPhaseTechIdsByInstanceId.Add(buildingInstanceId, techIds);
+        }
+        techIds.Add(techId);
+    }
 
-            total += Mathf.Max(0, levelData.Cost);
-            if (total >= int.MaxValue)
-                return int.MaxValue;
+    public static IReadOnlyList<string> GetBuildingPhaseTechIds(string buildingInstanceId)
+    {
+        InGameDataModel dataModel = GetRequiredValueModel();
+        return dataModel.m_BuildingPhaseTechIdsByInstanceId.TryGetValue(buildingInstanceId, out List<string> techIds)
+            ? techIds
+            : Array.Empty<string>();
+    }
+
+    public static bool TryGetBuildingPhaseUndo(
+        string buildingInstanceId,
+        out string originalBuildingId,
+        out int refund)
+    {
+        InGameDataModel dataModel = GetRequiredValueModel();
+        if (!dataModel.m_BuildingPhaseOriginalIdByInstanceId.TryGetValue(buildingInstanceId, out originalBuildingId))
+        {
+            refund = 0;
+            return false;
         }
 
-        return (int)total;
+        refund = dataModel.m_BuildingPhaseCostByInstanceId.TryGetValue(buildingInstanceId, out int cost)
+            ? cost
+            : throw new InvalidOperationException($"Building phase undo cost is missing. building={buildingInstanceId}.");
+        return true;
     }
 
-    private static string ReplaceBuildingLevel(string identifier, int lv)
+    public static void ClearBuildingPhaseUndo(string buildingInstanceId)
     {
-        if (string.IsNullOrWhiteSpace(identifier) || lv <= 0)
-            return null;
+        InGameDataModel dataModel = GetRequiredValueModel();
+        dataModel.m_BuildingPhaseOriginalIdByInstanceId.Remove(buildingInstanceId);
+        dataModel.m_BuildingPhaseCostByInstanceId.Remove(buildingInstanceId);
+        dataModel.m_BuildingPhaseTechIdsByInstanceId.Remove(buildingInstanceId);
+    }
 
-        int lvIndex = identifier.LastIndexOf("_Lv", StringComparison.Ordinal);
-        if (lvIndex < 0)
-            return null;
+    public static void ClearBuildingPhaseUndoRecords()
+    {
+        InGameDataModel dataModel = GetRequiredValueModel();
+        dataModel.m_BuildingPhaseOriginalIdByInstanceId.Clear();
+        dataModel.m_BuildingPhaseCostByInstanceId.Clear();
+        dataModel.m_BuildingPhaseTechIdsByInstanceId.Clear();
+    }
 
-        return identifier.Substring(0, lvIndex + 3) + lv;
+    public static void RecordDemolishedPlayerProductionBuilding(string buildingInstanceId)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId))
+            throw new ArgumentException("Building instance id is required.", nameof(buildingInstanceId));
+        GetRequiredValueModel().m_DemolishedPlayerProductionBuildings.Add(buildingInstanceId);
+    }
+
+    public static bool ConsumeDemolishedPlayerProductionBuilding(string buildingInstanceId)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId))
+            throw new ArgumentException("Building instance id is required.", nameof(buildingInstanceId));
+        return GetRequiredValueModel().m_DemolishedPlayerProductionBuildings.Remove(buildingInstanceId);
     }
 
     public static int GetCurrentSupply()
@@ -634,7 +640,51 @@ public partial class InGameDataModel : DataModelBase
         }
 
         AddSortedStringIntDictionary(hasher, dataModel.m_ProductionBuildingCoinReservesByInstanceId);
-        AddSortedStringIntDictionary(hasher, dataModel.m_BuildingCostSpentByInstanceId);
+        AddSortedStringStringDictionary(hasher, dataModel.m_BuildingPhaseOriginalIdByInstanceId);
+        AddSortedStringIntDictionary(hasher, dataModel.m_BuildingPhaseCostByInstanceId);
+        AddSortedStringListDictionary(hasher, dataModel.m_BuildingPhaseTechIdsByInstanceId);
+        AddSortedStringSet(hasher, dataModel.m_DemolishedPlayerProductionBuildings);
+    }
+
+    private static void AddSortedStringStringDictionary(LogicStateHasher hasher, Dictionary<string, string> values)
+    {
+        s_DeterministicPrimaryIds.Clear();
+        s_DeterministicPrimaryIds.AddRange(values.Keys);
+        s_DeterministicPrimaryIds.Sort(s_DeterministicIdComparison);
+        hasher.Add(s_DeterministicPrimaryIds.Count);
+        for (int i = 0; i < s_DeterministicPrimaryIds.Count; i++)
+        {
+            string key = s_DeterministicPrimaryIds[i];
+            hasher.Add(key);
+            hasher.Add(values[key]);
+        }
+    }
+
+    private static void AddSortedStringSet(LogicStateHasher hasher, HashSet<string> values)
+    {
+        s_DeterministicPrimaryIds.Clear();
+        s_DeterministicPrimaryIds.AddRange(values);
+        s_DeterministicPrimaryIds.Sort(s_DeterministicIdComparison);
+        hasher.Add(s_DeterministicPrimaryIds.Count);
+        for (int i = 0; i < s_DeterministicPrimaryIds.Count; i++)
+            hasher.Add(s_DeterministicPrimaryIds[i]);
+    }
+
+    private static void AddSortedStringListDictionary(LogicStateHasher hasher, Dictionary<string, List<string>> values)
+    {
+        s_DeterministicPrimaryIds.Clear();
+        s_DeterministicPrimaryIds.AddRange(values.Keys);
+        s_DeterministicPrimaryIds.Sort(s_DeterministicIdComparison);
+        hasher.Add(s_DeterministicPrimaryIds.Count);
+        for (int i = 0; i < s_DeterministicPrimaryIds.Count; i++)
+        {
+            string key = s_DeterministicPrimaryIds[i];
+            List<string> list = values[key];
+            hasher.Add(key);
+            hasher.Add(list.Count);
+            for (int valueIndex = 0; valueIndex < list.Count; valueIndex++)
+                hasher.Add(list[valueIndex]);
+        }
     }
 
     private static void AddSortedStringIntDictionary(LogicStateHasher hasher, Dictionary<string, int> values)

@@ -13,6 +13,7 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
         public bool RegisterUnitBuffsAfterActivate;
         public Func<TechData, string, List<BuffCallback>> CreateUnitModules;
         public Func<TechData, string, List<BuffCallback>> CreateBuildingModules;
+        public bool ChangesBuildingCost;
         public string SkipReason;
     }
 
@@ -52,6 +53,13 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
     public static bool IsRuntimeDrivenTechId(string techId)
     {
         return !string.IsNullOrWhiteSpace(techId) && s_Rules.ContainsKey(GetRootTechId(techId));
+    }
+
+    public static bool ChangesBuildingCost(string techId)
+    {
+        return !string.IsNullOrWhiteSpace(techId)
+               && s_Rules.TryGetValue(GetRootTechId(techId), out RuntimeTechRule rule)
+               && rule.ChangesBuildingCost;
     }
 
     public void ClearRuntimeState()
@@ -224,7 +232,8 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
         var rules = new Dictionary<string, RuntimeTechRule>(StringComparer.Ordinal);
 
         AddActivation(rules, "Tech_Buil_ResearchCenter_Lv2_Opt2",
-            (self, context) => self.RegisterStrongholdCostDiscount(context, (int)GetValue(context.TechData, 0)));
+            (self, context) => self.RegisterStrongholdCostDiscount(context, (int)GetValue(context.TechData, 0)),
+            changesBuildingCost: true);
         AddActivation(rules, "Tech_Buil_ResearchCenter_Lv3_Opt2",
             (self, context) => self.ApplyArmyForceInStrongholdsWithArchetype(context, Archetype.Coding, GetValue(context.TechData, 0)));
 
@@ -337,11 +346,13 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
         Dictionary<string, RuntimeTechRule> rules,
         string techId,
         Action<BuildingTechRuntimeEffect, TechEffectContext> action,
-        bool registerUnitBuffsAfterActivate = false)
+        bool registerUnitBuffsAfterActivate = false,
+        bool changesBuildingCost = false)
     {
         RuntimeTechRule rule = GetOrCreateRule(rules, techId);
         rule.Activate = action;
         rule.RegisterUnitBuffsAfterActivate = registerUnitBuffsAfterActivate;
+        rule.ChangesBuildingCost = changesBuildingCost;
     }
 
     private static void AddUnit(
@@ -1102,6 +1113,31 @@ public static class BuildingCostModifierService
             OwnerFactionId = ownerFactionId,
             DiscountPerArchetype = discountPerArchetype,
         });
+    }
+
+    public static int UnregisterTechDiscount(string techId, int ownerFactionId)
+    {
+        if (string.IsNullOrWhiteSpace(techId))
+            throw new ArgumentException("techId is required.", nameof(techId));
+
+        int removed = 0;
+        s_DeterministicStrongholdIds.Clear();
+        foreach (string strongholdId in s_DiscountsByStrongholdId.Keys)
+            s_DeterministicStrongholdIds.Add(strongholdId);
+
+        for (int strongholdIndex = 0; strongholdIndex < s_DeterministicStrongholdIds.Count; strongholdIndex++)
+        {
+            string strongholdId = s_DeterministicStrongholdIds[strongholdIndex];
+            List<StrongholdArchetypeDiscount> discounts = s_DiscountsByStrongholdId[strongholdId];
+            removed += discounts.RemoveAll(discount =>
+                discount != null
+                && discount.OwnerFactionId == ownerFactionId
+                && string.Equals(discount.TechId, techId, StringComparison.Ordinal));
+            if (discounts.Count == 0)
+                s_DiscountsByStrongholdId.Remove(strongholdId);
+        }
+
+        return removed;
     }
 
     public static int CalculateBuildingCost(

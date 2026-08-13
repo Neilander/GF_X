@@ -523,6 +523,8 @@ public class GlobalBuffManager : GameFrameworkComponent
             && (string.IsNullOrWhiteSpace(buildingInstanceId)
                 || string.Equals(rule.SourceBuildingInstanceId, buildingInstanceId, StringComparison.Ordinal)));
 
+        removed += BuildingCostModifierService.UnregisterTechDiscount(techId, ownerFactionId);
+
         RemoveBuildingUnitProviderBuffs(ownerFactionId, buildingInstanceId, techId);
 
         if (removed > 0)

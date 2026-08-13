@@ -115,6 +115,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     private static readonly ICapability DisabledCapabilityLocker = new StateCapabilityLocker();
     private static readonly ICapability GhostCapabilityLocker = new StateCapabilityLocker();
     private const string HeroGhostBuffId = "hero_ghost_state";
+    private const string MinimumDamagePerHitConfigKey = "MinimumDamagePerHit";
     private readonly Dictionary<ICapability, List<ICapability>> m_CapabilityLockers = new();
     private readonly HashSet<string> m_InvincibleSources = new();
     private readonly List<string> m_DeterministicStringValues = new List<string>();
@@ -199,6 +200,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public bool IsDisabled { get; private set; }
     public bool IsPhaseProtected { get; private set; }
     public bool IsPermanentStealth { get; private set; }
+    public bool IsStealthed => IsPermanentStealth;
     public bool IsPermanentlyInvincible { get; private set; }
     public bool HasPermanentNoAttackCapability { get; private set; }
     public bool BlocksLogicMovement { get; private set; }
@@ -608,7 +610,12 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public void SetTargetingComp(ITargetingComp targetingComp) => m_TargetingComp = targetingComp ?? throw new ArgumentNullException(nameof(targetingComp));
     public void SetWeaponComp(WeaponComp weaponComp) => m_WeaponComp = weaponComp ?? throw new ArgumentNullException(nameof(weaponComp));
     public void SetSkillComp(ISkillComp skillComp) => m_SkillComp = skillComp ?? throw new ArgumentNullException(nameof(skillComp));
-    public void CancelRunningSkills() => m_SkillComp?.CancelSkills();
+    public void CancelRunningSkills()
+    {
+        m_SkillComp?.CancelSkills();
+        if (IsPlayerEntity && IsHeroEntity && LogicTeleportCommandService.IsActive)
+            LogicTeleportCommandService.InterruptCombatTeleport(EntityId);
+    }
     public Fix64 GetProperty(CreatureMainProperty prop) => RequireProperties().GetProperty(prop);
 
     internal void ActivateRuntime(bool currentLifecycleFrame = true)
@@ -688,8 +695,11 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
 
         if (IsBuildingEntity && modType == HealthModifyType.reduce)
             damage = Fix64.Max(Fix64.Zero, damage - Fix64.Max(Fix64.Zero, GetProperty(CreatureMainProperty.Def)));
-        if (damage <= Fix64.Zero)
-            return;
+        Fix64 minimumDamage = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(MinimumDamagePerHitConfigKey);
+        damage = Fix64.Max(minimumDamage, damage);
+
+        if (IsPlayerEntity && IsHeroEntity && LogicTeleportCommandService.IsActive)
+            LogicTeleportCommandService.InterruptCombatTeleport(EntityId);
 
         ModifyHealth(-damage);
         if (IsBuildingEntity)
@@ -974,10 +984,10 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         }
 
         if (IsBuildingEntity
-            && m_OwnerFactionId == EntitySideHelper.PlayerFactionId
             && InGameDataModel.IsBuildPhase(newPhase))
         {
-            RestoreBuildingToFullHealth();
+            if (m_OwnerFactionId == EntitySideHelper.PlayerFactionId)
+                RestoreBuildingToFullHealth();
         }
     }
 
@@ -999,6 +1009,15 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         m_BuffComp.OnHostDead();
         BuildingDisabledChanged?.Invoke(true, attacker);
         LogicBuildingDisabledEventService.Publish(this, attacker);
+    }
+
+    internal void DisableForStrongholdCollapse()
+    {
+        if (!IsBuildingEntity)
+            throw new InvalidOperationException($"Stronghold collapse target is not a building. entity={EntityId.Value}.");
+        if (IsDisabled)
+            return;
+        EnterBuildingDisabledState(null);
     }
 
     private void HandleHeroZeroHealth()
@@ -1073,7 +1092,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     private void ClampHealthToZero()
     {
         Fix64 current = HealthValue;
-        if (current < Fix64.Zero)
+        if (current != Fix64.Zero)
             ModifyHealth(-current);
     }
 

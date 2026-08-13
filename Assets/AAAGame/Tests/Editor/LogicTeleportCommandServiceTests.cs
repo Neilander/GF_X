@@ -85,6 +85,58 @@ public sealed class LogicTeleportCommandServiceTests
     }
 
     [Test]
+    public void CombatTeleport_UsesCeilingWindUpFramesAndIncludesPlayerUnits()
+    {
+        Fix64 windUp = LogicFrameRuntime.FixedDeltaTime * (Fix64)2 + LogicFrameRuntime.FixedDeltaTime / (Fix64)2;
+
+        LogicTeleportCommand command = LogicTeleportCommandService.ScheduleCombatTeleport(
+            new LogicEntityId(11),
+            new FixVector2((Fix64)3, (Fix64)4),
+            "Stronghold_Combat",
+            windUp);
+
+        Assert.AreEqual(3ul, command.EffectiveFrame);
+        Assert.IsTrue(command.IncludesPlayerUnits);
+        Assert.AreEqual(1, LogicTeleportCommandService.PendingCount);
+    }
+
+    [Test]
+    public void CombatTeleportInterrupt_RemovesOnlyCombatCast()
+    {
+        var entityId = new LogicEntityId(12);
+        LogicTeleportCommandService.ScheduleForNextFrame(
+            entityId,
+            FixVector2.Zero,
+            "Stronghold_Build");
+        LogicTeleportCommandService.ScheduleCombatTeleport(
+            entityId,
+            FixVector2.Zero,
+            "Stronghold_Combat",
+            LogicFrameRuntime.FixedDeltaTime * (Fix64)2);
+
+        LogicTeleportCommandService.InterruptCombatTeleport(entityId);
+
+        Assert.AreEqual(1, LogicTeleportCommandService.PendingCount);
+        Assert.IsFalse(LogicTeleportCommandService.History[0].IncludesPlayerUnits);
+        Assert.IsTrue(LogicTeleportCommandService.History[1].IncludesPlayerUnits);
+    }
+
+    [Test]
+    public void BlockingDestination_InterruptsPendingCombatTeleport()
+    {
+        LogicTeleportCommandService.ScheduleCombatTeleport(
+            new LogicEntityId(13),
+            FixVector2.Zero,
+            "Stronghold_Blocked",
+            LogicFrameRuntime.FixedDeltaTime * (Fix64)2);
+
+        TeleportationPointService.BlockStrongholdTeleport("Stronghold_Blocked");
+
+        Assert.AreEqual(0, LogicTeleportCommandService.PendingCount);
+        Assert.IsTrue(TeleportationPointService.IsStrongholdTeleportBlocked("Stronghold_Blocked"));
+    }
+
+    [Test]
     public void RuntimeApply_RejectsDestinationOutsideClaimedStronghold()
     {
         LogicStrongholdMap.Initialize(

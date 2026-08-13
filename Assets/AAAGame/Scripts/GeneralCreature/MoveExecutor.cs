@@ -181,9 +181,11 @@ public class MoveExecutor : MonoBehaviour
         DebugLastControllerHitNormal = Vector3.zero;
         DebugLastControllerHitMoveDirection = Vector3.zero;
 
-        Vector3 beforeMovePosition = transform.position;
+        Vector3 beforeMovePosition = currentPosition;
         long controllerMoveStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         _controller.Move(finalDisplacement);
+        Vector3 resolvedPosition = transform.position;
+        transform.position = new Vector3(logicPosition.x, resolvedPosition.y, logicPosition.z);
         UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
             UnityGameFramework.Runtime.MainThreadPerfScope.MoveExecutorControllerMove,
             System.Diagnostics.Stopwatch.GetTimestamp() - controllerMoveStartTicks);

@@ -234,7 +234,7 @@ public sealed class LogicMigrationAuthorityBoundaryTests
             Assert.Throws<InvalidOperationException>(() =>
                 InGameDataModel.EnsureProductionBuildingCoinReserves("missing-model-building"));
             Assert.Throws<InvalidOperationException>(() =>
-                InGameDataModel.RecordBuildingCostSpent("missing-model-building", 1));
+                InGameDataModel.RecordBuildingPhaseModification("missing-model-building", "Buil_Test_Lv0", 1));
             Assert.Throws<InvalidOperationException>(() =>
                 InGameDataModel.RefreshCurrentSupplyFromFriendlyUnits(false));
             Assert.Throws<InvalidOperationException>(() =>

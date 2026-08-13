@@ -73,6 +73,7 @@ public static class LogicGameplayStateHasher
         LogicBuildingExtraPropsStore.WriteDeterministicState(hasher);
         LogicProductionConditionState.WriteDeterministicState(hasher);
         LogicStrongholdMap.WriteDeterministicState(hasher);
+        TeleportationPointService.WriteDeterministicState(hasher);
         DefendPhaseRuntime.WriteDeterministicState(hasher);
         ulong worldRulesHash = hasher.Hash;
         AddEntities(hasher, frame);

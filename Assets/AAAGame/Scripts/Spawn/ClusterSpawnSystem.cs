@@ -118,7 +118,8 @@ public static class ClusterSpawnSystem
         bool avoidExistingAgents = false,
         int unitLevel = 1,
         Action<LogicEntityId> spawned = null,
-        Action<EntityParams> configureParams = null)
+        Action<EntityParams> configureParams = null,
+        bool allowBlockedFormationCenter = false)
     {
         if (count <= 0 || radius <= Fix64.Zero || minDistance <= Fix64.Zero)
             return false;
@@ -133,7 +134,8 @@ public static class ClusterSpawnSystem
             minDistance,
             spawnPositions,
             avoidExistingAgents,
-            agentTypeId);
+            agentTypeId,
+            allowBlockedFormationCenter);
         MainThreadFrameProfiler.Record(
             MainThreadPerfScope.ClusterSpawnPositions,
             System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
@@ -196,7 +198,8 @@ public static class ClusterSpawnSystem
         float minDistance,
         List<Vector3> previewPositions,
         bool avoidExistingAgents,
-        int agentTypeId)
+        int agentTypeId,
+        bool allowBlockedFormationCenter = false)
     {
         if (previewPositions == null)
             throw new ArgumentNullException(nameof(previewPositions));
@@ -213,7 +216,8 @@ public static class ClusterSpawnSystem
             minDistance,
             fixedPositions,
             avoidExistingAgents,
-            agentTypeId);
+            agentTypeId,
+            allowBlockedFormationCenter);
         CopyToUnityPositions(fixedPositions, previewPositions);
         return success;
     }
@@ -225,7 +229,8 @@ public static class ClusterSpawnSystem
         float minDistance,
         List<FixVector2> spawnPositions,
         bool avoidExistingAgents,
-        int agentTypeId)
+        int agentTypeId,
+        bool allowBlockedFormationCenter = false)
     {
         return TryGetSpawnPositionsFixed(
             ToFixed(center),
@@ -234,7 +239,8 @@ public static class ClusterSpawnSystem
             (Fix64)minDistance,
             spawnPositions,
             avoidExistingAgents,
-            agentTypeId);
+            agentTypeId,
+            allowBlockedFormationCenter);
     }
 
     public static bool TryGetSpawnPositionsFixed(
@@ -244,7 +250,8 @@ public static class ClusterSpawnSystem
         Fix64 minDistance,
         List<FixVector2> spawnPositions,
         bool avoidExistingAgents,
-        int agentTypeId)
+        int agentTypeId,
+        bool allowBlockedFormationCenter = false)
     {
         if (spawnPositions == null)
             throw new ArgumentNullException(nameof(spawnPositions));
@@ -253,11 +260,13 @@ public static class ClusterSpawnSystem
         if (count <= 0 || radius <= Fix64.Zero || minDistance <= Fix64.Zero)
             return false;
 
-        if (!TryFindLegalNavigationPointFixed(
+        FixVector2 legalCenter = center;
+        if (!allowBlockedFormationCenter
+            && !TryFindLegalNavigationPointFixed(
                 center,
                 FixedEdgeClearance,
                 agentTypeId,
-                out FixVector2 legalCenter))
+                out legalCenter))
         {
             return false;
         }
@@ -303,7 +312,8 @@ public static class ClusterSpawnSystem
         SpawnCenterValidator centerValidator,
         List<Vector3> previewPositions,
         out Vector3 resolvedCenter,
-        int agentTypeId)
+        int agentTypeId,
+        bool allowBlockedFormationCenter = false)
     {
         resolvedCenter = preferredCenter;
 
@@ -321,11 +331,13 @@ public static class ClusterSpawnSystem
         for (int i = 0; i < totalCandidates; i++)
         {
             FixVector2 candidate = GenerateNearbyCenterCandidateFixed(fixedPreferredCenter, fixedRadius, i);
-            if (!TryFindLegalNavigationPointFixed(
+            FixVector2 legalCenter = candidate;
+            if (!(allowBlockedFormationCenter && i == 0)
+                && !TryFindLegalNavigationPointFixed(
                     candidate,
                     FixedEdgeClearance,
                     agentTypeId,
-                    out FixVector2 legalCenter))
+                    out legalCenter))
             {
                 continue;
             }
@@ -367,10 +379,19 @@ public static class ClusterSpawnSystem
         float radius,
         float minDistance,
         bool avoidExistingAgents,
-        int agentTypeId)
+        int agentTypeId,
+        bool allowBlockedFormationCenter = false)
     {
-        List<Vector3> spawnPositions = new List<Vector3>(count);
-        return TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions, avoidExistingAgents, agentTypeId);
+        var spawnPositions = new List<Vector3>(count);
+        return TryGetPreviewSpawnPositions(
+            center,
+            count,
+            radius,
+            minDistance,
+            spawnPositions,
+            avoidExistingAgents,
+            agentTypeId,
+            allowBlockedFormationCenter);
     }
 
     private static void CollectLegalSpawnPositionsFixed(
