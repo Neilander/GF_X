@@ -1,0 +1,31 @@
+{
+    "name": "AAAGame.Tests.Editor",
+    "rootNamespace": "",
+    "references": [
+        "Hotfix",
+        "GameFramework",
+        "UnityGameFramework.Runtime",
+        "Builtin.Runtime",
+        "AAAGame.Tools.Editor",
+        "GiantGrey.TileWorldCreator",
+        "Unity.InputSystem",
+        "Unity.InputSystem.TestFramework",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "noBurstCompilation": true
+}

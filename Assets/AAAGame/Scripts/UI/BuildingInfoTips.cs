@@ -116,9 +116,6 @@ public partial class BuildingInfoTips : UIFormBase
                 SpawnProperty(root, SupplyIconPath, "+30");
                 break;
 
-            case BuilType.Tech:
-                break;
-
             case BuilType.Prod:
                 SpawnProperty(root, CoinIconPath, FormatSigned(building.GetProduction()));
                 break;
@@ -208,12 +205,6 @@ public partial class BuildingInfoTips : UIFormBase
             return results;
 
         BuildingData current = building.buildingData;
-        if (current.Type == BuilType.Tech)
-        {
-            AppendSelectedUpgrade(current.UpgradeTechIDs, building.BuildingInstanceId, results);
-            return results;
-        }
-
         for (int lv = 1; lv < current.Lv; lv++)
         {
             string levelIdentifier = ReplaceLevel(current.Identifier, lv);
@@ -274,27 +265,7 @@ public partial class BuildingInfoTips : UIFormBase
         if (m_TargetBuilding == null || m_TargetBuilding.buildingData == null)
             return false;
 
-        BuildingData data = m_TargetBuilding.buildingData;
-        if (data.Lv >= 3)
-            return true;
-
-        if (data.Type != BuilType.Tech || data.Lv <= 0)
-            return false;
-
-        if (string.IsNullOrWhiteSpace(m_TargetBuilding.BuildingInstanceId) || data.UpgradeTechIDs == null)
-            return false;
-
-        for (int i = 0; i < data.UpgradeTechIDs.Length; i++)
-        {
-            string techId = data.UpgradeTechIDs[i];
-            if (string.IsNullOrWhiteSpace(techId))
-                continue;
-
-            if (InGameDataModel.HasUnlockedTech(techId, m_TargetBuilding.BuildingInstanceId))
-                return true;
-        }
-
-        return false;
+        return m_TargetBuilding.buildingData.Lv >= 3;
     }
 
     private void UpdatePanelPosition()

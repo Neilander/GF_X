@@ -31,7 +31,6 @@
 	27	越级审批	建筑升级所需的核心建筑等级-{0}	1		LvTag_FastTrackApproval	UI/LvTag/FastTrackApproval	LvTag_Name_FastTrackApproval	LvTag_Desc_FastTrackApproval			True		5
 	28	废品回收	建筑回收返还橙髓的比例+{0}%	50		LvTag_ScrapRecycling	UI/LvTag/ScrapRecycling	LvTag_Name_ScrapRecycling	LvTag_Desc_ScrapRecycling			True		5
 	29	产业扶持	生产建筑的建造价格-{0}橙髓	1		LvTag_IndustrialSupport	UI/LvTag/IndustrialSupport	LvTag_Name_IndustrialSupport	LvTag_Desc_IndustrialSupport			True		5
-	30	技术攻坚	每个科研建筑可以额外研发{0}项科技，但所有科技的研发价格+{1}	1,1		LvTag_TechBreakthrough	UI/LvTag/TechBreakthrough	LvTag_Name_TechBreakthrough	LvTag_Desc_TechBreakthrough			True		5
 	31	投名状	敌方据点在被我方占领后的{0}天内，训练的单位+{1}%攻击，+{2}%生命上限	2,30,50		LvTag_PledgeOfLoyalty	UI/LvTag/PledgeOfLoyalty	LvTag_Name_PledgeOfLoyalty	LvTag_Desc_PledgeOfLoyalty			True		6
 	32	战利品劣化	杀敌转化为每1橙髓所需的频段+{0}	2		LvTag_LootDeterioration	UI/LvTag/LootDeterioration	LvTag_Name_LootDeterioration	LvTag_Desc_LootDeterioration			False	1	1
 	33	通信损耗	弃牌转化为每1橙髓所需的频段+{0}	1		LvTag_CommunicationLoss	UI/LvTag/CommunicationLoss	LvTag_Name_CommunicationLoss	LvTag_Desc_CommunicationLoss			False	1	1
@@ -57,8 +56,6 @@
 	53	施工打点I	建筑升为3级的价格+{0}橙髓	1	4	LvTag_ConstructionKickbackI	UI/LvTag/ConstructionKickbackI	LvTag_Name_ConstructionKickbackI	LvTag_Desc_ConstructionKickbackI			False	1	1
 	54	施工打点II	建筑升级的价格+{0}橙髓	1	4	LvTag_ConstructionKickbackII	UI/LvTag/ConstructionKickbackII	LvTag_Name_ConstructionKickbackII	LvTag_Desc_ConstructionKickbackII			False	2	1
 	55	施工打点III	建筑建造和升级的价格+{0}橙髓	1	4	LvTag_ConstructionKickbackIII	UI/LvTag/ConstructionKickbackIII	LvTag_Name_ConstructionKickbackIII	LvTag_Desc_ConstructionKickbackIII			False	3	1
-	56	技术封锁I	科研建筑研发科技的价格+{0}橙髓	2	5	LvTag_TechEmbargoI	UI/LvTag/TechEmbargoI	LvTag_Name_TechEmbargoI	LvTag_Desc_TechEmbargoI			False	1	1
-	57	技术封锁II	科研建筑研发科技的价格+{0}橙髓	4	5	LvTag_TechEmbargoII	UI/LvTag/TechEmbargoII	LvTag_Name_TechEmbargoII	LvTag_Desc_TechEmbargoII			False	2	1
 	58	捉襟见肘I	初始橙髓-{0}	3	6	LvTag_ShoestringBudgetI	UI/LvTag/ShoestringBudgetI	LvTag_Name_ShoestringBudgetI	LvTag_Desc_ShoestringBudgetI			False	1	1
 	59	捉襟见肘II	初始橙髓-{0}	5	6	LvTag_ShoestringBudgetII	UI/LvTag/ShoestringBudgetII	LvTag_Name_ShoestringBudgetII	LvTag_Desc_ShoestringBudgetII			False	2	1
 	60	捉襟见肘III	初始橙髓-{0}	7	6	LvTag_ShoestringBudgetIII	UI/LvTag/ShoestringBudgetIII	LvTag_Name_ShoestringBudgetIII	LvTag_Desc_ShoestringBudgetIII			False	3	1

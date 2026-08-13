@@ -160,7 +160,7 @@ public class GameEndManager : GameFrameworkComponent
         if (CareerRunSettings.IsVariableExperiment && activeTags.Count > 0)
             throw new InvalidOperationException("Variable experiments cannot finish with active level tags.");
 
-        int offsetRate = LevelTagRuntime.GetCurrentSettlementOffsetRateDelta();
+        int offsetRate = 0;
         for (int i = 0; i < activeTags.Count; i++)
         {
             LevelTagTable tag = activeTags[i];

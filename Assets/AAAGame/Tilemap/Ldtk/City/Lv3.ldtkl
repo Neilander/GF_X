@@ -254,29 +254,7 @@
 					"__worldX": 2984,
 					"__worldY": 1048
 				},
-				{
-					"__identifier": "Building",
-					"__grid": [12,64],
-					"__pivot": [0.5,0.5],
-					"__tags": [],
-					"__tile": null,
-					"__smartColor": "#D77643",
-					"iid": "4e86bd00-48b0-11f1-bc6a-996a183d6b71",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [200,1032],
-					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Tech_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-							"id": "V_String",
-							"params": ["Buil_Tech_Lv0"]
-						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
-					],
-					"__worldX": 2808,
-					"__worldY": 1032
-				},
+
 				{
 					"__identifier": "Building",
 					"__grid": [34,50],
@@ -391,29 +369,7 @@
 					"__worldX": 3544,
 					"__worldY": 1128
 				},
-				{
-					"__identifier": "Building",
-					"__grid": [48,71],
-					"__pivot": [0.5,0.5],
-					"__tags": [],
-					"__tile": null,
-					"__smartColor": "#D77643",
-					"iid": "0dc11410-48b0-11f1-be4b-e36b75f86f8e",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [776,1144],
-					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Tech_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-							"id": "V_String",
-							"params": ["Buil_Tech_Lv0"]
-						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
-					],
-					"__worldX": 3384,
-					"__worldY": 1144
-				},
+
 				{
 					"__identifier": "Building",
 					"__grid": [52,71],
@@ -641,29 +597,7 @@
 					"__worldX": 4072,
 					"__worldY": 1160
 				},
-				{
-					"__identifier": "Building",
-					"__grid": [55,32],
-					"__pivot": [0.5,0.5],
-					"__tags": [],
-					"__tile": null,
-					"__smartColor": "#D77643",
-					"iid": "c78ba810-48b0-11f1-be4b-dd1176cbf684",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [888,520],
-					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Tech_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-							"id": "V_String",
-							"params": ["Buil_Tech_Lv0"]
-						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
-					],
-					"__worldX": 3496,
-					"__worldY": 520
-				},
+
 				{
 					"__identifier": "Building",
 					"__grid": [59,32],
@@ -867,29 +801,7 @@
 					"__worldX": 3560,
 					"__worldY": 488
 				},
-				{
-					"__identifier": "Building",
-					"__grid": [96,38],
-					"__pivot": [0.5,0.5],
-					"__tags": [],
-					"__tile": null,
-					"__smartColor": "#D77643",
-					"iid": "b8d58600-48b0-11f1-be4b-0f6b10521cf5",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [1544,616],
-					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_GiantMascot_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-							"id": "V_String",
-							"params": ["Buil_GiantMascot_Lv1"]
-						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
-					],
-					"__worldX": 4152,
-					"__worldY": 616
-				},
+
 				{
 					"__identifier": "Building",
 					"__grid": [80,50],

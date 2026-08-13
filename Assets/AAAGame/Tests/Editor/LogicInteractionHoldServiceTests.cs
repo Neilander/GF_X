@@ -175,12 +175,10 @@ public sealed class LogicInteractionHoldServiceTests
         StringAssert.Contains("LogicInteractionActionKind.RecycleBuilding", buildManager);
         StringAssert.Contains("LogicInteractionCommandService.Submit", techManager);
         StringAssert.Contains("LogicInteractionActionKind.UpgradeBuilding", techManager);
-        StringAssert.Contains("LogicInteractionActionKind.ResearchTech", techManager);
     }
 
     [TestCase(LogicInteractionOptionKind.ConstructBuilding)]
     [TestCase(LogicInteractionOptionKind.UpgradeBuilding)]
-    [TestCase(LogicInteractionOptionKind.ResearchTech)]
     public void DedicatedBuildingPanelOption_DoesNotExposeLogicInputKey(LogicInteractionOptionKind kind)
     {
         var descriptors = new System.Collections.Generic.List<LogicInteractionOptionDescriptor>();

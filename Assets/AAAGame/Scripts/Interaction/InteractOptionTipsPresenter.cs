@@ -95,12 +95,6 @@ public class InteractOptionTipsPresenter : MonoBehaviour
         if (building.buildingData == null)
             throw new InvalidOperationException("Focused building has no building data during tech unlock presentation.");
 
-        if (building.buildingData.Type == BuilType.Tech)
-        {
-            PresentTarget(_currentTarget);
-            return;
-        }
-
         _pendingUpgradeBuildingInstanceId = args.SourceBuildingInstanceId;
     }
 
@@ -274,7 +268,7 @@ public class InteractOptionTipsPresenter : MonoBehaviour
         target.GetOptions(options);
         for (int i = 0; i < options.Count; i++)
         {
-            if (options[i] is BuildingUpgradeInteractionOption || options[i] is TechResearchInteractionOption)
+            if (options[i] is BuildingUpgradeInteractionOption)
                 return true;
         }
 

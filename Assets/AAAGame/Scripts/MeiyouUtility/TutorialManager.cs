@@ -41,8 +41,6 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
     private const string GoalDefense = "build-defense";
     private const string GoalCapture = "capture-stronghold";
     private const string GoalProduction = "build-production";
-    private const string GoalResearchBuilding = "build-research";
-    private const string GoalResearchTech = "research-tech";
     private const string GoalDefendBase = "defend-base";
     private const string GoalUpgradeCore = "upgrade-core";
 
@@ -78,9 +76,8 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
     private int m_ArmyBaseline;
     private int m_DefenseBaseline;
     private int m_ProductionBaseline;
-    private int m_ResearchBuildingBaseline;
-    private int m_ResearchCommandBaseline;
     private int m_CoreStartLevel;
+    private string m_InvadeStrongholdId;
     private string m_CapturedStrongholdId;
     private string m_CapturedCoreBuildingInstanceId;
     private ulong m_LastLogicFrame;
@@ -265,6 +262,35 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         return !IsCurrentLevelTutorial() || IsDefendPreviewAllowedStage(RequireCurrent().Stage);
     }
 
+    public static bool IsInvadeStrongholdResponseAllowed(string strongholdId)
+    {
+        if (!IsCurrentLevelTutorial())
+            return true;
+
+        TutorialManager manager = RequireCurrent();
+        return IsInvadeStrongholdResponseAllowed(
+            manager.Stage,
+            manager.m_InvadeStrongholdId,
+            strongholdId);
+    }
+
+    internal static bool IsInvadeStrongholdResponseAllowed(
+        TutorialStage stage,
+        string invadeStrongholdId,
+        string strongholdId)
+    {
+        if (stage != TutorialStage.AwaitInvadePhase
+            && stage != TutorialStage.CaptureEnemyStronghold
+            && stage != TutorialStage.AwaitCapturedBuildPhase)
+            return true;
+        if (string.IsNullOrWhiteSpace(invadeStrongholdId))
+            throw new InvalidOperationException("Tutorial invade stronghold was not resolved before the invade stage.");
+        if (string.IsNullOrWhiteSpace(strongholdId))
+            throw new ArgumentException("Stronghold id is empty.", nameof(strongholdId));
+
+        return string.Equals(strongholdId, invadeStrongholdId, StringComparison.Ordinal);
+    }
+
     public static bool IsPhaseSwitchGuidedStage(TutorialStage stage)
     {
         return stage == TutorialStage.AwaitFirstBuildPhase
@@ -278,7 +304,7 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         if (stage == TutorialStage.BuildMilitaryAndDefense)
             return type == BuilType.Army || type == BuilType.Def;
         if (stage == TutorialStage.BuildProductionAndResearch)
-            return type == BuilType.Prod || type == BuilType.Tech;
+            return type == BuilType.Prod;
         return false;
     }
 
@@ -305,9 +331,8 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         m_ArmyBaseline = 0;
         m_DefenseBaseline = 0;
         m_ProductionBaseline = 0;
-        m_ResearchBuildingBaseline = 0;
-        m_ResearchCommandBaseline = 0;
         m_CoreStartLevel = 0;
+        m_InvadeStrongholdId = null;
         m_CapturedStrongholdId = null;
         m_CapturedCoreBuildingInstanceId = null;
         m_LastLogicFrame = 0;
@@ -334,6 +359,7 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         if (EntityRegistry.Player == null || !EntityRegistry.Player.Alive)
             throw new InvalidOperationException("Level_1 tutorial requires a live player before its first logic frame.");
 
+        m_InvadeStrongholdId = ResolveTutorialInvadeStrongholdId();
         Stage = TutorialStage.ReachFriendlyStronghold;
         ObjectiveDestinationService.Activate(0);
         TutorialObjectiveService.Replace(
@@ -398,9 +424,43 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
             return;
         if (LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId) == EntitySideHelper.PlayerFactionId)
             return;
+        if (!string.Equals(strongholdId, m_InvadeStrongholdId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Tutorial player entered non-target enemy stronghold '{strongholdId}', expected='{m_InvadeStrongholdId}'.");
+        }
 
-        LogicMovementRegionConstraintService.SetTutorialStrongholdBoundary(strongholdId);
         OnTutorialStrongholdBoundaryActivated(strongholdId);
+    }
+
+    private static string ResolveTutorialInvadeStrongholdId()
+    {
+        string resolvedStrongholdId = null;
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            if (entities[i] is not IBuildingLogicContext building
+                || !building.Alive
+                || building.OwnerFactionId != EntitySideHelper.EnemyFactionId
+                || building.BuildingData == null
+                || building.BuildingData.Type != BuilType.Base
+                || building.BuildingData.Arche != Archetype.Coding)
+            {
+                continue;
+            }
+            if (string.IsNullOrWhiteSpace(building.StrongholdId))
+                throw new InvalidOperationException("Tutorial Coding core is not assigned to a stronghold.");
+            if (resolvedStrongholdId != null
+                && !string.Equals(resolvedStrongholdId, building.StrongholdId, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Tutorial level contains Coding cores in multiple enemy strongholds: '{resolvedStrongholdId}' and '{building.StrongholdId}'.");
+            }
+            resolvedStrongholdId = building.StrongholdId;
+        }
+
+        return resolvedStrongholdId
+               ?? throw new InvalidOperationException("Tutorial level has no enemy Coding core stronghold.");
     }
 
     private void OnTutorialTriggeredDefenseCleared()
@@ -444,12 +504,8 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
     private void TickDevelopmentGoals()
     {
         bool productionComplete = CountPlayerBuildings(BuilType.Prod) > m_ProductionBaseline;
-        bool researchBuildingComplete = CountPlayerBuildings(BuilType.Tech) > m_ResearchBuildingBaseline;
-        bool techComplete = CountAppliedResearchCommands() > m_ResearchCommandBaseline;
         SetObjectiveCompletion(GoalProduction, productionComplete);
-        SetObjectiveCompletion(GoalResearchBuilding, researchBuildingComplete);
-        SetObjectiveCompletion(GoalResearchTech, techComplete);
-        if (!productionComplete || !researchBuildingComplete || !techComplete)
+        if (!productionComplete)
             return;
 
         CloseAllTips();
@@ -515,6 +571,7 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
             case TutorialStage.AwaitInvadePhase when newPhase == GamePhase.Invade:
                 CloseAllTips();
                 Stage = TutorialStage.CaptureEnemyStronghold;
+                LogicMovementRegionConstraintService.SetTutorialStrongholdBoundary(m_InvadeStrongholdId);
                 ShowTip("TutorialCardSystem");
                 QueuePhaseGuideChanged();
                 break;
@@ -523,10 +580,7 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
                 Stage = TutorialStage.BuildProductionAndResearch;
                 GrantTutorialCoins(DevelopmentCoinGrant, "development");
                 m_ProductionBaseline = CountPlayerBuildings(BuilType.Prod);
-                m_ResearchBuildingBaseline = CountPlayerBuildings(BuilType.Tech);
-                m_ResearchCommandBaseline = CountAppliedResearchCommands();
-                ShowTip("TutorialProductionResearch");
-                ShowTip("TutorialResearchControls");
+                ShowTip("TutorialBuildControls");
                 QueuePhaseGuideChanged();
                 break;
             case TutorialStage.AwaitDefensePhase when newPhase == GamePhase.Defend:
@@ -603,11 +657,9 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         CloseAllTips();
         Stage = TutorialStage.AwaitCapturedBuildPhase;
         TutorialObjectiveService.Replace(
-            Objective(GoalProduction, "BuildProductionBuilding", 1),
-            Objective(GoalResearchBuilding, "BuildResearchBuilding", 1),
-            Objective(GoalResearchTech, "ResearchTechnologyCount", 1));
+            Objective(GoalProduction, "BuildProductionBuilding", 1));
         ShowTip("TutorialOccupied");
-        ShowTip("TutorialSwitchToDevelopment");
+        ShowTip("TutorialSwitchToBuild");
         QueuePhaseGuideChanged();
     }
 
@@ -729,22 +781,6 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         return count;
     }
 
-    private static int CountAppliedResearchCommands()
-    {
-        int count = 0;
-        IReadOnlyList<LogicInteractionCommand> history = LogicInteractionCommandService.History;
-        for (int i = 0; i < history.Count; i++)
-        {
-            LogicInteractionCommand command = history[i];
-            if (command.ActionKind == LogicInteractionActionKind.ResearchTech
-                && command.EffectiveFrame <= LogicInteractionCommandService.LastAppliedFrame)
-            {
-                count++;
-            }
-        }
-        return count;
-    }
-
     private IBuildingLogicContext FindCapturedCoreRequired()
     {
         if (string.IsNullOrWhiteSpace(m_CapturedCoreBuildingInstanceId))
@@ -794,9 +830,8 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         hasher.Add(s_Current.m_ArmyBaseline);
         hasher.Add(s_Current.m_DefenseBaseline);
         hasher.Add(s_Current.m_ProductionBaseline);
-        hasher.Add(s_Current.m_ResearchBuildingBaseline);
-        hasher.Add(s_Current.m_ResearchCommandBaseline);
         hasher.Add(s_Current.m_CoreStartLevel);
+        hasher.Add(s_Current.m_InvadeStrongholdId);
         hasher.Add(s_Current.m_CapturedStrongholdId);
         hasher.Add(s_Current.m_CapturedCoreBuildingInstanceId);
         hasher.Add(s_Current.m_LastLogicFrame);

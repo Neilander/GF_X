@@ -3804,6 +3804,50 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 斜坡导航距离按XZ平面步长计算_忽略导航锚点高度差()
+    {
+        bool[] walkable = { true, true, true };
+        Vector3[] rampAnchors =
+        {
+            new Vector3(0.5f, 0f, 0.5f),
+            new Vector3(1.5f, 10f, 0.5f),
+            new Vector3(2.5f, 20f, 0.5f),
+        };
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            3,
+            1,
+            1f,
+            Vector3.zero,
+            walkable,
+            rampAnchors);
+
+        Vector3 start = rampAnchors[0];
+        Vector3 goal = rampAnchors[2];
+        Assert.Greater(Vector3.Distance(start, goal), 20f, "测试前提要求空间距离显著大于平面距离。");
+
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryEstimateNavigationDistance(
+                start,
+                goal,
+                0,
+                out float distance,
+                out string failureReason),
+            failureReason);
+        Assert.AreEqual(2f, distance, 0.0001f, "斜坡导航距离必须只累计 XZ 网格步长。");
+
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryEstimateNavigationDistanceFixed(
+                new FixVector2((Fix64)start.x, (Fix64)start.z),
+                new FixVector2((Fix64)goal.x, (Fix64)goal.z),
+                0,
+                out Fix64 fixedDistance,
+                out failureReason),
+            failureReason);
+        Assert.AreEqual(((Fix64)2).RawValue, fixedDistance.RawValue,
+            "定点斜坡导航距离必须只累计 XZ 网格步长。");
+    }
+
+    [Test]
     public void 跨Sector导航预览必须输出Sector内部绕障拐点()
     {
         const int width = 40;

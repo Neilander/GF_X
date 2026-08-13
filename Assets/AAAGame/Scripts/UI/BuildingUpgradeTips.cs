@@ -154,7 +154,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (optionIds == null)
             return;
 
-        string upgradeBuildingId = current.Type == BuilType.Tech ? current.Identifier : BuildingDataModel.GetUpgradeID(current.Identifier);
+        string upgradeBuildingId = BuildingDataModel.GetUpgradeID(current.Identifier);
         BuildingData upgradeData = string.IsNullOrWhiteSpace(upgradeBuildingId) ? null : BuildingDataModel.GetBuildingData(upgradeBuildingId);
 
         int optionIndex = 0;
@@ -168,9 +168,7 @@ public partial class BuildingUpgradeTips : UIFormBase
             if (techData == null)
                 continue;
 
-            bool visible = current.Type == BuilType.Tech
-                ? techManager.IsResearchOptionVisible(m_TargetBuilding, techId)
-                : techManager.IsUpgradeOptionVisible(m_TargetBuilding, upgradeBuildingId, techId);
+            bool visible = techManager.IsUpgradeOptionVisible(m_TargetBuilding, upgradeBuildingId, techId);
             if (!visible)
                 continue;
 
@@ -342,7 +340,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (m_TargetBuilding != null && m_TargetBuilding.buildingData != null)
         {
             BuildingData current = m_TargetBuilding.buildingData;
-            if (current.Type != BuilType.Base && current.Type != BuilType.Tech)
+            if (current.Type != BuilType.Base)
             {
                 int requiredLevel = current.Lv + 1;
                 string baseName = ResolveArchetypeBaseName(current.Arche);
@@ -399,8 +397,6 @@ public partial class BuildingUpgradeTips : UIFormBase
         {
             case BuilType.Base:
                 SpawnProperty(root, SupplyIconPath, $"+{building.buildingData.Lv * 10}");
-                break;
-            case BuilType.Tech:
                 break;
             case BuilType.Prod:
                 SpawnProperty(root, CoinIconPath, FormatSigned(building.GetProduction()));
@@ -626,17 +622,14 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (m_SelectedBinding == null || m_TargetBuilding == null)
             return;
 
-        bool success;
         TechManager techManager = GameEntry.GetComponent<TechManager>();
         if (techManager == null)
             throw new InvalidOperationException("TechManager is unavailable while completing an upgrade hold.");
 
-        bool isResearch = m_TargetBuilding.buildingData != null
-                          && m_TargetBuilding.buildingData.Type == BuilType.Tech;
-        if (isResearch)
-            success = techManager.ResearchTech(m_TargetBuilding, m_SelectedBinding.TechId);
-        else
-            success = techManager.UpgradeBuilding(m_TargetBuilding, m_SelectedBinding.UpgradeBuildingId, m_SelectedBinding.TechId);
+        bool success = techManager.UpgradeBuilding(
+            m_TargetBuilding,
+            m_SelectedBinding.UpgradeBuildingId,
+            m_SelectedBinding.TechId);
 
         if (success)
         {
@@ -644,9 +637,7 @@ public partial class BuildingUpgradeTips : UIFormBase
             IngameCoinPreviewState.CommitPreviewDeduction(
                 GetInstanceID(),
                 m_TargetBuilding.LogicEntityId,
-                isResearch
-                    ? LogicInteractionActionKind.ResearchTech
-                    : LogicInteractionActionKind.UpgradeBuilding);
+                LogicInteractionActionKind.UpgradeBuilding);
         }
         else
             RefreshView();
@@ -724,12 +715,9 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (data.Lv <= 0)
             return false;
 
-        if (data.Type != BuilType.Tech)
-        {
-            string upgradeBuildingId = BuildingDataModel.GetUpgradeID(data.Identifier);
-            if (string.IsNullOrWhiteSpace(upgradeBuildingId) || BuildingDataModel.GetBuildingData(upgradeBuildingId) == null)
-                return false;
-        }
+        string upgradeBuildingId = BuildingDataModel.GetUpgradeID(data.Identifier);
+        if (string.IsNullOrWhiteSpace(upgradeBuildingId) || BuildingDataModel.GetBuildingData(upgradeBuildingId) == null)
+            return false;
 
         if (data.UpgradeTechIDs == null || data.UpgradeTechIDs.Length <= 0)
             return false;
@@ -744,9 +732,7 @@ public partial class BuildingUpgradeTips : UIFormBase
             if (string.IsNullOrWhiteSpace(techId))
                 continue;
 
-            bool visible = data.Type == BuilType.Tech
-                ? techManager.IsResearchOptionVisible(m_TargetBuilding, techId)
-                : techManager.IsUpgradeOptionVisible(m_TargetBuilding, BuildingDataModel.GetUpgradeID(data.Identifier), techId);
+            bool visible = techManager.IsUpgradeOptionVisible(m_TargetBuilding, upgradeBuildingId, techId);
             if (visible)
                 return true;
         }
@@ -758,9 +744,6 @@ public partial class BuildingUpgradeTips : UIFormBase
     {
         if (binding == null)
             return 0;
-
-        if (m_TargetBuilding != null && m_TargetBuilding.buildingData != null && m_TargetBuilding.buildingData.Type == BuilType.Tech)
-            return binding.TechData != null ? Mathf.Max(0, binding.TechData.Cost) : 0;
 
         BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
         return buildManager != null
@@ -777,9 +760,6 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (techManager == null)
             return false;
 
-        if (m_TargetBuilding.buildingData != null && m_TargetBuilding.buildingData.Type == BuilType.Tech)
-            return techManager.IsResearchOptionExecutable(m_TargetBuilding, m_SelectedBinding.TechId);
-
         return techManager.IsUpgradeOptionExecutable(m_TargetBuilding, m_SelectedBinding.UpgradeBuildingId, m_SelectedBinding.TechId);
     }
 
@@ -791,9 +771,6 @@ public partial class BuildingUpgradeTips : UIFormBase
         TechManager techManager = GameEntry.GetComponent<TechManager>();
         if (techManager == null)
             return false;
-
-        if (m_TargetBuilding.buildingData != null && m_TargetBuilding.buildingData.Type == BuilType.Tech)
-            return techManager.IsResearchOptionExecutable(m_TargetBuilding, binding.TechId);
 
         return techManager.IsUpgradeOptionExecutable(m_TargetBuilding, binding.UpgradeBuildingId, binding.TechId);
     }
@@ -830,12 +807,6 @@ public partial class BuildingUpgradeTips : UIFormBase
             return results;
 
         BuildingData current = building.buildingData;
-        if (current.Type == BuilType.Tech)
-        {
-            AppendSelectedUpgrade(current.UpgradeTechIDs, building.BuildingInstanceId, results);
-            return results;
-        }
-
         for (int lv = 1; lv < current.Lv; lv++)
         {
             string levelId = ReplaceLevel(current.Identifier, lv);

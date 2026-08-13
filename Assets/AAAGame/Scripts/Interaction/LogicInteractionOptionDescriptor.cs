@@ -6,7 +6,6 @@ public enum LogicInteractionOptionKind
 {
     ConstructBuilding = 0,
     UpgradeBuilding = 1,
-    ResearchTech = 2,
     BuildingInfo = 3,
 }
 
@@ -108,8 +107,7 @@ public static class LogicInteractionOptionDescriptorFactory
         BuildingData ownerData,
         List<LogicInteractionOptionDescriptor> descriptors)
     {
-        bool canBecomeInfo = ownerData.Lv >= 3 || ownerData.Type == BuilType.Tech;
-        if (canBecomeInfo)
+        if (ownerData.Lv >= 3)
         {
             descriptors.Add(new LogicInteractionOptionDescriptor(
                 targetEntityId,
@@ -122,12 +120,9 @@ public static class LogicInteractionOptionDescriptorFactory
         if (ownerData.UpgradeTechIDs == null || ownerData.UpgradeTechIDs.Length == 0)
             return;
 
-        string upgradeBuildingId = ownerData.Type == BuilType.Tech
-            ? null
-            : BuildingDataModel.GetUpgradeID(ownerData.Identifier);
-        if (ownerData.Type != BuilType.Tech
-            && (string.IsNullOrWhiteSpace(upgradeBuildingId)
-                || BuildingDataModel.GetBuildingData(upgradeBuildingId) == null))
+        string upgradeBuildingId = BuildingDataModel.GetUpgradeID(ownerData.Identifier);
+        if (string.IsNullOrWhiteSpace(upgradeBuildingId)
+            || BuildingDataModel.GetBuildingData(upgradeBuildingId) == null)
         {
             return;
         }
@@ -141,16 +136,13 @@ public static class LogicInteractionOptionDescriptorFactory
             if (!seenTechIds.Add(techId))
                 throw new InvalidOperationException($"Building '{ownerData.Identifier}' contains duplicate interaction tech '{techId}'.");
 
-            LogicInteractionOptionKind kind = ownerData.Type == BuilType.Tech
-                ? LogicInteractionOptionKind.ResearchTech
-                : LogicInteractionOptionKind.UpgradeBuilding;
             AddDescriptor(
                 descriptors,
                 targetEntityId,
                 buildingInstanceId,
-                kind,
-                kind == LogicInteractionOptionKind.UpgradeBuilding ? upgradeBuildingId : techId,
-                kind == LogicInteractionOptionKind.UpgradeBuilding ? techId : null);
+                LogicInteractionOptionKind.UpgradeBuilding,
+                upgradeBuildingId,
+                techId);
         }
     }
 
@@ -266,8 +258,6 @@ public static class LogicInteractionOptionService
                 return RequireBuildManager().IsConstructOptionVisible(owner, option.PrimaryId);
             case LogicInteractionOptionKind.UpgradeBuilding:
                 return RequireTechManager().IsUpgradeOptionVisible(owner, option.PrimaryId, option.SecondaryId);
-            case LogicInteractionOptionKind.ResearchTech:
-                return RequireTechManager().IsResearchOptionVisible(owner, option.PrimaryId);
             case LogicInteractionOptionKind.BuildingInfo:
                 return RequireTechManager().IsInfoOptionVisible(owner);
             default:
@@ -284,8 +274,6 @@ public static class LogicInteractionOptionService
                 return RequireBuildManager().IsConstructOptionExecutable(owner, option.PrimaryId);
             case LogicInteractionOptionKind.UpgradeBuilding:
                 return RequireTechManager().IsUpgradeOptionExecutable(owner, option.PrimaryId, option.SecondaryId);
-            case LogicInteractionOptionKind.ResearchTech:
-                return RequireTechManager().IsResearchOptionExecutable(owner, option.PrimaryId);
             case LogicInteractionOptionKind.BuildingInfo:
                 return RequireTechManager().IsInfoOptionVisible(owner);
             default:
@@ -305,8 +293,6 @@ public static class LogicInteractionOptionService
                 return RequireBuildManager().ConstructBuilding(owner, option.PrimaryId);
             case LogicInteractionOptionKind.UpgradeBuilding:
                 return RequireTechManager().UpgradeBuilding(owner, option.PrimaryId, option.SecondaryId);
-            case LogicInteractionOptionKind.ResearchTech:
-                return RequireTechManager().ResearchTech(owner, option.PrimaryId);
             case LogicInteractionOptionKind.BuildingInfo:
                 return true;
             default:

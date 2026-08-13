@@ -481,8 +481,7 @@ public static class IngameCoinPreviewState
         if (!targetEntityId.IsValid)
             throw new System.ArgumentException("Coin preview commit requires a valid interaction target.", nameof(targetEntityId));
         if (actionKind != LogicInteractionActionKind.ConstructBuilding
-            && actionKind != LogicInteractionActionKind.UpgradeBuilding
-            && actionKind != LogicInteractionActionKind.ResearchTech)
+            && actionKind != LogicInteractionActionKind.UpgradeBuilding)
         {
             throw new System.ArgumentOutOfRangeException(nameof(actionKind), actionKind, "Interaction action does not spend previewed coin.");
         }

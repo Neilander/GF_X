@@ -286,7 +286,6 @@ public class GlobalBuffManager : GameFrameworkComponent
         LogicBuildingExtraPropsStore.ClearAll();
         LogicProductionConditionState.ClearAll();
         BuildingCostModifierService.Clear();
-        SettlementOffsetRateService.Clear();
         m_BuildingTechRuntimeEffect?.ClearRuntimeState();
     }
 

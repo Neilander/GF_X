@@ -585,8 +585,7 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
         if (CurrentTarget == null)
             return;
 
-        if (!WeaponTargetRules.IsValidHealTarget(_ctx, CurrentTarget, requireDamaged: true)
-            || !HealingTargetFilterService.IsValidHealTargetForHealer(_ctx, CurrentTarget))
+        if (!WeaponTargetRules.IsValidHealTarget(_ctx, CurrentTarget, requireDamaged: true))
             CurrentTarget = null;
     }
 
@@ -594,8 +593,7 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
     {
         for (int i = _currentTargets.Count - 1; i >= 0; i--)
         {
-            if (!WeaponTargetRules.IsValidHealTarget(_ctx, _currentTargets[i], requireDamaged: true)
-                || !HealingTargetFilterService.IsValidHealTargetForHealer(_ctx, _currentTargets[i]))
+            if (!WeaponTargetRules.IsValidHealTarget(_ctx, _currentTargets[i], requireDamaged: true))
                 _currentTargets.RemoveAt(i);
         }
     }
@@ -635,9 +633,6 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
                 continue;
             if (!WeaponTargetRules.IsValidHealTarget(_ctx, candidate, requireDamaged: true))
                 continue;
-            if (!HealingTargetFilterService.IsValidHealTargetForHealer(_ctx, candidate))
-                continue;
-
             Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(candidate);
             if (distance > scanRange)
                 continue;

@@ -506,6 +506,24 @@ public sealed class LogicMigrationAuthorityBoundaryTests
     }
 
     [Test]
+    public void GameStraightAndCombatDistances_UseXZPlaneAndIgnoreWorldHeightDifference()
+    {
+        var self = new SimEntityContext { Position = new Vector3(0f, 100f, 0f) };
+        var target = new SimEntityContext { Position = new Vector3(3f, -100f, 4f) };
+        self.SetProperty(CreatureMainProperty.CollisionRadius, Fix64.Zero);
+        target.SetProperty(CreatureMainProperty.CollisionRadius, Fix64.Zero);
+
+        Assert.Greater(Vector3.Distance(self.Position, target.Position), 200f,
+            "Test setup requires a large spatial height difference.");
+        Assert.AreEqual(((Fix64)5).RawValue, self.LogicFrameCenterDistanceFixed(target).RawValue,
+            "Game straight-line distance must use the XZ plane.");
+        Assert.AreEqual(((Fix64)5).RawValue, self.LogicFrameDistanceToTargetSurfaceFixed(target).RawValue,
+            "Combat surface distance must use the XZ plane.");
+        Assert.AreEqual(5f, self.DistanceToTargetSurface(target), 0.0001f,
+            "Float-facing gameplay distance must preserve the same XZ-plane authority.");
+    }
+
+    [Test]
     public void UnityWorldVectorConversion_UsesHorizontalXZForFixedPosition()
     {
         FixVector2 converted = new Vector3(3f, 17f, 5f);

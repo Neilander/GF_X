@@ -345,7 +345,7 @@ public static class DefendPhaseRuntime
             if (waveEntry.Count <= 0)
                 continue;
 
-            List<PointSpawnCount> pointCounts = AllocatePointCountsForUnit(waveEntry.UnitType, EnemyArmyForceModifierService.CalculateSpawnCount(waveEntry.Count));
+            List<PointSpawnCount> pointCounts = AllocatePointCountsForUnit(waveEntry.UnitType, LevelTagRuntime.ModifyEnemySpawnCount(waveEntry.Count));
             for (int j = 0; j < pointCounts.Count; j++)
             {
                 PointSpawnCount pointCount = pointCounts[j];
@@ -850,7 +850,7 @@ public static class DefendPhaseRuntime
             if (entry.Count <= 0)
                 continue;
 
-            List<PointSpawnCount> pointCounts = AllocatePointCountsForUnit(entry.UnitType, EnemyArmyForceModifierService.CalculateSpawnCount(entry.Count));
+            List<PointSpawnCount> pointCounts = AllocatePointCountsForUnit(entry.UnitType, LevelTagRuntime.ModifyEnemySpawnCount(entry.Count));
             if (pointCounts.Count == 0)
                 continue;
 

@@ -1,0 +1,35 @@
+﻿using UnityEngine;
+
+public interface IControlBrain
+{
+    Vector2 Move { get; }
+    FixVector2 MoveFixed { get; }
+    bool Attack { get; }
+    bool Skill1 { get; }
+    bool Skill2 { get; }
+    bool Skill3 { get; }
+    bool Skill4 { get; }
+    bool Skill5 { get; }
+}
+
+/// <summary>
+/// AI brain 需要每帧更新决策；玩家 brain 可以不实现。
+/// </summary>
+public interface ITickBrain
+{
+    void Tick(IEntityContext self, Fix64 dt);
+}
+
+public interface IBrainSideChangeHandler
+{
+    void OnSideChanged(IEntityContext self, SideType oldSide, SideType newSide);
+}
+
+public enum BrainType
+{
+    Player = 0,
+    EnemyAI = 1,
+    FriendlyAI = 2,
+    SoldierAI = 3,
+    DefendEnemyAI = 4
+}

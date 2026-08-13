@@ -844,11 +844,6 @@ public class BuildManager : GameFrameworkComponent
                 applied = m_TechManager.ApplyScheduledUpgradeBuilding(owner, command.PrimaryId, command.SecondaryId);
                 break;
             }
-            case LogicInteractionActionKind.ResearchTech:
-            {
-                applied = m_TechManager.ApplyScheduledResearchTech(owner, command.PrimaryId);
-                break;
-            }
             case LogicInteractionActionKind.RecycleBuilding:
                 applied = ApplyScheduledRecycleBuilding(owner);
                 break;

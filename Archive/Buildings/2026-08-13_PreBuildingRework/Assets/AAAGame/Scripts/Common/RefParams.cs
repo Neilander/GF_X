@@ -1,0 +1,105 @@
+using GameFramework;
+using UnityGameFramework.Runtime;
+/// <summary>
+/// 引用类型参数, 用于Entity/UI传递参数,规避new
+/// </summary>
+public class RefParams : IReference
+{
+    public int Id { get; protected set; }
+    public static RefParams Create()
+    {
+        var eParams = ReferencePool.Acquire<RefParams>();
+        eParams.CreateRoot();
+        return eParams;
+    }
+    /// <summary>
+    /// 创建数据根节点
+    /// </summary>
+    protected void CreateRoot()
+    {
+        this.Id = UtilityBuiltin.GenerateEntityId();
+    }
+
+    public void Set<T>(string key, T value) where T : Variable
+    {
+        GF.VariablePool.SetVariable<T>(Id, key, value);
+    }
+    public void Set(string key, object value)
+    {
+        var varObj = ReferencePool.Acquire<VarObject>();
+        varObj.Value = value;
+        Set<VarObject>(key, varObj);
+    }
+
+    public void SetString(string key, string value)
+    {
+        Set<VarString>(key, value);
+    }
+
+    public bool TryGetString(string key, out string value)
+    {
+        if (TryGet<VarString>(key, out var varString))
+        {
+            value = varString;
+            return true;
+        }
+
+        value = null;
+        return false;
+    }
+
+    public string GetString(string key, string defaultValue = null)
+    {
+        return TryGetString(key, out var value) ? value : defaultValue;
+    }
+
+    public object Get(string key)
+    {
+        return Get<VarObject>(key).Value;
+    }
+    /// <summary>
+    /// 获取引用类型的参数
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="key"></param>
+    /// <returns></returns>
+    public T Get<T>(string key, T defaultValue = null) where T : Variable
+    {
+        var value = GF.VariablePool.GetVariable<T>(Id, key);
+        if (value != null)
+        {
+            if (defaultValue != null && !ReferenceEquals(defaultValue, value))
+            {
+                ReferencePool.Release(defaultValue);
+            }
+
+            return value;
+        }
+
+        if (defaultValue != null)
+        {
+            GF.VariablePool.DelayReleaseVariable(defaultValue);
+        }
+
+        return defaultValue;
+    }
+
+    public bool TryGet<T>(string key, out T value) where T : Variable
+    {
+        return GF.VariablePool.TryGetVariable<T>(this.Id, key, out value);
+    }
+
+    public void Clear()
+    {
+        ResetProperties();
+        GF.VariablePool.ClearVariables(this.Id);
+        Id = 0;
+    }
+    /// <summary>
+    /// 释放时回调, 需重写此方法重置数据以避免脏数据
+    /// </summary>
+    protected virtual void ResetProperties()
+    {
+
+    }
+}

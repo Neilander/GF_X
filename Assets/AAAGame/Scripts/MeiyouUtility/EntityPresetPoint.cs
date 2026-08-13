@@ -431,7 +431,7 @@ static class EntityPresetPointEditorPreview
             return;
         }
 
-        int maxLv = row.Type == BuilType.Tech ? 1 : 3;
+        const int maxLv = 3;
         if (maxLv >= 1)
         {
             AddBuildingPreviewPath(row.Identifier + "_Lv1", row.Lv1PrefabPath);

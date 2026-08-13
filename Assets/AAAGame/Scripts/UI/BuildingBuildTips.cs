@@ -436,8 +436,6 @@ public partial class BuildingBuildTips : UIFormBase
             case BuilType.Base:
                 SpawnProperty(infoItem.PropertyListRoot.transform, SupplyIconPath, "+10");
                 break;
-            case BuilType.Tech:
-                break;
             case BuilType.Prod:
                 SpawnProperty(infoItem.PropertyListRoot.transform, CoinIconPath, FormatSigned(data.Production));
                 break;

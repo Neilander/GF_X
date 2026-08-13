@@ -242,29 +242,7 @@
 					"__worldX": 1560,
 					"__worldY": 488
 				},
-				{
-					"__identifier": "Building",
-					"__grid": [12,30],
-					"__pivot": [0.5,0.5],
-					"__tags": [],
-					"__tile": null,
-					"__smartColor": "#D77643",
-					"iid": "189b89e0-48b0-11f1-9656-29ab837fd024",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [200,488],
-					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Tech_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-							"id": "V_String",
-							"params": ["Buil_Tech_Lv0"]
-						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
-					],
-					"__worldX": 1416,
-					"__worldY": 488
-				},
+
 				{
 					"__identifier": "Building",
 					"__grid": [18,30],
@@ -380,29 +358,7 @@
 					"__worldX": 1592,
 					"__worldY": 904
 				},
-				{
-					"__identifier": "Building",
-					"__grid": [23,52],
-					"__pivot": [0.5,0.5],
-					"__tags": [],
-					"__tile": null,
-					"__smartColor": "#D77643",
-					"iid": "0324f8f0-48b0-11f1-9656-316324472d81",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [376,840],
-					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_GiantMascot_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-							"id": "V_String",
-							"params": ["Buil_GiantMascot_Lv1"]
-						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
-					],
-					"__worldX": 1592,
-					"__worldY": 840
-				},
+
 				{
 					"__identifier": "Building",
 					"__grid": [12,25],
@@ -426,29 +382,7 @@
 					"__worldX": 1416,
 					"__worldY": 408
 				},
-				{
-					"__identifier": "Building",
-					"__grid": [57,33],
-					"__pivot": [0.5,0.5],
-					"__tags": [],
-					"__tile": null,
-					"__smartColor": "#D77643",
-					"iid": "2886acb0-48b0-11f1-9656-2364e7ef5de5",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [920,536],
-					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Tech_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-							"id": "V_String",
-							"params": ["Buil_Tech_Lv0"]
-						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
-					],
-					"__worldX": 2136,
-					"__worldY": 536
-				},
+
 				{
 					"__identifier": "Building",
 					"__grid": [47,58],
@@ -518,29 +452,7 @@
 					"__worldX": 2168,
 					"__worldY": 1000
 				},
-				{
-					"__identifier": "Building",
-					"__grid": [47,62],
-					"__pivot": [0.5,0.5],
-					"__tags": [],
-					"__tile": null,
-					"__smartColor": "#D77643",
-					"iid": "ecd0aad0-48b0-11f1-9656-07c1890bafde",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [760,1000],
-					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_QualityCheck_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-							"id": "V_String",
-							"params": ["Buil_QualityCheck_Lv1"]
-						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
-					],
-					"__worldX": 1976,
-					"__worldY": 1000
-				},
+
 				{
 					"__identifier": "Soldier",
 					"__grid": [54,60],

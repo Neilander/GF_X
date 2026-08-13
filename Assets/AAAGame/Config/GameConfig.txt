@@ -42,3 +42,5 @@
 	OffsetBadgeSilverThreshold	关卡偏移率银角标阈值	18
 	OffsetBadgeGoldThreshold	关卡偏移率金角标阈值	24
 	OffsetBadgeDiamondThreshold	关卡偏移率钻角标阈值	28
+	TauntAdditionalPursuitDistance	嘲讽额外追击距离	300
+	TauntThreatPerLevel	嘲讽每级仇恨值	10000

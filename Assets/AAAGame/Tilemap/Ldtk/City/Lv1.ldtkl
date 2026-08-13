@@ -298,29 +298,7 @@
 					"__worldX": 728,
 					"__worldY": 456
 				},
-				{
-					"__identifier": "Building",
-					"__grid": [49,23],
-					"__pivot": [0.5,0.5],
-					"__tags": [],
-					"__tile": null,
-					"__smartColor": "#D77643",
-					"iid": "714f1bd0-6fc0-11f1-ba80-4397403e4e05",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [792,376],
-					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Tech_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-							"id": "V_String",
-							"params": ["Buil_Tech_Lv0"]
-						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [null] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
-					],
-					"__worldX": 792,
-					"__worldY": 376
-				},
+
 				{
 					"__identifier": "Building",
 					"__grid": [55,23],
@@ -459,29 +437,7 @@
 					"__worldX": 264,
 					"__worldY": 680
 				},
-				{
-					"__identifier": "Building",
-					"__grid": [16,36],
-					"__pivot": [0.5,0.5],
-					"__tags": [],
-					"__tile": null,
-					"__smartColor": "#D77643",
-					"iid": "ead9f500-6fc0-11f1-ba80-9d3d2ff6f8eb",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [264,584],
-					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Tech_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-							"id": "V_String",
-							"params": ["Buil_Tech_Lv0"]
-						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [null] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
-					],
-					"__worldX": 264,
-					"__worldY": 584
-				},
+
 				{
 					"__identifier": "Building",
 					"__grid": [25,21],

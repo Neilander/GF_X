@@ -1,0 +1,22 @@
+{
+    "name": "AAAGame.MiniMap.Editor",
+    "rootNamespace": "",
+    "references": [
+        "Hotfix",
+        "Builtin.Runtime",
+        "GiantGrey.TileWorldCreator",
+        "GameFramework",
+        "UnityGameFramework.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

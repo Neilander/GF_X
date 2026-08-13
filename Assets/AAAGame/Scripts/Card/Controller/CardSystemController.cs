@@ -696,7 +696,7 @@ namespace AAAGame.Card
         private void ApplyDiscardResourceReward(CardModel cardModel)
         {
             int occupiedSupply = Mathf.Max(0, cardModel.GetOccupiedSupply());
-            int conversionRate = DiscardRewardModifierService.CalculateConversionRate(m_DiscardResourceConversionRate);
+            int conversionRate = LevelTagRuntime.ModifyDiscardRewardConversionRate(m_DiscardResourceConversionRate);
             int gainedCoin = occupiedSupply / conversionRate;
             Log.Info("[Card] Discard reward calc. card={0}, occupiedSupply={1}, rate={2}, gainedCoin={3}",
                 cardModel.GetCardName(), occupiedSupply, conversionRate, gainedCoin);

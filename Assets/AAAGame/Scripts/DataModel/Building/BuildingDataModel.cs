@@ -142,7 +142,7 @@ public class BuildingDataModel : DataModelBase
         }
         else
         {
-            int maxLv = row.Type == BuilType.Tech ? 1 : 3;
+            const int maxLv = 3;
             for (int lv = 1; lv <= maxLv; lv++)
             {
                 WeaponData weaponData = ResolveWeaponData(row, lv);
@@ -176,8 +176,6 @@ public class BuildingDataModel : DataModelBase
         if (lv == 3)
             return null;
 
-        if (row.Type == BuilType.Tech)
-            return new[] { row.Tech1ID, row.Tech2ID, row.Tech3ID, row.Tech4ID };
         if (row.Type == BuilType.Prod)
             return lv == 1 ? new[] { row.Tech1ID } : new[] { row.Tech2ID };
         if (row.Type != BuilType.Base && row.Type != BuilType.Army && row.Type != BuilType.Def)

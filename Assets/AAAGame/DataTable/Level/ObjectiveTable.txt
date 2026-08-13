@@ -11,7 +11,6 @@
 	7	交付订单	DeliverOrderCount	Objective.DeliverOrderCount
 	8	收集特殊资源	CollectSpecialResource	Objective.CollectSpecialResource
 	9	收集一定资源	CollectResourceAmount	Objective.CollectResourceAmount
-	10	研发一定数量科技	ResearchTechnologyCount	Objective.ResearchTechnologyCount
 	11	研发终极科技	ResearchUltimateTechnology	Objective.ResearchUltimateTechnology
 	12	存活一定天数	SurviveDays	Objective.SurviveDays
 	13	击杀一定人口	KillEnemyPopulation	Objective.KillEnemyPopulation
@@ -25,7 +24,6 @@
 	21	建造军事建筑	BuildMilitaryBuilding	Objective.BuildMilitaryBuilding
 	22	建造防御建筑	BuildDefenseBuilding	Objective.BuildDefenseBuilding
 	23	建造生产建筑	BuildProductionBuilding	Objective.BuildProductionBuilding
-	24	建造科研建筑	BuildResearchBuilding	Objective.BuildResearchBuilding
 	25	守住基地	DefendBase	Objective.DefendBase
 	26	升级编程核心到三级	UpgradeCodingCoreLevel3	Objective.UpgradeCodingCoreLevel3
 	27	拥有指定阵营军事建筑	OwnFactionMilitaryBuildingCount	Objective.OwnFactionMilitaryBuildingCount

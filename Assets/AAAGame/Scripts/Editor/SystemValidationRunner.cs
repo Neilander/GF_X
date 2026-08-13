@@ -21,10 +21,10 @@ public static class SystemValidationRunner
 
     private static readonly string[] s_TechCandidates =
     {
-        "Tech_Buil_NavStation_Opt1",
-        "Tech_Buil_NavStation_Opt2",
-        "Tech_Buil_NavStation_Opt3",
-        "Tech_Buil_NavStation_Opt4",
+        "Tech_Buil_ResearchCenter_Lv2_Opt1",
+        "Tech_Buil_ResearchCenter_Lv2_Opt2",
+        "Tech_Buil_ResearchCenter_Lv3_Opt1",
+        "Tech_Buil_ResearchCenter_Lv3_Opt2",
     };
 
     private static bool s_RuntimeInitialized;

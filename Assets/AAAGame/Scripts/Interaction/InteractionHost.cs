@@ -126,17 +126,6 @@ public class InteractionHost : MonoBehaviour
                     @params);
                 break;
             }
-            case LogicInteractionOptionKind.ResearchTech:
-            {
-                TechData techData = TechDataModel.GetTechData(descriptor.PrimaryId)
-                                    ?? throw new System.InvalidOperationException($"Research interaction tech '{descriptor.PrimaryId}' is missing.");
-                @params.Set<VarString>("TechId", descriptor.PrimaryId);
-                AddOption<TechResearchInteractionOption>(
-                    descriptor,
-                    LocalizationTextManager.GetLocalizedText(techData.NameKey, false),
-                    @params);
-                break;
-            }
             case LogicInteractionOptionKind.BuildingInfo:
                 AddOption<BuildingInfoInteractionOption>(
                     descriptor,

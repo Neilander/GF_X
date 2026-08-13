@@ -135,11 +135,6 @@ public static class LevelTagRuntime
         return Math.Max(0, total);
     }
 
-    public static int GetCurrentSettlementOffsetRateDelta()
-    {
-        return SettlementOffsetRateService.GetCurrentOffsetRateDelta();
-    }
-
     public static IReadOnlyList<LevelTagTable> GetActiveTags()
     {
         return ResolveActiveTags();
@@ -435,38 +430,6 @@ public static class LevelTagRuntime
         }
 
         return Mathf.Max(0, result);
-    }
-
-    public static int ModifyTechCost(int baseCost)
-    {
-        int result = Mathf.Max(0, baseCost);
-        foreach (LevelTagTable tag in ResolveActiveTags())
-        {
-            switch (tag.Identifier)
-            {
-                case "LvTag_TechBreakthrough":
-                    result += IntValue(tag, 1);
-                    break;
-                case "LvTag_TechEmbargoI":
-                case "LvTag_TechEmbargoII":
-                    result += IntValue(tag, 0);
-                    break;
-            }
-        }
-
-        return Mathf.Max(0, result);
-    }
-
-    public static int GetExtraTechResearchCountPerBuilding()
-    {
-        int total = 0;
-        foreach (LevelTagTable tag in ResolveActiveTags())
-        {
-            if (tag.Identifier == "LvTag_TechBreakthrough")
-                total += IntValue(tag, 0);
-        }
-
-        return Mathf.Max(0, total);
     }
 
     public static int ModifyKillRewardConversionRate(int baseRate)

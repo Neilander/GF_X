@@ -459,7 +459,11 @@ public class PhaseManager : GameFrameworkComponent
             {
                 continue;
             }
-            int count = EnemyArmyForceModifierService.CalculateSpawnCount(point.AuthoredCount);
+            else if (!TutorialManager.IsInvadeStrongholdResponseAllowed(strongholdId))
+            {
+                continue;
+            }
+            int count = LevelTagRuntime.ModifyEnemySpawnCount(point.AuthoredCount);
             if (count <= 0)
                 throw new InvalidOperationException($"PhaseManager invade spawn count is not positive. point={point.Name} count={count}.");
 

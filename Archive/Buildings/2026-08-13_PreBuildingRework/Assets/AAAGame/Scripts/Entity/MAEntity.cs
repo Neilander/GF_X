@@ -1,0 +1,1033 @@
+﻿﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using GameFramework.Resource;
+using UnityEngine;
+using UnityGameFramework.Runtime;
+using AAAGame.Scripts.BuffSystem;
+
+public class MAEntity : CompCreature, IEntityContext
+{
+	private enum LogicPresentationEventKind
+	{
+		HealthChanged,
+		UnitDied,
+		BuildingDisabledChanged,
+		GhostStateChanged,
+		CollisionBlockingChanged,
+		PermanentStealthChanged,
+		PhaseProtectionChanged,
+	}
+
+	private readonly struct LogicPresentationEvent
+	{
+		public LogicPresentationEvent(
+			LogicPresentationEventKind kind,
+			LogicEntityHealthChange healthChange = default,
+			bool enabled = false,
+			IEntityContext attacker = null)
+		{
+			Kind = kind;
+			HealthChange = healthChange;
+			Enabled = enabled;
+			Attacker = attacker;
+		}
+
+		public LogicPresentationEventKind Kind { get; }
+		public LogicEntityHealthChange HealthChange { get; }
+		public bool Enabled { get; }
+		public IEntityContext Attacker { get; }
+	}
+
+    public LogicEntityId LogicEntityId { get; private set; }
+    private LogicEntityState _logicState;
+    private bool _isViewBound;
+    public LogicEntityState LogicState => _logicState;
+    protected override bool InterpolateRenderRotation => false;
+    protected virtual bool UsesUnitOutlinePresentation => true;
+
+    public CharacterDataDetail CharacterData { get; protected set; }
+    public int UnitLevel { get; protected set; } = 1;
+    public IMoveComp moveComp { get; protected set; }
+    public IAtkComp atkComp { get; protected set; }
+
+    public ITargetingComp targetComp { get; protected set; }
+    public WeaponComp weaponComp { get; protected set; }
+
+    private CharacterController cController;
+    private MoveExecutor _moveExecutor;
+    public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
+
+    /// <summary>
+    /// 导航 movement type ID，用于 FlowField world 和移动约束。
+    /// View 在 OnShow 时从 LogicEntityState 读取该值。
+    /// </summary>
+    public const int UnknownNavAgentTypeId = int.MinValue;
+    public int navAgentTypeID = UnknownNavAgentTypeId;
+    private const float RotationSpeed = 720f; // 度/秒
+
+    private IBuffComp _buffComp;
+    public IBuffComp BuffComp => _buffComp;
+    private readonly HashSet<string> _invincibleSourceRegistry = new HashSet<string>();
+
+    private Quaternion? _targetRotation = null;
+    public FixVector2 LogicForward => RequireLogicState().Forward;
+    private Transform _modelTransform = null;
+    private AnimationRatePresenter _animationRatePresenter;
+    private DisplacementTetherPresenter _displacementTetherPresenter;
+    private bool _isLogicActive;
+    private int _lastPresentedAttackCount = -1;
+    private int _lastPresentedInterruptedAttackCount;
+    private int _lastPresentedMeleeImpactAttackCount;
+    private readonly List<AnimatorClipInfo> _attackClipInfos = new List<AnimatorClipInfo>(2);
+    private readonly SkillInfo[] _presentedSkillInfos = new SkillInfo[SkillInputRuntime.MaxSkillCount];
+    private readonly int[] _presentedSkillActionIndices = new int[SkillInputRuntime.MaxSkillCount];
+	private readonly Queue<LogicPresentationEvent> _pendingLogicPresentationEvents = new();
+
+    public IControlBrain Brain { get; private set; }
+    public bool IsLogicActive => _isLogicActive;
+    public void SetBrain(IControlBrain brain) => Brain = brain;
+    protected override bool InitializeDefaultTauntLevelOnShow => false;
+    protected override bool UsesCoordinatedLogicFrameUpdate => true;
+    protected override bool ShouldRunLogicFrameUpdate => _isLogicActive;
+
+    public virtual void ChangeSide(SideType newSide)
+    {
+        int oldFactionId = EntitySideHelper.ToFactionId(Side);
+        Side = newSide;
+        int newFactionId = EntitySideHelper.ToFactionId(newSide);
+
+        if (oldFactionId != newFactionId)
+        {
+            var e = EntityFactionChangedEventArgs.Create(Id, oldFactionId, newFactionId, null);
+            GF.Event.Fire(this, e);
+        }
+
+        HealthBarComp.ForceUpdateSide(Id, newSide == SideType.PlayerSide);
+
+        var outlines = gameObject.GetComponentsInChildren<AAAGame.Effect.UnitOutline>(true);
+        foreach (var outline in outlines)
+        {
+            if (outline != null)
+            {
+                outline.ForceRefreshOutline(newSide == SideType.PlayerSide
+                    ? AAAGame.Effect.UnitOutline.OutlineType.Friendly
+                    : AAAGame.Effect.UnitOutline.OutlineType.Enemy);
+            }
+        }
+    }
+
+    #region IEntityContext 实现
+
+    public FixVector2 PositionFixed
+    {
+        get => RequireLogicState().Position;
+        set => throw new InvalidOperationException(
+            "MAEntity.PositionFixed setter rejected: View cannot mutate LogicEntityState position.");
+    }
+
+    public FixVector2 ForwardFixed => RequireLogicState().Forward;
+
+    public virtual LogicCombatShape CombatShape => LogicCombatShape.Circle(
+        PositionFixed,
+        DistanceUnitConverter.ConvertToWorld(GetProperty(CreatureMainProperty.CollisionRadius)));
+
+    public Vector3 Position
+    {
+        get
+        {
+            FixVector2 fixedPosition = PositionFixed;
+            return new Vector3((float)fixedPosition.x, transform.position.y, (float)fixedPosition.y);
+        }
+        set => throw new InvalidOperationException(
+            "MAEntity.Position setter rejected: View cannot mutate LogicEntityState position.");
+    }
+
+    public Quaternion Rotation
+    {
+        get => transform.rotation;
+        set => transform.rotation = value;
+    }
+
+    // Side, Alive, CharacterKey 已在 GeneralCreature 中定义
+
+    IMoveExecutor IEntityContext.MoveExecutor => RequireLogicState().MoveExecutor;
+    IMoveComp IEntityContext.MoveComp => moveComp;
+    IAtkComp IEntityContext.AtkComp => atkComp;
+    ITargetingComp IEntityContext.TargetComp => targetComp;
+    IBuffComp IEntityContext.BuffComp => _buffComp;
+    WeaponComp IEntityContext.WeaponComp => weaponComp;
+    IDurationMoveEffectComp IEntityContext.DurationMoveEffectComp => durationMoveEffectComp;
+    public CreaturePropertyManager CreatureProperties => CreaturePropertyManager;
+    public bool IsOutOfCombat => RequireLogicState().IsOutOfCombat;
+    public Fix64 OutOfCombatElapsedLogicTime => RequireLogicState().OutOfCombatElapsedLogicTime;
+    public float OutOfCombatElapsedSeconds => RequireLogicState().OutOfCombatElapsedSeconds;
+    public override int TauntLevel
+    {
+        get => _logicState != null ? _logicState.TauntLevel : base.TauntLevel;
+        set
+        {
+            if (_logicState != null)
+                throw new InvalidOperationException("MAEntity view cannot change TauntLevel; update LogicEntityState instead.");
+            base.TauntLevel = value;
+        }
+    }
+
+    public Fix64 GetProperty(CreatureMainProperty prop)
+    {
+        return CreaturePropertyManager.GetProperty(prop);
+    }
+
+    #endregion
+
+    protected override void OnInit(object userData)
+    {
+        base.OnInit(userData);
+
+        durationMoveEffectComp = new DurationMoveEffectComp();
+        durationMoveEffectComp.Init(this);
+
+        cController = GetComponent<CharacterController>();
+        _moveExecutor = gameObject.AddComponent<MoveExecutor>();
+        _displacementTetherPresenter = gameObject.GetComponent<DisplacementTetherPresenter>();
+        if (_displacementTetherPresenter == null)
+            _displacementTetherPresenter = gameObject.AddComponent<DisplacementTetherPresenter>();
+
+        _modelTransform = animator != null ? animator.transform : display;
+    }
+
+    protected override void OnShow(object userData)
+    {
+        if (LogicEntityId.IsValid)
+            throw new InvalidOperationException($"MAEntity.OnShow failed: pooled entity still has logic id {LogicEntityId.Value}.");
+        if (_isViewBound)
+            throw new InvalidOperationException("MAEntity.OnShow failed: pooled entity still reports a bound view.");
+        if (userData is not EntityParams entityParams)
+            throw new InvalidOperationException("MAEntity.OnShow failed: userData is not EntityParams.");
+        if (!entityParams.LogicEntityId.IsValid)
+            throw new InvalidOperationException("MAEntity.OnShow failed: EntityParams.LogicEntityId is invalid.");
+        if (entityParams.LogicEntityState == null)
+            throw new InvalidOperationException("MAEntity.OnShow failed: EntityParams.LogicEntityState is null.");
+
+        LogicEntityId = entityParams.LogicEntityId;
+        _logicState = LogicEntityStateStore.GetRequired(LogicEntityId);
+        if (!ReferenceEquals(_logicState, entityParams.LogicEntityState))
+            throw new InvalidOperationException($"MAEntity.OnShow failed: logic state identity mismatch. entity={LogicEntityId.Value}.");
+        RefreshCharacterData(userData);
+        BindLogicStateComponents();
+		if (_pendingLogicPresentationEvents.Count != 0)
+			throw new InvalidOperationException("MAEntity.OnShow failed: pooled view retained logic presentation events.");
+
+        base.OnShow(userData);
+        SubscribeLogicStatePresentation();
+        ResetActionPresentationTracking();
+        Alive = _logicState.Alive;
+        InitializePresentationPoseFromLogicState();
+
+        if (animator != null)
+        {
+            if (_animationRatePresenter != null)
+                throw new InvalidOperationException("MAEntity.OnShow failed: animation rate presenter is already bound.");
+            _animationRatePresenter = new AnimationRatePresenter(animator);
+        }
+
+
+        // 自动挂载或更新描边效果
+        SideType targetSide = Side;
+        if (userData is EntityParams ep)
+        {
+            targetSide = ep.Side;
+        }
+
+        if (UsesUnitOutlinePresentation
+            && (targetSide == SideType.PlayerSide || targetSide == SideType.EnemySide))
+        {
+            var outline = gameObject.GetComponent<AAAGame.Effect.UnitOutline>();
+            if (outline == null)
+            {
+                outline = gameObject.AddComponent<AAAGame.Effect.UnitOutline>();
+            }
+
+            outline.outlineType = targetSide == SideType.PlayerSide
+                ? AAAGame.Effect.UnitOutline.OutlineType.Friendly
+                : AAAGame.Effect.UnitOutline.OutlineType.Enemy;
+
+            outline.enabled = true;
+        }
+        else
+        {
+            var outline = gameObject.GetComponent<AAAGame.Effect.UnitOutline>();
+            if (outline != null)
+            {
+                outline.enabled = false;
+            }
+        }
+
+        SyncCharacterControllerRadiusFromLogic();
+        _moveExecutor.Init(cController, navAgentTypeID);
+
+        ResetPresentationMovementForShow();
+
+        LogicEntityLifecycleService.BindView(LogicEntityId, Entity.Id, this);
+        _isViewBound = true;
+
+    }
+
+    protected virtual void RefreshCharacterData(object userData)
+    {
+        EntityParams entityParams = userData as EntityParams;
+        if (entityParams == null)
+            throw new InvalidOperationException("MAEntity 初始化失败: userData 不是 EntityParams。");
+
+        CharacterKey = entityParams.GetString(EntityParams.P_CharacterKey);
+        UnitLevel = Mathf.Clamp(entityParams.UnitLevel, 1, 3);
+
+        CharacterData = LogicRuntimeDataTableCache.GetCharacterRequired(CharacterKey);
+
+        navAgentTypeID = GameEntry.GetComponent<AgentTypeHelper>().GetNavAgentTypeID(CharacterData.Size);
+    }
+
+    protected override CreaturePropertyManager CreateCreaturePropertyManager()
+    {
+        return RequireLogicState().CreatureProperties
+               ?? throw new InvalidOperationException($"MAEntity.CreateCreaturePropertyManager failed: logic properties are missing. entity={LogicEntityId.Value}.");
+    }
+
+    private void BindLogicStateComponents()
+    {
+        LogicEntityState state = RequireLogicState();
+        if (!state.IsConfigured)
+            throw new InvalidOperationException($"MAEntity.BindLogicStateComponents failed: logic state is not configured. entity={LogicEntityId.Value}.");
+
+        Brain = state.Brain;
+        moveComp = state.MoveComp ?? throw new InvalidOperationException($"MAEntity.BindLogicStateComponents failed: MoveComp is missing. entity={LogicEntityId.Value}.");
+        atkComp = state.AtkComp ?? throw new InvalidOperationException($"MAEntity.BindLogicStateComponents failed: AtkComp is missing. entity={LogicEntityId.Value}.");
+        targetComp = state.TargetComp ?? throw new InvalidOperationException($"MAEntity.BindLogicStateComponents failed: TargetComp is missing. entity={LogicEntityId.Value}.");
+        weaponComp = state.WeaponComp ?? throw new InvalidOperationException($"MAEntity.BindLogicStateComponents failed: WeaponComp is missing. entity={LogicEntityId.Value}.");
+        durationMoveEffectComp = state.DurationMoveEffectComp ?? throw new InvalidOperationException($"MAEntity.BindLogicStateComponents failed: DurationMoveEffectComp is missing. entity={LogicEntityId.Value}.");
+        _buffComp = state.BuffComp ?? throw new InvalidOperationException($"MAEntity.BindLogicStateComponents failed: BuffComp is missing. entity={LogicEntityId.Value}.");
+    }
+
+    private void ResetPresentationMovementForShow()
+    {
+        if (_moveExecutor == null)
+            throw new InvalidOperationException("MAEntity.ResetPresentationMovementForShow failed: MoveExecutor is missing.");
+
+        _moveExecutor.SetInput(Vector3.zero);
+        _moveExecutor.SetExternal(Vector3.zero);
+        _moveExecutor.ClearOverride();
+        _moveExecutor.SetMovementMode(MovementMode.Normal);
+    }
+
+    public void RequestDespawn()
+    {
+        LogicEntityLifecycleService.RequestDespawn(this);
+    }
+
+    internal void ActivateLogicParticipation(ulong frameId)
+    {
+        if (_isLogicActive)
+            throw new InvalidOperationException($"MAEntity.ActivateLogicParticipation failed: entity {LogicEntityId.Value} is already active.");
+        if (frameId != LogicTimeControlService.CurrentFrame)
+            throw new InvalidOperationException($"MAEntity.ActivateLogicParticipation failed: frame mismatch. entity={LogicEntityId.Value}, current={LogicTimeControlService.CurrentFrame}, requested={frameId}.");
+
+        if (!string.Equals(_logicState.CharacterKey, CharacterKey, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"MAEntity.ActivateLogicParticipation failed: character key mismatch. entity={LogicEntityId.Value}, state={_logicState.CharacterKey}, view={CharacterKey}.");
+        }
+
+        _isLogicActive = true;
+        OnLogicActivated();
+    }
+
+    internal void DeactivateLogicParticipation(bool isShutdown = false)
+    {
+        if (!_isLogicActive)
+            return;
+
+        OnLogicDeactivating();
+        _isLogicActive = false;
+    }
+
+    protected virtual void OnLogicActivated()
+    {
+    }
+
+    protected virtual void OnLogicDeactivating()
+    {
+    }
+
+
+
+    /// <summary>
+    /// 死亡音效。默认：敌方死亡播 "enemyDeath"。子类可覆盖（建筑覆盖为 "buildDeath"，无视阵营）。
+    /// </summary>
+    protected virtual void PlayDeathSound()
+    {
+        if (Side == SideType.EnemySide && AudioManager.Instance != null)
+        {
+            AudioManager.Instance.Play("enemyDeath");
+        }
+    }
+
+    protected override void OnHide(bool isShutdown, object userData)
+    {
+        _displacementTetherPresenter?.Clear();
+        UnsubscribeLogicStatePresentation();
+        _invincibleSourceRegistry.Clear();
+
+        if (_animationRatePresenter != null)
+        {
+            _animationRatePresenter.Dispose();
+            _animationRatePresenter = null;
+        }
+
+        _buffComp = null;
+        ResetActionPresentationTracking();
+		_pendingLogicPresentationEvents.Clear();
+
+        DeactivateLogicParticipation();
+        if (_isViewBound)
+        {
+            LogicEntityLifecycleService.UnbindView(LogicEntityId, Id);
+            _isViewBound = false;
+        }
+        LogicEntityId = default;
+        _logicState = null;
+
+        base.OnHide(isShutdown, userData);
+    }
+
+    protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
+    {
+        base.OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
+        SyncRenderInterpolationFromLogicState();
+        SyncPresenterPoseFromLogicState(realElapseSeconds);
+		FlushLogicPresentationEvents();
+        SyncActionPresentation();
+        if (_logicState != null && _logicState.IsSpawnCommitted)
+            _displacementTetherPresenter.Sync(_logicState, durationMoveEffectComp);
+
+        long stageStartTicks;
+        if (animator != null)
+        {
+            if (_animationRatePresenter == null)
+                throw new InvalidOperationException("MAEntity.OnRenderFrameUpdate failed: animator is not bound to AnimationRatePresenter.");
+            _animationRatePresenter.ApplyCurrentScale();
+        }
+
+        if (Alive && animator != null)
+        {
+            stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            Vector2 brainMove = Vector2.zero;
+            if (Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
+                brainMove = playerBrain.Move;
+
+            bool isMoving = moveComp != null
+                ? moveComp.IsMoving
+                : brainMove.sqrMagnitude > 0.001f;
+
+            animator.SetBool("Moving", isMoving);
+
+            if (Brain != null)
+            {
+                FixVector2 logicForward = LogicForward;
+                _targetRotation = Quaternion.LookRotation(new Vector3((float)logicForward.x, 0f, (float)logicForward.y));
+            }
+
+            RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityAnimator, stageStartTicks);
+        }
+
+        if (_targetRotation.HasValue && Brain != null && _modelTransform != null)
+        {
+            stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            Transform rotateTarget = _modelTransform.childCount > 0 ? _modelTransform.GetChild(0) : _modelTransform;
+            rotateTarget.rotation = Quaternion.RotateTowards(
+                rotateTarget.rotation,
+                _targetRotation.Value,
+                RotationSpeed * realElapseSeconds);
+
+            if (Quaternion.Angle(rotateTarget.rotation, _targetRotation.Value) < 0.5f)
+                _targetRotation = null;
+
+            RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityRotation, stageStartTicks);
+        }
+    }
+
+    protected override void GetAuthoritativeLogicPose(out Vector3 position, out Quaternion rotation)
+    {
+        LogicEntityState state = RequireLogicState();
+        FixVector2 forward = state.Forward;
+        if (FixVector2.SqrMagnitude(forward) == Fix64.Zero)
+            throw new InvalidOperationException($"MAEntity.GetAuthoritativeLogicPose failed: entity {LogicEntityId.Value} has zero forward.");
+
+        position = new Vector3((float)state.Position.x, CachedTransform.position.y, (float)state.Position.y);
+        rotation = Quaternion.LookRotation(new Vector3((float)forward.x, 0f, (float)forward.y));
+    }
+
+    private static void RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope scope, long startTicks)
+    {
+        UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
+            scope,
+            System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
+    }
+
+    private void InitializePresentationPoseFromLogicState()
+    {
+        LogicEntityState state = RequireLogicState();
+        Vector3 currentPosition = transform.position;
+        transform.position = new Vector3((float)state.Position.x, currentPosition.y, (float)state.Position.y);
+
+        FixVector2 forward = state.Forward;
+        if (FixVector2.SqrMagnitude(forward) == Fix64.Zero)
+            throw new InvalidOperationException($"MAEntity.InitializePresentationPoseFromLogicState failed: entity {LogicEntityId.Value} has zero forward.");
+        transform.rotation = Quaternion.LookRotation(new Vector3((float)forward.x, 0f, (float)forward.y));
+    }
+
+    private void SyncPresenterPoseFromLogicState(float realElapseSeconds)
+    {
+        if (_logicState == null || !_logicState.IsSpawnCommitted)
+            return;
+
+        FixVector2 position = _logicState.Position;
+        Vector3 currentPosition = transform.position;
+        Vector3 logicPosition = new Vector3((float)position.x, currentPosition.y, (float)position.y);
+        if (cController != null)
+        {
+            _moveExecutor.SyncPresentationPosition(logicPosition, realElapseSeconds);
+        }
+        else
+        {
+            transform.position = logicPosition;
+        }
+
+        FixVector2 forward = _logicState.Forward;
+        if (FixVector2.SqrMagnitude(forward) > Fix64.Zero)
+            transform.rotation = Quaternion.LookRotation(new Vector3((float)forward.x, 0f, (float)forward.y));
+    }
+
+    private void SyncRenderInterpolationFromLogicState()
+    {
+        if (_logicState == null || !_logicState.IsSpawnCommitted)
+            return;
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("MAEntity cannot synchronize render interpolation during a logic frame.");
+
+        FixVector2 previousPosition = _logicState.Position;
+        FixVector2 previousForward = _logicState.Forward;
+        if (LogicEntityFrameSnapshotService.IsActive)
+        {
+            LogicEntityFrameSnapshot snapshot = LogicEntityFrameSnapshotService.Current;
+            ulong currentFrame = LogicFrameRuntime.CurrentFrame;
+            if (snapshot == null)
+            {
+                if (currentFrame != 0)
+                {
+                    throw new InvalidOperationException(
+                        $"MAEntity render interpolation snapshot is missing. entity={LogicEntityId.Value}, logicFrame={currentFrame}.");
+                }
+            }
+            else
+            {
+                if (snapshot.FrameId != currentFrame)
+                {
+                    throw new InvalidOperationException(
+                        $"MAEntity render interpolation snapshot frame mismatch. entity={LogicEntityId.Value}, logicFrame={currentFrame}, snapshot={snapshot.FrameId}.");
+                }
+
+                if (snapshot.TryGet(LogicEntityId, out LogicEntityFrameState frameStart))
+                {
+                    previousPosition = frameStart.Position;
+                    previousForward = frameStart.Forward;
+                }
+            }
+        }
+
+        FixVector2 currentForward = _logicState.Forward;
+        if (FixVector2.SqrMagnitude(previousForward) == Fix64.Zero
+            || FixVector2.SqrMagnitude(currentForward) == Fix64.Zero)
+        {
+            throw new InvalidOperationException($"MAEntity render interpolation encountered zero forward. entity={LogicEntityId.Value}.");
+        }
+
+        float y = CachedTransform.position.y;
+        SetRenderInterpolationLogicPoses(
+            new Vector3((float)previousPosition.x, y, (float)previousPosition.y),
+            Quaternion.LookRotation(new Vector3((float)previousForward.x, 0f, (float)previousForward.y)),
+            new Vector3((float)_logicState.Position.x, y, (float)_logicState.Position.y),
+            Quaternion.LookRotation(new Vector3((float)currentForward.x, 0f, (float)currentForward.y)));
+    }
+
+    private LogicEntityState RequireLogicState()
+    {
+        if (_logicState == null)
+            throw new InvalidOperationException("MAEntity logic state is not bound.");
+        return _logicState;
+    }
+
+    public override void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)
+    {
+        RequireLogicState().TakeDamage(damage, modType, attacker);
+    }
+
+    public override void Heal(Fix64 amount)
+    {
+        RequireLogicState().Heal(amount);
+    }
+
+    public bool RegisterInvincibleSource(string sourceId)
+    {
+        return RequireLogicState().RegisterInvincibleSource(sourceId);
+    }
+
+    public bool UnregisterInvincibleSource(string sourceId)
+    {
+        return RequireLogicState().UnregisterInvincibleSource(sourceId);
+    }
+
+    private void SubscribeLogicStatePresentation()
+    {
+        LogicEntityState state = RequireLogicState();
+        state.HealthChanged += OnLogicHealthChanged;
+        state.UnitDied += OnLogicUnitDied;
+        state.BuildingDisabledChanged += OnLogicBuildingDisabledChanged;
+        state.GhostStateChanged += OnLogicGhostStateChanged;
+        state.CollisionBlockingChanged += OnLogicCollisionBlockingChanged;
+        state.PermanentStealthChanged += OnLogicPermanentStealthChanged;
+        state.PhaseProtectionChanged += OnLogicPhaseProtectionChanged;
+    }
+
+    private void UnsubscribeLogicStatePresentation()
+    {
+        if (_logicState == null)
+            return;
+        _logicState.HealthChanged -= OnLogicHealthChanged;
+        _logicState.UnitDied -= OnLogicUnitDied;
+        _logicState.BuildingDisabledChanged -= OnLogicBuildingDisabledChanged;
+        _logicState.GhostStateChanged -= OnLogicGhostStateChanged;
+        _logicState.CollisionBlockingChanged -= OnLogicCollisionBlockingChanged;
+        _logicState.PermanentStealthChanged -= OnLogicPermanentStealthChanged;
+        _logicState.PhaseProtectionChanged -= OnLogicPhaseProtectionChanged;
+    }
+
+    private void OnLogicHealthChanged(LogicEntityHealthChange change)
+    {
+		_pendingLogicPresentationEvents.Enqueue(new LogicPresentationEvent(
+			LogicPresentationEventKind.HealthChanged,
+			change));
+	}
+
+	private void PresentLogicHealthChanged(LogicEntityHealthChange change)
+	{
+        Alive = RequireLogicState().Alive;
+        if (change.Delta < Fix64.Zero)
+            TriggerPresenterHitAnimation();
+
+        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(
+            Id,
+            (float)change.Current,
+            (float)change.Max,
+            (float)change.Delta));
+        if (change.Delta > Fix64.Zero)
+            GF.Event.Fire(this, CreatureHealedEventArgs.Create(Id, (float)change.Delta));
+
+        OnLogicHealthChangedPresentation(change);
+    }
+
+    private void OnLogicUnitDied(IEntityContext attacker)
+    {
+		_pendingLogicPresentationEvents.Enqueue(new LogicPresentationEvent(
+			LogicPresentationEventKind.UnitDied,
+			attacker: attacker));
+	}
+
+	private void PresentLogicUnitDied(IEntityContext attacker)
+	{
+        Alive = false;
+        if (this is SoldierEntity victim)
+            GF.Event.Fire(victim, SoldierDeadEventArgs.Create(victim));
+        PlayDeathSound();
+        OnLogicUnitDiedPresentation(attacker);
+    }
+
+    private void OnLogicBuildingDisabledChanged(bool disabled, IEntityContext attacker)
+    {
+		_pendingLogicPresentationEvents.Enqueue(new LogicPresentationEvent(
+			LogicPresentationEventKind.BuildingDisabledChanged,
+			enabled: disabled,
+			attacker: attacker));
+	}
+
+	private void PresentLogicBuildingDisabledChanged(bool disabled, IEntityContext attacker)
+	{
+        Alive = RequireLogicState().Alive;
+        OnLogicBuildingDisabledPresentation(disabled, attacker);
+    }
+
+    private void OnLogicGhostStateChanged(bool enabled)
+    {
+		_pendingLogicPresentationEvents.Enqueue(new LogicPresentationEvent(
+			LogicPresentationEventKind.GhostStateChanged,
+			enabled: enabled));
+	}
+
+	private void PresentLogicGhostStateChanged(bool enabled)
+	{
+        Alive = RequireLogicState().Alive;
+        OnLogicGhostStatePresentation(enabled);
+    }
+
+	private void OnLogicCollisionBlockingChanged(bool enabled) =>
+		_pendingLogicPresentationEvents.Enqueue(new LogicPresentationEvent(
+			LogicPresentationEventKind.CollisionBlockingChanged,
+			enabled: enabled));
+
+	private void OnLogicPermanentStealthChanged(bool enabled) =>
+		_pendingLogicPresentationEvents.Enqueue(new LogicPresentationEvent(
+			LogicPresentationEventKind.PermanentStealthChanged,
+			enabled: enabled));
+
+	private void OnLogicPhaseProtectionChanged(bool enabled) =>
+		_pendingLogicPresentationEvents.Enqueue(new LogicPresentationEvent(
+			LogicPresentationEventKind.PhaseProtectionChanged,
+			enabled: enabled));
+
+	private void FlushLogicPresentationEvents()
+	{
+		if (LogicFrameRuntime.IsExecutingFrame)
+			throw new InvalidOperationException("MAEntity presentation events cannot run during a logic frame.");
+		while (_pendingLogicPresentationEvents.Count > 0)
+		{
+			LogicPresentationEvent presentationEvent = _pendingLogicPresentationEvents.Dequeue();
+			switch (presentationEvent.Kind)
+			{
+				case LogicPresentationEventKind.HealthChanged:
+					PresentLogicHealthChanged(presentationEvent.HealthChange);
+					break;
+				case LogicPresentationEventKind.UnitDied:
+					PresentLogicUnitDied(presentationEvent.Attacker);
+					break;
+				case LogicPresentationEventKind.BuildingDisabledChanged:
+					PresentLogicBuildingDisabledChanged(
+						presentationEvent.Enabled,
+						presentationEvent.Attacker);
+					break;
+				case LogicPresentationEventKind.GhostStateChanged:
+					PresentLogicGhostStateChanged(presentationEvent.Enabled);
+					break;
+				case LogicPresentationEventKind.CollisionBlockingChanged:
+					OnLogicCollisionBlockingPresentation(presentationEvent.Enabled);
+					break;
+				case LogicPresentationEventKind.PermanentStealthChanged:
+					OnLogicPermanentStealthPresentation(presentationEvent.Enabled);
+					break;
+				case LogicPresentationEventKind.PhaseProtectionChanged:
+					OnLogicPhaseProtectionPresentation(presentationEvent.Enabled);
+					break;
+				default:
+					throw new ArgumentOutOfRangeException();
+			}
+		}
+	}
+
+    private void ResetActionPresentationTracking()
+    {
+        _lastPresentedAttackCount = -1;
+        _lastPresentedInterruptedAttackCount = 0;
+        _lastPresentedMeleeImpactAttackCount = 0;
+        for (int i = 0; i < _presentedSkillInfos.Length; i++)
+        {
+            _presentedSkillInfos[i] = null;
+            _presentedSkillActionIndices[i] = -1;
+        }
+    }
+
+    private void SyncActionPresentation()
+    {
+        SyncAttackPresentation();
+        SyncSkillActionPresentation();
+    }
+
+    private void SyncAttackPresentation()
+    {
+        if (atkComp is not DirectAtkComp directAttack)
+        {
+            _animationRatePresenter?.SetPerEntityScale(LogicTimeControlService.NormalScaleUnits);
+            _lastPresentedAttackCount = -1;
+            _lastPresentedInterruptedAttackCount = 0;
+            _lastPresentedMeleeImpactAttackCount = 0;
+            return;
+        }
+
+        if (_lastPresentedAttackCount < 0)
+        {
+            _lastPresentedInterruptedAttackCount = directAttack.LastInterruptedAttackCount;
+            _lastPresentedMeleeImpactAttackCount = directAttack.LastSuccessfulMeleeImpactAttackCount;
+            if (!directAttack.IsAttacking)
+            {
+                SyncAttackAnimationRate(directAttack);
+                _lastPresentedAttackCount = directAttack.AttackCount;
+                return;
+            }
+        }
+
+        if (directAttack.IsAttacking && directAttack.AttackCount != _lastPresentedAttackCount)
+        {
+            PresentAttackStarted(directAttack.CurrentWindUp, directAttack.CurrentAttackUsesTrail);
+            _lastPresentedAttackCount = directAttack.AttackCount;
+        }
+        else if (!directAttack.IsAttacking)
+        {
+            _lastPresentedAttackCount = directAttack.AttackCount;
+        }
+
+        SyncAttackAnimationRate(directAttack);
+
+        if (directAttack.LastInterruptedAttackCount != _lastPresentedInterruptedAttackCount)
+        {
+            if (directAttack.LastInterruptedAttackCount > 0
+                && directAttack.LastInterruptedAttackCount == directAttack.AttackCount)
+            {
+                PresentAttackInterrupted();
+            }
+            _lastPresentedInterruptedAttackCount = directAttack.LastInterruptedAttackCount;
+        }
+
+        if (directAttack.LastSuccessfulMeleeImpactAttackCount != _lastPresentedMeleeImpactAttackCount)
+        {
+            if (directAttack.IsAttacking
+                && directAttack.LastSuccessfulMeleeImpactAttackCount == directAttack.AttackCount
+                && AudioManager.Instance != null)
+            {
+                AudioManager.Instance.Play("basicAttack");
+            }
+            _lastPresentedMeleeImpactAttackCount = directAttack.LastSuccessfulMeleeImpactAttackCount;
+        }
+    }
+
+    private void SyncSkillActionPresentation()
+    {
+        if (_logicState?.SkillComp is not ISkillActionPresentationProvider provider)
+        {
+            for (int i = 0; i < _presentedSkillInfos.Length; i++)
+            {
+                _presentedSkillInfos[i] = null;
+                _presentedSkillActionIndices[i] = -1;
+            }
+            return;
+        }
+        if (provider.SkillPresentationSlotCount < 0
+            || provider.SkillPresentationSlotCount > _presentedSkillInfos.Length)
+        {
+            throw new InvalidOperationException(
+                $"MAEntity skill presentation slot count is invalid. entity={LogicEntityId.Value}, count={provider.SkillPresentationSlotCount}.");
+        }
+
+        int slotIndex = 0;
+        for (; slotIndex < provider.SkillPresentationSlotCount; slotIndex++)
+        {
+            if (!provider.TryGetActiveSkillActionPresentation(
+                    slotIndex,
+                    out SkillInfo skillInfo,
+                    out string triggerName))
+            {
+                _presentedSkillInfos[slotIndex] = null;
+                _presentedSkillActionIndices[slotIndex] = -1;
+                continue;
+            }
+
+            if (ReferenceEquals(_presentedSkillInfos[slotIndex], skillInfo)
+                && _presentedSkillActionIndices[slotIndex] == skillInfo.currentIndex)
+            {
+                continue;
+            }
+            if (!string.IsNullOrWhiteSpace(triggerName))
+            {
+                if (animator == null)
+                {
+                    throw new InvalidOperationException(
+                        $"MAEntity cannot present skill action without an Animator. entity={LogicEntityId.Value}, slot={slotIndex}, action={skillInfo.currentIndex}.");
+                }
+                animator.SetTrigger(triggerName);
+            }
+
+            _presentedSkillInfos[slotIndex] = skillInfo;
+            _presentedSkillActionIndices[slotIndex] = skillInfo.currentIndex;
+        }
+
+        for (; slotIndex < _presentedSkillInfos.Length; slotIndex++)
+        {
+            _presentedSkillInfos[slotIndex] = null;
+            _presentedSkillActionIndices[slotIndex] = -1;
+        }
+    }
+
+    private void PresentAttackStarted(Fix64 windUp, bool playTrail)
+    {
+        if (animator != null)
+            animator.SetTrigger("Attack");
+        if (playTrail)
+            WeaponAttackTrailEffect.Play(this, Mathf.Max(0.08f, (float)windUp + 0.08f));
+    }
+
+    private void SyncAttackAnimationRate(DirectAtkComp directAttack)
+    {
+        if (_animationRatePresenter == null)
+            return;
+        if (!directAttack.IsAttacking)
+        {
+            _animationRatePresenter.SetPerEntityScale(LogicTimeControlService.NormalScaleUnits);
+            return;
+        }
+        if (!TryGetCurrentAttackClipLength(out float clipLength))
+            return;
+
+        Fix64 actionDuration = directAttack.CurrentAttackAnimationDuration;
+        if (actionDuration <= Fix64.Zero)
+        {
+            throw new InvalidOperationException(
+                $"MAEntity attack animation requires positive wind-up plus wind-down. entity={LogicEntityId.Value}.");
+        }
+
+        float attackScale = clipLength / (float)actionDuration * (float)directAttack.CurrentAttackSpeedScale;
+        if (float.IsNaN(attackScale) || float.IsInfinity(attackScale) || attackScale <= 0f)
+        {
+            throw new InvalidOperationException(
+                $"MAEntity calculated an invalid attack animation scale. entity={LogicEntityId.Value}, scale={attackScale}.");
+        }
+
+        int scaleUnits = Mathf.RoundToInt(attackScale * LogicTimeControlService.ScaleUnitsPerOne);
+        _animationRatePresenter.SetPerEntityScale(scaleUnits);
+    }
+
+    private bool TryGetCurrentAttackClipLength(out float clipLength)
+    {
+        clipLength = 0f;
+        for (int layer = 0; layer < animator.layerCount; layer++)
+        {
+            _attackClipInfos.Clear();
+            if (animator.IsInTransition(layer))
+                animator.GetNextAnimatorClipInfo(layer, _attackClipInfos);
+            else
+                animator.GetCurrentAnimatorClipInfo(layer, _attackClipInfos);
+
+            for (int i = 0; i < _attackClipInfos.Count; i++)
+            {
+                AnimationClip clip = _attackClipInfos[i].clip;
+                if (clip == null || clip.name.IndexOf("Attack", StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
+
+                clipLength = clip.length;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void PresentAttackInterrupted()
+    {
+        WeaponAttackTrailEffect.Stop(this, true);
+        if (animator == null)
+            return;
+        AnimatorControllerParameter[] parameters = animator.parameters;
+        for (int i = 0; i < parameters.Length; i++)
+        {
+            if (parameters[i].type == AnimatorControllerParameterType.Trigger && parameters[i].name == "Attack")
+            {
+                animator.ResetTrigger("Attack");
+                return;
+            }
+        }
+    }
+
+    protected virtual void OnLogicHealthChangedPresentation(LogicEntityHealthChange change)
+    {
+    }
+
+    protected virtual void OnLogicUnitDiedPresentation(IEntityContext attacker)
+    {
+    }
+
+    protected virtual void OnLogicBuildingDisabledPresentation(bool disabled, IEntityContext attacker)
+    {
+    }
+
+    protected virtual void OnLogicGhostStatePresentation(bool enabled)
+    {
+    }
+
+    protected virtual void OnLogicCollisionBlockingPresentation(bool enabled)
+    {
+    }
+
+    protected virtual void OnLogicPermanentStealthPresentation(bool enabled)
+    {
+    }
+
+    protected virtual void OnLogicPhaseProtectionPresentation(bool enabled)
+    {
+    }
+
+    private void TriggerPresenterHitAnimation()
+    {
+        if (animator == null)
+            return;
+        foreach (AnimatorControllerParameter parameter in animator.parameters)
+        {
+            if (parameter.name == "GetHit" && parameter.type == AnimatorControllerParameterType.Trigger)
+            {
+                animator.SetTrigger("GetHit");
+                return;
+            }
+        }
+    }
+
+    private void SyncCharacterControllerRadiusFromLogic()
+    {
+        if (cController == null)
+            return;
+        if (CreaturePropertyManager == null)
+            throw new InvalidOperationException($"MAEntity cannot sync CharacterController radius without creature properties. entity={LogicEntityId.Value}.");
+
+        Fix64 collisionRadius = CreaturePropertyManager.GetProperty(CreatureMainProperty.CollisionRadius);
+        if (collisionRadius <= Fix64.Zero)
+            throw new InvalidOperationException($"MAEntity requires a positive logic collision radius. entity={LogicEntityId.Value}, raw={collisionRadius.RawValue}.");
+
+        float targetWorldRadius = DistanceUnitConverter.ConvertToWorldFloat(collisionRadius);
+        if (targetWorldRadius <= 0.0001f)
+            throw new InvalidOperationException($"MAEntity converted collision radius is invalid. entity={LogicEntityId.Value}, world={targetWorldRadius}.");
+
+        Vector3 worldScale = transform.lossyScale;
+        float scaleXZ = Mathf.Max(Mathf.Abs(worldScale.x), Mathf.Abs(worldScale.z));
+        if (scaleXZ <= 0.0001f)
+            throw new InvalidOperationException($"MAEntity cannot sync CharacterController radius with zero XZ scale. entity={LogicEntityId.Value}, scale={worldScale}.");
+
+        cController.radius = targetWorldRadius / scaleXZ;
+    }
+
+    #region Move and Attack
+
+    public void SetMoveComp(IMoveComp newMoveComp)
+    {
+        throw new InvalidOperationException("MAEntity view cannot own or replace MoveComp; configure LogicEntityState instead.");
+    }
+
+    public void SetAtkComp(IAtkComp newAtkComp)
+    {
+        throw new InvalidOperationException("MAEntity view cannot own or replace AtkComp; configure LogicEntityState instead.");
+    }
+
+    public void SetTargetingComp(ITargetingComp newTargetingComp)
+    {
+        throw new InvalidOperationException("MAEntity view cannot own or replace TargetingComp; configure LogicEntityState instead.");
+    }
+
+    public void SetWeaponComp(WeaponComp newWeaponComp)
+    {
+        throw new InvalidOperationException("MAEntity view cannot own or replace WeaponComp; configure LogicEntityState instead.");
+    }
+
+    #endregion
+}

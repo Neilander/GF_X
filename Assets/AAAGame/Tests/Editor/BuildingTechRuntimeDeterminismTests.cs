@@ -6,7 +6,7 @@ using System.Collections.Generic;
 public sealed class BuildingTechRuntimeDeterminismTests
 {
     [Test]
-    public void RuntimeEffectFutureState_ChangesDeterministicHashWhenTechRegistersPendingCoin()
+    public void RuntimeEffectFutureState_ChangesDeterministicHashWhenTechRegistersBattleCardBonus()
     {
         var managerObject = new GameObject("BuildingTechRuntimeDeterminismTests_Manager");
         var manager = managerObject.AddComponent<GlobalBuffManager>();
@@ -18,16 +18,16 @@ public sealed class BuildingTechRuntimeDeterminismTests
 
             effect.Activate(new TechEffectContext
             {
-                TechId = "Tech_Buil_NavStation_Opt3",
+                TechId = "Tech_Buil_SortingCenter_Lv3_Opt2",
                 OwnerFactionId = EntitySideHelper.PlayerFactionId,
                 SourceBuildingInstanceId = "building-source",
                 TechData = new TechData(
-                    "Tech_Buil_NavStation_Opt3",
+                    "Tech_Buil_SortingCenter_Lv3_Opt2",
                     string.Empty,
                     string.Empty,
                     string.Empty,
                     0,
-                    new[] { (Fix64)5 },
+                    new[] { (Fix64)2, (Fix64)1 },
                     TechScopeType.AllBuil,
                     System.Array.Empty<string>(),
                     System.Array.Empty<UnitSize>(),

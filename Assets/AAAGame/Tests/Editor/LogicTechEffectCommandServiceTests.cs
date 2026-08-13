@@ -120,9 +120,10 @@ public sealed class LogicTechEffectCommandServiceTests
     public void InteractionApply_CanCommitTechOwnershipInTheSameLogicFrame()
     {
         LogicInteractionCommandService.ScheduleForNextFrame(
-            LogicInteractionActionKind.ResearchTech,
+            LogicInteractionActionKind.UpgradeBuilding,
             new LogicEntityId(10),
             "building-a",
+            "Building_Barracks_Lv2",
             "Tech_A");
 
         LogicTimeControlService.BeginFrame(1);
@@ -159,11 +160,11 @@ public sealed class LogicTechEffectCommandServiceTests
         try
         {
             LogicInteractionCommand command = LogicInteractionCommandService.SubmitForTests(
-                LogicInteractionActionKind.ResearchTech,
+                LogicInteractionActionKind.UpgradeBuilding,
                 new LogicEntityId(10),
                 "building-a",
+                "Building_Barracks_Lv2",
                 "Tech_A",
-                null,
                 _ => Assert.IsTrue(InGameDataModel.UnlockTechInCurrentInteractionFrame(
                     "Tech_A",
                     false,

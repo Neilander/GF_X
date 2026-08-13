@@ -1,0 +1,109 @@
+#	关卡词条表							i18n	i18n					
+#	ID			UniqueValues	GroupID	Identifier	IconSpritePath	NameKey	DescKey	BelongLevelID	ExceptLevelID	IsPositiveTag	Score	UnlockGrade
+#	int			Fix64[]	int	string	string	string	string	string[]	string[]	bool	int	int
+#		备注	备注2	独有数值	所属组（同组冲突）	代码内标识符	icon路径	tag名(多语言)	tag描述(多语言)	所属关卡ID	排除关卡ID	是否正面tag	tag分值	解锁所需等级
+	1	弹道规避	我方单位获得{0}%远程减伤	25		LvTag_ProjectileEvasion	UI/LvTag/ProjectileEvasion	LvTag_Name_ProjectileEvasion	LvTag_Desc_ProjectileEvasion			True		1
+	2	格挡技巧	我方单位获得{0}%近战减伤	30		LvTag_BlockingTechnique	UI/LvTag/BlockingTechnique	LvTag_Name_BlockingTechnique	LvTag_Desc_BlockingTechnique			True		1
+	3	黑质狂热	我方单位获得{0}%攻击吸血（攻击吸血：对单位造成攻击伤害时，自身回复伤害量一定比例的生命）	20		LvTag_DarkMatterFrenzy	UI/LvTag/DarkMatterFrenzy	LvTag_Name_DarkMatterFrenzy	LvTag_Desc_DarkMatterFrenzy			True		1
+	4	突击小队	我方轻型单位的攻击+{0}%，移速+{1}	40,20		LvTag_AssaultSquad	UI/LvTag/AssaultSquad	LvTag_Name_AssaultSquad	LvTag_Desc_AssaultSquad			True		1
+	5	泰坦之躯	我方重型单位的护甲+{0}，生命上限+{1}%	3,30		LvTag_TitanBody	UI/LvTag/TitanBody	LvTag_Name_TitanBody	LvTag_Desc_TitanBody			True		1
+	6	视距压制	我方远程单位的攻击+{0}%，射程+{1}%	15,25		LvTag_SightSuppression	UI/LvTag/SightSuppression	LvTag_Name_SightSuppression	LvTag_Desc_SightSuppression			True		1
+	7	无畏前锋	我方近战单位的攻击+{0}%，生命上限+{1}%	15,25		LvTag_FearlessVanguard	UI/LvTag/FearlessVanguard	LvTag_Name_FearlessVanguard	LvTag_Desc_FearlessVanguard			True		2
+	8	中坚阵列	我方中型单位的攻速+{0}，生命上限+{1}%	30,20		LvTag_CoreFormation	UI/LvTag/CoreFormation	LvTag_Name_CoreFormation	LvTag_Desc_CoreFormation			True		2
+	9	制式轻甲	我方单位的护甲+{0}，移速+{1}	3,30		LvTag_StandardArmor	UI/LvTag/StandardArmor	LvTag_Name_StandardArmor	LvTag_Desc_StandardArmor			True		2
+	10	阵地火力	我方建筑的攻击+{0}%	30		LvTag_EntrenchedFirepower	UI/LvTag/EntrenchedFirepower	LvTag_Name_EntrenchedFirepower	LvTag_Desc_EntrenchedFirepower			True		2
+	11	违规改装	我方建筑的攻击+{0}%，射程+{1}%，但护甲-{2}	25,25,3		LvTag_IllegalModification	UI/LvTag/IllegalModification	LvTag_Name_IllegalModification	LvTag_Desc_IllegalModification			True		2
+	12	钉子户	我方建筑的护甲+{0}，生命上限+{1}%	3,40		LvTag_Holdout	UI/LvTag/Holdout	LvTag_Name_Holdout	LvTag_Desc_Holdout			True		2
+	13	晋升通道	每经过1天，英雄的攻击+{0}%，生命上限+{1}%	10,10		LvTag_PromotionPath	UI/LvTag/PromotionPath	LvTag_Name_PromotionPath	LvTag_Desc_PromotionPath			True		3
+	14	藏帅于军	我方非英雄单位的护甲+{0}，生命上限+{1}%，但英雄的生命上限-{2}%	2,40,60		LvTag_HiddenCommander	UI/LvTag/HiddenCommander	LvTag_Name_HiddenCommander	LvTag_Desc_HiddenCommander			True		3
+	15	指挥家	我方非英雄单位的攻击+{0}%，但英雄的攻击-{1}%	40,60		LvTag_Conductor	UI/LvTag/Conductor	LvTag_Name_Conductor	LvTag_Desc_Conductor			True		3
+	16	一骑当千	英雄的护甲+{0}，生命上限+{1}%，但我方非英雄单位的生命上限-{2}%	3,50,30		LvTag_OneAgainstThousand	UI/LvTag/OneAgainstThousand	LvTag_Name_OneAgainstThousand	LvTag_Desc_OneAgainstThousand			True		3
+	17	弃守转攻	英雄的攻击+{0}%，但我方建筑的攻击-{1}%	50,40		LvTag_AbandonDefense	UI/LvTag/AbandonDefense	LvTag_Name_AbandonDefense	LvTag_Desc_AbandonDefense			True		3
+	18	亡命狂徒	英雄的攻击+{0}%，但生命上限-{1}%	110,75		LvTag_Desperado	UI/LvTag/Desperado	LvTag_Name_Desperado	LvTag_Desc_Desperado			True		3
+	19	天赋异禀	英雄的所有技能等级+{0}	1		LvTag_Gifted	UI/LvTag/Gifted	LvTag_Name_Gifted	LvTag_Desc_Gifted			True		4
+	20	浴火重生	英雄每天可以复活{0}次	1		LvTag_PhoenixRebirth	UI/LvTag/PhoenixRebirth	LvTag_Name_PhoenixRebirth	LvTag_Desc_PhoenixRebirth			True		4
+	21	分期按揭	初始橙髓+{0}，但每天的基础橙髓收获橙髓-{1}	5,1		LvTag_MortgagePlan	UI/LvTag/MortgagePlan	LvTag_Name_MortgagePlan	LvTag_Desc_MortgagePlan			True		4
+	22	独家信道	初始频段+{0}，但初始橙髓-{1}	10,1		LvTag_ExclusiveChannel	UI/LvTag/ExclusiveChannel	LvTag_Name_ExclusiveChannel	LvTag_Desc_ExclusiveChannel			True		4
+	23	细水长流	每天的基础橙髓收获+{0}	2		LvTag_SteadyGrowth	UI/LvTag/SteadyGrowth	LvTag_Name_SteadyGrowth	LvTag_Desc_SteadyGrowth			True		4
+	24	掠夺者	占领据点提供的橙髓收获+{0}	4		LvTag_Raider	UI/LvTag/Raider	LvTag_Name_Raider	LvTag_Desc_Raider			True		4
+	25	基站扩容	核心建筑每级提供的频段+{0}	3		LvTag_BaseStationExpansion	UI/LvTag/BaseStationExpansion	LvTag_Name_BaseStationExpansion	LvTag_Desc_BaseStationExpansion			True		5
+	26	征兵令	所有单位牌的兵力+{0}%，但所有军事建筑的建造价格+{1}橙髓	33,1		LvTag_ConscriptionOrder	UI/LvTag/ConscriptionOrder	LvTag_Name_ConscriptionOrder	LvTag_Desc_ConscriptionOrder			True		5
+	27	越级审批	建筑升级所需的核心建筑等级-{0}	1		LvTag_FastTrackApproval	UI/LvTag/FastTrackApproval	LvTag_Name_FastTrackApproval	LvTag_Desc_FastTrackApproval			True		5
+	28	废品回收	建筑回收返还橙髓的比例+{0}%	50		LvTag_ScrapRecycling	UI/LvTag/ScrapRecycling	LvTag_Name_ScrapRecycling	LvTag_Desc_ScrapRecycling			True		5
+	29	产业扶持	生产建筑的建造价格-{0}橙髓	1		LvTag_IndustrialSupport	UI/LvTag/IndustrialSupport	LvTag_Name_IndustrialSupport	LvTag_Desc_IndustrialSupport			True		5
+	30	技术攻坚	每个科研建筑可以额外研发{0}项科技，但所有科技的研发价格+{1}	1,1		LvTag_TechBreakthrough	UI/LvTag/TechBreakthrough	LvTag_Name_TechBreakthrough	LvTag_Desc_TechBreakthrough			True		5
+	31	投名状	敌方据点在被我方占领后的{0}天内，训练的单位+{1}%攻击，+{2}%生命上限	2,30,50		LvTag_PledgeOfLoyalty	UI/LvTag/PledgeOfLoyalty	LvTag_Name_PledgeOfLoyalty	LvTag_Desc_PledgeOfLoyalty			True		6
+	32	战利品劣化	杀敌转化为每1橙髓所需的频段+{0}	2		LvTag_LootDeterioration	UI/LvTag/LootDeterioration	LvTag_Name_LootDeterioration	LvTag_Desc_LootDeterioration			False	1	1
+	33	通信损耗	弃牌转化为每1橙髓所需的频段+{0}	1		LvTag_CommunicationLoss	UI/LvTag/CommunicationLoss	LvTag_Name_CommunicationLoss	LvTag_Desc_CommunicationLoss			False	1	1
+	34	编制缩减	手牌上限-{0}张	1		LvTag_ForceReduction	UI/LvTag/ForceReduction	LvTag_Name_ForceReduction	LvTag_Desc_ForceReduction			False	1	1
+	35	严密布控	敌方建筑阻止单位部署的范围扩大{0}%	60		LvTag_TightSecurity	UI/LvTag/TightSecurity	LvTag_Name_TightSecurity	LvTag_Desc_TightSecurity			False	1	1
+	36	补给匮乏	每天的基础橙髓收获-{0}	1		LvTag_SupplyShortage	UI/LvTag/SupplyShortage	LvTag_Name_SupplyShortage	LvTag_Desc_SupplyShortage			False	1	1
+	37	维稳成本	每占领一个据点，每天便消耗{0}橙髓	1		LvTag_StabilityCost	UI/LvTag/StabilityCost	LvTag_Name_StabilityCost	LvTag_Desc_StabilityCost			False	1	1
+	38	贫矿区	橙髓采集点位的初始橙髓储量-{0}%	33		LvTag_PoorDeposit	UI/LvTag/PoorDeposit	LvTag_Name_PoorDeposit	LvTag_Desc_PoorDeposit			False	1	1
+	39	竭泽而渔	敌方生产建筑每天采集消耗的橙髓储量+{0}%	100		LvTag_ResourceDepletion	UI/LvTag/ResourceDepletion	LvTag_Name_ResourceDepletion	LvTag_Desc_ResourceDepletion			False	1	1
+	40	兵源短缺	兵力不小于{0}的单位牌兵力-{1}	3,1		LvTag_RecruitShortage	UI/LvTag/RecruitShortage	LvTag_Name_RecruitShortage	LvTag_Desc_RecruitShortage			False	1	1
+	41	沉重枷锁	我方重型单位的移速-{0}	70		LvTag_HeavyShackles	UI/LvTag/HeavyShackles	LvTag_Name_HeavyShackles	LvTag_Desc_HeavyShackles			False	1	1
+	42	网段挤占	我方重型单位占用的频段+{0}	5		LvTag_BandwidthCongestion	UI/LvTag/BandwidthCongestion	LvTag_Name_BandwidthCongestion	LvTag_Desc_BandwidthCongestion			False	1	1
+	43	弱不禁风	我方轻型单位的生命上限-{0}%	50		LvTag_Frail	UI/LvTag/Frail	LvTag_Name_Frail	LvTag_Desc_Frail			False	1	1
+	44	外强中干	我方中型单位的攻击-{0}%	40		LvTag_HollowStrength	UI/LvTag/HollowStrength	LvTag_Name_HollowStrength	LvTag_Desc_HollowStrength			False	1	1
+	45	域网损毁I	初始频段-{0}	4	1	LvTag_IntranetFailureI	UI/LvTag/IntranetFailureI	LvTag_Name_IntranetFailureI	LvTag_Desc_IntranetFailureI			False	1	1
+	46	域网损毁II	初始频段-{0}	7	1	LvTag_IntranetFailureII	UI/LvTag/IntranetFailureII	LvTag_Name_IntranetFailureII	LvTag_Desc_IntranetFailureII			False	2	1
+	47	域网损毁III	初始频段-{0}	10	1	LvTag_IntranetFailureIII	UI/LvTag/IntranetFailureIII	LvTag_Name_IntranetFailureIII	LvTag_Desc_IntranetFailureIII			False	3	1
+	48	劣质基站I	核心建筑每级提供的频段-{0}	1	2	LvTag_InferiorBaseStationI	UI/LvTag/InferiorBaseStationI	LvTag_Name_InferiorBaseStationI	LvTag_Desc_InferiorBaseStationI			False	1	1
+	49	劣质基站II	核心建筑每级提供的频段-{0}	2	2	LvTag_InferiorBaseStationII	UI/LvTag/InferiorBaseStationII	LvTag_Name_InferiorBaseStationII	LvTag_Desc_InferiorBaseStationII			False	2	1
+	50	劣质基站III	核心建筑每级提供的频段-{0}	3	2	LvTag_InferiorBaseStationIII	UI/LvTag/InferiorBaseStationIII	LvTag_Name_InferiorBaseStationIII	LvTag_Desc_InferiorBaseStationIII			False	3	1
+	51	折价回收I	建筑回收返还橙髓的比例-{0}%	25	3	LvTag_DiscountedRecyclingI	UI/LvTag/DiscountedRecyclingI	LvTag_Name_DiscountedRecyclingI	LvTag_Desc_DiscountedRecyclingI			False	1	1
+	52	折价回收II	建筑回收返还橙髓的比例-{0}%	40	3	LvTag_DiscountedRecyclingII	UI/LvTag/DiscountedRecyclingII	LvTag_Name_DiscountedRecyclingII	LvTag_Desc_DiscountedRecyclingII			False	2	1
+	53	施工打点I	建筑升为3级的价格+{0}橙髓	1	4	LvTag_ConstructionKickbackI	UI/LvTag/ConstructionKickbackI	LvTag_Name_ConstructionKickbackI	LvTag_Desc_ConstructionKickbackI			False	1	1
+	54	施工打点II	建筑升级的价格+{0}橙髓	1	4	LvTag_ConstructionKickbackII	UI/LvTag/ConstructionKickbackII	LvTag_Name_ConstructionKickbackII	LvTag_Desc_ConstructionKickbackII			False	2	1
+	55	施工打点III	建筑建造和升级的价格+{0}橙髓	1	4	LvTag_ConstructionKickbackIII	UI/LvTag/ConstructionKickbackIII	LvTag_Name_ConstructionKickbackIII	LvTag_Desc_ConstructionKickbackIII			False	3	1
+	56	技术封锁I	科研建筑研发科技的价格+{0}橙髓	2	5	LvTag_TechEmbargoI	UI/LvTag/TechEmbargoI	LvTag_Name_TechEmbargoI	LvTag_Desc_TechEmbargoI			False	1	1
+	57	技术封锁II	科研建筑研发科技的价格+{0}橙髓	4	5	LvTag_TechEmbargoII	UI/LvTag/TechEmbargoII	LvTag_Name_TechEmbargoII	LvTag_Desc_TechEmbargoII			False	2	1
+	58	捉襟见肘I	初始橙髓-{0}	3	6	LvTag_ShoestringBudgetI	UI/LvTag/ShoestringBudgetI	LvTag_Name_ShoestringBudgetI	LvTag_Desc_ShoestringBudgetI			False	1	1
+	59	捉襟见肘II	初始橙髓-{0}	5	6	LvTag_ShoestringBudgetII	UI/LvTag/ShoestringBudgetII	LvTag_Name_ShoestringBudgetII	LvTag_Desc_ShoestringBudgetII			False	2	1
+	60	捉襟见肘III	初始橙髓-{0}	7	6	LvTag_ShoestringBudgetIII	UI/LvTag/ShoestringBudgetIII	LvTag_Name_ShoestringBudgetIII	LvTag_Desc_ShoestringBudgetIII			False	3	1
+	61	锋刃锈蚀I	我方近战单位的攻击-{0}%	30	7	LvTag_RustedBladeI	UI/LvTag/RustedBladeI	LvTag_Name_RustedBladeI	LvTag_Desc_RustedBladeI			False	1	1
+	62	锋刃锈蚀II	我方近战单位的攻击-{0}%	45	7	LvTag_RustedBladeII	UI/LvTag/RustedBladeII	LvTag_Name_RustedBladeII	LvTag_Desc_RustedBladeII			False	2	1
+	63	锋刃锈蚀III	我方近战单位的攻击-{0}%	60	7	LvTag_RustedBladeIII	UI/LvTag/RustedBladeIII	LvTag_Name_RustedBladeIII	LvTag_Desc_RustedBladeIII			False	3	1
+	64	膛线磨损I	我方远程单位的攻击-{0}%	30	8	LvTag_WornRiflingI	UI/LvTag/WornRiflingI	LvTag_Name_WornRiflingI	LvTag_Desc_WornRiflingI			False	1	1
+	65	膛线磨损II	我方远程单位的攻击-{0}%	45	8	LvTag_WornRiflingII	UI/LvTag/WornRiflingII	LvTag_Name_WornRiflingII	LvTag_Desc_WornRiflingII			False	2	1
+	66	膛线磨损III	我方远程单位的攻击-{0}%	60	8	LvTag_WornRiflingIII	UI/LvTag/WornRiflingIII	LvTag_Name_WornRiflingIII	LvTag_Desc_WornRiflingIII			False	3	1
+	67	逆风射击	我方远程单位的射程-{0}%	33		LvTag_HeadwindFire	UI/LvTag/HeadwindFire	LvTag_Name_HeadwindFire	LvTag_Desc_HeadwindFire			False	1	1
+	68	旧式装甲	我方单位的护甲-{0}	3		LvTag_LegacyArmor	UI/LvTag/LegacyArmor	LvTag_Name_LegacyArmor	LvTag_Desc_LegacyArmor			False	1	1
+	69	营养不良I	我方单位的生命上限-{0}%	30	9	LvTag_MalnutritionI	UI/LvTag/MalnutritionI	LvTag_Name_MalnutritionI	LvTag_Desc_MalnutritionI			False	1	1
+	70	营养不良II	我方单位的生命上限-{0}%	45	9	LvTag_MalnutritionII	UI/LvTag/MalnutritionII	LvTag_Name_MalnutritionII	LvTag_Desc_MalnutritionII			False	2	1
+	71	营养不良III	我方单位的生命上限-{0}%	60	9	LvTag_MalnutritionIII	UI/LvTag/MalnutritionIII	LvTag_Name_MalnutritionIII	LvTag_Desc_MalnutritionIII			False	3	1
+	72	战意消沉I	我方单位的攻速-{0}	30	10	LvTag_LowMoraleI	UI/LvTag/LowMoraleI	LvTag_Name_LowMoraleI	LvTag_Desc_LowMoraleI			False	1	1
+	73	战意消沉II	我方单位的攻速-{0}	45	10	LvTag_LowMoraleII	UI/LvTag/LowMoraleII	LvTag_Name_LowMoraleII	LvTag_Desc_LowMoraleII			False	2	1
+	74	战意消沉III	我方单位的攻速-{0}	60		LvTag_LowMoraleIII	UI/LvTag/LowMoraleIII	LvTag_Name_LowMoraleIII	LvTag_Desc_LowMoraleIII			False	1	1
+	75	泥泞跋涉	我方单位的移速-{0}	40		LvTag_MuddyMarch	UI/LvTag/MuddyMarch	LvTag_Name_MuddyMarch	LvTag_Desc_MuddyMarch			False	1	1
+	76	浓雾遮蔽	我方单位的视野-{0}	200		LvTag_DenseFog	UI/LvTag/DenseFog	LvTag_Name_DenseFog	LvTag_Desc_DenseFog			False	1	1
+	77	限电时段	我方建筑的攻击-{0}%	40		LvTag_PowerRationing	UI/LvTag/PowerRationing	LvTag_Name_PowerRationing	LvTag_Desc_PowerRationing			False	1	1
+	78	墙皮脱落	我方建筑的护甲-{0}	3		LvTag_PeelingWalls	UI/LvTag/PeelingWalls	LvTag_Name_PeelingWalls	LvTag_Desc_PeelingWalls			False	1	1
+	79	豆腐渣I	我方建筑的生命上限-{0}%	33	11	LvTag_ShoddyConstructionI	UI/LvTag/ShoddyConstructionI	LvTag_Name_ShoddyConstructionI	LvTag_Desc_ShoddyConstructionI			False	1	1
+	80	豆腐渣II	我方建筑的生命上限-{0}%	50	11	LvTag_ShoddyConstructionII	UI/LvTag/ShoddyConstructionII	LvTag_Name_ShoddyConstructionII	LvTag_Desc_ShoddyConstructionII			False	2	1
+	81	残酷心智I	敌方单位的攻击+{0}%	40	12	LvTag_RuthlessMindI	UI/LvTag/RuthlessMindI	LvTag_Name_RuthlessMindI	LvTag_Desc_RuthlessMindI			False	1	1
+	82	残酷心智II	敌方单位的攻击+{0}%	80	12	LvTag_RuthlessMindII	UI/LvTag/RuthlessMindII	LvTag_Name_RuthlessMindII	LvTag_Desc_RuthlessMindII			False	2	1
+	83	残酷心智III	敌方单位的攻击+{0}%	120	12	LvTag_RuthlessMindIII	UI/LvTag/RuthlessMindIII	LvTag_Name_RuthlessMindIII	LvTag_Desc_RuthlessMindIII			False	3	1
+	84	超距压制	敌方远程单位的射程+{0}%	33		LvTag_LongRangeSuppression	UI/LvTag/LongRangeSuppression	LvTag_Name_LongRangeSuppression	LvTag_Desc_LongRangeSuppression			False	1	1
+	85	硬化躯壳I	敌方单位的护甲+{0}	3	13	LvTag_HardenedShellI	UI/LvTag/HardenedShellI	LvTag_Name_HardenedShellI	LvTag_Desc_HardenedShellI			False	1	1
+	86	硬化躯壳II	敌方单位的护甲+{0}	6	13	LvTag_HardenedShellII	UI/LvTag/HardenedShellII	LvTag_Name_HardenedShellII	LvTag_Desc_HardenedShellII			False	2	1
+	87	不灭意志I	敌方单位的生命上限+{0}%	40	14	LvTag_UnyieldingWillI	UI/LvTag/UnyieldingWillI	LvTag_Name_UnyieldingWillI	LvTag_Desc_UnyieldingWillI			False	1	1
+	88	不灭意志II	敌方单位的生命上限+{0}%	80	14	LvTag_UnyieldingWillII	UI/LvTag/UnyieldingWillII	LvTag_Name_UnyieldingWillII	LvTag_Desc_UnyieldingWillII			False	2	1
+	89	不灭意志III	敌方单位的生命上限+{0}%	120	14	LvTag_UnyieldingWillIII	UI/LvTag/UnyieldingWillIII	LvTag_Name_UnyieldingWillIII	LvTag_Desc_UnyieldingWillIII			False	3	1
+	90	狂风骤雨	敌方单位的攻速+{0}	40		LvTag_Stormfront	UI/LvTag/Stormfront	LvTag_Name_Stormfront	LvTag_Desc_Stormfront			False	1	1
+	91	盲目冲锋	敌方单位的移速+{0}	60		LvTag_BlindCharge	UI/LvTag/BlindCharge	LvTag_Name_BlindCharge	LvTag_Desc_BlindCharge			False	1	1
+	92	死角规避I	敌方单位获得{0}%远程减伤	30	15	LvTag_BlindSpotEvasionI	UI/LvTag/BlindSpotEvasionI	LvTag_Name_BlindSpotEvasionI	LvTag_Desc_BlindSpotEvasionI			False	1	1
+	93	死角规避II	敌方单位获得{0}%远程减伤	50	15	LvTag_BlindSpotEvasionII	UI/LvTag/BlindSpotEvasionII	LvTag_Name_BlindSpotEvasionII	LvTag_Desc_BlindSpotEvasionII			False	2	1
+	94	感官钝化I	敌方单位获得{0}%近战减伤	30	16	LvTag_DulledSensesI	UI/LvTag/DulledSensesI	LvTag_Name_DulledSensesI	LvTag_Desc_DulledSensesI			False	1	1
+	95	感官钝化II	敌方单位获得{0}%近战减伤	50	16	LvTag_DulledSensesII	UI/LvTag/DulledSensesII	LvTag_Name_DulledSensesII	LvTag_Desc_DulledSensesII			False	2	1
+	96	死亡哨所I	敌方建筑的攻击+{0}%	40	17	LvTag_DeathOutpostI	UI/LvTag/DeathOutpostI	LvTag_Name_DeathOutpostI	LvTag_Desc_DeathOutpostI			False	1	1
+	97	死亡哨所II	敌方建筑的攻击+{0}%	80	17	LvTag_DeathOutpostII	UI/LvTag/DeathOutpostII	LvTag_Name_DeathOutpostII	LvTag_Desc_DeathOutpostII			False	2	1
+	98	叹息铁壁I	敌方建筑的护甲+{0}	4	18	LvTag_GrievingBulwarkI	UI/LvTag/GrievingBulwarkI	LvTag_Name_GrievingBulwarkI	LvTag_Desc_GrievingBulwarkI			False	1	1
+	99	叹息铁壁II	敌方建筑的护甲+{0}	8	18	LvTag_GrievingBulwarkII	UI/LvTag/GrievingBulwarkII	LvTag_Name_GrievingBulwarkII	LvTag_Desc_GrievingBulwarkII			False	2	1
+	100	根深蒂固	敌方建筑的生命上限+{0}%	50		LvTag_DeepRooted	UI/LvTag/DeepRooted	LvTag_Name_DeepRooted	LvTag_Desc_DeepRooted			False	1	1
+	101	大军压境I	防御阶段敌方的进攻兵力+{0}%	20	19	LvTag_OverwhelmingForceI	UI/LvTag/OverwhelmingForceI	LvTag_Name_OverwhelmingForceI	LvTag_Desc_OverwhelmingForceI			False	1	1
+	102	大军压境II	防御阶段敌方的进攻兵力+{0}%	40	19	LvTag_OverwhelmingForceII	UI/LvTag/OverwhelmingForceII	LvTag_Name_OverwhelmingForceII	LvTag_Desc_OverwhelmingForceII			False	2	1
+	103	神经衰弱	我方单位的状态抗性-{0}%	40		LvTag_Neurasthenia	UI/LvTag/Neurasthenia	LvTag_Name_Neurasthenia	LvTag_Desc_Neurasthenia			False	1	1
+	104	纯粹执念	敌方单位的状态抗性+{0}%	33		LvTag_SingularObsession	UI/LvTag/SingularObsession	LvTag_Name_SingularObsession	LvTag_Desc_SingularObsession			False	1	1
+	105	沉重步伐	敌方单位的重量等级+{0}	1		LvTag_HeavyStride	UI/LvTag/HeavyStride	LvTag_Name_HeavyStride	LvTag_Desc_HeavyStride			False	1	1

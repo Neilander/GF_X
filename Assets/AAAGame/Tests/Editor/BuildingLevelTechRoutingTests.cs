@@ -90,7 +90,7 @@ public sealed class BuildingLevelTechRoutingTests
     {
         foreach (BuildingTable row in LoadBuildingRows())
         {
-            if (row.Identifier.EndsWith("_Lv0", StringComparison.Ordinal) || row.Type == BuilType.Tech)
+            if (row.Identifier.EndsWith("_Lv0", StringComparison.Ordinal))
                 continue;
 
             for (int level = 1; level <= 2; level++)
@@ -134,8 +134,7 @@ public sealed class BuildingLevelTechRoutingTests
 
     private static bool IsDataOnlyBuildingLevelTech(BuilType sourceBuildingType, TechData techData)
     {
-        return sourceBuildingType != BuilType.Tech
-               && techData.ScopeType == TechScopeType.SelfBuil
+        return techData.ScopeType == TechScopeType.SelfBuil
                && (techData.UniqueValues == null || techData.UniqueValues.Length == 0)
                && string.IsNullOrWhiteSpace(techData.SkillID);
     }

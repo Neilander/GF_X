@@ -24,9 +24,6 @@ public class TechManager : GameFrameworkComponent
         if (HasInfoInteraction(owner))
             return true;
 
-        if (owner.BuildingData.Type == BuilType.Tech)
-            return HasResearchTechCandidates(owner);
-
         return HasUpgradeTechCandidates(owner);
     }
 
@@ -53,29 +50,6 @@ public class TechManager : GameFrameworkComponent
                && !LogicTechEffectCommandService.HasPending(techId);
     }
 
-    public bool IsResearchOptionVisible(IBuildingLogicContext owner, string techId)
-    {
-        if (!CanPlayerOperateInBuildPhase(owner))
-            return false;
-
-        if (owner.BuildingData.Type != BuilType.Tech)
-            return false;
-
-        if (HasReachedResearchLimit(owner))
-            return false;
-
-        var techData = TechDataModel.GetTechData(techId);
-        if (techData == null || string.IsNullOrWhiteSpace(techId))
-            return false;
-
-        if (techData.IsStackable)
-            return !InGameDataModel.HasUnlockedTech(techId, owner.BuildingInstanceId)
-                   && !LogicTechEffectCommandService.HasPending(techId, owner.BuildingInstanceId);
-
-        return !InGameDataModel.HasUnlockedTech(techId)
-               && !LogicTechEffectCommandService.HasPending(techId);
-    }
-
     public bool IsUpgradeOptionExecutable(IBuildingLogicContext owner, string upgradeBuildingId, string techId)
     {
         if (HasPendingInteraction(owner))
@@ -86,34 +60,9 @@ public class TechManager : GameFrameworkComponent
             && buildManager.HasBuildCost(upgradeBuildingId, owner);
     }
 
-    public bool IsResearchOptionExecutable(IBuildingLogicContext owner, string techId)
-    {
-        if (HasPendingInteraction(owner))
-            return false;
-        return IsResearchOptionVisible(owner, techId)
-            && SatisfyTechCondition(techId)
-            && HasTechCost(techId);
-    }
-
     public bool IsInfoOptionVisible(IBuildingLogicContext owner)
     {
         return CanPlayerOperateInBuildPhase(owner) && HasInfoInteraction(owner);
-    }
-
-    public KeyValuePair<IngameValueType, int>[] GetTechResourceCosts(string techId)
-    {
-        var techData = TechDataModel.GetTechData(techId);
-        if (techData == null)
-            return null;
-
-        int cost = LevelTagRuntime.ModifyTechCost(techData.Cost);
-        if (cost <= 0)
-            return null;
-
-        return new[]
-        {
-            new KeyValuePair<IngameValueType, int>(IngameValueType.Coin, cost)
-        };
     }
 
     public bool SatisfyUpgradeCondition(IBuildingLogicContext owner, string upgradeBuildingId, string techId)
@@ -182,58 +131,12 @@ public class TechManager : GameFrameworkComponent
         return true;
     }
 
-    public bool ResearchTech(IBuildingLogicContext owner, string techId)
-    {
-        if (!IsResearchOptionExecutable(owner, techId))
-            return false;
-
-        LogicInteractionCommandService.Submit(
-            LogicInteractionActionKind.ResearchTech,
-            owner.LogicEntityId,
-            owner.BuildingInstanceId,
-            techId);
-        return true;
-    }
-
-    internal bool ApplyScheduledResearchTech(IBuildingLogicContext owner, string techId)
-    {
-        EnsureInteractionApplyWindow();
-        if (!IsResearchOptionExecutableForApply(owner, techId))
-            return false;
-
-        var techData = TechDataModel.GetTechData(techId);
-        if (techData == null)
-            return false;
-
-        int techCost = LevelTagRuntime.ModifyTechCost(techData.Cost);
-        if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -techCost, true))
-            return false;
-
-        if (!InGameDataModel.UnlockTechInCurrentInteractionFrame(
-                techId,
-                techData.IsStackable,
-                owner.BuildingInstanceId,
-                owner.OwnerFactionId))
-        {
-            throw new InvalidOperationException($"Research transaction failed to schedule tech '{techId}'.");
-        }
-
-        return true;
-    }
-
     private bool IsUpgradeOptionExecutableForApply(IBuildingLogicContext owner, string upgradeBuildingId, string techId)
     {
         var buildManager = RequireBuildManager();
         return IsUpgradeOptionVisible(owner, upgradeBuildingId, techId)
                && SatisfyUpgradeCondition(owner, upgradeBuildingId, techId)
                && buildManager.HasBuildCost(upgradeBuildingId, owner);
-    }
-
-    private bool IsResearchOptionExecutableForApply(IBuildingLogicContext owner, string techId)
-    {
-        return IsResearchOptionVisible(owner, techId)
-               && SatisfyTechCondition(techId)
-               && HasTechCost(techId);
     }
 
     private static bool HasPendingInteraction(IBuildingLogicContext owner)
@@ -304,85 +207,12 @@ public class TechManager : GameFrameworkComponent
         return false;
     }
 
-    private bool HasResearchTechCandidates(IBuildingLogicContext owner)
-    {
-        if (owner == null || owner.BuildingData == null || owner.BuildingData.UpgradeTechIDs == null)
-            return false;
-
-        for (int i = 0; i < owner.BuildingData.UpgradeTechIDs.Length; i++)
-        {
-            string techId = owner.BuildingData.UpgradeTechIDs[i];
-            if (string.IsNullOrWhiteSpace(techId))
-                continue;
-
-            if (TechDataModel.GetTechData(techId) != null)
-                return true;
-        }
-
-        return false;
-    }
-
     private bool HasInfoInteraction(IBuildingLogicContext owner)
     {
         if (owner == null || owner.BuildingData == null)
             return false;
 
-        BuildingData data = owner.BuildingData;
-        if (data.Lv >= 3)
-            return true;
-
-        if (data.Type != BuilType.Tech || data.Lv <= 0 || string.IsNullOrWhiteSpace(owner.BuildingInstanceId))
-            return false;
-
-        if (data.UpgradeTechIDs == null)
-            return false;
-
-        for (int i = 0; i < data.UpgradeTechIDs.Length; i++)
-        {
-            string techId = data.UpgradeTechIDs[i];
-            if (string.IsNullOrWhiteSpace(techId))
-                continue;
-
-            if (InGameDataModel.HasUnlockedTech(techId, owner.BuildingInstanceId))
-                return HasReachedResearchLimit(owner);
-        }
-
-        return false;
-    }
-
-    private static bool HasReachedResearchLimit(IBuildingLogicContext owner)
-    {
-        return CountResearchedTech(owner) >= GetResearchLimit(owner);
-    }
-
-    private static int GetResearchLimit(IBuildingLogicContext owner)
-    {
-        if (owner?.BuildingData == null || owner.BuildingData.Type != BuilType.Tech)
-            return 1;
-
-        return Math.Max(1, 1 + LevelTagRuntime.GetExtraTechResearchCountPerBuilding());
-    }
-
-    private static int CountResearchedTech(IBuildingLogicContext owner)
-    {
-        if (owner == null || owner.BuildingData == null || string.IsNullOrWhiteSpace(owner.BuildingInstanceId))
-            return 0;
-
-        if (owner.BuildingData.UpgradeTechIDs == null)
-            return 0;
-
-        int count = 0;
-        for (int i = 0; i < owner.BuildingData.UpgradeTechIDs.Length; i++)
-        {
-            string techId = owner.BuildingData.UpgradeTechIDs[i];
-            if (string.IsNullOrWhiteSpace(techId))
-                continue;
-
-            if (InGameDataModel.HasUnlockedTech(techId, owner.BuildingInstanceId))
-                count++;
-        }
-
-        return count;
+        return owner.BuildingData.Lv >= 3;
     }
 
     private bool SatisfyTechCondition(string techId)
@@ -398,12 +228,6 @@ public class TechManager : GameFrameworkComponent
             return !string.IsNullOrWhiteSpace(techData.SkillID);
 
         return techData.IsStackable || !InGameDataModel.HasUnlockedTech(techId);
-    }
-
-    private bool HasTechCost(string techId)
-    {
-        var techData = TechDataModel.GetTechData(techId);
-        return techData != null && InGameDataModel.GetValue(IngameValueType.Coin) >= LevelTagRuntime.ModifyTechCost(techData.Cost);
     }
 
     private static bool CanPlayerOperateInBuildPhase(IBuildingLogicContext owner)

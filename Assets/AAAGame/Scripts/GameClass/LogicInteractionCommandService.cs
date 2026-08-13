@@ -6,7 +6,6 @@ public enum LogicInteractionActionKind
 {
     ConstructBuilding = 0,
     UpgradeBuilding = 1,
-    ResearchTech = 2,
     RecycleBuilding = 3,
 }
 

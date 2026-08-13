@@ -45,8 +45,7 @@ public static class BuildingLevelTechRouting
             return BuildingLevelTechRoute.ArmyUnitLevelSystem;
 
         bool hasRuntimeValues = techData.UniqueValues != null && techData.UniqueValues.Length > 0;
-        bool isDataOnlyLevelTech = sourceBuildingType != BuilType.Tech
-                                   && techData.ScopeType == TechScopeType.SelfBuil
+        bool isDataOnlyLevelTech = techData.ScopeType == TechScopeType.SelfBuil
                                    && !hasRuntimeValues
                                    && string.IsNullOrWhiteSpace(techData.SkillID);
         return isDataOnlyLevelTech

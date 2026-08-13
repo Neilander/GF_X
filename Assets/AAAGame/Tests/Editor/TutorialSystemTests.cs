@@ -118,11 +118,31 @@ public sealed class TutorialSystemTests
         Assert.IsTrue(TutorialManager.IsConstructTypeAllowed(TutorialStage.BuildMilitaryAndDefense, BuilType.Def));
         Assert.IsFalse(TutorialManager.IsConstructTypeAllowed(TutorialStage.BuildMilitaryAndDefense, BuilType.Prod));
         Assert.IsTrue(TutorialManager.IsConstructTypeAllowed(TutorialStage.BuildProductionAndResearch, BuilType.Prod));
-        Assert.IsTrue(TutorialManager.IsConstructTypeAllowed(TutorialStage.BuildProductionAndResearch, BuilType.Tech));
         Assert.IsFalse(TutorialManager.IsConstructTypeAllowed(TutorialStage.UpgradeCore, BuilType.Army));
 
         Assert.IsTrue(TutorialManager.IsDefendPreviewAllowedStage(TutorialStage.AwaitDefensePhase));
         Assert.IsFalse(TutorialManager.IsDefendPreviewAllowedStage(TutorialStage.BuildProductionAndResearch));
+    }
+
+    [Test]
+    public void TutorialInvade_OnlyCodingStrongholdMayRespond()
+    {
+        Assert.IsTrue(TutorialManager.IsInvadeStrongholdResponseAllowed(
+            TutorialStage.AwaitInvadePhase,
+            "coding",
+            "coding"));
+        Assert.IsFalse(TutorialManager.IsInvadeStrongholdResponseAllowed(
+            TutorialStage.CaptureEnemyStronghold,
+            "coding",
+            "other"));
+        Assert.IsFalse(TutorialManager.IsInvadeStrongholdResponseAllowed(
+            TutorialStage.AwaitCapturedBuildPhase,
+            "coding",
+            "other"));
+        Assert.IsTrue(TutorialManager.IsInvadeStrongholdResponseAllowed(
+            TutorialStage.BuildProductionAndResearch,
+            null,
+            "other"));
     }
 
     [Test]

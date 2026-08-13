@@ -400,19 +400,19 @@ public class LogicGameplayStateHasherTests
     {
         BeginAndRunEmptyFrame();
 
-        RegisterBuildingTechStaticRules(false, 6);
+        RegisterBuildingTechStaticRules(false, 5);
         ulong forward = LogicGameplayStateHasher.ComputeCurrentFrame();
 
         ClearBuildingTechStaticRules();
-        RegisterBuildingTechStaticRules(true, 6);
+        RegisterBuildingTechStaticRules(true, 5);
         ulong reverse = LogicGameplayStateHasher.ComputeCurrentFrame();
         Assert.AreEqual(forward, reverse);
 
         ClearBuildingTechStaticRules();
-        RegisterBuildingTechStaticRules(false, 7);
+        RegisterBuildingTechStaticRules(false, 6);
         ulong changed = LogicGameplayStateHasher.ComputeCurrentFrame();
         Assert.AreNotEqual(forward, changed,
-            "BuildingTech 静态规则会改变未来经济、出兵和目标选择结果，必须进入 Gameplay FullHash。");
+            "BuildingTech 静态规则会改变未来建筑费用，必须进入 Gameplay FullHash。");
     }
 
     [Test]
@@ -477,37 +477,23 @@ public class LogicGameplayStateHasherTests
         return LogicGameplayStateHasher.ComputeCurrentFrame();
     }
 
-    private static void RegisterBuildingTechStaticRules(bool reverse, int settlementOffset)
+    private static void RegisterBuildingTechStaticRules(bool reverse, int discount)
     {
-        string first = reverse ? "tech-b" : "tech-a";
-        string second = reverse ? "tech-a" : "tech-b";
-        DiscardRewardModifierService.RegisterRateReduction(first, 1, reverse ? 3 : 2);
-        DiscardRewardModifierService.RegisterRateReduction(second, 1, reverse ? 2 : 3);
-        EnemyArmyForceModifierService.RegisterReduction(first, 1, reverse ? (Fix64)9 : (Fix64)7);
-        EnemyArmyForceModifierService.RegisterReduction(second, 1, reverse ? (Fix64)7 : (Fix64)9);
-        HealingTargetFilterService.RegisterNurseHealthThreshold(first, 1, reverse ? (Fix64)60 : (Fix64)40);
-        HealingTargetFilterService.RegisterNurseHealthThreshold(second, 1, reverse ? (Fix64)40 : (Fix64)60);
         if (reverse)
         {
-            BuildingCostModifierService.RegisterStrongholdArchetypeDiscount("stronghold-a", "tech-b", 1, 5);
+            BuildingCostModifierService.RegisterStrongholdArchetypeDiscount("stronghold-a", "tech-b", 1, discount);
             BuildingCostModifierService.RegisterStrongholdArchetypeDiscount("stronghold-b", "tech-a", 1, 4);
         }
         else
         {
             BuildingCostModifierService.RegisterStrongholdArchetypeDiscount("stronghold-b", "tech-a", 1, 4);
-            BuildingCostModifierService.RegisterStrongholdArchetypeDiscount("stronghold-a", "tech-b", 1, 5);
+            BuildingCostModifierService.RegisterStrongholdArchetypeDiscount("stronghold-a", "tech-b", 1, discount);
         }
-        SettlementOffsetRateService.RegisterOffsetRate(first, 1, reverse ? 8 : settlementOffset);
-        SettlementOffsetRateService.RegisterOffsetRate(second, 1, reverse ? settlementOffset : 8);
     }
 
     private static void ClearBuildingTechStaticRules()
     {
-        DiscardRewardModifierService.Clear();
-        EnemyArmyForceModifierService.Clear();
-        HealingTargetFilterService.Clear();
         BuildingCostModifierService.Clear();
-        SettlementOffsetRateService.Clear();
     }
 
     private static ulong RunPendingSpawnAndHash(int viewEntityId)

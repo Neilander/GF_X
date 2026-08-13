@@ -37,9 +37,10 @@ public sealed class LogicInteractionCommandServiceTests
             "building-a",
             "Building_Barracks_Lv1");
         LogicInteractionCommand second = LogicInteractionCommandService.ScheduleForNextFrame(
-            LogicInteractionActionKind.ResearchTech,
+            LogicInteractionActionKind.UpgradeBuilding,
             new LogicEntityId(20),
             "building-b",
+            "Building_Barracks_Lv2",
             "Tech_A");
         var applied = new List<LogicInteractionCommand>();
 
@@ -129,9 +130,10 @@ public sealed class LogicInteractionCommandServiceTests
     {
         LogicEntityId target = new LogicEntityId(10);
         LogicInteractionCommandService.ScheduleForNextFrame(
-            LogicInteractionActionKind.ResearchTech,
+            LogicInteractionActionKind.UpgradeBuilding,
             target,
             "building-a",
+            "Building_Barracks_Lv2",
             "Tech_A");
 
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
