@@ -114,18 +114,49 @@ public partial class BuildingInfoTips : UIFormBase
         switch (building.buildingData.Type)
         {
             case BuilType.Base:
-                SpawnProperty(root, SupplyIconPath, "+30");
+                SpawnProperty(root, SupplyIconPath, BuildingPanelPresentation.GetBaseSupplyText(building.buildingData));
                 break;
 
             case BuilType.Prod:
-                SpawnProperty(root, CoinIconPath, FormatSigned(building.GetProduction()));
+                SpawnProperty(
+                    root,
+                    CoinIconPath,
+                    BuildingPanelPresentation.GetProductionText(building.buildingData, building));
                 break;
 
             case BuilType.Army:
-                SpawnProperty(root, SupplyIconPath, building.GetArmySupplyPerUnit().ToString());
-                SpawnProperty(root, ForceIconPath, building.GetArmyForce().ToString());
+                SpawnProperty(
+                    root,
+                    SupplyIconPath,
+                    BuildingPanelPresentation.GetArmySupplyText(building.buildingData, building));
+                SpawnProperty(
+                    root,
+                    ForceIconPath,
+                    BuildingPanelPresentation.GetArmyForceText(building.buildingData, building));
                 break;
         }
+
+        var stats = new List<BuildingPanelStat>();
+        BuildingPanelPresentation.CollectBuildingCombatStats(building.buildingData, building, stats);
+        BuildingPanelPresentation.CollectUnitStats(building.buildingData, stats);
+        List<SelectedUpgradeInfo> selected = CollectSelectedUpgrades(building);
+        var displayedSkillIds = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < selected.Count; i++)
+        {
+            TechData tech = selected[i].TechData;
+            if (tech?.ScopeType != TechScopeType.Skill)
+                continue;
+            if (!displayedSkillIds.Add(tech.SkillID))
+                continue;
+            int level = SkillRuntimeDataModel.GetLevel(tech.SkillID);
+            if (level <= 0)
+                throw new InvalidOperationException($"Selected skill tech has no unlocked skill. tech={tech.Identifier}, skill={tech.SkillID}");
+            SkillData skill = SkillDataModel.GetSkillData(tech.SkillID)
+                              ?? throw new InvalidOperationException($"Selected skill tech is missing skill data. skill={tech.SkillID}");
+            BuildingPanelPresentation.CollectSkillStats(skill, level, stats);
+        }
+        for (int i = 0; i < stats.Count; i++)
+            SpawnGlyphProperty(root, stats[i]);
     }
 
     private void SpawnProperty(Transform root, string iconPath, string numberText)
@@ -138,6 +169,18 @@ public partial class BuildingInfoTips : UIFormBase
             return;
 
         iconNum.SetData(iconPath, numberText);
+    }
+
+    private void SpawnGlyphProperty(Transform root, BuildingPanelStat stat)
+    {
+        if (root == null || m_IconNumTemplate == null)
+            return;
+
+        IconNumItem iconNum = SpawnItem<UIItemObject>(m_IconNumTemplate, root).itemLogic as IconNumItem;
+        if (iconNum == null)
+            return;
+
+        iconNum.SetGlyphData(stat.Glyph, stat.Value);
     }
 
     private void PopulateCoinReserves(BuildingInfoItem item, BuildingEntity building)
@@ -173,7 +216,7 @@ public partial class BuildingInfoTips : UIFormBase
         BuildingData data = building.buildingData;
         // Name 作为标题展示，不走富文本；描述默认走富文本规则。
         name = LocalizationTextManager.GetLocalizedText(data.NameKey, false);
-        desc = data.GetFormattedDesc();
+        desc = BuildingPanelPresentation.GetDescription(data);
 
         List<SelectedUpgradeInfo> selected = CollectSelectedUpgrades(building);
         if (selected.Count <= 0)
@@ -185,10 +228,13 @@ public partial class BuildingInfoTips : UIFormBase
 
         name += "-" + markBuilder;
 
+        var displayedSkillIds = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < selected.Count; i++)
         {
             TechData techData = selected[i].TechData;
             if (techData == null)
+                continue;
+            if (techData.ScopeType == TechScopeType.Skill && !displayedSkillIds.Add(techData.SkillID))
                 continue;
 
             string optionDesc = techData.GetFormattedDesc();

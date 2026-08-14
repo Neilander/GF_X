@@ -13,35 +13,25 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
         public bool RegisterUnitBuffsAfterActivate;
         public Func<TechData, string, List<BuffCallback>> CreateUnitModules;
         public Func<TechData, string, List<BuffCallback>> CreateBuildingModules;
-        public bool ChangesBuildingCost;
         public string SkipReason;
     }
 
     private static readonly Dictionary<string, RuntimeTechRule> s_Rules = CreateRules();
 
-    private readonly Dictionary<string, SortingCenterCardForceSpec> m_SortingCenterCardForceSpecs = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, FireHqDeathSupplySpec> m_FireHqDeathSupplySpecs = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ResearchCenterCardForceSpec> m_ResearchCenterCardForceSpecs = new(StringComparer.Ordinal);
     private readonly Dictionary<int, int> m_BattleCardCountsByFaction = new();
-    private readonly Dictionary<int, int> m_DeadSupplyByFaction = new();
     private readonly List<string> m_DeterministicStringKeys = new();
     private readonly List<int> m_DeterministicIntKeys = new();
     private static readonly Comparison<int> s_IntComparison =
         (left, right) => left.CompareTo(right);
     private static readonly Comparison<string> s_StringComparison = string.CompareOrdinal;
     private bool m_EventsSubscribed;
-    private struct SortingCenterCardForceSpec
+    private struct ResearchCenterCardForceSpec
     {
         public string TechId;
         public int OwnerFactionId;
         public int CardLimit;
         public Fix64 BonusForce;
-    }
-
-    private struct FireHqDeathSupplySpec
-    {
-        public string TechId;
-        public int OwnerFactionId;
-        public int SupplyPerCoin;
     }
 
     public bool CanHandle(TechData techData)
@@ -57,18 +47,14 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
 
     public static bool ChangesBuildingCost(string techId)
     {
-        return !string.IsNullOrWhiteSpace(techId)
-               && s_Rules.TryGetValue(GetRootTechId(techId), out RuntimeTechRule rule)
-               && rule.ChangesBuildingCost;
+        return false;
     }
 
     public void ClearRuntimeState()
     {
         UnsubscribeRuntimeEvents();
-        m_SortingCenterCardForceSpecs.Clear();
-        m_FireHqDeathSupplySpecs.Clear();
+        m_ResearchCenterCardForceSpecs.Clear();
         m_BattleCardCountsByFaction.Clear();
-        m_DeadSupplyByFaction.Clear();
     }
 
     public void WriteDeterministicState(LogicStateHasher hasher)
@@ -78,10 +64,8 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
 
         hasher.Add(0x425452554E54494DUL);
         hasher.Add(m_EventsSubscribed);
-        AddSortingCenterSpecs(hasher);
-        AddFireHqSpecs(hasher);
+        AddResearchCenterSpecs(hasher);
         AddIntDictionary(hasher, m_BattleCardCountsByFaction);
-        AddIntDictionary(hasher, m_DeadSupplyByFaction);
     }
 
     public static void WriteStaticModifierDeterministicState(LogicStateHasher hasher)
@@ -93,32 +77,18 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
         BuildingCostModifierService.WriteDeterministicState(hasher);
     }
 
-    private void AddSortingCenterSpecs(LogicStateHasher hasher)
+    private void AddResearchCenterSpecs(LogicStateHasher hasher)
     {
-        FillSortedStringKeys(m_SortingCenterCardForceSpecs);
+        FillSortedStringKeys(m_ResearchCenterCardForceSpecs);
         hasher.Add(m_DeterministicStringKeys.Count);
         for (int i = 0; i < m_DeterministicStringKeys.Count; i++)
         {
             string key = m_DeterministicStringKeys[i];
-            SortingCenterCardForceSpec spec = m_SortingCenterCardForceSpecs[key];
+            ResearchCenterCardForceSpec spec = m_ResearchCenterCardForceSpecs[key];
             hasher.Add(key);
             hasher.Add(spec.OwnerFactionId);
             hasher.Add(spec.CardLimit);
             hasher.Add(spec.BonusForce.RawValue);
-        }
-    }
-
-    private void AddFireHqSpecs(LogicStateHasher hasher)
-    {
-        FillSortedStringKeys(m_FireHqDeathSupplySpecs);
-        hasher.Add(m_DeterministicStringKeys.Count);
-        for (int i = 0; i < m_DeterministicStringKeys.Count; i++)
-        {
-            string key = m_DeterministicStringKeys[i];
-            FireHqDeathSupplySpec spec = m_FireHqDeathSupplySpecs[key];
-            hasher.Add(key);
-            hasher.Add(spec.OwnerFactionId);
-            hasher.Add(spec.SupplyPerCoin);
         }
     }
 
@@ -232,44 +202,59 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
         var rules = new Dictionary<string, RuntimeTechRule>(StringComparer.Ordinal);
 
         AddActivation(rules, "Tech_Buil_ResearchCenter_Lv2_Opt2",
-            (self, context) => self.RegisterStrongholdCostDiscount(context, (int)GetValue(context.TechData, 0)),
-            changesBuildingCost: true);
+            (self, context) => self.RegisterBattleCardForceBonus(
+                context,
+                (int)GetValue(context.TechData, 0),
+                GetValue(context.TechData, 1)));
         AddActivation(rules, "Tech_Buil_ResearchCenter_Lv3_Opt2",
-            (self, context) => self.ApplyArmyForceInStrongholdsWithArchetype(context, Archetype.Coding, GetValue(context.TechData, 0)));
+            (self, context) => self.ApplyArmyForceToUnitSize(
+                context,
+                UnitSize.Small,
+                GetValue(context.TechData, 0)));
 
         AddUnit(rules, "Tech_Buil_DreamPark_Lv2_Opt2",
             (techData, _) => Modules(new ConditionalCoinAttackSpeedBuff((int)GetValue(techData, 0), GetValue(techData, 1))));
         AddUnit(rules, "Tech_Buil_DreamPark_Lv3_Opt2",
-            (techData, _) => Modules(new OutgoingAttackDebuffBuff(-GetValue(techData, 1), GetValue(techData, 0))));
+            (techData, _) => Modules(new HighHealthAttackSpeedBuff(
+                GetValue(techData, 0),
+                GetValue(techData, 1))));
 
         AddUnit(rules, "Tech_Buil_SortingCenter_Lv2_Opt2",
             (techData, _) => Modules(new TimedBuffOnSpawnModule(GetValue(techData, 0), () => Modules(
                 new MainPropertyPercentBuff(CreatureMainProperty.Speed, GetValue(techData, 1)),
-                new MainPropertyAdditiveBuff(CreatureMainProperty.Def, GetValue(techData, 2))))));
-        AddActivation(rules, "Tech_Buil_SortingCenter_Lv3_Opt2",
-            (self, context) => self.RegisterBattleCardForceBonus(context, (int)GetValue(context.TechData, 0), GetValue(context.TechData, 1)));
+                new WeaponTypeIncomingDamageReductionBuff(GetValue(techData, 2), true)))));
+        AddUnit(rules, "Tech_Buil_SortingCenter_Lv3_Opt2",
+            (techData, _) => Modules(
+                new FlatAttackBonusBuff(GetValue(techData, 0)),
+                new MainPropertyPercentBuff(CreatureMainProperty.Speed, GetValue(techData, 1))));
 
-        AddActivation(rules, "Tech_Buil_FarmBase_Lv2_Opt2",
-            (self, context) => self.AddMaxSupply(context, GetValue(context.TechData, 0)), registerUnitBuffsAfterActivate: true);
         AddUnit(rules, "Tech_Buil_FarmBase_Lv2_Opt2",
-            (techData, _) => Modules(new MainPropertyAdditiveBuff(CreatureMainProperty.Def, -GetValue(techData, 1))));
-        AddUnit(rules, "Tech_Buil_FarmBase_Lv3_Opt2",
-            (techData, _) => Modules(new ConditionalLowHpDamageBonusBuff(GetValue(techData, 0), GetValue(techData, 1))));
+            (techData, _) => Modules(new MainPropertyPercentBuff(
+                CreatureMainProperty.Health,
+                GetValue(techData, 0))));
+        AddActivation(rules, "Tech_Buil_FarmBase_Lv3_Opt2",
+            (self, context) => self.AddMaxSupply(context, GetValue(context.TechData, 0)));
 
-        AddActivation(rules, "Tech_Buil_FireHQ_Lv2_Opt2",
-            (self, context) => self.RegisterBattleDeathSupplyCoin(context, (int)GetValue(context.TechData, 0)));
-        AddUnit(rules, "Tech_Buil_FireHQ_Lv3_Opt2",
-            (techData, _) => Modules(new ExtraHitFlatDamageBuff((int)GetValue(techData, 0), GetValue(techData, 1))));
+        AddUnit(rules, "Tech_Buil_FireHQ_Lv2_Opt2",
+            (techData, _) => Modules(new WeaponTypeIncomingDamageReductionBuff(
+                GetValue(techData, 0),
+                false)));
+        AddSelfBuilding(rules, "Tech_Buil_FireHQ_Lv3_Opt2",
+            techData => Modules(new EnemyStrongholdEntryDamageBuff(GetValue(techData, 0))));
 
         AddUnit(rules, "Tech_Buil_SecurityOffice_Lv2_Opt2",
-            (techData, _) => Modules(new MeleeVsRangedDamageBonusBuff(GetValue(techData, 0))));
+            (techData, _) => Modules(new MainPropertyAdditiveBuff(
+                CreatureMainProperty.Def,
+                GetValue(techData, 0))));
         AddUnit(rules, "Tech_Buil_SecurityOffice_Lv3_Opt2",
-            (techData, _) => Modules(new ConsecutiveSameTargetBonusDamageBuff((int)GetValue(techData, 0), GetValue(techData, 1))));
+            (techData, _) => Modules(new RangedFlatReflectDamageBuff(GetValue(techData, 0))));
 
         AddUnit(rules, "Tech_Buil_WildernessCamp_Lv2_Opt2",
-            (techData, _) => Modules(new StationaryAttackPercentBuff(GetValue(techData, 0), GetValue(techData, 1))));
+            (techData, _) => Modules(new ArmorIgnorePercentBuff(GetValue(techData, 0))));
         AddUnit(rules, "Tech_Buil_WildernessCamp_Lv3_Opt2",
-            (techData, _) => Modules(new IdleNextAttackCriticalBuff(GetValue(techData, 0))));
+            (techData, _) => Modules(
+                new RangeBonusBuff(GetValue(techData, 0)),
+                new AttackSpeedBonusBuff(-GetValue(techData, 1))));
 
         AddActivation(rules, "Tech_Buil_GreenhouseGarden_Lv3_Opt2",
             (self, context) => self.RegisterArmyBuffInStrongholdsWithDifferentArmyArchetypes(context));
@@ -291,22 +276,14 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
                 new AttackSpeedBonusBuff(GetValue(techData, 2)),
                 new HealthDrainOverTimeBuff(GetValue(techData, 3))))));
 
-        AddSelfBuilding(rules, "Tech_Buil_Monitor_Lv2",
-            techData => Modules(new BlindChanceBonusBuff(GetValue(techData, 0))));
-        AddSelfBuilding(rules, "Tech_Buil_Restroom_Lv2",
-            techData => Modules(new RestroomQueueModifierBuff((int)GetValue(techData, 0), GetValue(techData, 1))));
-        AddSelfBuilding(rules, "Tech_Buil_Restroom_Lv3",
-            techData => Modules(new RestroomQueueModifierBuff((int)GetValue(techData, 0), GetValue(techData, 1))));
-        AddSelfBuilding(rules, "Tech_Buil_SortingTable_Lv2",
-            techData => Modules(new AttackSpeedBonusBuff(GetValue(techData, 0))));
-        AddSelfBuilding(rules, "Tech_Buil_SortingTable_Lv3",
-            techData => Modules(new KnockbackOnOutgoingDamageBuff(GetValue(techData, 0))));
+        AddSelfBuilding(rules, "Tech_Buil_ThemeStatue_Lv3",
+            techData => Modules(new BlindSpotRangeBuff(-GetValue(techData, 0))));
+        AddSelfBuilding(rules, "Tech_Buil_SupplyStation_Lv2",
+            techData => Modules(new PercentDamageReductionBuff(GetValue(techData, 0))));
+        AddSelfBuilding(rules, "Tech_Buil_SupplyStation_Lv3",
+            techData => Modules(new PercentDamageReductionBuff(GetValue(techData, 0))));
         AddSelfBuilding(rules, "Tech_Buil_MeatRack_Lv3",
             techData => Modules(new PullOnOutgoingDamageBuff(GetValue(techData, 0))));
-        AddSelfBuilding(rules, "Tech_Buil_SprinklerHead_Lv2",
-            techData => Modules(new AttackSpeedBonusBuff(GetValue(techData, 0))));
-        AddSelfBuilding(rules, "Tech_Buil_SprinklerHead_Lv3",
-            techData => Modules(new AttackSpeedBonusBuff(GetValue(techData, 0))));
         AddSelfBuilding(rules, "Tech_Buil_Bollard_Lv3",
             techData => Modules(CreateTauntModule((int)GetValue(techData, 0))));
         AddSelfBuilding(rules, "Tech_Buil_RoseBush_Lv2",
@@ -346,13 +323,11 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
         Dictionary<string, RuntimeTechRule> rules,
         string techId,
         Action<BuildingTechRuntimeEffect, TechEffectContext> action,
-        bool registerUnitBuffsAfterActivate = false,
-        bool changesBuildingCost = false)
+        bool registerUnitBuffsAfterActivate = false)
     {
         RuntimeTechRule rule = GetOrCreateRule(rules, techId);
         rule.Activate = action;
         rule.RegisterUnitBuffsAfterActivate = registerUnitBuffsAfterActivate;
-        rule.ChangesBuildingCost = changesBuildingCost;
     }
 
     private static void AddUnit(
@@ -434,7 +409,6 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
 
         LogicCardCommandService.CardResolved += OnLogicCardResolved;
         LogicPhaseCommandService.PhaseApplied += OnLogicPhaseApplied;
-        LogicUnitDeathEventService.UnitDied += OnLogicUnitDied;
         m_EventsSubscribed = true;
     }
 
@@ -445,7 +419,6 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
 
         LogicCardCommandService.CardResolved -= OnLogicCardResolved;
         LogicPhaseCommandService.PhaseApplied -= OnLogicPhaseApplied;
-        LogicUnitDeathEventService.UnitDied -= OnLogicUnitDied;
         m_EventsSubscribed = false;
     }
 
@@ -459,7 +432,7 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
         if (!LogicCardCommandService.IsApplyingFrame)
             throw new InvalidOperationException("Building tech received a card resolution outside the logic card apply window.");
 
-        if (resolution.Kind != LogicCardCommandKind.Play || m_SortingCenterCardForceSpecs.Count == 0)
+        if (resolution.Kind != LogicCardCommandKind.Play || m_ResearchCenterCardForceSpecs.Count == 0)
             return;
 
         string sourceBuildingInstanceId = resolution.SourceBuildingInstanceId;
@@ -474,28 +447,6 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
         m_BattleCardCountsByFaction[sourceBuilding.OwnerFactionId] = checked(currentCount + 1);
     }
 
-    private void OnLogicUnitDied(IEntityContext victim)
-    {
-        if (m_FireHqDeathSupplySpecs.Count == 0)
-            return;
-        if (!LogicDamageEventService.IsApplying)
-            throw new InvalidOperationException("Building tech received a unit death outside the logic damage apply window.");
-        if (victim == null)
-            throw new ArgumentNullException(nameof(victim));
-
-        int ownerFactionId = EntitySideHelper.ToFactionId(victim.Side);
-        if (ownerFactionId < 0)
-            return;
-
-        GamePhase phase = LogicPhaseCommandService.GetRequiredCurrentPhase();
-        if (phase != GamePhase.Invade && phase != GamePhase.Defend)
-            return;
-
-        int victimSupply = victim.CharacterData != null ? Math.Max(0, victim.CharacterData.Supply) : 0;
-        m_DeadSupplyByFaction.TryGetValue(ownerFactionId, out int current);
-        m_DeadSupplyByFaction[ownerFactionId] = checked(current + victimSupply);
-    }
-
     private void OnLogicPhaseApplied(GamePhase oldPhase, GamePhase newPhase)
     {
         if (!LogicPhaseCommandService.IsApplyingFrame)
@@ -504,10 +455,6 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
         if (newPhase == GamePhase.Invade || newPhase == GamePhase.Defend)
             ResetBattleCardCounts();
 
-        if (!InGameDataModel.IsBuildPhase(newPhase))
-            return;
-
-        GrantFireHqDeathSupplyCoins();
     }
 
     private void RegisterBattleCardForceBonus(TechEffectContext context, int cardLimit, Fix64 bonusForce)
@@ -516,7 +463,7 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
             return;
 
         EnsureEventSubscriptions();
-        m_SortingCenterCardForceSpecs[context.TechId] = new SortingCenterCardForceSpec
+        m_ResearchCenterCardForceSpecs[context.TechId] = new ResearchCenterCardForceSpec
         {
             TechId = context.TechId,
             OwnerFactionId = context.OwnerFactionId,
@@ -538,46 +485,6 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
             });
     }
 
-    private void RegisterBattleDeathSupplyCoin(TechEffectContext context, int supplyPerCoin)
-    {
-        if (supplyPerCoin <= 0)
-            return;
-
-        EnsureEventSubscriptions();
-        m_FireHqDeathSupplySpecs[context.TechId] = new FireHqDeathSupplySpec
-        {
-            TechId = context.TechId,
-            OwnerFactionId = context.OwnerFactionId,
-            SupplyPerCoin = supplyPerCoin,
-        };
-    }
-
-    private void GrantFireHqDeathSupplyCoins()
-    {
-        if (m_FireHqDeathSupplySpecs.Count == 0 || m_DeadSupplyByFaction.Count == 0)
-        {
-            m_DeadSupplyByFaction.Clear();
-            return;
-        }
-
-        foreach (FireHqDeathSupplySpec spec in m_FireHqDeathSupplySpecs.Values)
-        {
-            if (spec.OwnerFactionId != EntitySideHelper.PlayerFactionId || spec.SupplyPerCoin <= 0)
-                continue;
-
-            m_DeadSupplyByFaction.TryGetValue(spec.OwnerFactionId, out int deadSupply);
-            int coin = deadSupply / spec.SupplyPerCoin;
-            if (coin > 0)
-                if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, coin, true))
-                {
-                    throw new InvalidOperationException(
-                        $"Fire HQ death coin reward could not be committed. faction={spec.OwnerFactionId}, amount={coin}.");
-                }
-        }
-
-        m_DeadSupplyByFaction.Clear();
-    }
-
     private void ResetBattleCardCounts()
     {
         m_BattleCardCountsByFaction.Clear();
@@ -596,7 +503,10 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
             createModules);
     }
 
-    private void ApplyArmyForceInStrongholdsWithArchetype(TechEffectContext context, Archetype archetype, Fix64 bonusForce)
+    private void ApplyArmyForceToUnitSize(
+        TechEffectContext context,
+        UnitSize unitSize,
+        Fix64 bonusForce)
     {
         if (bonusForce == Fix64.Zero)
             return;
@@ -606,27 +516,9 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
             context.SourceBuildingInstanceId,
             context.TechId,
             building => IsArmyBuilding(building)
-                        && LogicBuildingQueryService.HasBuildingArchetype(building, archetype)
+                        && ArmyBuildingUnitHasSize(building, unitSize)
                 ? bonusForce
                 : Fix64.Zero);
-    }
-
-    private void RegisterStrongholdCostDiscount(TechEffectContext context, int discountPerArchetype)
-    {
-        if (discountPerArchetype <= 0)
-            return;
-
-        IBuildingLogicContext sourceBuilding = LogicBuildingQueryService.GetRequiredByInstanceId(
-            context.SourceBuildingInstanceId);
-        if (string.IsNullOrWhiteSpace(sourceBuilding.StrongholdId))
-            throw new InvalidOperationException(
-                $"Research center cost discount source has no stronghold. techId={context.TechId}, buildingInstanceId={context.SourceBuildingInstanceId}.");
-
-        BuildingCostModifierService.RegisterStrongholdArchetypeDiscount(
-            sourceBuilding.StrongholdId,
-            context.TechId,
-            context.OwnerFactionId,
-            discountPerArchetype);
     }
 
     private void RegisterArmyBuffInStrongholdsWithDifferentArmyArchetypes(TechEffectContext context)
@@ -653,6 +545,15 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
 
         CharacterDataDetail row = FindCharacterData(building.BuildingData.UnitID);
         return HasTag(row?.UnitTags, tag);
+    }
+
+    private static bool ArmyBuildingUnitHasSize(IBuildingLogicContext building, UnitSize size)
+    {
+        if (!IsArmyBuilding(building) || string.IsNullOrWhiteSpace(building.BuildingData.UnitID))
+            return false;
+
+        CharacterDataDetail row = FindCharacterData(building.BuildingData.UnitID);
+        return row != null && row.Size == size;
     }
 
     private static CharacterDataDetail FindCharacterData(string characterKey)
@@ -700,6 +601,190 @@ public sealed class BuildingTechRuntimeEffect : ITechEffectRuntime
 
         int index = techId.IndexOf('|');
         return index >= 0 ? techId.Substring(0, index) : techId;
+    }
+}
+
+public sealed class HighHealthAttackSpeedBuff : BuffCallback, ILogicDeterministicStateContributor
+{
+    private readonly Fix64 m_HealthThresholdPercent;
+    private readonly Fix64 m_AttackSpeedPercent;
+    private bool m_Applied;
+    private Fix64 m_Factor = Fix64.One;
+
+    public HighHealthAttackSpeedBuff(Fix64 healthThresholdPercent, Fix64 attackSpeedPercent)
+    {
+        m_HealthThresholdPercent = healthThresholdPercent;
+        m_AttackSpeedPercent = attackSpeedPercent;
+    }
+
+    public override void OnUpdate(Fix64 deltaTime)
+    {
+        if (hostEntity == null)
+            throw new InvalidOperationException("HighHealthAttackSpeedBuff is not initialized.");
+
+        if (hostEntity.HealthRatioFixed() * (Fix64)100 >= m_HealthThresholdPercent)
+            Apply();
+        else
+            Remove();
+    }
+
+    public override void OnRemove()
+    {
+        Remove();
+    }
+
+    private void Apply()
+    {
+        if (m_Applied || m_AttackSpeedPercent == Fix64.Zero)
+            return;
+        Weapon weapon = hostEntity.WeaponComp?.Data;
+        if (weapon == null)
+            return;
+
+        m_Factor = Fix64.One / (Fix64.One + m_AttackSpeedPercent / (Fix64)100);
+        weapon.ApplyMultiplier(WeaponStatId.Interval, m_Factor);
+        m_Applied = true;
+    }
+
+    private void Remove()
+    {
+        if (!m_Applied)
+            return;
+        Weapon weapon = hostEntity?.WeaponComp?.Data;
+        if (weapon != null && m_Factor != Fix64.Zero)
+            weapon.ApplyMultiplier(WeaponStatId.Interval, Fix64.One / m_Factor);
+        m_Applied = false;
+        m_Factor = Fix64.One;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Applied);
+        hasher.Add(m_Factor.RawValue);
+    }
+}
+
+public sealed class ArmorIgnorePercentBuff : BuffCallback
+{
+    private readonly Fix64 m_IgnorePercent;
+
+    public ArmorIgnorePercentBuff(Fix64 ignorePercent)
+    {
+        m_IgnorePercent = ignorePercent;
+    }
+
+    public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
+    {
+        if (m_IgnorePercent <= Fix64.Zero || target is not IEntityContext entity)
+            return baseDamage;
+        Fix64 armor = entity.CreatureProperties?.GetProperty(CreatureMainProperty.Def) ?? Fix64.Zero;
+        return baseDamage + Fix64.Max(Fix64.Zero, armor) * m_IgnorePercent / (Fix64)100;
+    }
+}
+
+public sealed class RangedFlatReflectDamageBuff : BuffCallback
+{
+    private readonly Fix64 m_ReflectDamage;
+    private bool m_Reflecting;
+
+    public RangedFlatReflectDamageBuff(Fix64 reflectDamage)
+    {
+        m_ReflectDamage = reflectDamage;
+    }
+
+    public override Fix64 ModifyIncomingDamage(
+        IEntityContext attacker,
+        Fix64 baseDamage,
+        HealthModifyType modType)
+    {
+        if (m_Reflecting
+            || modType != HealthModifyType.reduce
+            || baseDamage <= Fix64.Zero
+            || m_ReflectDamage <= Fix64.Zero
+            || attacker?.WeaponComp?.Data == null
+            || !IsRangedWeapon(attacker.WeaponComp.Data.Type))
+        {
+            return baseDamage;
+        }
+
+        m_Reflecting = true;
+        try
+        {
+            DamageHelper.DoDirectDamage(attacker, m_ReflectDamage, HealthModifyType.reduce, hostEntity);
+        }
+        finally
+        {
+            m_Reflecting = false;
+        }
+        return baseDamage;
+    }
+
+    private static bool IsRangedWeapon(WeaponType type)
+    {
+        return type == WeaponType.Projectile
+               || type == WeaponType.InstantRanged
+               || type == WeaponType.CleaveRanged
+               || type == WeaponType.SelfAoE
+               || type == WeaponType.Special;
+    }
+}
+
+public sealed class EnemyStrongholdEntryDamageBuff : BuffCallback, ILogicDeterministicStateContributor
+{
+    private readonly Fix64 m_Damage;
+    private readonly HashSet<int> m_InsideEntityIds = new();
+    private readonly List<int> m_CurrentInsideEntityIds = new();
+    private bool m_HasSnapshot;
+
+    public EnemyStrongholdEntryDamageBuff(Fix64 damage)
+    {
+        m_Damage = damage;
+    }
+
+    public override void OnUpdate(Fix64 deltaTime)
+    {
+        if (hostEntity == null)
+            throw new InvalidOperationException("EnemyStrongholdEntryDamageBuff is not initialized.");
+        if (m_Damage <= Fix64.Zero)
+            return;
+
+        int ownerFactionId = EntitySideHelper.ToFactionId(hostEntity.Side);
+        m_CurrentInsideEntityIds.Clear();
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            IEntityContext entity = entities[i];
+            if (entity == null
+                || !entity.Alive
+                || entity.IsLogicBuilding()
+                || !EntityCombatTeamHelper.IsEnemy(hostEntity, entity)
+                || !LogicStrongholdMap.TryResolveStrongholdId(entity.PositionFixed, out string strongholdId)
+                || LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId) != ownerFactionId)
+            {
+                continue;
+            }
+
+            int entityId = entity.LogicEntityId.Value;
+            m_CurrentInsideEntityIds.Add(entityId);
+            if (m_HasSnapshot && !m_InsideEntityIds.Contains(entityId))
+                DamageHelper.DoDirectDamage(entity, m_Damage, HealthModifyType.reduce, hostEntity);
+        }
+
+        m_InsideEntityIds.Clear();
+        for (int i = 0; i < m_CurrentInsideEntityIds.Count; i++)
+            m_InsideEntityIds.Add(m_CurrentInsideEntityIds[i]);
+        m_HasSnapshot = true;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_HasSnapshot);
+        m_CurrentInsideEntityIds.Clear();
+        m_CurrentInsideEntityIds.AddRange(m_InsideEntityIds);
+        m_CurrentInsideEntityIds.Sort();
+        hasher.Add(m_CurrentInsideEntityIds.Count);
+        for (int i = 0; i < m_CurrentInsideEntityIds.Count; i++)
+            hasher.Add(m_CurrentInsideEntityIds[i]);
     }
 }
 

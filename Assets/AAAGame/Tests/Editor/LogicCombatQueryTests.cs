@@ -101,19 +101,6 @@ public sealed class LogicCombatQueryTests
     }
 
     [Test]
-    public void MonitorCone_IsIndependentOfRenderRotation()
-    {
-        FixVector2 forward = new FixVector2(Fix64.Zero, Fix64.One);
-
-        Assert.IsTrue(MonitorFacingUtility.IsDirectionWithinCone(
-            forward, new FixVector2((Fix64)1, (Fix64)2), (Fix64)90));
-        Assert.IsFalse(MonitorFacingUtility.IsDirectionWithinCone(
-            forward, new FixVector2((Fix64)2, (Fix64)1), (Fix64)90));
-        Assert.IsTrue(MonitorFacingUtility.IsDirectionWithinCone(
-            forward, new FixVector2(Fix64.Zero, (Fix64)(-1)), (Fix64)360));
-    }
-
-    [Test]
     public void CombatTeamResolution_UsesActiveFactionMappingInsteadOfFactionIdFallback()
     {
         System.Reflection.FieldInfo activeModelField = typeof(InGameDataModel).GetField(

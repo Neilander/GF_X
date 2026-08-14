@@ -9,6 +9,17 @@ public partial class LvEnterDialog : UIFormBase
     private const string MaxCountKey = "LvTagPositiveMaxCount";
 
     private static string s_LevelIdentifier;
+    private static Object s_PreloadedAsset;
+
+    internal static void RetainPreloadedAsset(object asset)
+    {
+        Object unityAsset = asset as Object
+                            ?? throw new System.InvalidOperationException("LvEnterDialog preload returned a non-Unity asset.");
+        if (s_PreloadedAsset != null)
+            throw new System.InvalidOperationException("LvEnterDialog asset is already retained.");
+        s_PreloadedAsset = unityAsset;
+    }
+
     public static void Open(string levelIdentifier)
     {
         s_LevelIdentifier = levelIdentifier;
@@ -34,6 +45,7 @@ public partial class LvEnterDialog : UIFormBase
         varInfoDesc.text = string.Empty;
         SpawnTags();
         RefreshTexts();
+        ReleasePreloadedAsset();
     }
 
     protected override void OnClose(bool isShutdown, object userData)
@@ -44,6 +56,14 @@ public partial class LvEnterDialog : UIFormBase
         m_SelectedIds.Clear();
         ShutdownCareerEntryUI();
         base.OnClose(isShutdown, userData);
+    }
+
+    private static void ReleasePreloadedAsset()
+    {
+        if (s_PreloadedAsset == null)
+            return;
+        GF.Resource.UnloadAsset(s_PreloadedAsset);
+        s_PreloadedAsset = null;
     }
 
     private void SpawnTags()

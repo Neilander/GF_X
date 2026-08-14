@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 29b91117ff22dc6408b1d59c63c55ff1, type: 3}
+  m_Name: Skill_InsatiableThirst
+  m_EditorClassIdentifier: 
+  skillId: Skill_InsatiableThirst
+  actions: []
+  coolDownType: 0
+  coolDownInterval: 8
+  banWhenOtherSkill: 1
+  banOtherSkillWhenCast: 0
+  radius: 10
+  selectRatio: {x: 0, y: 0, z: 0}

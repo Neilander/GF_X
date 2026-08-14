@@ -62,6 +62,26 @@ public sealed class StartupLevelFlowTests
     }
 
     [Test]
+    public void LaunchStartup_PreloadsLevelEntryDialogBeforeRuntimeScene()
+    {
+        string scriptsRoot = Path.Combine(Application.dataPath, "AAAGame", "Scripts");
+        string preload = File.ReadAllText(Path.Combine(scriptsRoot, "Procedures", "PreloadProcedure.cs"));
+        string levelDialog = File.ReadAllText(Path.Combine(scriptsRoot, "UI", "LvEnterDialog.cs"));
+        int preloadMethod = preload.IndexOf("private async void PreloadAndInitData()", System.StringComparison.Ordinal);
+        int dialogPreload = preload.IndexOf("PreloadLvEnterDialogAsset();", System.StringComparison.Ordinal);
+        int completionGate = preload.IndexOf("if (loadedProgress >= totalProgress", System.StringComparison.Ordinal);
+        int runtimeSceneChange = preload.IndexOf(
+            "ChangeState<ChangeSceneProcedure>(procedureOwner)",
+            System.StringComparison.Ordinal);
+
+        Assert.That(dialogPreload, Is.GreaterThan(preloadMethod));
+        Assert.That(runtimeSceneChange, Is.GreaterThan(completionGate));
+        Assert.That(preload, Does.Contain("appConfig.Configs.Length + 9"));
+        Assert.That(preload, Does.Contain("LvEnterDialog.RetainPreloadedAsset(asset);"));
+        Assert.That(levelDialog, Does.Contain("GF.Resource.UnloadAsset(s_PreloadedAsset);"));
+    }
+
+    [Test]
     public void PreparedCareerEntry_RejectsMissingStartingIndustry()
     {
         CareerRunSettings.CancelRun();

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -20,6 +20,9 @@ public sealed class UrgentRequestActiveSkillSO : TargetPositionActiveSkillSO
         int count = checked((int)roundedCount);
         if (count <= 0)
             throw new InvalidOperationException($"UrgentRequest count invalid. skillId={skillId}, count={count}");
+
+        Fix64 attackBonus = GetValue(1);
+        Fix64 healthBonus = GetValue(2);
 
         Fix64 radius = ClusterSpawnSystem.CalculateAutoSpawnRadiusFixed(count);
         List<FixVector2> spawnPositions = new List<FixVector2>(count);
@@ -44,6 +47,21 @@ public sealed class UrgentRequestActiveSkillSO : TargetPositionActiveSkillSO
                 0.05f,
                 caster.Side,
                 BrainType.SoldierAI,
+                configureParams: entityParams =>
+                {
+                    entityParams.StartBuffs ??= new List<BuffData>();
+                    entityParams.StartBuffs.Add(BuffData.Create(
+                        UnitSupplyExemptionBuff.BuffId,
+                        Fix64.Zero,
+                        true,
+                        1,
+                        new List<BuffCallback>
+                        {
+                            new UnitSupplyExemptionBuff(),
+                            new FlatAttackBonusBuff(attackBonus),
+                            new FlatHealthBonusBuff(healthBonus),
+                        }));
+                },
                 unitLevel: 1);
         }
     }

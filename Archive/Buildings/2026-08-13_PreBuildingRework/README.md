@@ -9,6 +9,8 @@ This directory is a Git-tracked, non-Unity archive. It is outside `Assets` and
 - Building prefabs and their `.meta` files.
 - Current level placement sources and generated level prefabs.
 - Building and technology implementation code and related tests.
+- The pre-skill-rework source table, generated table, skill implementations,
+  runtime skill assets, and skill-factory assignments.
 - Localization files containing building, objective, level-tag, and technology keys.
 - The model-side dependency closure actually referenced by building prefabs.
 
@@ -29,6 +31,16 @@ Shared technology
 systems, including ordinary building upgrades and `Buil_ResearchCenter` as a
 `BuilType.Base` programming-core building, remain active and are not part of the
 removed research-building set.
+
+## Skill-system snapshot
+
+The archive also preserves the skill table and runtime implementation from
+immediately before the 2026-08-14 skill redesign. This includes the source
+`SkillTable.xlsx`, generated `SkillTable.txt`, all ten configured skill assets,
+the player and character skill-factory assignments, skill runtime scripts, UI
+slot handling, and related tests. Restore this payload as a coherent set before
+selectively porting an old skill effect; do not copy generated DataTable C# by
+hand after editing the Excel source.
 
 The research-prefab set consists of `Buil_Tech_Lv0` plus levels 1-3 of:
 `Buil_ServerRoom`, `Buil_GiantMascot`, `Buil_NavStation`, `Buil_QualityCheck`,

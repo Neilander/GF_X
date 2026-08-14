@@ -145,10 +145,6 @@ public static class LogicBuildingConfigurator
             result = new HealTargetingComp();
         else if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.MeatRack))
             result = new MeatRackTargetingComp();
-        else if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.Monitor))
-            result = new MonitorTargetingComp(MonitorWeaponEffect.ResolveFacingConeAngle(state));
-        else if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.Restroom))
-            return new NoTargetingComp();
         else
             result = new CharacterTargetingComp { EnableAggroFallback = false };
 

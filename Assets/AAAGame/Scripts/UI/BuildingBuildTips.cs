@@ -333,7 +333,7 @@ public partial class BuildingBuildTips : UIFormBase
             // name 作为标题展示，按需求不走富文本规则（避免关键词高亮污染标题视觉）。
             string name = LocalizationTextManager.GetLocalizedText(data.NameKey, false);
             // desc 默认走富文本（关键词高亮、正负数字着色）。
-            string desc = data.GetFormattedDesc();
+            string desc = BuildingPanelPresentation.GetDescription(data);
             infoItem.SetData(keyText, name, desc);
             ConfigureBuildPreview(infoItem, data);
 
@@ -434,16 +434,34 @@ public partial class BuildingBuildTips : UIFormBase
         switch (data.Type)
         {
             case BuilType.Base:
-                SpawnProperty(infoItem.PropertyListRoot.transform, SupplyIconPath, "+10");
+                SpawnProperty(
+                    infoItem.PropertyListRoot.transform,
+                    SupplyIconPath,
+                    BuildingPanelPresentation.GetBaseSupplyText(data));
                 break;
             case BuilType.Prod:
-                SpawnProperty(infoItem.PropertyListRoot.transform, CoinIconPath, FormatSigned(data.Production));
+                SpawnProperty(
+                    infoItem.PropertyListRoot.transform,
+                    CoinIconPath,
+                    BuildingPanelPresentation.GetProductionText(data, null));
                 break;
             case BuilType.Army:
-                SpawnProperty(infoItem.PropertyListRoot.transform, SupplyIconPath, ResolveArmySupplyPerUnit(data.UnitID).ToString());
-                SpawnProperty(infoItem.PropertyListRoot.transform, ForceIconPath, data.Production.ToString());
+                SpawnProperty(
+                    infoItem.PropertyListRoot.transform,
+                    SupplyIconPath,
+                    BuildingPanelPresentation.GetArmySupplyText(data, null));
+                SpawnProperty(
+                    infoItem.PropertyListRoot.transform,
+                    ForceIconPath,
+                    BuildingPanelPresentation.GetArmyForceText(data, null));
                 break;
         }
+
+        var stats = new List<BuildingPanelStat>();
+        BuildingPanelPresentation.CollectBuildingCombatStats(data, null, stats);
+        BuildingPanelPresentation.CollectUnitStats(data, stats);
+        for (int i = 0; i < stats.Count; i++)
+            SpawnGlyphProperty(infoItem.PropertyListRoot.transform, stats[i]);
     }
 
     private void SpawnProperty(Transform root, string iconPath, string numberText)
@@ -456,6 +474,18 @@ public partial class BuildingBuildTips : UIFormBase
             return;
 
         iconNum.SetData(iconPath, numberText);
+    }
+
+    private void SpawnGlyphProperty(Transform root, BuildingPanelStat stat)
+    {
+        if (root == null || m_IconNumTemplate == null)
+            return;
+
+        IconNumItem iconNum = SpawnItem<UIItemObject>(m_IconNumTemplate, root).itemLogic as IconNumItem;
+        if (iconNum == null)
+            return;
+
+        iconNum.SetGlyphData(stat.Glyph, stat.Value);
     }
 
     private void PopulateCoinReserves(BuildingInfoItem infoItem)

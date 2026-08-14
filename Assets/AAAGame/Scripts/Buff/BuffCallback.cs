@@ -81,6 +81,16 @@ public static class CriticalDamageUtility
     private static Fix64 s_BaseCriticalDamageRate;
     private static bool s_Prepared;
 
+    public static Fix64 BaseCriticalDamageRate
+    {
+        get
+        {
+            if (!s_Prepared)
+                throw new InvalidOperationException("CriticalDamageUtility runtime dependencies were not prepared.");
+            return s_BaseCriticalDamageRate;
+        }
+    }
+
     public static void PrepareRuntimeDependencies()
     {
         if (s_Prepared)

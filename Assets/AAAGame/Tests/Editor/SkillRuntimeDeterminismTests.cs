@@ -12,6 +12,7 @@ public sealed class SkillRuntimeDeterminismTests
     private SkillRuntimeDataModel m_Model;
     private Dictionary<string, int> m_Levels;
     private Dictionary<string, int> m_Remaining;
+    private Dictionary<string, int> m_Stacks;
     private List<string> m_Order;
 
     [SetUp]
@@ -20,6 +21,7 @@ public sealed class SkillRuntimeDeterminismTests
         m_Model = GetOrCreateSkillModel();
         m_Levels = GetField<Dictionary<string, int>>("m_SkillLevels");
         m_Remaining = GetField<Dictionary<string, int>>("m_SkillRemainingUsageCounts");
+        m_Stacks = GetField<Dictionary<string, int>>("m_SkillStackCounts");
         m_Order = GetField<List<string>>("m_UnlockOrder");
         ClearState();
     }
@@ -49,6 +51,11 @@ public sealed class SkillRuntimeDeterminismTests
         m_Order.Reverse();
         ulong orderChanged = ComputeHash();
         Assert.AreNotEqual(baseline, orderChanged);
+
+        m_Order.Reverse();
+        m_Stacks["skill-a"] = 1;
+        ulong stacksChanged = ComputeHash();
+        Assert.AreNotEqual(baseline, stacksChanged);
     }
 
     [Test]
@@ -303,6 +310,41 @@ public sealed class SkillRuntimeDeterminismTests
         Assert.Greater(first.RawValue, 3277L);
     }
 
+    [Test]
+    public void InstantSkillPositionOverloadExecutesInstantPath()
+    {
+        InstantSkillProbe skill = ScriptableObject.CreateInstance<InstantSkillProbe>();
+        var caster = new SimEntityContext();
+        try
+        {
+            skill.StartSkill(
+                caster,
+                new FixVector2((Fix64)12, (Fix64)34),
+                out SkillInfo info);
+
+            Assert.AreEqual(1, skill.ApplyCount);
+            Assert.AreSame(caster, skill.LastCaster);
+            Assert.AreSame(caster, info.entity);
+            Assert.IsTrue(info.isFinished);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(skill);
+        }
+    }
+
+    [Test]
+    public void LightLoadTypePreloadDoesNotReadRuntimeConfig()
+    {
+        Type type = typeof(LightLoadDashActiveSkillSO);
+
+        Assert.IsNull(
+            type.TypeInitializer,
+            "LightLoad must not read distance conversion config from a static initializer.");
+        Assert.DoesNotThrow(
+            () => System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(type.TypeHandle));
+    }
+
     private ulong ComputeHash()
     {
         var hasher = new LogicStateHasher();
@@ -321,6 +363,7 @@ public sealed class SkillRuntimeDeterminismTests
     {
         m_Levels?.Clear();
         m_Remaining?.Clear();
+        m_Stacks?.Clear();
         m_Order?.Clear();
     }
 
@@ -362,5 +405,17 @@ public sealed class SkillRuntimeDeterminismTests
         object dictionary = dataModelsField.GetValue(component);
         dictionary.GetType().GetMethod("Add")?.Invoke(dictionary, new[] { pair, model });
         return model;
+    }
+
+    private sealed class InstantSkillProbe : InstantActiveSkillSO
+    {
+        public int ApplyCount { get; private set; }
+        public IEntityContext LastCaster { get; private set; }
+
+        protected override void ApplyInstant(IEntityContext caster)
+        {
+            ApplyCount++;
+            LastCaster = caster;
+        }
     }
 }

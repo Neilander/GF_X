@@ -73,6 +73,7 @@ internal readonly struct LogicStaticCollisionSourceData
         long originXGridRaw,
         long originYGridRaw,
         bool[] baseWalkableMask,
+        byte[] baseNeighborTraversalMask,
         LogicStaticCollisionObstacle[] runtimeObstacles)
     {
         if (cellSizeGridRaw <= 0)
@@ -88,6 +89,7 @@ internal readonly struct LogicStaticCollisionSourceData
         OriginXGridRaw = originXGridRaw;
         OriginYGridRaw = originYGridRaw;
         BaseWalkableMask = baseWalkableMask;
+        BaseNeighborTraversalMask = baseNeighborTraversalMask;
         RuntimeObstacles = runtimeObstacles ?? Array.Empty<LogicStaticCollisionObstacle>();
     }
 
@@ -100,6 +102,7 @@ internal readonly struct LogicStaticCollisionSourceData
     public long OriginXGridRaw { get; }
     public long OriginYGridRaw { get; }
     public bool[] BaseWalkableMask { get; }
+    public byte[] BaseNeighborTraversalMask { get; }
     public LogicStaticCollisionObstacle[] RuntimeObstacles { get; }
 }
 
@@ -108,6 +111,7 @@ public sealed class LogicStaticCollisionWorld
     private const int GridFractionalPlaces = 32;
     private const int GridToFixShift = GridFractionalPlaces - Fix64.FRACTIONAL_PLACES;
     private readonly bool[] m_WalkableMask;
+    private readonly byte[] m_NeighborTraversalMask;
     private readonly long m_CellSizeGridRaw;
     private readonly long m_OriginXGridRaw;
     private readonly long m_OriginYGridRaw;
@@ -128,7 +132,30 @@ public sealed class LogicStaticCollisionWorld
             checked(cellSize.RawValue << GridToFixShift),
             checked(origin.x.RawValue << GridToFixShift),
             checked(origin.y.RawValue << GridToFixShift),
-            walkableMask)
+            walkableMask,
+            null)
+    {
+    }
+
+    public LogicStaticCollisionWorld(
+        int agentTypeId,
+        int worldVersion,
+        int width,
+        int height,
+        Fix64 cellSize,
+        FixVector2 origin,
+        bool[] walkableMask,
+        byte[] neighborTraversalMask)
+        : this(
+            agentTypeId,
+            worldVersion,
+            width,
+            height,
+            checked(cellSize.RawValue << GridToFixShift),
+            checked(origin.x.RawValue << GridToFixShift),
+            checked(origin.y.RawValue << GridToFixShift),
+            walkableMask,
+            neighborTraversalMask)
     {
     }
 
@@ -148,7 +175,8 @@ public sealed class LogicStaticCollisionWorld
             FloatToGridRaw(cellSize),
             FloatToGridRaw(origin.x),
             FloatToGridRaw(origin.z),
-            walkableMask)
+            walkableMask,
+            null)
     {
     }
 
@@ -160,7 +188,8 @@ public sealed class LogicStaticCollisionWorld
         long cellSizeGridRaw,
         long originXGridRaw,
         long originYGridRaw,
-        bool[] walkableMask)
+        bool[] walkableMask,
+        byte[] neighborTraversalMask)
     {
         if (width <= 0)
             throw new ArgumentOutOfRangeException(nameof(width), width, "Collision world width must be positive.");
@@ -176,6 +205,12 @@ public sealed class LogicStaticCollisionWorld
                 $"Collision world mask length {walkableMask.Length} does not match {width}x{height}.",
                 nameof(walkableMask));
         }
+        if (neighborTraversalMask != null && neighborTraversalMask.Length != walkableMask.Length)
+        {
+            throw new ArgumentException(
+                $"Collision world neighbor traversal mask length {neighborTraversalMask.Length} does not match {width}x{height}.",
+                nameof(neighborTraversalMask));
+        }
 
         AgentTypeId = agentTypeId;
         WorldVersion = worldVersion;
@@ -187,6 +222,9 @@ public sealed class LogicStaticCollisionWorld
         CellSize = GridRawToFix64(cellSizeGridRaw);
         Origin = new FixVector2(GridRawToFix64(originXGridRaw), GridRawToFix64(originYGridRaw));
         m_WalkableMask = (bool[])walkableMask.Clone();
+        m_NeighborTraversalMask = neighborTraversalMask != null
+            ? (byte[])neighborTraversalMask.Clone()
+            : null;
     }
 
     public int AgentTypeId { get; }
@@ -212,6 +250,46 @@ public sealed class LogicStaticCollisionWorld
     public int GetIndex(int x, int y)
     {
         return checked(x + y * Width);
+    }
+
+    public bool CanTraverseCardinal(int fromX, int fromY, int toX, int toY)
+    {
+        if (!IsWalkable(fromX, fromY) || !IsWalkable(toX, toY))
+            return false;
+        if (m_NeighborTraversalMask == null)
+            return true;
+
+        int dx = toX - fromX;
+        int dy = toY - fromY;
+        int forwardBit;
+        int reverseBit;
+        if (dx == -1 && dy == 0)
+        {
+            forwardBit = 3;
+            reverseBit = 4;
+        }
+        else if (dx == 1 && dy == 0)
+        {
+            forwardBit = 4;
+            reverseBit = 3;
+        }
+        else if (dx == 0 && dy == -1)
+        {
+            forwardBit = 1;
+            reverseBit = 6;
+        }
+        else if (dx == 0 && dy == 1)
+        {
+            forwardBit = 6;
+            reverseBit = 1;
+        }
+        else
+        {
+            return false;
+        }
+
+        return (m_NeighborTraversalMask[GetIndex(fromX, fromY)] & (1 << forwardBit)) != 0
+               && (m_NeighborTraversalMask[GetIndex(toX, toY)] & (1 << reverseBit)) != 0;
     }
 
     public Fix64 GetCellMinX(int x)
@@ -383,6 +461,25 @@ public static class DeterministicStaticCollisionSolver
         IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
         LogicStaticCollisionSlideMode slideMode = LogicStaticCollisionSlideMode.PreserveTangentialComponent)
     {
+        return SolveCircle(
+            world,
+            start,
+            desiredDisplacement,
+            radius,
+            radius,
+            runtimeObstacles,
+            slideMode);
+    }
+
+    internal static LogicStaticCollisionSolveResult SolveCircle(
+        LogicStaticCollisionWorld world,
+        FixVector2 start,
+        FixVector2 desiredDisplacement,
+        Fix64 radius,
+        Fix64 topologyEdgeRadius,
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
+        LogicStaticCollisionSlideMode slideMode)
+    {
         if (world == null)
             throw new ArgumentNullException(nameof(world));
         if (runtimeObstacles == null)
@@ -393,6 +490,7 @@ public static class DeterministicStaticCollisionSolver
             throw new ArgumentOutOfRangeException(nameof(slideMode), slideMode, "Unsupported static collision slide mode.");
         }
         if (radius < Fix64.Zero
+            || topologyEdgeRadius < Fix64.Zero
             || radius * (Fix64)2 > world.MaxWorldX - world.Origin.x
             || radius * (Fix64)2 > world.MaxWorldY - world.Origin.y)
         {
@@ -407,7 +505,7 @@ public static class DeterministicStaticCollisionSolver
 
         FixVector2 position = start;
         bool startedOverlapping = false;
-        if (!RecoverStart(world, runtimeObstacles, ref position, radius, ref startedOverlapping))
+        if (!RecoverStart(world, runtimeObstacles, ref position, radius, topologyEdgeRadius, ref startedOverlapping))
         {
             return FailureResult(
                 LogicStaticCollisionFailure.StartOverlapUnresolved,
@@ -428,7 +526,7 @@ public static class DeterministicStaticCollisionSolver
             if (remaining == FixVector2.Zero)
                 break;
 
-            if (!TryFindEarliestHit(world, runtimeObstacles, position, remaining, radius, out SweepHit hit))
+            if (!TryFindEarliestHit(world, runtimeObstacles, position, remaining, radius, topologyEdgeRadius, out SweepHit hit))
             {
                 position += remaining;
                 remaining = FixVector2.Zero;
@@ -631,6 +729,7 @@ public static class DeterministicStaticCollisionSolver
             return false;
 
         return !TryFindCellPenetration(world, center, radius, out _)
+               && !TryFindTopologyEdgePenetration(world, center, Fix64.Max(radius, s_Epsilon), out _)
                && !TryFindRuntimeObstaclePenetration(
                    world,
                    runtimeObstacles,
@@ -663,6 +762,7 @@ public static class DeterministicStaticCollisionSolver
         IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
         ref FixVector2 position,
         Fix64 radius,
+        Fix64 topologyEdgeRadius,
         ref bool startedOverlapping)
     {
         for (int iteration = 0; iteration < MaxPenetrationIterations; iteration++)
@@ -698,6 +798,17 @@ public static class DeterministicStaticCollisionSolver
                 continue;
             }
 
+            if (TryFindTopologyEdgePenetration(
+                    world,
+                    position,
+                    Fix64.Max(topologyEdgeRadius, s_Epsilon),
+                    out Penetration topologyEdge))
+            {
+                startedOverlapping = true;
+                position += topologyEdge.Normal * (topologyEdge.Depth + s_Epsilon);
+                continue;
+            }
+
             if (TryFindRuntimeObstaclePenetration(
                     world,
                     runtimeObstacles,
@@ -713,7 +824,12 @@ public static class DeterministicStaticCollisionSolver
             return true;
         }
 
-        return IsCircleClear(world, position, radius, runtimeObstacles);
+        return IsCircleClear(world, position, radius, runtimeObstacles)
+               && !TryFindTopologyEdgePenetration(
+                   world,
+                   position,
+                   Fix64.Max(topologyEdgeRadius, s_Epsilon),
+                   out _);
     }
 
     private static bool TryRecoverBlockedCenter(
@@ -874,6 +990,63 @@ public static class DeterministicStaticCollisionSolver
             out penetration);
     }
 
+    private static bool TryFindTopologyEdgePenetration(
+        LogicStaticCollisionWorld world,
+        FixVector2 position,
+        Fix64 radius,
+        out Penetration penetration)
+    {
+        bool found = false;
+        penetration = default;
+        GetCellRange(world, position, position, radius, out int minCellX, out int maxCellX, out int minCellY, out int maxCellY);
+        for (int y = minCellY; y <= maxCellY; y++)
+        {
+            for (int x = minCellX; x <= maxCellX; x++)
+            {
+                if (!world.IsWalkable(x, y))
+                    continue;
+
+                if (x + 1 < world.Width
+                    && world.IsWalkable(x + 1, y)
+                    && !world.CanTraverseCardinal(x, y, x + 1, y))
+                {
+                    Fix64 edgeX = world.GetCellMinX(x + 1);
+                    Fix64 distance = Fix64.Abs(position.x - edgeX);
+                    if (distance < radius
+                        && position.y > world.GetCellMinY(y) - radius
+                        && position.y < world.GetCellMinY(y + 1) + radius)
+                    {
+                        FixVector2 normal = position.x <= edgeX
+                            ? new FixVector2(-1, 0)
+                            : new FixVector2(1, 0);
+                        int stableKey = checked(GetTopologyEdgeStableKeyBase(world) + world.GetIndex(x, y) * 4 + 1);
+                        SelectPenetration(new Penetration(radius - distance, normal, stableKey), ref found, ref penetration);
+                    }
+                }
+
+                if (y + 1 < world.Height
+                    && world.IsWalkable(x, y + 1)
+                    && !world.CanTraverseCardinal(x, y, x, y + 1))
+                {
+                    Fix64 edgeY = world.GetCellMinY(y + 1);
+                    Fix64 distance = Fix64.Abs(position.y - edgeY);
+                    if (distance < radius
+                        && position.x > world.GetCellMinX(x) - radius
+                        && position.x < world.GetCellMinX(x + 1) + radius)
+                    {
+                        FixVector2 normal = position.y <= edgeY
+                            ? new FixVector2(0, -1)
+                            : new FixVector2(0, 1);
+                        int stableKey = checked(GetTopologyEdgeStableKeyBase(world) + world.GetIndex(x, y) * 4 + 3);
+                        SelectPenetration(new Penetration(radius - distance, normal, stableKey), ref found, ref penetration);
+                    }
+                }
+            }
+        }
+
+        return found;
+    }
+
     private static bool TryFindRuntimeObstaclePenetration(
         IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
         FixVector2 position,
@@ -961,6 +1134,7 @@ public static class DeterministicStaticCollisionSolver
         FixVector2 start,
         FixVector2 displacement,
         Fix64 radius,
+        Fix64 topologyEdgeRadius,
         out SweepHit hit)
     {
         bool found = false;
@@ -991,6 +1165,27 @@ public static class DeterministicStaticCollisionSolver
             }
         }
 
+        GetCellRange(
+            world,
+            start,
+            end,
+            topologyEdgeRadius,
+            out int topologyMinCellX,
+            out int topologyMaxCellX,
+            out int topologyMinCellY,
+            out int topologyMaxCellY);
+        TrySelectTopologyEdgeHit(
+            world,
+            start,
+            displacement,
+            Fix64.Max(topologyEdgeRadius, s_Epsilon),
+            topologyMinCellX,
+            topologyMaxCellX,
+            topologyMinCellY,
+            topologyMaxCellY,
+            ref found,
+            ref hit);
+
         if (TryFindEarliestRuntimeObstacleHit(
                 runtimeObstacles,
                 start,
@@ -1003,6 +1198,162 @@ public static class DeterministicStaticCollisionSolver
         }
 
         return found;
+    }
+
+    private static void TrySelectTopologyEdgeHit(
+        LogicStaticCollisionWorld world,
+        FixVector2 start,
+        FixVector2 displacement,
+        Fix64 radius,
+        int minCellX,
+        int maxCellX,
+        int minCellY,
+        int maxCellY,
+        ref bool found,
+        ref SweepHit hit)
+    {
+        for (int y = minCellY; y <= maxCellY; y++)
+        {
+            for (int x = minCellX; x <= maxCellX; x++)
+            {
+                if (!world.IsWalkable(x, y))
+                    continue;
+
+                if (x + 1 < world.Width
+                    && world.IsWalkable(x + 1, y)
+                    && !world.CanTraverseCardinal(x, y, x + 1, y)
+                    && TrySweepVerticalTopologyEdge(
+                        world,
+                        start,
+                        displacement,
+                        radius,
+                        x,
+                        y,
+                        checked(GetTopologyEdgeStableKeyBase(world) + world.GetIndex(x, y) * 4 + 1),
+                        out SweepHit verticalHit))
+                {
+                    SelectHit(verticalHit, ref found, ref hit);
+                }
+
+                if (y + 1 < world.Height
+                    && world.IsWalkable(x, y + 1)
+                    && !world.CanTraverseCardinal(x, y, x, y + 1)
+                    && TrySweepHorizontalTopologyEdge(
+                        world,
+                        start,
+                        displacement,
+                        radius,
+                        x,
+                        y,
+                        checked(GetTopologyEdgeStableKeyBase(world) + world.GetIndex(x, y) * 4 + 3),
+                        out SweepHit horizontalHit))
+                {
+                    SelectHit(horizontalHit, ref found, ref hit);
+                }
+            }
+        }
+    }
+
+    private static bool TrySweepVerticalTopologyEdge(
+        LogicStaticCollisionWorld world,
+        FixVector2 start,
+        FixVector2 displacement,
+        Fix64 radius,
+        int leftCellX,
+        int cellY,
+        int stableKey,
+        out SweepHit hit)
+    {
+        Fix64 contactX;
+        FixVector2 normal;
+        if (displacement.x > Fix64.Zero)
+        {
+            contactX = world.GetCellMinX(leftCellX + 1) - radius;
+            normal = new FixVector2(-1, 0);
+            if (start.x > contactX || start.x + displacement.x <= contactX)
+            {
+                hit = default;
+                return false;
+            }
+        }
+        else if (displacement.x < Fix64.Zero)
+        {
+            contactX = world.GetCellMinX(leftCellX + 1) + radius;
+            normal = new FixVector2(1, 0);
+            if (start.x < contactX || start.x + displacement.x >= contactX)
+            {
+                hit = default;
+                return false;
+            }
+        }
+        else
+        {
+            hit = default;
+            return false;
+        }
+
+        Fix64 time = (contactX - start.x) / displacement.x;
+        Fix64 contactY = start.y + displacement.y * time;
+        if (contactY < world.GetCellMinY(cellY) - radius
+            || contactY > world.GetCellMinY(cellY + 1) + radius)
+        {
+            hit = default;
+            return false;
+        }
+
+        hit = new SweepHit(time, normal, stableKey);
+        return true;
+    }
+
+    private static bool TrySweepHorizontalTopologyEdge(
+        LogicStaticCollisionWorld world,
+        FixVector2 start,
+        FixVector2 displacement,
+        Fix64 radius,
+        int cellX,
+        int lowerCellY,
+        int stableKey,
+        out SweepHit hit)
+    {
+        Fix64 contactY;
+        FixVector2 normal;
+        if (displacement.y > Fix64.Zero)
+        {
+            contactY = world.GetCellMinY(lowerCellY + 1) - radius;
+            normal = new FixVector2(0, -1);
+            if (start.y > contactY || start.y + displacement.y <= contactY)
+            {
+                hit = default;
+                return false;
+            }
+        }
+        else if (displacement.y < Fix64.Zero)
+        {
+            contactY = world.GetCellMinY(lowerCellY + 1) + radius;
+            normal = new FixVector2(0, 1);
+            if (start.y < contactY || start.y + displacement.y >= contactY)
+            {
+                hit = default;
+                return false;
+            }
+        }
+        else
+        {
+            hit = default;
+            return false;
+        }
+
+        Fix64 time = (contactY - start.y) / displacement.y;
+        Fix64 contactX = start.x + displacement.x * time;
+        if (contactX < world.GetCellMinX(cellX) - radius
+            || contactX > world.GetCellMinX(cellX + 1) + radius)
+        {
+            hit = default;
+            return false;
+        }
+
+        hit = new SweepHit(time, normal, stableKey);
+        return true;
     }
 
     private static bool TryFindEarliestRuntimeObstacleHit(
@@ -1102,6 +1453,11 @@ public static class DeterministicStaticCollisionSolver
     }
 
     private static int GetRuntimeObstacleStableKeyBase(LogicStaticCollisionWorld world)
+    {
+        return checked(GetTopologyEdgeStableKeyBase(world) + checked(world.Width * world.Height) * 4);
+    }
+
+    private static int GetTopologyEdgeStableKeyBase(LogicStaticCollisionWorld world)
     {
         return checked(4 + checked(world.Width * world.Height) * 4);
     }
@@ -1273,7 +1629,8 @@ public enum LogicStaticCollisionContactKind
     None = 0,
     WorldBoundary = 1,
     AuthoredGridCell = 2,
-    RuntimeObstacle = 3,
+    AuthoredTraversalEdge = 3,
+    RuntimeObstacle = 4,
 }
 
 public readonly struct LogicStaticCollisionShadowResult
@@ -1303,11 +1660,21 @@ public readonly struct LogicStaticCollisionShadowResult
             return;
         }
 
-        int runtimeObstacleKeyBase = checked(4 + checked(world.Width * world.Height) * 4);
-        if (stableKey < runtimeObstacleKeyBase)
+        int topologyEdgeKeyBase = checked(4 + checked(world.Width * world.Height) * 4);
+        if (stableKey < topologyEdgeKeyBase)
         {
             int cellIndex = (stableKey - 4) / 4;
             ContactKind = LogicStaticCollisionContactKind.AuthoredGridCell;
+            ContactCellX = cellIndex % world.Width;
+            ContactCellY = cellIndex / world.Width;
+            return;
+        }
+
+        int runtimeObstacleKeyBase = checked(topologyEdgeKeyBase + checked(world.Width * world.Height) * 4);
+        if (stableKey < runtimeObstacleKeyBase)
+        {
+            int cellIndex = (stableKey - topologyEdgeKeyBase) / 4;
+            ContactKind = LogicStaticCollisionContactKind.AuthoredTraversalEdge;
             ContactCellX = cellIndex % world.Width;
             ContactCellY = cellIndex / world.Width;
             return;
@@ -1341,7 +1708,28 @@ public static class LogicStaticCollisionShadowService
     private sealed class CachedWorld
     {
         public int Version;
+        public int AgentTypeId;
+        public int Width;
+        public int Height;
+        public long CellSizeGridRaw;
+        public long OriginXGridRaw;
+        public long OriginYGridRaw;
+        public bool[] BaseWalkableMask;
+        public byte[] BaseNeighborTraversalMask;
         public LogicStaticCollisionWorld World;
+
+        public bool Matches(LogicStaticCollisionSourceData source)
+        {
+            return Version == source.WorldVersion
+                   && AgentTypeId == source.AgentTypeId
+                   && Width == source.Width
+                   && Height == source.Height
+                   && CellSizeGridRaw == source.CellSizeGridRaw
+                   && OriginXGridRaw == source.OriginXGridRaw
+                   && OriginYGridRaw == source.OriginYGridRaw
+                   && ReferenceEquals(BaseWalkableMask, source.BaseWalkableMask)
+                   && ReferenceEquals(BaseNeighborTraversalMask, source.BaseNeighborTraversalMask);
+        }
     }
 
     private static readonly Dictionary<int, CachedWorld> s_Worlds = new Dictionary<int, CachedWorld>();
@@ -1436,6 +1824,7 @@ public static class LogicStaticCollisionShadowService
             start,
             desiredDisplacement,
             effectiveRadius,
+            radius,
             source.RuntimeObstacles,
             slideMode);
         result = new LogicStaticCollisionShadowResult(world, source.RuntimeObstacles, solveResult);
@@ -1484,7 +1873,7 @@ public static class LogicStaticCollisionShadowService
     private static LogicStaticCollisionWorld ResolveWorld(int requestedAgentTypeId, LogicStaticCollisionSourceData source)
     {
         if (s_Worlds.TryGetValue(requestedAgentTypeId, out CachedWorld cached)
-            && cached.Version == source.WorldVersion)
+            && cached.Matches(source))
         {
             return cached.World;
         }
@@ -1499,14 +1888,32 @@ public static class LogicStaticCollisionShadowService
             source.CellSizeGridRaw,
             source.OriginXGridRaw,
             source.OriginYGridRaw,
-            source.BaseWalkableMask);
+            source.BaseWalkableMask,
+            source.BaseNeighborTraversalMask);
         s_Worlds[requestedAgentTypeId] = new CachedWorld
         {
             Version = source.WorldVersion,
+            AgentTypeId = source.AgentTypeId,
+            Width = source.Width,
+            Height = source.Height,
+            CellSizeGridRaw = source.CellSizeGridRaw,
+            OriginXGridRaw = source.OriginXGridRaw,
+            OriginYGridRaw = source.OriginYGridRaw,
+            BaseWalkableMask = source.BaseWalkableMask,
+            BaseNeighborTraversalMask = source.BaseNeighborTraversalMask,
             World = world,
         };
         return world;
     }
+
+#if UNITY_EDITOR
+    internal static LogicStaticCollisionWorld ResolveWorldForEditorTest(
+        int requestedAgentTypeId,
+        LogicStaticCollisionSourceData source)
+    {
+        return ResolveWorld(requestedAgentTypeId, source);
+    }
+#endif
 
     private static void ValidateFinite(Vector3 value, string name)
     {

@@ -765,12 +765,6 @@ public void Attack(Fix64 deltaTime)
         {
             AreaWeaponDamage.DealSelfAoE(_ctx, target, snapshot);
         }
-        else if (activeWeapon.Type == WeaponType.Special
-                 && _ctx is IBuildingLogicContext building
-                 && BuildingAbilityIds.IsBuilding(building.BuildingData, BuildingAbilityIds.Monitor))
-        {
-            MonitorWeaponEffect.Execute(_ctx, target, snapshot);
-        }
         else if (WeaponTargetRules.UsesProjectileSimulation(activeWeapon.Type))
         {
             if (!LogicProjectileService.IsActive || !LogicDamageEventService.IsCollecting)

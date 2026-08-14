@@ -48,43 +48,6 @@ public abstract class PassiveSkillSO : SkillEffectSO
     }
 }
 
-public sealed class SkillMoveSpeedPercentBuff : BuffCallback, ILogicDeterministicStateContributor
-{
-    private readonly Fix64 m_Percent;
-    private IPropertyModifier m_Modifier;
-
-    public SkillMoveSpeedPercentBuff(Fix64 percent)
-    {
-        m_Percent = percent;
-    }
-
-    public override void OnAdd()
-    {
-        var propertyManager = hostEntity?.CreatureProperties;
-        if (propertyManager == null)
-            throw new InvalidOperationException($"SkillMoveSpeedPercentBuff requires property manager. host={hostEntity?.CharacterKey}");
-
-        m_Modifier = PropertyDirectAdditiveModifier.Create(m_Percent / (Fix64)100);
-        propertyManager.ModifyMainPropertyMul(CreatureMainProperty.Speed, NormalBaseValueTp.Buff, m_Modifier, true);
-    }
-
-    public override void OnRemove()
-    {
-        var propertyManager = hostEntity?.CreatureProperties;
-        if (propertyManager == null || m_Modifier == null)
-            return;
-
-        propertyManager.ModifyMainPropertyMul(CreatureMainProperty.Speed, NormalBaseValueTp.Buff, m_Modifier, false);
-        m_Modifier = null;
-    }
-
-    public void WriteDeterministicState(LogicStateHasher hasher)
-    {
-        hasher.Add(m_Percent.RawValue);
-        hasher.Add(m_Modifier != null);
-    }
-}
-
 public sealed class SkillCurrentHealthDamageBuff : BuffCallback
 {
     private readonly Fix64 m_Percent;
@@ -100,92 +63,6 @@ public sealed class SkillCurrentHealthDamageBuff : BuffCallback
             return baseDamage;
 
         return baseDamage + entity.HealthValue * m_Percent / (Fix64)100;
-    }
-}
-
-public sealed class SkillDisarmOnHitBuff : BuffCallback
-{
-    private readonly string m_BuffPrefix;
-    private readonly Fix64 m_AttackReduce;
-    private readonly Fix64 m_DefReduce;
-    private readonly Fix64 m_Duration;
-
-    public SkillDisarmOnHitBuff(string buffPrefix, Fix64 attackReduce, Fix64 defReduce, Fix64 duration)
-    {
-        m_BuffPrefix = buffPrefix;
-        m_AttackReduce = attackReduce;
-        m_DefReduce = defReduce;
-        m_Duration = duration;
-    }
-
-    public override void OnAttackCompleted(IEntityContext target)
-    {
-        if (target is not IEntityContext targetEntity || targetEntity.BuffComp == null || m_Duration <= Fix64.Zero)
-            return;
-
-        string buffId = $"{m_BuffPrefix}_{targetEntity.LogicEntityId.Value}";
-        targetEntity.BuffComp.RemoveBuff(buffId);
-        var buffData = BuffData.Create(
-            buffId,
-            m_Duration,
-            false,
-            1,
-            new List<BuffCallback> { new SkillDisarmDebuff(m_AttackReduce, m_DefReduce) });
-        targetEntity.BuffComp.AddBuff(buffData, targetEntity);
-    }
-}
-
-public sealed class SkillDisarmDebuff : BuffCallback, ILogicDeterministicStateContributor
-{
-    private readonly Fix64 m_AttackReduce;
-    private readonly Fix64 m_DefReduce;
-    private IPropertyModifier m_DefModifier;
-    private bool m_AttackApplied;
-
-    public SkillDisarmDebuff(Fix64 attackReduce, Fix64 defReduce)
-    {
-        m_AttackReduce = attackReduce;
-        m_DefReduce = defReduce;
-    }
-
-    public override bool IsNegativeStatus => true;
-
-    public override void OnAdd()
-    {
-        if (hostEntity == null)
-            throw new InvalidOperationException("SkillDisarmDebuff requires hostEntity.");
-
-        if (hostEntity.WeaponComp?.Data != null && m_AttackReduce != Fix64.Zero)
-        {
-            hostEntity.WeaponComp.Data.ApplyAdditive(WeaponStatId.Atk, -m_AttackReduce);
-            m_AttackApplied = true;
-        }
-
-        if (hostEntity?.CreatureProperties != null && m_DefReduce != Fix64.Zero)
-        {
-            m_DefModifier = PropertyDirectAdditiveModifier.Create(-m_DefReduce);
-            hostEntity.CreatureProperties.ModifyMainPropertyValueBuff(CreatureMainProperty.Def, m_DefModifier, true);
-        }
-    }
-
-    public override void OnRemove()
-    {
-        if (m_AttackApplied && hostEntity?.WeaponComp?.Data != null)
-            hostEntity.WeaponComp.Data.ApplyAdditive(WeaponStatId.Atk, m_AttackReduce);
-
-        if (hostEntity?.CreatureProperties != null && m_DefModifier != null)
-            hostEntity.CreatureProperties.ModifyMainPropertyValueBuff(CreatureMainProperty.Def, m_DefModifier, false);
-
-        m_AttackApplied = false;
-        m_DefModifier = null;
-    }
-
-    public void WriteDeterministicState(LogicStateHasher hasher)
-    {
-        hasher.Add(m_AttackReduce.RawValue);
-        hasher.Add(m_DefReduce.RawValue);
-        hasher.Add(m_DefModifier != null);
-        hasher.Add(m_AttackApplied);
     }
 }
 

@@ -910,6 +910,10 @@ public partial class InGameDataModel : DataModelBase
         supply = 0;
         if (entity == null || entity.CharacterData == null)
             return false;
+        if (entity.BuffComp == null)
+            throw new InvalidOperationException($"Supply-bearing entity is missing BuffComp. entity={entity.LogicEntityId.Value}");
+        if (entity.BuffComp.HasBuff(UnitSupplyExemptionBuff.BuffId))
+            return false;
 
         supply = Mathf.Max(0, entity.CharacterData.Supply);
         return supply > 0;

@@ -173,6 +173,15 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
+        /// 1级武器1攻击间隔
+        /// </summary>
+        public Fix64 Lv1Weapon1Interval
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 2级血量
         /// </summary>
         public Fix64 Lv2HP
@@ -203,6 +212,15 @@ public class BuildingTable : DataRowBase
         /// 2级武器1攻击距离
         /// </summary>
         public Fix64 Lv2Weapon1Range
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 2级武器1攻击间隔
+        /// </summary>
+        public Fix64 Lv2Weapon1Interval
         {
             get;
             private set;
@@ -245,9 +263,9 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 1级武器1攻击间隔
+        /// 3级武器1攻击间隔
         /// </summary>
-        public Fix64 Lv1Weapon1Interval
+        public Fix64 Lv3Weapon1Interval
         {
             get;
             private set;
@@ -344,15 +362,6 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 2级武器1攻击间隔
-        /// </summary>
-        public Fix64 Lv2Weapon1Interval
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
         /// 2级武器1攻击类型
         /// </summary>
         public WeaponType Lv2Weapon1Type
@@ -437,15 +446,6 @@ public class BuildingTable : DataRowBase
         /// 2级武器1其他数值
         /// </summary>
         public Fix64[] Lv2Weapon1UniqueValues
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 3级武器1攻击间隔
-        /// </summary>
-        public Fix64 Lv3Weapon1Interval
         {
             get;
             private set;
@@ -1074,15 +1074,17 @@ public class BuildingTable : DataRowBase
             Lv1Def = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1Weapon1Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1Weapon1Range = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1Weapon1Interval = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv2HP = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv2Def = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv2Weapon1Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv2Weapon1Range = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2Weapon1Interval = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv3HP = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv3Def = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv3Weapon1Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv3Weapon1Range = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Lv1Weapon1Interval = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3Weapon1Interval = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1Weapon1Type = DataTableExtension.ParseEnum<WeaponType>(columnStrings[index++]);
             Lv1Weapon1ProjectileSpeed = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1Weapon1WindUp = DataTableExtension.ParseFix64(columnStrings[index++]);
@@ -1093,7 +1095,6 @@ public class BuildingTable : DataRowBase
             Lv1Weapon1ProjectileCount = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1Weapon1AmmunitionCapacity = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1Weapon1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            Lv2Weapon1Interval = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv2Weapon1Type = DataTableExtension.ParseEnum<WeaponType>(columnStrings[index++]);
             Lv2Weapon1ProjectileSpeed = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv2Weapon1WindUp = DataTableExtension.ParseFix64(columnStrings[index++]);
@@ -1104,7 +1105,6 @@ public class BuildingTable : DataRowBase
             Lv2Weapon1ProjectileCount = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv2Weapon1AmmunitionCapacity = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv2Weapon1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            Lv3Weapon1Interval = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv3Weapon1Type = DataTableExtension.ParseEnum<WeaponType>(columnStrings[index++]);
             Lv3Weapon1ProjectileSpeed = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv3Weapon1WindUp = DataTableExtension.ParseFix64(columnStrings[index++]);
@@ -1202,15 +1202,17 @@ public class BuildingTable : DataRowBase
                     Lv1Def = binaryReader.ReadFix64();
                     Lv1Weapon1Atk = binaryReader.ReadFix64();
                     Lv1Weapon1Range = binaryReader.ReadFix64();
+                    Lv1Weapon1Interval = binaryReader.ReadFix64();
                     Lv2HP = binaryReader.ReadFix64();
                     Lv2Def = binaryReader.ReadFix64();
                     Lv2Weapon1Atk = binaryReader.ReadFix64();
                     Lv2Weapon1Range = binaryReader.ReadFix64();
+                    Lv2Weapon1Interval = binaryReader.ReadFix64();
                     Lv3HP = binaryReader.ReadFix64();
                     Lv3Def = binaryReader.ReadFix64();
                     Lv3Weapon1Atk = binaryReader.ReadFix64();
                     Lv3Weapon1Range = binaryReader.ReadFix64();
-                    Lv1Weapon1Interval = binaryReader.ReadFix64();
+                    Lv3Weapon1Interval = binaryReader.ReadFix64();
                     Lv1Weapon1Type = binaryReader.ReadEnum<WeaponType>();
                     Lv1Weapon1ProjectileSpeed = binaryReader.ReadFix64();
                     Lv1Weapon1WindUp = binaryReader.ReadFix64();
@@ -1221,7 +1223,6 @@ public class BuildingTable : DataRowBase
                     Lv1Weapon1ProjectileCount = binaryReader.ReadFix64();
                     Lv1Weapon1AmmunitionCapacity = binaryReader.ReadFix64();
                     Lv1Weapon1UniqueValues = binaryReader.ReadFix64Array();
-                    Lv2Weapon1Interval = binaryReader.ReadFix64();
                     Lv2Weapon1Type = binaryReader.ReadEnum<WeaponType>();
                     Lv2Weapon1ProjectileSpeed = binaryReader.ReadFix64();
                     Lv2Weapon1WindUp = binaryReader.ReadFix64();
@@ -1232,7 +1233,6 @@ public class BuildingTable : DataRowBase
                     Lv2Weapon1ProjectileCount = binaryReader.ReadFix64();
                     Lv2Weapon1AmmunitionCapacity = binaryReader.ReadFix64();
                     Lv2Weapon1UniqueValues = binaryReader.ReadFix64Array();
-                    Lv3Weapon1Interval = binaryReader.ReadFix64();
                     Lv3Weapon1Type = binaryReader.ReadEnum<WeaponType>();
                     Lv3Weapon1ProjectileSpeed = binaryReader.ReadFix64();
                     Lv3Weapon1WindUp = binaryReader.ReadFix64();

@@ -173,7 +173,7 @@ public class PreloadProcedure : ProcedureBase
         loadedProgress = 0;
         m_DataTablesCount = -1;
         var appConfig = await AppConfigs.GetInstanceSync();
-        totalProgress = appConfig.DataTables.Length + appConfig.Configs.Length + 8 + AAAGame.Effect.EffectShaderAssetLoader.EssentialShaderCount;//8是多语言、框架扩展和六个逻辑组件工厂
+        totalProgress = appConfig.DataTables.Length + appConfig.Configs.Length + 9 + AAAGame.Effect.EffectShaderAssetLoader.EssentialShaderCount;//9是多语言、框架扩展、关卡入口界面和六个逻辑组件工厂
         FactoryHelper.PreloadMoveFactory(
             UtilityBuiltin.AssetsPath.GetMoveFactoryPath("CharacterMoveFactory"),
             OnPreloadLogicFactorySuccess,
@@ -198,8 +198,40 @@ public class PreloadProcedure : ProcedureBase
             UtilityBuiltin.AssetsPath.GetSkillFactoryPath("CharacterSkillFactory"),
             OnPreloadLogicFactorySuccess,
             OnPreloadLogicFactoryFailure);
+        PreloadLvEnterDialogAsset();
         AAAGame.Effect.EffectShaderAssetLoader.PreloadEssentialShaders(OnPreloadShaderSuccess, OnPreloadShaderFailure);
         CreateGFExtension();
+    }
+
+    private void PreloadLvEnterDialogAsset()
+    {
+        string assetName = UtilityBuiltin.AssetsPath.GetUIFormPath(nameof(LvEnterDialog));
+        GF.Resource.LoadAsset(
+            assetName,
+            typeof(GameObject),
+            new GameFramework.Resource.LoadAssetCallbacks(
+                OnPreloadLvEnterDialogSuccess,
+                OnPreloadLvEnterDialogFailure));
+    }
+
+    private void OnPreloadLvEnterDialogSuccess(string assetName, object asset, float duration, object userData)
+    {
+        LvEnterDialog.RetainPreloadedAsset(asset);
+        loadedProgress++;
+    }
+
+    private void OnPreloadLvEnterDialogFailure(
+        string assetName,
+        GameFramework.Resource.LoadResourceStatus status,
+        string errorMessage,
+        object userData)
+    {
+        throw new GameFrameworkException(
+            Utility.Text.Format(
+                "Preload LvEnterDialog failed: asset={0}, status={1}, error={2}",
+                assetName,
+                status,
+                errorMessage));
     }
 
     private void OnPreloadShaderSuccess(string assetName)

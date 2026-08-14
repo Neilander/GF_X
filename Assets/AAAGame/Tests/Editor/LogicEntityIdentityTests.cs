@@ -557,7 +557,7 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
-    public void DefendEnemyTargeting_BuildingExtraThreatTriggersAdditionalPursuit()
+    public void DefendEnemyTargeting_BuildingTauntEquivalentThreatTriggersAdditionalPursuit()
     {
         LogicEntityState attacker = CreateConfiguredStateForSide(
             "Unit_DefendBuildingPursuitAttacker",
@@ -583,7 +583,112 @@ public class LogicEntityIdentityTests
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(pursuitUnit, targeting.CurrentTarget,
-            "Configured unit-over-building threat must use the same attackRange + pursuitDistance interruption rule.");
+            "Configured building taunt-equivalent threat must use the attackRange + pursuitDistance interruption rule.");
+    }
+
+    [Test]
+    public void DefendEnemyTargeting_OrdinaryBuildingIsEligibleNearbyTarget()
+    {
+        LogicEntityState attacker = CreateConfiguredStateForSide(
+            "Unit_DefendOrdinaryBuildingAttacker",
+            SideType.EnemySide);
+        LogicEntityState ordinaryBuilding = CreateBuildingQueryState(
+            "building-defend-ordinary",
+            new FixVector2(Fix64.One, Fix64.Zero),
+            BuilType.Prod);
+        ActivateRequestedState(attacker.EntityId, 1);
+
+        CharacterTargetingComp targeting = CreateCharacterTargeting(attacker);
+        attacker.SetTargetingComp(targeting);
+        targeting.UseDefendEnemyMode(null);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(ordinaryBuilding, targeting.CurrentTarget,
+            "Building type must not decide whether a nearby attack-targetable building participates in threat selection.");
+    }
+
+    [Test]
+    public void DefendEnemyTargeting_DefenseBuildingTypeDoesNotAddThreat()
+    {
+        LogicEntityState attacker = CreateConfiguredStateForSide(
+            "Unit_DefendBuildingTypeThreatAttacker",
+            SideType.EnemySide);
+        LogicEntityState closerProductionBuilding = CreateBuildingQueryState(
+            "building-defend-closer-production",
+            new FixVector2((Fix64)2, Fix64.Zero),
+            BuilType.Prod);
+        CreateBuildingQueryState(
+            "building-defend-farther-defense",
+            new FixVector2((Fix64)5, Fix64.Zero),
+            BuilType.Def);
+        ActivateRequestedState(attacker.EntityId, 1);
+
+        CharacterTargetingComp targeting = CreateCharacterTargeting(attacker);
+        attacker.SetTargetingComp(targeting);
+        targeting.UseDefendEnemyMode(null);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(closerProductionBuilding, targeting.CurrentTarget,
+            "Defense-building type must not add threat over another building with the same configured building threat.");
+    }
+
+    [Test]
+    public void DefendEnemyTargeting_FallbackDesignationDoesNotAddThreat()
+    {
+        LogicEntityState attacker = CreateConfiguredStateForSide(
+            "Unit_DefendFallbackThreatAttacker",
+            SideType.EnemySide);
+        LogicEntityState closerOrdinaryBuilding = CreateBuildingQueryState(
+            "building-defend-closer-ordinary",
+            new FixVector2(Fix64.One, Fix64.Zero),
+            BuilType.Prod);
+        LogicEntityState fartherFallbackBuilding = CreateBuildingQueryState(
+            "building-defend-farther-fallback",
+            new FixVector2((Fix64)5, Fix64.Zero),
+            BuilType.Prod);
+        ActivateRequestedState(attacker.EntityId, 1);
+
+        CharacterTargetingComp targeting = CreateCharacterTargeting(attacker);
+        attacker.SetTargetingComp(targeting);
+        targeting.UseDefendEnemyMode(fartherFallbackBuilding);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(closerOrdinaryBuilding, targeting.CurrentTarget,
+            "Fallback-target designation must remain a navigation fallback and must not affect threat selection.");
+    }
+
+    [Test]
+    public void DefendEnemyTargeting_AttackingBuildingTransfersToUnitInsideAttackRange()
+    {
+        LogicEntityState attacker = CreateConfiguredStateForSide(
+            "Unit_DefendInRangeTransferAttacker",
+            SideType.EnemySide);
+        LogicEntityState currentBuilding = CreateBuildingQueryState(
+            "building-defend-in-range-current",
+            new FixVector2(Fix64.One, Fix64.Zero),
+            BuilType.Prod);
+        LogicEntityState inRangeUnit = CreateConfiguredStateForSide(
+            "Unit_DefendInRangeTransferTarget",
+            SideType.PlayerSide,
+            new FixVector2(Fix64.FromRaw(2048), Fix64.Zero));
+        currentBuilding.TauntLevel = 1;
+        inRangeUnit.TauntLevel = 1;
+        var attack = new AlwaysAttackingProbe();
+        attack.Init(attacker);
+        attacker.SetAtkComp(attack);
+        ActivateRequestedState(attacker.EntityId, 1);
+
+        CharacterTargetingComp targeting = CreateCharacterTargeting(attacker);
+        attacker.SetTargetingComp(targeting);
+        targeting.UseDefendEnemyMode(currentBuilding);
+        targeting.CurrentTarget = currentBuilding;
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.IsTrue(
+            attacker.LogicFrameDistanceToTargetSurfaceFixed(inRangeUnit) <= Fix64.FromRaw(6144),
+            "Test setup must keep the unit inside the attacker's default attack range.");
+        Assert.AreSame(inRangeUnit, targeting.CurrentTarget,
+            "An attack-locked building target must be replaced when a higher-threat unit enters attack range.");
     }
 
     [Test]
@@ -1358,12 +1463,12 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
-    public void ViewlessParcelLockers_CountStableStrongholdPeersWithoutBuildingViews()
+    public void ViewlessCampfireGrills_CountStableStrongholdPeersWithoutBuildingViews()
     {
-        LogicEntityState first = CreateConfiguredState("Buil_ParcelLocker_Lv1", false);
+        LogicEntityState first = CreateConfiguredState("Buil_CampfireGrill_Lv1", false);
         first.ConfigureBuilding(
-            CreateProductionBuildingData("Buil_ParcelLocker_Lv1", 10, (Fix64)2, (Fix64)2),
-            "production-parcel-1",
+            CreateProductionBuildingData("Buil_CampfireGrill_Lv1", 10, (Fix64)1, (Fix64)2, (Fix64)10),
+            "production-campfire-1",
             "SH_0_1",
             EntitySideHelper.PlayerFactionId,
             LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
@@ -1372,10 +1477,10 @@ public class LogicEntityIdentityTests
             true);
         LogicBuildingProductionService.Configure(first);
 
-        LogicEntityState second = CreateConfiguredState("Buil_ParcelLocker_Lv1", false);
+        LogicEntityState second = CreateConfiguredState("Buil_CampfireGrill_Lv1", false);
         second.ConfigureBuilding(
-            CreateProductionBuildingData("Buil_ParcelLocker_Lv1", 10, (Fix64)2, (Fix64)2),
-            "production-parcel-2",
+            CreateProductionBuildingData("Buil_CampfireGrill_Lv1", 10, (Fix64)1, (Fix64)2, (Fix64)10),
+            "production-campfire-2",
             "SH_0_1",
             EntitySideHelper.PlayerFactionId,
             LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
@@ -1390,7 +1495,7 @@ public class LogicEntityIdentityTests
 
         Assert.IsFalse(first.HasBoundView);
         Assert.IsFalse(second.HasBoundView);
-        Assert.AreEqual(2, LogicProductionConditionState.GetBuildingCount("SH_0_1", "Buil_ParcelLocker"));
+        Assert.AreEqual(2, LogicProductionConditionState.GetBuildingCount("SH_0_1", "Buil_CampfireGrill"));
         Assert.AreEqual(1, first.ProductionProps.ConditionCount);
         Assert.AreEqual(12, LogicBuildingProductionService.GetProduction(first));
         Assert.AreEqual(12, LogicBuildingProductionService.GetProduction(second));
@@ -1596,121 +1701,6 @@ public class LogicEntityIdentityTests
         finally
         {
             BuildingCostModifierService.Clear();
-        }
-    }
-
-    [Test]
-    public void ResearchCenterCostDiscount_RegistersFromViewlessLogicSource()
-    {
-        LogicEntityState researchCenter = CreateConfiguredState("Building_Viewless_ResearchCenter", false);
-        researchCenter.ConfigureBuilding(
-            CreateCostBuildingData("Building_Viewless_ResearchCenter", Archetype.Coding, 100),
-            "building-viewless-research-center",
-            "stronghold-viewless-tech",
-            EntitySideHelper.PlayerFactionId,
-            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
-            Array.Empty<LogicCombatShape>(),
-            Array.Empty<LogicInteractionOptionDescriptor>(),
-            false);
-        LogicEntityState medical = CreateConfiguredState("Building_Viewless_Medical", false);
-        medical.ConfigureBuilding(
-            CreateCostBuildingData("Building_Viewless_Medical", Archetype.Medical, 100),
-            "building-viewless-medical",
-            "stronghold-viewless-tech",
-            EntitySideHelper.PlayerFactionId,
-            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
-            Array.Empty<LogicCombatShape>(),
-            Array.Empty<LogicInteractionOptionDescriptor>(),
-            false);
-        ActivateRequestedState(researchCenter.EntityId, 1);
-        Assert.IsTrue(medical.IsSpawnCommitted);
-        Assert.IsFalse(researchCenter.HasBoundView);
-        Assert.IsFalse(medical.HasBoundView);
-
-        var managerObject = new GameObject("GlobalBuffManager_ViewlessTech_Test");
-        var manager = managerObject.AddComponent<GlobalBuffManager>();
-        var effect = new BuildingTechRuntimeEffect();
-        BuildingCostModifierService.Clear();
-        try
-        {
-            effect.Activate(new TechEffectContext
-            {
-                TechId = "Tech_Buil_ResearchCenter_Lv2_Opt2",
-                OwnerFactionId = EntitySideHelper.PlayerFactionId,
-                SourceBuildingInstanceId = researchCenter.BuildingInstanceId,
-                TechData = new TechData(
-                    "Tech_Buil_ResearchCenter_Lv2_Opt2",
-                    string.Empty,
-                    string.Empty,
-                    string.Empty,
-                    0,
-                    new[] { (Fix64)10 },
-                    TechScopeType.AllBuil,
-                    Array.Empty<string>(),
-                    Array.Empty<UnitSize>(),
-                    Array.Empty<UnitTag>(),
-                    Array.Empty<Archetype>(),
-                    string.Empty,
-                    false),
-                GlobalBuffManager = manager,
-            });
-
-            int cost = BuildingCostModifierService.CalculateBuildingCost(
-                CreateCostBuildingData("Building_Viewless_Target", Archetype.Security, 100),
-                researchCenter.StrongholdId,
-                researchCenter.OwnerFactionId);
-
-            Assert.AreEqual(80, cost);
-        }
-        finally
-        {
-            manager.ClearLevelRuntimeState();
-            UnityEngine.Object.DestroyImmediate(managerObject);
-        }
-    }
-
-    [Test]
-    public void CostChangingPhaseBuilding_ShowsDemolishWithoutRefund()
-    {
-        LogicEntityState researchCenter = CreateConfiguredState("Building_CostChanging_Undo", false);
-        researchCenter.ConfigureBuilding(
-            CreateCostBuildingData("Building_CostChanging_Undo", Archetype.Coding, 100, BuilType.Base),
-            "building-cost-changing-undo",
-            "stronghold-cost-changing-undo",
-            EntitySideHelper.PlayerFactionId,
-            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
-            Array.Empty<LogicCombatShape>(),
-            Array.Empty<LogicInteractionOptionDescriptor>(),
-            false);
-        ActivateRequestedState(researchCenter.EntityId, 1);
-        InGameDataModel.RecordBuildingPhaseModification(
-            researchCenter.BuildingInstanceId,
-            "Buil_ResearchCenter_Lv1",
-            8);
-        InGameDataModel.RecordBuildingPhaseTech(
-            researchCenter.BuildingInstanceId,
-            "Tech_Buil_ResearchCenter_Lv2_Opt2");
-
-        var managerObject = new GameObject("BuildManager_CostChangingUndo_Test");
-        try
-        {
-            BuildManager manager = managerObject.AddComponent<BuildManager>();
-            LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.BuildBeforeInvade);
-            LogicTimeControlService.BeginFrame(2);
-            LogicPhaseCommandService.ApplyFrameForTests(2, _ => { });
-
-            Assert.IsTrue(manager.CanRecycleBuilding(researchCenter));
-            Assert.IsFalse(manager.IsBuildingPhaseUndo(researchCenter));
-            Assert.AreEqual(0, manager.CalculateRecycleRefund(researchCenter));
-            Assert.IsTrue(InGameDataModel.TryGetBuildingPhaseUndo(
-                researchCenter.BuildingInstanceId,
-                out _,
-                out int recordedCost));
-            Assert.AreEqual(8, recordedCost);
-        }
-        finally
-        {
-            UnityEngine.Object.DestroyImmediate(managerObject);
         }
     }
 
@@ -2849,7 +2839,10 @@ public class LogicEntityIdentityTests
         return LogicEntityStateStore.GetRequired(entityId);
     }
 
-    private static LogicEntityState CreateBuildingQueryState(string buildingInstanceId, FixVector2 position)
+    private static LogicEntityState CreateBuildingQueryState(
+        string buildingInstanceId,
+        FixVector2 position,
+        BuilType type = BuilType.Def)
     {
         var descriptor = new LogicEntitySpawnDescriptor(
             position,
@@ -2862,7 +2855,7 @@ public class LogicEntityIdentityTests
             {
                 ConfigureBasicState(state);
                 state.ConfigureBuilding(
-                    CreateTestBuildingData(buildingInstanceId),
+                    CreateTestBuildingData(buildingInstanceId, type: type),
                     buildingInstanceId,
                     "stronghold-query-nearest",
                     EntitySideHelper.PlayerFactionId,
@@ -2934,11 +2927,14 @@ public class LogicEntityIdentityTests
         Assert.IsTrue(LogicEntityStateStore.GetRequired(entityId).IsSpawnCommitted);
     }
 
-    private static BuildingData CreateTestBuildingData(string identifier, int level = 1)
+    private static BuildingData CreateTestBuildingData(
+        string identifier,
+        int level = 1,
+        BuilType type = BuilType.Def)
     {
         return new BuildingData(
             identifier,
-            BuilType.Def,
+            type,
             Archetype.None,
             "Tests/Building",
             identifier,

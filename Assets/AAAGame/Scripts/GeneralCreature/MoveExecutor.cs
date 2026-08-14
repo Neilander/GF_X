@@ -21,6 +21,8 @@ public class MoveExecutor : MonoBehaviour
     private const float GravityAcceleration = -28f;
     private const float GroundStickVelocity = -2f;
     private const float ConstraintMinStepDistance = 0.02f;
+    private const float AuthoritativeHorizontalTolerance = 0.001f;
+    private const float GroundProbeHeight = 100f;
     private const int VerboseMoveLogIntervalFrames = 60;
 
     private MovementMode _movementMode = MovementMode.Normal;
@@ -185,7 +187,18 @@ public class MoveExecutor : MonoBehaviour
         long controllerMoveStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         _controller.Move(finalDisplacement);
         Vector3 resolvedPosition = transform.position;
-        transform.position = new Vector3(logicPosition.x, resolvedPosition.y, logicPosition.z);
+        Vector2 authoritativeHorizontalError = new Vector2(
+            logicPosition.x - resolvedPosition.x,
+            logicPosition.z - resolvedPosition.z);
+        if (authoritativeHorizontalError.sqrMagnitude
+            > AuthoritativeHorizontalTolerance * AuthoritativeHorizontalTolerance)
+        {
+            RelocateToAuthoritativeGround(logicPosition);
+        }
+        else
+        {
+            transform.position = new Vector3(logicPosition.x, resolvedPosition.y, logicPosition.z);
+        }
         UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
             UnityGameFramework.Runtime.MainThreadPerfScope.MoveExecutorControllerMove,
             System.Diagnostics.Stopwatch.GetTimestamp() - controllerMoveStartTicks);
@@ -193,6 +206,47 @@ public class MoveExecutor : MonoBehaviour
         Vector3 actualDisplacement = transform.position - beforeMovePosition;
         DebugActualHorizontalDisplacement = new Vector3(actualDisplacement.x, 0f, actualDisplacement.z);
         _isMovingThisFrame = horizontalDisplacement.sqrMagnitude > 0.0001f;
+    }
+
+    private void RelocateToAuthoritativeGround(Vector3 logicPosition)
+    {
+        int groundMask = LayerMask.GetMask("Ground");
+        if (groundMask == 0)
+            throw new System.InvalidOperationException("MoveExecutor authoritative relocation requires the Ground layer.");
+
+        Vector3 rayOrigin = new Vector3(
+            logicPosition.x,
+            Mathf.Max(transform.position.y, logicPosition.y) + GroundProbeHeight,
+            logicPosition.z);
+        RaycastHit[] hits = Physics.RaycastAll(
+            rayOrigin,
+            Vector3.down,
+            GroundProbeHeight * 2f,
+            groundMask,
+            QueryTriggerInteraction.Ignore);
+        if (hits.Length == 0)
+        {
+            throw new System.InvalidOperationException(
+                $"MoveExecutor authoritative relocation found no Ground at ({logicPosition.x}, {logicPosition.z}).");
+        }
+
+        RaycastHit highestGroundHit = hits[0];
+        for (int i = 1; i < hits.Length; i++)
+        {
+            if (hits[i].point.y > highestGroundHit.point.y)
+                highestGroundHit = hits[i];
+        }
+
+        float worldScaleY = Mathf.Abs(transform.lossyScale.y);
+        float controllerBottomOffset = (_controller.center.y - _controller.height * 0.5f) * worldScaleY;
+        float rootY = highestGroundHit.point.y - controllerBottomOffset + _controller.skinWidth;
+
+        _controller.enabled = false;
+        transform.position = new Vector3(logicPosition.x, rootY, logicPosition.z);
+        _controller.enabled = true;
+        Physics.SyncTransforms();
+        _controller.Move(Vector3.down * Mathf.Max(_controller.skinWidth, 0.001f));
+        _gravityVelocity = GroundStickVelocity;
     }
 
     private static bool IsFinite(Vector3 value)

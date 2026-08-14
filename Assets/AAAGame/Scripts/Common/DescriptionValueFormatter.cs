@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -26,36 +26,31 @@ public static class DescriptionValueFormatter
         if (data == null)
             return string.Empty;
 
-        if (data.ScopeType == TechScopeType.Skill && !string.IsNullOrEmpty(data.SkillID))
+        if (data.ScopeType == TechScopeType.Skill)
         {
-            var skillData = SkillDataModel.GetSkillData(data.SkillID);
-            if (skillData != null)
-            {
-                bool isLearned = InGameDataModel.IsSkillUnlocked(data.SkillID);
-                string skillName = GF.Localization.GetString(skillData.NameKey);
-                string skillDesc = skillData.GetFormattedDesc();
-
-                string fmtKey;
-                if (skillData.Type == SkillType.Active && isLearned)
-                {
-                    fmtKey = "Tech.Desc.SkillAlreadyLearned";
-                    string template = GF.Localization.GetString(fmtKey);
-                    return LocalizationTextManager.ProcessText(template.Replace("{0}", skillName));
-                }
-                else
-                {
-                    fmtKey = (skillData.Type == SkillType.Active && !isLearned)
-                        ? "Tech.Desc.LearnActiveSkill"
-                        : "Tech.Desc.LearnPassiveSkill";
-                    string template = GF.Localization.GetString(fmtKey);
-                    // 提前对template和skillName格式化，不将skillDesc卷入二次ProcessText，避免“橙髓”等关键字添加重复富文本
-                    string processedTemplate = LocalizationTextManager.ProcessText(template.Replace("{0}", skillName));
-                    return processedTemplate.Replace("{1}", skillDesc);
-                }
-            }
+            if (string.IsNullOrWhiteSpace(data.SkillID))
+                throw new InvalidOperationException($"Skill tech has no skill id. tech={data.Identifier}");
+            int currentLevel = SkillRuntimeDataModel.GetLevel(data.SkillID);
+            return data.GetSkillTechFormattedDesc(currentLevel > 0 ? currentLevel : 1);
         }
 
         return LocalizeAndFill(data.DescKey, data.UniqueValues);
+    }
+
+    public static string GetSkillTechFormattedDesc(this TechData data, int targetSkillLevel)
+    {
+        if (data == null)
+            return string.Empty;
+        if (data.ScopeType != TechScopeType.Skill || string.IsNullOrWhiteSpace(data.SkillID))
+            throw new ArgumentException("Skill tech description requires a skill tech.", nameof(data));
+        if (targetSkillLevel <= 0)
+            throw new ArgumentOutOfRangeException(nameof(targetSkillLevel), targetSkillLevel, "Skill level must be positive.");
+
+        SkillData skillData = SkillDataModel.GetSkillData(data.SkillID)
+                              ?? throw new InvalidOperationException($"Skill tech references missing skill data. tech={data.Identifier}, skill={data.SkillID}");
+        string skillName = LocalizationTextManager.GetLocalizedText(skillData.NameKey, false);
+        string skillDesc = skillData.GetFormattedDesc(targetSkillLevel);
+        return $"{skillName} Lv{targetSkillLevel}\n{skillDesc}";
     }
 
     public static string GetFormattedDesc(this CharacterDataDetail data)

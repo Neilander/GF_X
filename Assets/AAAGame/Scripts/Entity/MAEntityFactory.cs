@@ -297,6 +297,18 @@ public static class BuildingInitialBuffFactory
 
     private static void AddDefenseUtilityBuff(List<BuffData> buffList, BuildingData buildingData)
     {
+        if (IsBuilding(buildingData, BuildingAbilityIds.SupplyStation))
+        {
+            Fix64 reductionPercent = GetUniqueValue(buildingData, 0, Fix64.Zero);
+            if (reductionPercent <= Fix64.Zero)
+                throw new System.InvalidOperationException(
+                    $"Supply station damage reduction is missing. building={buildingData.Identifier}.");
+            buffList.Add(CreateInitialBuff(
+                "building_supply_station_damage_reduction",
+                new PercentDamageReductionBuff(reductionPercent)));
+            return;
+        }
+
         if (buildingData.Type != BuilType.Def)
             return;
 
@@ -305,15 +317,15 @@ public static class BuildingInitialBuffFactory
             int tauntValue = GetUniqueInt(buildingData, 0, 1);
             buffList.Add(TauntBuffCallback.CreateTaunt(tauntValue));
         }
-        else if (IsBuilding(buildingData, BuildingAbilityIds.SortingTable))
+        else if (IsBuilding(buildingData, BuildingAbilityIds.ThemeStatue))
         {
-            Fix64 pushLevel = GetUniqueValue(buildingData, 0, Fix64.Zero);
-            if (pushLevel > Fix64.Zero)
-            {
-                buffList.Add(CreateInitialBuff(
-                    "building_sorting_table_knockback",
-                    new KnockbackOnOutgoingDamageBuff(pushLevel)));
-            }
+            Fix64 blindSpotRange = GetUniqueValue(buildingData, 0, Fix64.Zero);
+            if (blindSpotRange <= Fix64.Zero)
+                throw new System.InvalidOperationException(
+                    $"Theme statue blind spot range is missing. building={buildingData.Identifier}.");
+            buffList.Add(CreateInitialBuff(
+                "building_theme_statue_blind_spot",
+                new BlindSpotRangeBuff(blindSpotRange)));
         }
         else if (IsBuilding(buildingData, BuildingAbilityIds.MeatRack))
         {
@@ -361,14 +373,6 @@ public static class BuildingInitialBuffFactory
             buffList.Add(CreateInitialBuff(
                 "building_pharmacy_phase_ammo_reset",
                 new PhaseAmmoResetBuff()));
-        }
-        else if (IsBuilding(buildingData, BuildingAbilityIds.Restroom))
-        {
-            Fix64 queueLimit = GetUniqueValue(buildingData, 0, (Fix64)4);
-            Fix64 releaseInterval = GetUniqueValue(buildingData, 1, (Fix64)4);
-            buffList.Add(CreateInitialBuff(
-                "building_restroom_queue",
-                new RestroomQueueBuff((int)queueLimit, releaseInterval)));
         }
     }
 

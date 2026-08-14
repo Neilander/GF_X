@@ -112,6 +112,216 @@ public sealed class DeterministicStaticCollisionTests
     }
 
     [Test]
+    public void BlockedTraversalEdge_StopsBetweenWalkableCells()
+    {
+        const int width = 4;
+        const int height = 3;
+        bool[] walkable = CreateMask(width, height);
+        byte[] traversal = CreateFullTraversalMask(width, height);
+        BlockHorizontalTraversal(traversal, width, 1, 1);
+        var world = new LogicStaticCollisionWorld(
+            0,
+            1,
+            width,
+            height,
+            (Fix64)1,
+            FixVector2.Zero,
+            walkable,
+            traversal);
+
+        LogicStaticCollisionSolveResult result = Solve(world, 1.5f, 1.5f, 1f, 0f, 0f);
+
+        Assert.IsTrue(result.Success);
+        AssertVector(result.ResolvedDisplacement, 0.5f, 0f, 0.002f);
+        Assert.AreEqual(1, result.ContactCount);
+    }
+
+    [Test]
+    public void BlockedTraversalEdge_DiagonalInputSlidesAlongCliff()
+    {
+        const int width = 4;
+        const int height = 4;
+        bool[] walkable = CreateMask(width, height);
+        byte[] traversal = CreateFullTraversalMask(width, height);
+        for (int y = 0; y < height; y++)
+            BlockHorizontalTraversal(traversal, width, 1, y);
+        var world = new LogicStaticCollisionWorld(
+            0,
+            1,
+            width,
+            height,
+            (Fix64)1,
+            FixVector2.Zero,
+            walkable,
+            traversal);
+
+        LogicStaticCollisionSolveResult result = Solve(world, 1.5f, 1.5f, 1f, 1f, 0f);
+
+        Assert.IsTrue(result.Success);
+        AssertVector(result.ResolvedDisplacement, 0.5f, 1f, 0.002f);
+        Assert.AreEqual(1, result.ContactCount);
+    }
+
+    [Test]
+    public void BlockedTraversalEdge_UsesFullRadiusWhenGridClearanceIsPreencoded()
+    {
+        const int width = 4;
+        const int height = 3;
+        bool[] walkable = CreateMask(width, height);
+        byte[] traversal = CreateFullTraversalMask(width, height);
+        BlockHorizontalTraversal(traversal, width, 1, 1);
+        var world = new LogicStaticCollisionWorld(
+            0,
+            1,
+            width,
+            height,
+            (Fix64)1,
+            FixVector2.Zero,
+            walkable,
+            traversal);
+
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            new FixVector2((Fix64)1.5f, (Fix64)1.5f),
+            new FixVector2(Fix64.One, Fix64.Zero),
+            Fix64.Zero,
+            (Fix64)0.25f,
+            System.Array.Empty<LogicStaticCollisionObstacle>(),
+            LogicStaticCollisionSlideMode.PreserveTangentialComponent);
+
+        Assert.IsTrue(result.Success);
+        AssertVector(result.ResolvedDisplacement, 0.25f, 0f, 0.002f);
+    }
+
+    [Test]
+    public void BlockedTraversalEdge_FullRadiusLargerThanCellStopsBeforeCrossing()
+    {
+        const int width = 40;
+        const int height = 40;
+        const int lowerRow = 15;
+        bool[] walkable = CreateMask(width, height);
+        byte[] traversal = CreateFullTraversalMask(width, height);
+        for (int x = 0; x < width; x++)
+            BlockVerticalTraversal(traversal, width, x, lowerRow);
+        var world = new LogicStaticCollisionWorld(
+            0,
+            1,
+            width,
+            height,
+            (Fix64)0.09f,
+            FixVector2.Zero,
+            walkable,
+            traversal);
+
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            new FixVector2((Fix64)1.8f, Fix64.One),
+            new FixVector2(Fix64.Zero, (Fix64)0.2f),
+            Fix64.Zero,
+            (Fix64)0.33f,
+            System.Array.Empty<LogicStaticCollisionObstacle>(),
+            LogicStaticCollisionSlideMode.PreserveTangentialComponent);
+
+        Assert.IsTrue(result.Success);
+        AssertVector(result.ResolvedDisplacement, 0f, 0.11f, 0.003f);
+        Assert.AreEqual(1, result.ContactCount);
+    }
+
+    [Test]
+    public void BlockedTraversalEdge_FullRadiusLargerThanCellRecoversOverlap()
+    {
+        const int width = 40;
+        const int height = 40;
+        const int lowerRow = 15;
+        bool[] walkable = CreateMask(width, height);
+        byte[] traversal = CreateFullTraversalMask(width, height);
+        for (int x = 0; x < width; x++)
+            BlockVerticalTraversal(traversal, width, x, lowerRow);
+        var world = new LogicStaticCollisionWorld(
+            0,
+            1,
+            width,
+            height,
+            (Fix64)0.09f,
+            FixVector2.Zero,
+            walkable,
+            traversal);
+
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            new FixVector2((Fix64)1.8f, (Fix64)1.2f),
+            FixVector2.Zero,
+            Fix64.Zero,
+            (Fix64)0.33f,
+            System.Array.Empty<LogicStaticCollisionObstacle>(),
+            LogicStaticCollisionSlideMode.PreserveTangentialComponent);
+
+        Assert.IsTrue(result.Success);
+        Assert.IsTrue(result.StartedOverlapping);
+        AssertVector(result.ResolvedDisplacement, 0f, -0.09f, 0.003f);
+    }
+
+    [Test]
+    public void BlockedTraversalEdge_DoesNotBlockMovementAlongConnectedCells()
+    {
+        const int width = 4;
+        const int height = 4;
+        bool[] walkable = CreateMask(width, height);
+        byte[] traversal = CreateFullTraversalMask(width, height);
+        for (int y = 0; y < height; y++)
+            BlockHorizontalTraversal(traversal, width, 1, y);
+        var world = new LogicStaticCollisionWorld(
+            0,
+            1,
+            width,
+            height,
+            (Fix64)1,
+            FixVector2.Zero,
+            walkable,
+            traversal);
+
+        LogicStaticCollisionSolveResult result = Solve(world, 1.5f, 1.5f, 0f, 1.25f, 0f);
+
+        Assert.IsTrue(result.Success);
+        AssertVector(result.ResolvedDisplacement, 0f, 1.25f);
+        Assert.AreEqual(0, result.ContactCount);
+    }
+
+    [Test]
+    public void LvTestSlopeSide_RepeatedAuthoritativeMovementCannotCrossCliff()
+    {
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>(
+            "Assets/AAAGame/Tilemap/LvTest_FlowNavigationGrid_Medium.asset");
+        Assert.NotNull(grid);
+        FlowNavigationGridAsset.FixedAuthorityMetadata metadata = grid.GetFixedAuthorityMetadata();
+        var world = new LogicStaticCollisionWorld(
+            grid.AgentTypeId,
+            1,
+            grid.Width,
+            grid.Height,
+            metadata.CellSizeGridRaw,
+            metadata.OriginXGridRaw,
+            metadata.OriginZGridRaw,
+            grid.GetWalkableMaskRuntimeReadOnlyReference(),
+            grid.GetNeighborTraversalMaskRuntimeReadOnlyReference());
+        FixVector2 position = new FixVector2((Fix64)68f, (Fix64)50.01f);
+        FixVector2 step = new FixVector2(Fix64.Zero, (Fix64)(2.5f / 120f));
+
+        for (int frame = 0; frame < 120; frame++)
+        {
+            LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircle(
+                world,
+                position,
+                step,
+                (Fix64)0.22f);
+            Assert.IsTrue(result.Success, $"frame={frame} failure={result.Failure}");
+            position += result.ResolvedDisplacement;
+        }
+
+        Assert.Less((float)position.y, 50.5f, $"final={position}");
+    }
+
+    [Test]
     public void RuntimeBoxObstacle_BlocksWithoutRasterRebuild()
     {
         LogicStaticCollisionWorld world = CreateWorld(8, 4);
@@ -395,6 +605,47 @@ public sealed class DeterministicStaticCollisionTests
     }
 
     [Test]
+    public void ShadowCache_SameVersionDifferentNavigationSourceRebuildsWorld()
+    {
+        const int width = 3;
+        const int height = 3;
+        bool[] walkable = CreateMask(width, height);
+        byte[] traversal = CreateFullTraversalMask(width, height);
+        BlockHorizontalTraversal(traversal, width, 1, 1);
+        var firstSource = new LogicStaticCollisionSourceData(
+            0,
+            1,
+            width,
+            height,
+            1L << 32,
+            0,
+            0,
+            0,
+            walkable,
+            null,
+            System.Array.Empty<LogicStaticCollisionObstacle>());
+        var secondSource = new LogicStaticCollisionSourceData(
+            0,
+            1,
+            width,
+            height,
+            1L << 32,
+            0,
+            0,
+            0,
+            walkable,
+            traversal,
+            System.Array.Empty<LogicStaticCollisionObstacle>());
+
+        LogicStaticCollisionShadowService.Clear();
+        LogicStaticCollisionWorld first = LogicStaticCollisionShadowService.ResolveWorldForEditorTest(0, firstSource);
+        LogicStaticCollisionWorld second = LogicStaticCollisionShadowService.ResolveWorldForEditorTest(0, secondSource);
+
+        Assert.AreNotSame(first, second);
+        Assert.IsFalse(second.CanTraverseCardinal(1, 1, 2, 1));
+    }
+
+    [Test]
     public void LogicTransform_WithMotionUpdatesFacingFromFixedVelocity()
     {
         var transform = new LogicTransform(FixVector2.Zero, FixVector2.Zero, new FixVector2(1, 0));
@@ -442,6 +693,30 @@ public sealed class DeterministicStaticCollisionTests
         for (int i = 0; i < mask.Length; i++)
             mask[i] = true;
         return mask;
+    }
+
+    private static byte[] CreateFullTraversalMask(int width, int height)
+    {
+        var mask = new byte[width * height];
+        for (int i = 0; i < mask.Length; i++)
+            mask[i] = byte.MaxValue;
+        return mask;
+    }
+
+    private static void BlockHorizontalTraversal(byte[] mask, int width, int leftX, int y)
+    {
+        int leftIndex = leftX + y * width;
+        int rightIndex = leftIndex + 1;
+        mask[leftIndex] &= unchecked((byte)~(1 << 4));
+        mask[rightIndex] &= unchecked((byte)~(1 << 3));
+    }
+
+    private static void BlockVerticalTraversal(byte[] mask, int width, int x, int lowerY)
+    {
+        int lowerIndex = x + lowerY * width;
+        int upperIndex = lowerIndex + width;
+        mask[lowerIndex] &= unchecked((byte)~(1 << 6));
+        mask[upperIndex] &= unchecked((byte)~(1 << 1));
     }
 
     private static void AssertVector(

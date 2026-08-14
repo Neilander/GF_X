@@ -205,8 +205,6 @@ public sealed class BuffLogicTimeTests
             typeof(PercentHealthBonusBuff),
             typeof(PercentMoveSpeedBonusBuff),
             typeof(RampedPercentMoveSpeedBonusBuff),
-            typeof(SkillMoveSpeedPercentBuff),
-            typeof(SkillDisarmDebuff),
             typeof(SkillCheerSquadBuff),
             typeof(PositionAreaRefreshBuff),
             typeof(TauntBuffCallback),

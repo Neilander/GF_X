@@ -15,11 +15,11 @@ MonoBehaviour:
   skills:
   - {fileID: 11400000, guid: d1a5a0c1e1b54c4c8bd58d077dc1f001, type: 2}
   - {fileID: 11400000, guid: d1a5a0c1e1b54c4c8bd58d077dc1f002, type: 2}
-  - {fileID: 11400000, guid: d1a5a0c1e1b54c4c8bd58d077dc1f003, type: 2}
+  - {fileID: 11400000, guid: d1a5a0c1e1b54c4c8bd58d077dc1f006, type: 2}
   - {fileID: 11400000, guid: d1a5a0c1e1b54c4c8bd58d077dc1f004, type: 2}
   - {fileID: 11400000, guid: d1a5a0c1e1b54c4c8bd58d077dc1f005, type: 2}
   passiveSkills:
-  - {fileID: 11400000, guid: d1a5a0c1e1b54c4c8bd58d077dc1f006, type: 2}
+  - {fileID: 11400000, guid: d1a5a0c1e1b54c4c8bd58d077dc1f003, type: 2}
   - {fileID: 11400000, guid: d1a5a0c1e1b54c4c8bd58d077dc1f007, type: 2}
   - {fileID: 11400000, guid: d1a5a0c1e1b54c4c8bd58d077dc1f008, type: 2}
   - {fileID: 11400000, guid: d1a5a0c1e1b54c4c8bd58d077dc1f009, type: 2}

@@ -46,7 +46,7 @@ public class Weapon
 
     private SimpleStat[] m_Stats;
 
-    public Fix64 Atk => m_Stats[(int)WeaponStatId.Atk].Value;
+    public Fix64 Atk => m_Stats[(int)WeaponStatId.Atk].ValueWithPostPercentAdditive;
     public Fix64 Interval => m_Stats[(int)WeaponStatId.Interval].Value;
     public Fix64 BaseInterval => m_Stats[(int)WeaponStatId.Interval].Base;
     public Fix64 Range => m_Stats[(int)WeaponStatId.Range].Value;
@@ -81,7 +81,7 @@ public class Weapon
 
     /// <summary>
     /// 对指定 stat 追加百分比加法栈（0.25 = +25%）。
-    /// 多个 buff 并列累加到 PercentSum，最终 (Base+Additive)*(1+Sum)*Multiplier。
+    /// 多个 buff 并列累加到 PercentSum。攻击力固定加成在百分比之后结算，其他属性保持原公式。
     /// OnAdd 传 +delta，OnRemove 传 -delta 撤销。
     /// </summary>
     public void ApplyPercentAdd(WeaponStatId stat, Fix64 delta)

@@ -79660,8 +79660,9 @@ MonoBehaviour:
     layer: {fileID: -6907788546711012936}
   - height: 5
     layer: {fileID: 3916210864096476198}
-  ramp45Prefab: {fileID: 4019352083722085736, guid: 3d84456738791974d9500848e8cc1227, type: 3}
-  ramp2x1Prefab: {fileID: 1369955469229272058, guid: ea46dc8b87f4b1147a7faebf1c3b4385, type: 3}
+  rampPrefab: {fileID: 1161294492486270937, guid: 4ad6e098939ab3b44aef4eb9b3f79d18, type: 3}
+  highEndExtension: 0.19999999
+  maximumSlopeAngle: 45
   surfaceBaseHeight: 3.7
   surfaceHeightStep: 1.4
   layerOffset: {x: 0, y: 0, z: 0}

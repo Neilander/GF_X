@@ -280,6 +280,19 @@ public class RewardManager : GameFrameworkComponent
 
 	private void OnLogicBuildingDisabled(IBuildingLogicContext building, IEntityContext attacker)
 	{
+		if (building?.BuildingData?.Type == BuilType.Prod
+			&& building.OwnerFactionId == EntitySideHelper.PlayerFactionId
+			&& LogicBuildingProductionService.IsPackageRack(building))
+		{
+			int storedProduction = building.ProductionProps?.StoredProduction
+				?? throw new InvalidOperationException(
+					$"Disabled package rack has no production props. instance={building.BuildingInstanceId}.");
+			int actualProduction = LogicBuildingProductionService.GrantProduction(building, storedProduction);
+			if (actualProduction > 0)
+				GrantCoin(building.PositionFixed, actualProduction, "package_rack_destroyed");
+			return;
+		}
+
 		switch (ResolveProductionBuildingDisabledResult(building))
 		{
 			case ProductionBuildingDisabledResult.Ignore:
@@ -450,7 +463,11 @@ public class RewardManager : GameFrameworkComponent
 
 			int rawProduction = LogicBuildingProductionService.GetProduction(building);
 			if (InGameDataModel.ConsumeDemolishedPlayerProductionBuilding(building.BuildingInstanceId))
-				rawProduction = CalculateProductionAfterDemolitionLoss(rawProduction, m_DemolishedProdRevenueLossRate);
+			{
+				rawProduction = LogicBuildingProductionService.IsResidence(building)
+					? 0
+					: CalculateProductionAfterDemolitionLoss(rawProduction, m_DemolishedProdRevenueLossRate);
+			}
 			int actualProduction = LogicBuildingProductionService.GrantProduction(building, rawProduction);
 			if (actualProduction <= 0)
 				continue;

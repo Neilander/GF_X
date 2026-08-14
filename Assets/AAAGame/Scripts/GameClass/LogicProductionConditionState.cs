@@ -60,6 +60,27 @@ public static class LogicProductionConditionState
         return count;
     }
 
+    public static int GetBuildingCount(string strongholdId)
+    {
+        if (string.IsNullOrWhiteSpace(strongholdId))
+            throw new ArgumentException("Stronghold id is required.", nameof(strongholdId));
+
+        int count = 0;
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            if (entities[i] is IBuildingLogicContext building
+                && building.Alive
+                && !building.IsDisabled
+                && string.Equals(building.StrongholdId, strongholdId, StringComparison.Ordinal))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
     public static int GetTroopCount(string strongholdId)
     {
         if (string.IsNullOrWhiteSpace(strongholdId))

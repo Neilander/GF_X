@@ -241,11 +241,6 @@ public partial class LevelEntity : EntityBase
                     if (point.IsGameEndConditionBuilding)
                     {
                         int initialOwnerFactionId = ResolveOwnerFactionIdByPosition(point.Position);
-                        if (effectiveIdentifier.Contains("ParcelLocker"))
-                        {
-                            Debug.Log($"[LevelEntity] 设置快递柜所有者: {effectiveIdentifier}, 位置: {point.Position}, 据点所有者: {initialOwnerFactionId}, 血条颜色: {(initialOwnerFactionId == EntitySideHelper.PlayerFactionId ? "绿色(友方)" : "红色(敌方)")}");
-                        }
-
                         gameEndManager.RegisterInitialConditionBuilding(buildingInstanceId, initialOwnerFactionId);
                     }
                     break;
@@ -358,12 +353,6 @@ public partial class LevelEntity : EntityBase
                     if (point.IsGameEndConditionBuilding)
                     {
                         int initialOwnerFactionId = ResolveOwnerFactionIdByPosition(point.Position);
-
-                        if (effectiveIdentifier.Contains("ParcelLocker"))
-                        {
-                            Debug.Log($"[LevelEntity] 设置快递柜所有者: {effectiveIdentifier}, 位置: {point.Position}, 据点所有者: {initialOwnerFactionId}, 血条颜色: {(initialOwnerFactionId == EntitySideHelper.PlayerFactionId ? "绿色(友方)" : "红色(敌方)")}");
-                        }
-
                         gameEndManager.RegisterInitialConditionBuilding(buildingInstanceId, initialOwnerFactionId);
                     }
                     break;

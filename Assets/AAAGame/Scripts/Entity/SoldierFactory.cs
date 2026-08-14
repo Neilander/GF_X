@@ -453,28 +453,27 @@ public static class SoldierFactory
         switch (unitType)
         {
             case UnitType.Unit_Intern:
-                modifiers.AttackSpeedPercent += TechValue(lv2, 0, row.Tech1ID);
+                modifiers.LifetimeSecondsDelta -= TechValue(lv2, 0, row.Tech1ID);
                 modifiers.LifetimeSecondsDelta -= TechValue(lv3, 0, row.Tech2ID);
                 break;
 
             case UnitType.Unit_CanMaker:
-                modifiers.AttackSpeedPercent += TechValue(lv2, 0, row.Tech1ID);
-                modifiers.AttackSpeedPercent += TechValue(lv3, 0, row.Tech2ID);
                 break;
 
             case UnitType.Unit_Brat:
-                modifiers.AttackSpeedPercent += TechValue(lv2, 0, row.Tech1ID);
-                modifiers.AttackSpeedPercent += TechValue(lv3, 0, row.Tech2ID);
                 break;
 
             case UnitType.Unit_LateRider:
                 modifiers.LateRiderMaxDistanceDelta += TechValue(lv2, 0, row.Tech1ID);
+                modifiers.LateRiderMoveSpeedDelta += TechValue(lv2, 1, row.Tech1ID);
+                modifiers.LateRiderAttackDelta += TechValue(lv2, 2, row.Tech1ID);
                 modifiers.LateRiderMaxDistanceDelta += TechValue(lv3, 0, row.Tech2ID);
                 modifiers.LateRiderMoveSpeedDelta += TechValue(lv3, 1, row.Tech2ID);
                 modifiers.LateRiderAttackDelta += TechValue(lv3, 2, row.Tech2ID);
                 break;
 
             case UnitType.Unit_BoneButcher:
+                modifiers.OnKillHealPercentDelta += TechValue(lv2, 0, row.Tech1ID);
                 modifiers.OnKillHealPercentDelta += TechValue(lv3, 0, row.Tech2ID);
                 break;
 
@@ -493,14 +492,10 @@ public static class SoldierFactory
                 break;
 
             case UnitType.Unit_LongbowHunter:
-                modifiers.AttackSpeedPercent -= TechValue(lv2, 0, row.Tech1ID);
-                modifiers.AttackSpeedPercent -= TechValue(lv3, 0, row.Tech2ID);
                 break;
 
             case UnitType.Unit_Poacher:
-                modifiers.AttackSpeedPercent -= TechValue(lv2, 0, row.Tech1ID);
                 modifiers.CriticalDamageBonusPercent += TechValue(lv3, 0, row.Tech2ID);
-                modifiers.AttackSpeedPercent -= TechValue(lv3, 1, row.Tech2ID);
                 break;
 
             case UnitType.Unit_Gardener:
@@ -534,6 +529,78 @@ public static class SoldierFactory
         }
 
         return modifiers;
+    }
+
+    internal static Fix64 ResolveArmyPresentationAttackSpeedPercent(UnitType unitType, int unitLevel)
+    {
+        return ResolveArmyLevelTechModifiers(unitType, NormalizeUnitLevel(unitLevel)).AttackSpeedPercent;
+    }
+
+    internal static Fix64 ResolveArmyPresentationCriticalDamageBonusPercent(UnitType unitType, int unitLevel)
+    {
+        return ResolveArmyLevelTechModifiers(unitType, NormalizeUnitLevel(unitLevel)).CriticalDamageBonusPercent;
+    }
+
+    internal static Fix64 ResolveArmyPresentationHealOnHit(UnitType unitType, int unitLevel)
+    {
+        return ResolveArmyLevelTechModifiers(unitType, NormalizeUnitLevel(unitLevel)).HealOnHit;
+    }
+
+    internal static Fix64[] ResolveArmyPresentationAbilityValues(UnitType unitType, int unitLevel)
+    {
+        CharacterDataDetail row = GetCharacterDataRow(unitType.ToString());
+        Fix64[] values = row.UniqueValues != null ? (Fix64[])row.UniqueValues.Clone() : Array.Empty<Fix64>();
+        ArmyLevelTechModifiers tech = ResolveArmyLevelTechModifiers(unitType, NormalizeUnitLevel(unitLevel));
+
+        switch (unitType)
+        {
+            case UnitType.Unit_Intern:
+                AddPresentationValue(values, 0, tech.LifetimeSecondsDelta, unitType);
+                break;
+            case UnitType.Unit_BoneButcher:
+                AddPresentationValue(values, 0, tech.OnKillHealPercentDelta, unitType);
+                break;
+            case UnitType.Unit_ColdCarrier:
+                AddPresentationValue(values, 0, tech.ExcessDamageThresholdDelta, unitType);
+                AddPresentationValue(values, 1, tech.ExcessDamageReductionPercentDelta, unitType);
+                break;
+            case UnitType.Unit_RiotGuard:
+                AddPresentationValue(values, 0, tech.TauntLevelDelta, unitType);
+                break;
+            case UnitType.Unit_Gardener:
+                AddPresentationValue(values, 0, tech.GardenerThresholdPercentDelta, unitType);
+                break;
+            case UnitType.Unit_Surgeon:
+                AddPresentationValue(values, 0, tech.LifetimeSecondsDelta, unitType);
+                break;
+            case UnitType.Unit_LateRider:
+                AddPresentationValue(values, 1, tech.LateRiderMaxDistanceDelta, unitType);
+                AddPresentationValue(values, 2, tech.LateRiderMoveSpeedDelta, unitType);
+                AddPresentationValue(values, 3, tech.LateRiderAttackDelta, unitType);
+                break;
+            case UnitType.Unit_Sprinter:
+                AddPresentationValue(values, 0, tech.SprinterDurationDelta, unitType);
+                AddPresentationValue(values, 1, tech.SprinterAttackPercentDelta, unitType);
+                AddPresentationValue(values, 2, tech.SprinterAttackSpeedPercentDelta, unitType);
+                AddPresentationValue(values, 3, tech.SprinterMoveSpeedDelta, unitType);
+                AddPresentationValue(values, 4, tech.SprinterDamageReductionPercentDelta, unitType);
+                break;
+            case UnitType.Unit_JavelinThrower:
+                AddPresentationValue(values, 0, tech.HealthDrainPerSecondDelta, unitType);
+                break;
+            case UnitType.Unit_HydroGunner:
+                AddPresentationValue(values, 0, tech.KnockbackLevel, unitType);
+                break;
+        }
+
+        return values;
+    }
+
+    private static void AddPresentationValue(Fix64[] values, int index, Fix64 delta, UnitType unitType)
+    {
+        if (values == null || index < 0 || index >= values.Length)
+            throw new InvalidOperationException($"Unit presentation value is missing. unit={unitType}, index={index}.");
+        values[index] += delta;
     }
 
     private static BuildingTable FindArmyBuildingRow(UnitType unitType)

@@ -25,6 +25,7 @@ public class SkillRuntimeDataModel : DataModelBase
     private readonly Queue<PendingSkillPresentation> m_PendingPresentation = new Queue<PendingSkillPresentation>();
     private readonly Dictionary<string, int> m_SkillLevels = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> m_SkillRemainingUsageCounts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> m_SkillStackCounts = new(StringComparer.Ordinal);
     private readonly List<string> m_UnlockOrder = new();
     private readonly List<SkillRuntimeInfo> m_UnlockedSkills = new();
     private readonly ReadOnlyCollection<SkillRuntimeInfo> m_ReadOnlyUnlockedSkills;
@@ -183,14 +184,29 @@ public class SkillRuntimeDataModel : DataModelBase
             int remainingUsageCount = m_SkillRemainingUsageCounts.TryGetValue(skillId, out int remaining)
                 ? remaining
                 : 0;
-            m_UnlockedSkills.Add(new SkillRuntimeInfo(skillData, effectiveLevel, remainingUsageCount, maxUsageCount));
+            int stackCount = m_SkillStackCounts.TryGetValue(skillId, out int stacks) ? stacks : 0;
+            m_UnlockedSkills.Add(new SkillRuntimeInfo(skillData, effectiveLevel, remainingUsageCount, maxUsageCount, stackCount));
         }
         m_CachedHeroSkillLevelBonus = heroSkillLevelBonus;
     }
 
     public static LogicSkillSlotCommand RequestSwapSkillSlots(int fromIndex, int toIndex)
     {
+        if (!CanSwapSkillSlots(fromIndex, toIndex))
+            throw new InvalidOperationException($"Skill slots cannot be swapped. from={fromIndex}, to={toIndex}");
         return LogicSkillSlotCommandService.ScheduleForNextFrame(fromIndex, toIndex);
+    }
+
+    public static bool CanSwapSkillSlots(int fromIndex, int toIndex)
+    {
+        IReadOnlyList<SkillRuntimeInfo> skills = GetUnlockedSkills();
+        if (fromIndex < 0 || fromIndex >= skills.Count || toIndex < 0 || toIndex >= skills.Count || fromIndex == toIndex)
+            return false;
+        SkillData from = skills[fromIndex].Data
+                         ?? throw new InvalidOperationException($"Skill slot has null data. index={fromIndex}");
+        SkillData to = skills[toIndex].Data
+                       ?? throw new InvalidOperationException($"Skill slot has null data. index={toIndex}");
+        return from.Type == to.Type;
     }
 
     internal static void ApplyScheduledSlotSwap(LogicSkillSlotCommand command)
@@ -242,6 +258,35 @@ public class SkillRuntimeDataModel : DataModelBase
         dm.ConsumeUsageAtInternal(slotIndex);
     }
 
+    public static int GetRuntimeStackCount(string skillId)
+    {
+        if (string.IsNullOrWhiteSpace(skillId))
+            throw new ArgumentException("Skill identifier is required.", nameof(skillId));
+
+        SkillRuntimeDataModel dm = GetRequiredModel();
+        if (!dm.m_SkillLevels.ContainsKey(skillId))
+            throw new InvalidOperationException($"Cannot read stacks for a locked skill. skillId={skillId}");
+        return dm.m_SkillStackCounts.TryGetValue(skillId, out int count) ? count : 0;
+    }
+
+    public static void SetRuntimeStackCount(string skillId, int count)
+    {
+        if (string.IsNullOrWhiteSpace(skillId))
+            throw new ArgumentException("Skill identifier is required.", nameof(skillId));
+        if (count < 0)
+            throw new ArgumentOutOfRangeException(nameof(count), count, "Skill stack count cannot be negative.");
+
+        SkillRuntimeDataModel dm = GetRequiredModel();
+        if (!dm.m_SkillLevels.TryGetValue(skillId, out int level))
+            throw new InvalidOperationException($"Cannot set stacks for a locked skill. skillId={skillId}");
+        if (dm.m_SkillStackCounts.TryGetValue(skillId, out int current) && current == count)
+            return;
+
+        dm.m_SkillStackCounts[skillId] = count;
+        dm.RebuildUnlockedSkillsSnapshot();
+        dm.m_PendingPresentation.Enqueue(new PendingSkillPresentation(skillId, level));
+    }
+
     private int AddLevelInternal(SkillData skillData)
     {
         if (skillData == null)
@@ -256,8 +301,9 @@ public class SkillRuntimeDataModel : DataModelBase
             if (m_UnlockOrder.Count >= SkillInputRuntime.MaxSkillCount)
                 throw new InvalidOperationException($"Cannot unlock more than {SkillInputRuntime.MaxSkillCount} skills. skillId={skillId}");
 
-            m_UnlockOrder.Add(skillId);
+            InsertSkillByCanonicalOrder(skillData);
             m_SkillLevels[skillId] = 1;
+            m_SkillStackCounts[skillId] = 0;
             SetInitialUsageCount(skillData, 1);
             RebuildUnlockedSkillsSnapshot();
             return 1;
@@ -353,6 +399,12 @@ public class SkillRuntimeDataModel : DataModelBase
             hasher.Add(hasRemainingUsage);
             if (hasRemainingUsage)
                 hasher.Add(remainingUsage);
+            bool hasStacks = model.m_SkillStackCounts.TryGetValue(skillId, out int stackCount);
+            if (hasStacks && stackCount < 0)
+                throw new InvalidOperationException($"SkillRuntimeDataModel has negative stacks for '{skillId}'.");
+            hasher.Add(hasStacks);
+            if (hasStacks)
+                hasher.Add(stackCount);
         }
 
         foreach (string skillId in model.m_SkillRemainingUsageCounts.Keys)
@@ -362,6 +414,12 @@ public class SkillRuntimeDataModel : DataModelBase
                 throw new InvalidOperationException(
                     $"SkillRuntimeDataModel has remaining usage for unknown skill '{skillId}'.");
             }
+        }
+
+        foreach (string skillId in model.m_SkillStackCounts.Keys)
+        {
+            if (!model.m_SkillLevels.ContainsKey(skillId))
+                throw new InvalidOperationException($"SkillRuntimeDataModel has stacks for unknown skill '{skillId}'.");
         }
     }
 
@@ -437,6 +495,16 @@ public class SkillRuntimeDataModel : DataModelBase
         if (fromIndex == toIndex)
             return;
 
+        SkillData fromSkill = SkillDataModel.GetSkillData(m_UnlockOrder[fromIndex])
+                              ?? throw new InvalidOperationException($"Unlocked SkillData not found. skillId={m_UnlockOrder[fromIndex]}");
+        SkillData toSkill = SkillDataModel.GetSkillData(m_UnlockOrder[toIndex])
+                            ?? throw new InvalidOperationException($"Unlocked SkillData not found. skillId={m_UnlockOrder[toIndex]}");
+        if (fromSkill.Type != toSkill.Type)
+        {
+            throw new InvalidOperationException(
+                $"Active and passive skill slots cannot be swapped. from={fromSkill.Identifier}, to={toSkill.Identifier}");
+        }
+
         (m_UnlockOrder[fromIndex], m_UnlockOrder[toIndex]) = (m_UnlockOrder[toIndex], m_UnlockOrder[fromIndex]);
         RebuildUnlockedSkillsSnapshot();
         PublishSkillChanged(null, 0);
@@ -452,9 +520,43 @@ public class SkillRuntimeDataModel : DataModelBase
     {
         m_SkillLevels.Clear();
         m_SkillRemainingUsageCounts.Clear();
+        m_SkillStackCounts.Clear();
         m_UnlockOrder.Clear();
         m_UnlockedSkills.Clear();
         m_CachedHeroSkillLevelBonus = LevelTagRuntime.GetHeroSkillLevelBonus();
+    }
+
+    private void InsertSkillByCanonicalOrder(SkillData skillData)
+    {
+        int insertIndex = m_UnlockOrder.Count;
+        for (int i = 0; i < m_UnlockOrder.Count; i++)
+        {
+            SkillData existing = SkillDataModel.GetSkillData(m_UnlockOrder[i])
+                                 ?? throw new InvalidOperationException($"Unlocked SkillData not found. skillId={m_UnlockOrder[i]}");
+            if (CompareCanonicalOrder(skillData, existing) < 0)
+            {
+                insertIndex = i;
+                break;
+            }
+        }
+
+        m_UnlockOrder.Insert(insertIndex, skillData.Identifier);
+    }
+
+    internal static int CompareCanonicalOrder(SkillData left, SkillData right)
+    {
+        if (left == null)
+            throw new ArgumentNullException(nameof(left));
+        if (right == null)
+            throw new ArgumentNullException(nameof(right));
+        if (left.Type != right.Type)
+            return left.Type == SkillType.Active ? -1 : 1;
+
+        int industryOrder = SkillDataModel.GetIndustryOrderIndexRequired(left.Identifier)
+            .CompareTo(SkillDataModel.GetIndustryOrderIndexRequired(right.Identifier));
+        return industryOrder != 0
+            ? industryOrder
+            : string.CompareOrdinal(left.Identifier, right.Identifier);
     }
 
     private static SkillRuntimeDataModel GetModel()
@@ -476,12 +578,14 @@ public readonly struct SkillRuntimeInfo
     public int Level { get; }
     public int RemainingUsageCount { get; }
     public int MaxUsageCount { get; }
+    public int StackCount { get; }
 
-    public SkillRuntimeInfo(SkillData data, int level, int remainingUsageCount, int maxUsageCount)
+    public SkillRuntimeInfo(SkillData data, int level, int remainingUsageCount, int maxUsageCount, int stackCount = 0)
     {
         Data = data;
         Level = level;
         RemainingUsageCount = remainingUsageCount;
         MaxUsageCount = maxUsageCount;
+        StackCount = stackCount;
     }
 }

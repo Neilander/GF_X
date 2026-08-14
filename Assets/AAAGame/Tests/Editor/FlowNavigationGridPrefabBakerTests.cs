@@ -10,6 +10,7 @@ public sealed class FlowNavigationGridPrefabBakerTests
     private const string TempFolder = "Assets/AAAGame/Tests/Editor/TempFlowNavigationGridPrefabBaker";
     private const string TempPrefabPath = TempFolder + "/Terrain.prefab";
     private const string TempAssetPath = TempFolder + "/FlowGrid.asset";
+    private const string TempConfigurationPath = TempFolder + "/TerrainConfiguration.asset";
     private const string LvTestPrefabPath = "Assets/AAAGame/Prefabs/Entity/Level/LvTest.prefab";
 
     private static readonly string[] LvTestNavigationGridPaths =
@@ -25,6 +26,7 @@ public sealed class FlowNavigationGridPrefabBakerTests
         EnsureTempFolder();
         AssetDatabase.DeleteAsset(TempPrefabPath);
         AssetDatabase.DeleteAsset(TempAssetPath);
+        AssetDatabase.DeleteAsset(TempConfigurationPath);
     }
 
     [TearDown]
@@ -32,6 +34,7 @@ public sealed class FlowNavigationGridPrefabBakerTests
     {
         AssetDatabase.DeleteAsset(TempPrefabPath);
         AssetDatabase.DeleteAsset(TempAssetPath);
+        AssetDatabase.DeleteAsset(TempConfigurationPath);
     }
 
     [Test]
@@ -266,6 +269,59 @@ public sealed class FlowNavigationGridPrefabBakerTests
         Assert.IsNotNull(mask);
         Assert.AreEqual(0, mask[0] & (1 << 4), "Right traversal must be cut by the wall between anchors.");
         Assert.AreEqual(0, mask[1] & (1 << 3), "Left traversal must be cut by the wall between anchors.");
+    }
+
+    [Test]
+    public void BakeTreatsSlopeSidesAsCliffsUsingAuthoredTerrainTopology()
+    {
+        int groundLayer = LayerMask.NameToLayer("Ground");
+        Assert.GreaterOrEqual(groundLayer, 0, "Project must define Ground layer.");
+        CreateAuthoredTerrainPrefab(groundLayer, includeSlope: true);
+
+        object result = InvokeBakeFromTerrainPrefab(
+            TempPrefabPath,
+            TempAssetPath,
+            agentTypeId: 1007,
+            hardClearanceRadius: 0.1f,
+            width: 3,
+            height: 3,
+            cellSize: 1f,
+            gridOrigin: new Vector3(-0.5f, 0f, -0.5f));
+
+        FlowNavigationGridAsset asset = (FlowNavigationGridAsset)result.GetType().GetField("Asset").GetValue(result);
+        Assert.IsNotNull(asset);
+        Assert.IsTrue(asset.IsCellWalkable(1, 1));
+        byte[] mask = asset.CreateNeighborTraversalMaskCopy();
+        int slopeIndex = 1 + 1 * asset.Width;
+        Assert.AreEqual(0, mask[slopeIndex] & (1 << 3), "The west side of a north-facing slope must be a cliff edge.");
+        Assert.AreEqual(0, mask[slopeIndex] & (1 << 4), "The east side of a north-facing slope must be a cliff edge.");
+        Assert.AreNotEqual(0, mask[slopeIndex] & (1 << 1), "The slope must remain connected to its low platform.");
+        Assert.AreNotEqual(0, mask[slopeIndex] & (1 << 6), "The slope must remain connected to its high platform.");
+    }
+
+    [Test]
+    public void BakeTreatsDifferentHeightPlatformsAsCliffsWithoutSlope()
+    {
+        int groundLayer = LayerMask.NameToLayer("Ground");
+        Assert.GreaterOrEqual(groundLayer, 0, "Project must define Ground layer.");
+        CreateAuthoredTerrainPrefab(groundLayer, includeSlope: false);
+
+        object result = InvokeBakeFromTerrainPrefab(
+            TempPrefabPath,
+            TempAssetPath,
+            agentTypeId: 1008,
+            hardClearanceRadius: 0.1f,
+            width: 3,
+            height: 3,
+            cellSize: 1f,
+            gridOrigin: new Vector3(-0.5f, 0f, -0.5f));
+
+        FlowNavigationGridAsset asset = (FlowNavigationGridAsset)result.GetType().GetField("Asset").GetValue(result);
+        Assert.IsNotNull(asset);
+        byte[] mask = asset.CreateNeighborTraversalMaskCopy();
+        int lowPlatformIndex = 1 + 1 * asset.Width;
+        Assert.AreEqual(0, mask[lowPlatformIndex] & (1 << 6), "Adjacent H0 and H1 platforms must have a cliff edge when no slope connects them.");
+        Assert.AreNotEqual(0, mask[lowPlatformIndex] & (1 << 3), "The same-height H0 platform edge must remain connected.");
     }
 
     [Test]
@@ -553,6 +609,69 @@ public sealed class FlowNavigationGridPrefabBakerTests
         finally
         {
             UnityEngine.Object.DestroyImmediate(root);
+        }
+    }
+
+    private static void CreateAuthoredTerrainPrefab(int groundLayer, bool includeSlope)
+    {
+        var configuration = ScriptableObject.CreateInstance<GiantGrey.TileWorldCreator.Configuration>();
+        var h0 = ScriptableObject.CreateInstance<GiantGrey.TileWorldCreator.BlueprintLayer>();
+        var h1 = ScriptableObject.CreateInstance<GiantGrey.TileWorldCreator.BlueprintLayer>();
+        var slope = ScriptableObject.CreateInstance<GiantGrey.TileWorldCreator.BlueprintLayer>();
+        GameObject root = new GameObject("AuthoredSlopeTerrainRoot");
+        try
+        {
+            configuration.width = 3;
+            configuration.height = 3;
+            configuration.cellSize = 1f;
+            var folder = new GiantGrey.TileWorldCreator.BlueprintLayerFolder("Root");
+            configuration.blueprintLayerFolders.Add(folder);
+
+            h0.layerName = "Plane_H0";
+            for (int y = 0; y < 3; y++)
+            {
+                for (int x = 0; x < 3; x++)
+                    h0.allPositions.Add(new Vector2(x, y));
+            }
+            h1.layerName = "Plane_H1";
+            h1.allPositions.Add(new Vector2(1, 2));
+            slope.layerName = "Slope";
+            if (includeSlope)
+                slope.allPositions.Add(new Vector2(1, 1));
+            folder.blueprintLayers.Add(h0);
+            folder.blueprintLayers.Add(h1);
+            folder.blueprintLayers.Add(slope);
+
+            AssetDatabase.CreateAsset(configuration, TempConfigurationPath);
+            AssetDatabase.AddObjectToAsset(h0, configuration);
+            AssetDatabase.AddObjectToAsset(h1, configuration);
+            AssetDatabase.AddObjectToAsset(slope, configuration);
+            AssetDatabase.SaveAssets();
+
+            GiantGrey.TileWorldCreator.TileWorldCreatorManager manager =
+                root.AddComponent<GiantGrey.TileWorldCreator.TileWorldCreatorManager>();
+            manager.configuration = configuration;
+
+            GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            ground.name = "Ground";
+            ground.layer = groundLayer;
+            ground.transform.SetParent(root.transform, false);
+            ground.transform.position = new Vector3(1f, -0.05f, 1f);
+            ground.transform.localScale = new Vector3(3f, 0.1f, 3f);
+
+            PrefabUtility.SaveAsPrefabAsset(root, TempPrefabPath);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(root);
+            if (!AssetDatabase.Contains(h0))
+                UnityEngine.Object.DestroyImmediate(h0);
+            if (!AssetDatabase.Contains(h1))
+                UnityEngine.Object.DestroyImmediate(h1);
+            if (!AssetDatabase.Contains(slope))
+                UnityEngine.Object.DestroyImmediate(slope);
+            if (!AssetDatabase.Contains(configuration))
+                UnityEngine.Object.DestroyImmediate(configuration);
         }
     }
 

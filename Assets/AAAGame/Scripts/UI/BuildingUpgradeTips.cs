@@ -315,7 +315,15 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         string keyText = InputGetKeyText.GetKeyText(m_SelectedBinding.ActionName);
         string name = ComposePreviewName(m_TargetBuilding, m_SelectedBinding);
-        string desc = m_SelectedBinding.TechData != null ? m_SelectedBinding.TechData.GetFormattedDesc() : string.Empty;
+        BuildingData previewData = m_SelectedBinding.UpgradeBuildingData
+                                   ?? throw new InvalidOperationException(
+                                       $"Upgrade preview is missing building data. building={m_SelectedBinding.UpgradeBuildingId}.");
+        string desc = BuildingPanelPresentation.GetDescription(previewData);
+        if (m_SelectedBinding.TechData?.ScopeType == TechScopeType.Skill)
+        {
+            int targetSkillLevel = ResolveTargetSkillLevel(m_SelectedBinding.TechData);
+            desc += "\n·" + m_SelectedBinding.TechData.GetSkillTechFormattedDesc(targetSkillLevel);
+        }
         preview.SetData(keyText, name, desc);
         preview.SetPreviewVisible(false);
         preview.SetExecutable(IsSelectedOptionExecutable());
@@ -324,8 +332,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         int cost = ResolveOptionCost(m_SelectedBinding);
         PopulatePrice(preview, cost);
 
-        if (m_TargetBuilding != null && m_TargetBuilding.buildingData != null && m_TargetBuilding.buildingData.Type == BuilType.Base)
-            SpawnProperty(preview.PropertyListRoot.transform, SupplyIconPath, "+30");
+        PopulatePreviewProperties(preview, previewData);
 
         SpawnProgressStars(m_SelectedBinding, Mathf.Max(1, cost));
     }
@@ -397,16 +404,95 @@ public partial class BuildingUpgradeTips : UIFormBase
         switch (building.buildingData.Type)
         {
             case BuilType.Base:
-                SpawnProperty(root, SupplyIconPath, $"+{building.buildingData.Lv * 10}");
+                SpawnProperty(root, SupplyIconPath, BuildingPanelPresentation.GetBaseSupplyText(building.buildingData));
                 break;
             case BuilType.Prod:
-                SpawnProperty(root, CoinIconPath, FormatSigned(building.GetProduction()));
+                SpawnProperty(
+                    root,
+                    CoinIconPath,
+                    BuildingPanelPresentation.GetProductionText(building.buildingData, building));
                 break;
             case BuilType.Army:
-                SpawnProperty(root, SupplyIconPath, building.GetArmySupplyPerUnit().ToString());
-                SpawnProperty(root, ForceIconPath, building.GetArmyForce().ToString());
+                SpawnProperty(
+                    root,
+                    SupplyIconPath,
+                    BuildingPanelPresentation.GetArmySupplyText(building.buildingData, building));
+                SpawnProperty(
+                    root,
+                    ForceIconPath,
+                    BuildingPanelPresentation.GetArmyForceText(building.buildingData, building));
                 break;
         }
+
+        PopulateDetailedStats(root, building.buildingData, building);
+    }
+
+    private void PopulatePreviewProperties(BuildingInfoItem item, BuildingData data)
+    {
+        if (item?.PropertyListRoot == null || data == null)
+            throw new InvalidOperationException("Upgrade preview property list is unavailable.");
+
+        Transform root = item.PropertyListRoot.transform;
+        switch (data.Type)
+        {
+            case BuilType.Base:
+                SpawnProperty(root, SupplyIconPath, BuildingPanelPresentation.GetBaseSupplyText(data));
+                break;
+            case BuilType.Prod:
+                SpawnProperty(root, CoinIconPath, BuildingPanelPresentation.GetProductionText(data, null));
+                break;
+            case BuilType.Army:
+                SpawnProperty(root, SupplyIconPath, BuildingPanelPresentation.GetArmySupplyText(data, null));
+                SpawnProperty(root, ForceIconPath, BuildingPanelPresentation.GetArmyForceText(data, null));
+                break;
+        }
+
+        PopulateDetailedStats(root, data, null);
+    }
+
+    private void PopulateDetailedStats(Transform root, BuildingData data, BuildingEntity runtimeBuilding)
+    {
+        var stats = new List<BuildingPanelStat>();
+        BuildingPanelPresentation.CollectBuildingCombatStats(data, runtimeBuilding, stats);
+        BuildingPanelPresentation.CollectUnitStats(data, stats);
+        if (runtimeBuilding != null)
+        {
+            List<SelectedUpgradeInfo> selected = CollectSelectedUpgrades(runtimeBuilding);
+            var displayedSkillIds = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < selected.Count; i++)
+            {
+                TechData tech = selected[i].TechData;
+                if (tech?.ScopeType != TechScopeType.Skill)
+                    continue;
+                if (!displayedSkillIds.Add(tech.SkillID))
+                    continue;
+                int level = SkillRuntimeDataModel.GetLevel(tech.SkillID);
+                if (level <= 0)
+                    throw new InvalidOperationException($"Selected skill tech has no unlocked skill. tech={tech.Identifier}, skill={tech.SkillID}");
+                SkillData skill = SkillDataModel.GetSkillData(tech.SkillID)
+                                  ?? throw new InvalidOperationException($"Selected skill tech is missing skill data. skill={tech.SkillID}");
+                BuildingPanelPresentation.CollectSkillStats(skill, level, stats);
+            }
+        }
+        else if (m_SelectedBinding?.TechData?.ScopeType == TechScopeType.Skill)
+        {
+            SkillData skill = SkillDataModel.GetSkillData(m_SelectedBinding.TechData.SkillID)
+                              ?? throw new InvalidOperationException($"Upgrade skill tech is missing skill data. skill={m_SelectedBinding.TechData.SkillID}");
+            BuildingPanelPresentation.CollectSkillStats(
+                skill,
+                ResolveTargetSkillLevel(m_SelectedBinding.TechData),
+                stats);
+        }
+        for (int i = 0; i < stats.Count; i++)
+            SpawnGlyphProperty(root, stats[i]);
+    }
+
+    private static int ResolveTargetSkillLevel(TechData tech)
+    {
+        if (tech == null || tech.ScopeType != TechScopeType.Skill || string.IsNullOrWhiteSpace(tech.SkillID))
+            throw new ArgumentException("Target skill level requires a skill tech.", nameof(tech));
+        int current = SkillRuntimeDataModel.GetLevel(tech.SkillID);
+        return current > 0 ? current + 1 : 1;
     }
 
     private void PopulatePrice(BuildingInfoItem item, int cost)
@@ -437,6 +523,18 @@ public partial class BuildingUpgradeTips : UIFormBase
             return;
 
         iconNum.SetData(iconPath, numberText);
+    }
+
+    private void SpawnGlyphProperty(Transform root, BuildingPanelStat stat)
+    {
+        if (root == null || m_IconNumTemplate == null)
+            return;
+
+        IconNumItem iconNum = SpawnItem<UIItemObject>(m_IconNumTemplate, root).itemLogic as IconNumItem;
+        if (iconNum == null)
+            return;
+
+        iconNum.SetGlyphData(stat.Glyph, stat.Value);
     }
 
     private void PopulateCoinReserves(BuildingInfoItem item, BuildingEntity building)
@@ -666,7 +764,7 @@ public partial class BuildingUpgradeTips : UIFormBase
             return;
 
         name = LocalizationTextManager.GetLocalizedText(building.buildingData.NameKey, false);
-        desc = building.buildingData.GetFormattedDesc();
+        desc = BuildingPanelPresentation.GetDescription(building.buildingData);
 
         List<SelectedUpgradeInfo> selected = CollectSelectedUpgrades(building);
         if (selected.Count <= 0)
@@ -678,9 +776,13 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         name += "-" + marks;
 
+        var displayedSkillIds = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < selected.Count; i++)
         {
-            string optionDesc = selected[i].TechData != null ? selected[i].TechData.GetFormattedDesc() : string.Empty;
+            TechData tech = selected[i].TechData;
+            if (tech?.ScopeType == TechScopeType.Skill && !displayedSkillIds.Add(tech.SkillID))
+                continue;
+            string optionDesc = tech != null ? tech.GetFormattedDesc() : string.Empty;
             if (string.IsNullOrWhiteSpace(optionDesc))
                 continue;
 

@@ -1,4 +1,4 @@
-/// <summary>
+﻿/// <summary>
 /// 轻量属性容器：基础值(Base) + 加法叠加(Additive) + 百分比加法栈(PercentSum) + 连乘(Multiplier)。
 /// 终值 = (Base + Additive) * (1 + PercentSum) * Multiplier
 /// - Additive：固定数值累加（+5 武器攻击力）
@@ -15,6 +15,7 @@ public struct SimpleStat
     public Fix64 Multiplier;
 
     public Fix64 Value => (Base + Additive) * (Fix64.One + PercentSum) * Multiplier;
+    public Fix64 ValueWithPostPercentAdditive => Base * (Fix64.One + PercentSum) * Multiplier + Additive;
 
     public static SimpleStat From(Fix64 baseValue)
     {

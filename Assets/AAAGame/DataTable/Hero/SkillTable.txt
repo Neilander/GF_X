@@ -3,12 +3,12 @@
 #	int	string			Fix64[]	Fix64	Fix64	Fix64	int	Fix64	Fix64[]	Fix64	Fix64	Fix64	int	Fix64	enum	string	string	string
 #		代码内标识符	备注	备注2	1级数值	1级施法距离	1级作用范围	1级持续时间	1级使用次数	1级冷却时间	升级增加数值	升级增加施法距离	升级增加作用范围	升级增加持续时间	升级增加使用次数	升级减少冷却时间	技能类型	技能名称（多语言）	技能描述（多语言）	Sprite路径
 	1	Skill_JustPassingBy	到此一游	在目标点留下一个“打卡点”标记，标记存在期间，其范围内的我方单位+{0}攻速。	30	700	400	8	1	6	10		50	2	1		SkillType.Active	Skill_Name_JustPassingBy	Skill_Desc_JustPassingBy	
-	2	Skill_BladeDance	刀舞	技能期间，英雄+{0}攻速。	80			6	2	8	30			2	1		SkillType.Active	Skill_Name_BladeDance	Skill_Desc_BladeDance	
-	3	Skill_FireDrill	消防演习	在目标地点产生一阵浓烟，浓烟存在期间，其范围内的敌人受到致盲效果，攻击有{0}%的概率落空。	50	700	250	7	1	8	10		30	1	1		SkillType.Active	Skill_Name_FireDrill	Skill_Desc_FireDrill	
-	4	Skill_UrgentRequest	临时需求	在目标点部署{0}名实习生，实习生有寿命限制。	8	700			2	10	2				1		SkillType.Active	Skill_Name_UrgentRequest	Skill_Desc_UrgentRequest	
-	5	Skill_LightLoad	轻装上阵	英雄+{0}%移速。	16						12						SkillType.Passive	Skill_Name_LightLoad	Skill_Desc_LightLoad	
-	6	Skill_Disarm	卸除武装	对敌方单位造成伤害时，使其在一段时间内-{0}攻击、-{1}护甲。（不叠加）	5,2			3			1,0.5			1			SkillType.Passive	Skill_Name_Disarm	Skill_Desc_Disarm	
-	7	Skill_GiantSlayer	巨人杀手	英雄的普通攻击额外造成敌人当前生命{0}%的伤害。	8						4						SkillType.Passive	Skill_Name_GiantSlayer	Skill_Desc_GiantSlayer	
+	2	Skill_InsatiableThirst	饥渴难耐	技能期间，英雄+{0}攻速，并获得{1}%攻击吸血。	50,25			6	2	8	20,10			1	1		SkillType.Active	Skill_Name_InsatiableThirst	Skill_Desc_InsatiableThirst	
+	3	Skill_ForgedInFire	火线淬炼	附近每有1个敌方单位死亡，英雄便永久+{0}%攻击，至多叠加{1}层。	1,50		500				0.5,20		100				SkillType.Passive	Skill_Name_ForgedInFire	Skill_Desc_ForgedInFire	
+	4	Skill_UrgentRequest	临时需求	在目标点部署{0}名实习生，它们获得+{1}攻击，+{2}生命上限，且不占用频段。	8,3,15	900			2	10	2,2,10						SkillType.Active	Skill_Name_UrgentRequest	Skill_Desc_UrgentRequest	
+	5	Skill_ExpressDelivery	特急派送	向目标地点突进，对终点附近的敌人造成{0}伤害和眩晕。（备注：可以跨越高坡上下，但中间不能有非陆地格）	40	600	250	2	2	10	20	50	10	0.5	1	0.5	SkillType.Active	Skill_Name_ExpressDelivery	Skill_Desc_ExpressDelivery	
+	6	Skill_RiotArmor	防暴装甲	英雄+{0}护甲。	5						4						SkillType.Passive	Skill_Name_RiotArmor	Skill_Desc_RiotArmor	
+	7	Skill_GiantSlayer	巨人杀手	英雄攻击时，额外造成敌人当前生命{0}%的伤害。	8						4						SkillType.Passive	Skill_Name_GiantSlayer	Skill_Desc_GiantSlayer	
 	8	Skill_Injection	打针	立刻对英雄附近的敌方单位施加恐惧，使其尝试远离恐惧来源。			300	4	1	8			50	1	1		SkillType.Active	Skill_Name_Injection	Skill_Desc_Injection	
 	9	Skill_Cheer Squad	啦啦队	每有{0}个我方单位在场，英雄便+{1}攻击、+{2}攻速。	3,1,2						0,0.5,1						SkillType.Passive	Skill_Name_Cheer Squad	Skill_Desc_Cheer Squad	
 	10	Skill_NeatAndTidy	整整齐齐	英雄的普通攻击也会对目标附近生命比例更高的单位造成{0}%伤害。	30		200				15		30				SkillType.Passive	Skill_Name_NeatAndTidy	Skill_Desc_NeatAndTidy	

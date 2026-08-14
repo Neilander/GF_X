@@ -393,9 +393,9 @@
 					"defUid": 12,
 					"px": [760,936],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_MeatStall_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_FreshMarket_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
-							"params": ["Buil_MeatStall_Lv1"]
+							"params": ["Buil_FreshMarket_Lv1"]
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }

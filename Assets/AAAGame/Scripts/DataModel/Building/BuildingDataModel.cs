@@ -273,24 +273,6 @@ public class BuildingDataModel : DataModelBase
                 row.Lv3Weapon1UniqueValues);
         }
 
-        if (row.Identifier == BuildingAbilityIds.Restroom && resolved.Range > Fix64.Zero)
-        {
-            return new WeaponData(
-                WeaponType.Special,
-                Fix64.Zero,
-                resolved.Interval,
-                resolved.Range,
-                resolved.ProjectileSpeed,
-                resolved.WindUp,
-                resolved.WindDown,
-                resolved.SplashRadius,
-                resolved.SplitAngle,
-                resolved.SplitDist,
-                resolved.ProjectileCount,
-                resolved.AmmunitionCapacity,
-                resolved.UniqueValues);
-        }
-
         return resolved.Atk > Fix64.Zero ? resolved : null;
     }
 

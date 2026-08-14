@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using AAAGame.Tilemap;
+using GiantGrey.TileWorldCreator;
 using UnityEditor;
 using UnityEngine;
 
@@ -191,6 +193,7 @@ namespace AAAGame.Tools.Editor
                     throw new InvalidOperationException($"FlowNavigationGridPrefabBaker.BakeFromTerrainPrefab failed: no enabled non-trigger collider on layer '{GroundLayerName}' in {terrainPrefabPath}.");
 
                 TerrainRaster raster = BuildTerrainRaster(groundIndex, obstacleIndex, width, height, cellSize, gridOrigin, agentTypeId, stopwatch);
+                AuthoredTerrainTopology terrainTopology = AuthoredTerrainTopology.TryCreate(terrainRoot);
                 return BakeMovementTypeFromRaster(
                     terrainPrefabPath,
                     assetPath,
@@ -199,6 +202,7 @@ namespace AAAGame.Tools.Editor
                     raster,
                     groundIndex,
                     obstacleIndex,
+                    terrainTopology,
                     groundColliders.Length,
                     obstacleColliders.Length,
                     stopwatch);
@@ -380,6 +384,7 @@ namespace AAAGame.Tools.Editor
                     $"staticObstacleColliders={staticObstacleColliders.Length} combinedObstacleColliders={combinedObstacleColliders.Length}");
 
                 TerrainRaster raster = BuildTerrainRaster(groundIndex, obstacleIndex, width, height, cellSize, gridOrigin, int.MinValue, stopwatch);
+                AuthoredTerrainTopology terrainTopology = AuthoredTerrainTopology.TryCreate(terrainRoot);
                 Result[] results = new Result[requests.Count];
                 HashSet<int> agentTypeIds = new HashSet<int>();
                 for (int i = 0; i < requests.Count; i++)
@@ -399,6 +404,7 @@ namespace AAAGame.Tools.Editor
                         raster,
                         groundIndex,
                         obstacleIndex,
+                        terrainTopology,
                         groundColliders.Length,
                         combinedObstacleColliders.Length,
                         stopwatch);
@@ -590,6 +596,7 @@ namespace AAAGame.Tools.Editor
             TerrainRaster raster,
             ColliderSpatialIndex groundIndex,
             ColliderSpatialIndex obstacleIndex,
+            AuthoredTerrainTopology terrainTopology,
             int groundColliderCount,
             int obstacleColliderCount,
             System.Diagnostics.Stopwatch stopwatch)
@@ -619,6 +626,7 @@ namespace AAAGame.Tools.Editor
                         raster,
                         groundIndex,
                         obstacleIndex,
+                        terrainTopology,
                         x,
                         y,
                         hardClearanceRadius,
@@ -641,7 +649,17 @@ namespace AAAGame.Tools.Editor
             if (walkableCount == 0)
                 throw new InvalidOperationException($"FlowNavigationGridPrefabBaker.BakeFromTerrainPrefab failed: generated zero walkable cells from {terrainPrefabPath}.");
 
-            BuildNeighborTraversalMasks(raster, groundIndex, obstacleIndex, movementWalkable, movementAnchors, movementNeighborMasks, hardClearanceRadius, agentTypeId, stopwatch);
+            BuildNeighborTraversalMasks(
+                raster,
+                groundIndex,
+                obstacleIndex,
+                terrainTopology,
+                movementWalkable,
+                movementAnchors,
+                movementNeighborMasks,
+                hardClearanceRadius,
+                agentTypeId,
+                stopwatch);
             SymmetrizeNeighborTraversalMasks(raster, movementWalkable, movementNeighborMasks);
             Debug.Log($"[FlowNavigationGridBake] stage=neighbor-masks-complete elapsedMs={stopwatch.ElapsedMilliseconds} agentType={agentTypeId}");
 
@@ -861,6 +879,7 @@ namespace AAAGame.Tools.Editor
             TerrainRaster raster,
             ColliderSpatialIndex groundIndex,
             ColliderSpatialIndex obstacleIndex,
+            AuthoredTerrainTopology terrainTopology,
             int cellX,
             int cellY,
             float hardClearanceRadius,
@@ -872,6 +891,9 @@ namespace AAAGame.Tools.Editor
             localAnchor = center;
             sourceCost = byte.MaxValue;
             refined = false;
+            if (terrainTopology != null && !terrainTopology.ContainsTerrainAtWorld(center))
+                return false;
+
             int cellIndex = raster.ToIndex(cellX, cellY);
             if (raster.IsWalkableForRadius(cellIndex, hardClearanceRadius))
             {
@@ -898,6 +920,8 @@ namespace AAAGame.Tools.Editor
                     continue;
                 if (!groundIndex.TryRaycastVertical(candidate.x, candidate.z, out Vector3 groundPoint))
                     throw new InvalidOperationException($"TryResolveWalkableCellAnchor failed: valid refined anchor has no ground hit at {candidate}.");
+                if (terrainTopology != null && !terrainTopology.ContainsTerrainAtWorld(groundPoint))
+                    continue;
 
                 candidate.y = groundPoint.y;
 
@@ -931,6 +955,7 @@ namespace AAAGame.Tools.Editor
             TerrainRaster raster,
             ColliderSpatialIndex groundIndex,
             ColliderSpatialIndex obstacleIndex,
+            AuthoredTerrainTopology terrainTopology,
             bool[] walkable,
             Vector3[] anchors,
             byte[] neighborMasks,
@@ -982,6 +1007,14 @@ namespace AAAGame.Tools.Editor
                             int sideB = raster.ToIndex(x, y + NeighborOffsetY[i]);
                             if (!walkable[sideA] || !walkable[sideB])
                                 continue;
+                        }
+
+                        if (terrainTopology != null
+                            && !terrainTopology.AllowsTraversal(
+                                raster.GetCellCenter(x, y),
+                                raster.GetCellCenter(toX, toY)))
+                        {
+                            continue;
                         }
 
                         Vector3 to = anchors[toIndex];
@@ -1184,6 +1217,190 @@ namespace AAAGame.Tools.Editor
             float nearest = obstacleIndex != null ? obstacleIndex.ResolveNearestDistanceXZ(x, z) : float.PositiveInfinity;
             nearest = Mathf.Min(nearest, groundIndex != null ? groundIndex.ResolveNearestContainingBoundaryDistanceXZ(x, z) : float.PositiveInfinity);
             return nearest;
+        }
+
+        private sealed class AuthoredTerrainTopology
+        {
+            private readonly Transform terrainTransform;
+            private readonly float cellSize;
+            private readonly Dictionary<Vector2Int, int> platformHeights;
+            private readonly Dictionary<Vector2Int, Vector2Int> slopeDirections;
+
+            private AuthoredTerrainTopology(
+                Transform terrainTransform,
+                float cellSize,
+                Dictionary<Vector2Int, int> platformHeights,
+                Dictionary<Vector2Int, Vector2Int> slopeDirections)
+            {
+                this.terrainTransform = terrainTransform;
+                this.cellSize = cellSize;
+                this.platformHeights = platformHeights;
+                this.slopeDirections = slopeDirections;
+            }
+
+            public static AuthoredTerrainTopology TryCreate(GameObject terrainRoot)
+            {
+                if (terrainRoot == null)
+                    throw new ArgumentNullException(nameof(terrainRoot));
+
+                TileWorldCreatorManager manager = terrainRoot.GetComponentInChildren<TileWorldCreatorManager>(true);
+                if (manager == null || manager.configuration == null)
+                    return null;
+                if (manager.configuration.cellSize <= 0.0001f)
+                    throw new InvalidOperationException("Authored terrain topology has an invalid TileWorld cell size.");
+
+                var heights = new Dictionary<Vector2Int, int>();
+                for (int height = 0; height <= 5; height++)
+                {
+                    BlueprintLayer layer = manager.GetBlueprintLayer("Plane_H" + height);
+                    if (layer == null || !layer.isEnabled)
+                        continue;
+
+                    foreach (Vector2Int cell in ReadCellsRequired(layer))
+                    {
+                        if (!heights.TryGetValue(cell, out int current) || height > current)
+                            heights[cell] = height;
+                    }
+                }
+
+                BlueprintLayer slopeLayer = manager.GetBlueprintLayer("Slope");
+                bool hasSlopes = slopeLayer != null && slopeLayer.isEnabled && slopeLayer.allPositions.Count > 0;
+                if (heights.Count == 0)
+                {
+                    if (hasSlopes)
+                        throw new InvalidOperationException("Authored slope topology requires Plane_H0..Plane_H5 support layers.");
+                    return null;
+                }
+
+                var directions = new Dictionary<Vector2Int, Vector2Int>();
+                if (hasSlopes)
+                {
+                    var slopeCells = new HashSet<Vector2>(slopeLayer.allPositions);
+                    var topHeights = heights.ToDictionary(
+                        pair => new Vector2(pair.Key.x, pair.Key.y),
+                        pair => pair.Value);
+                    if (!LdtkSlopeLayoutResolver.TryResolve(
+                            slopeCells,
+                            topHeights,
+                            0f,
+                            90f,
+                            out LdtkSlopeLayout layout,
+                            out string error))
+                    {
+                        throw new InvalidOperationException("Cannot build authored slope navigation topology: " + error);
+                    }
+
+                    foreach (LdtkSlopeRamp ramp in layout.ramps)
+                    {
+                        Vector2 firstCell = ramp.anchor - ramp.direction * ((ramp.run - 1) * 0.5f);
+                        Vector2Int direction = ToGridCellRequired(ramp.direction, "slope direction");
+                        for (int offset = 0; offset < ramp.run; offset++)
+                        {
+                            Vector2Int cell = ToGridCellRequired(firstCell + ramp.direction * offset, "slope cell");
+                            if (directions.TryGetValue(cell, out Vector2Int existing) && existing != direction)
+                            {
+                                throw new InvalidOperationException(
+                                    $"Authored slope cell ({cell.x},{cell.y}) has conflicting directions {existing} and {direction}.");
+                            }
+
+                            directions[cell] = direction;
+                        }
+                    }
+
+                    foreach (Vector2 slopeCell in slopeCells)
+                    {
+                        Vector2Int cell = ToGridCellRequired(slopeCell, "slope cell");
+                        if (!heights.ContainsKey(cell))
+                        {
+                            throw new InvalidOperationException(
+                                $"Authored slope cell ({cell.x},{cell.y}) has no Plane_H* support. Reimport the LDtk level.");
+                        }
+                        if (!directions.ContainsKey(cell))
+                            throw new InvalidOperationException($"Authored slope cell ({cell.x},{cell.y}) has no resolved direction.");
+                    }
+                }
+
+                return new AuthoredTerrainTopology(manager.transform, manager.configuration.cellSize, heights, directions);
+            }
+
+            public bool ContainsTerrainAtWorld(Vector3 worldPosition)
+            {
+                return platformHeights.ContainsKey(WorldToCell(worldPosition));
+            }
+
+            public bool AllowsTraversal(Vector3 fromWorld, Vector3 toWorld)
+            {
+                Vector2Int from = WorldToCell(fromWorld);
+                Vector2Int to = WorldToCell(toWorld);
+                if (from == to)
+                    return platformHeights.ContainsKey(from);
+
+                int deltaX = to.x - from.x;
+                int deltaY = to.y - from.y;
+                if (Math.Abs(deltaX) > 1 || Math.Abs(deltaY) > 1)
+                    return false;
+                if (deltaX != 0 && deltaY != 0)
+                {
+                    var sideA = new Vector2Int(to.x, from.y);
+                    var sideB = new Vector2Int(from.x, to.y);
+                    return AllowsCardinalTraversal(from, sideA)
+                           && AllowsCardinalTraversal(from, sideB)
+                           && AllowsCardinalTraversal(sideA, to)
+                           && AllowsCardinalTraversal(sideB, to);
+                }
+
+                return AllowsCardinalTraversal(from, to);
+            }
+
+            private bool AllowsCardinalTraversal(Vector2Int from, Vector2Int to)
+            {
+                if (!platformHeights.TryGetValue(from, out int fromHeight)
+                    || !platformHeights.TryGetValue(to, out int toHeight))
+                {
+                    return false;
+                }
+
+                bool fromIsSlope = slopeDirections.TryGetValue(from, out Vector2Int fromDirection);
+                bool toIsSlope = slopeDirections.TryGetValue(to, out Vector2Int toDirection);
+                if (!fromIsSlope && !toIsSlope)
+                    return fromHeight == toHeight;
+                if (fromIsSlope && toIsSlope)
+                    return fromDirection == toDirection;
+
+                Vector2Int slopeCell = fromIsSlope ? from : to;
+                Vector2Int platformCell = fromIsSlope ? to : from;
+                Vector2Int slopeDirection = fromIsSlope ? fromDirection : toDirection;
+                Vector2Int transition = platformCell - slopeCell;
+                return transition == slopeDirection || transition == -slopeDirection;
+            }
+
+            private Vector2Int WorldToCell(Vector3 worldPosition)
+            {
+                Vector3 local = terrainTransform.InverseTransformPoint(worldPosition);
+                return new Vector2Int(
+                    Mathf.FloorToInt(local.x / cellSize + 0.5f),
+                    Mathf.FloorToInt(local.z / cellSize + 0.5f));
+            }
+
+            private static IEnumerable<Vector2Int> ReadCellsRequired(BlueprintLayer layer)
+            {
+                if (layer == null)
+                    throw new ArgumentNullException(nameof(layer));
+                if (layer.allPositions == null)
+                    throw new InvalidOperationException($"Authored terrain layer '{layer.layerName}' has no cell collection.");
+
+                foreach (Vector2 position in layer.allPositions)
+                    yield return ToGridCellRequired(position, layer.layerName);
+            }
+
+            private static Vector2Int ToGridCellRequired(Vector2 value, string label)
+            {
+                int x = Mathf.RoundToInt(value.x);
+                int y = Mathf.RoundToInt(value.y);
+                if (!Mathf.Approximately(value.x, x) || !Mathf.Approximately(value.y, y))
+                    throw new InvalidOperationException($"Authored terrain {label} is not grid-aligned: {value}.");
+                return new Vector2Int(x, y);
+            }
         }
 
         private sealed class TerrainRaster

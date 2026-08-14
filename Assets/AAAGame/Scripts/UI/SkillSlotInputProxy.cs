@@ -3,22 +3,34 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityGameFramework.Runtime;
 
-public sealed class SkillSlotInputProxy : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDragHandler, IEndDragHandler
+public sealed class SkillSlotInputProxy : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerEnterHandler, IPointerExitHandler
 {
     private int m_SlotIndex = -1;
     private Func<int> m_ResolveActiveSkillIndex;
     private Func<int> m_ResolveSkillSlotIndex;
+    private Action<int> m_PointerEntered;
+    private Action<int> m_PointerExited;
     private bool m_DragStartedSkill;
     private bool m_DragUsesAim;
     private bool m_DragStartedSwap;
     private bool m_SuppressNextClick;
 
-    public void Initialize(int slotIndex, Func<int> resolveActiveSkillIndex, Func<int> resolveSkillSlotIndex)
+    public void Initialize(
+        int slotIndex,
+        Func<int> resolveActiveSkillIndex,
+        Func<int> resolveSkillSlotIndex,
+        Action<int> pointerEntered,
+        Action<int> pointerExited)
     {
         m_SlotIndex = slotIndex;
         m_ResolveActiveSkillIndex = resolveActiveSkillIndex;
         m_ResolveSkillSlotIndex = resolveSkillSlotIndex;
+        m_PointerEntered = pointerEntered;
+        m_PointerExited = pointerExited;
     }
+
+    public void OnPointerEnter(PointerEventData eventData) => m_PointerEntered?.Invoke(m_SlotIndex);
+    public void OnPointerExit(PointerEventData eventData) => m_PointerExited?.Invoke(m_SlotIndex);
 
     public void OnPointerClick(PointerEventData eventData)
     {
@@ -51,8 +63,16 @@ public sealed class SkillSlotInputProxy : MonoBehaviour, IPointerClickHandler, I
             return;
         }
 
+        if (eventData.button != PointerEventData.InputButton.Left)
+            return;
+
+        int skillSlotIndex = ResolveSkillSlotIndex();
+        if (skillSlotIndex < 0)
+            return;
+        m_DragStartedSwap = true;
+
         int activeSkillIndex = ResolveActiveSkillIndex();
-        if (eventData.button == PointerEventData.InputButton.Left && CanAcceptSkillInput(activeSkillIndex))
+        if (CanAcceptSkillInput(activeSkillIndex))
         {
             InputManager inputManager = GetRequiredInputManager();
             m_DragStartedSkill = true;
@@ -74,13 +94,19 @@ public sealed class SkillSlotInputProxy : MonoBehaviour, IPointerClickHandler, I
 
     public void OnEndDrag(PointerEventData eventData)
     {
-        if (m_DragStartedSwap)
+        bool swapped = m_DragStartedSwap && SwapWithDropTarget(eventData);
+        if (swapped)
         {
-            SwapWithDropTarget(eventData);
+            if (m_DragUsesAim)
+                SkillCastPresentationService.Cancel();
             m_DragStartedSwap = false;
+            m_DragStartedSkill = false;
+            m_DragUsesAim = false;
             m_SuppressNextClick = true;
             return;
         }
+
+        m_DragStartedSwap = false;
 
         if (!m_DragStartedSkill)
             return;
@@ -126,21 +152,24 @@ public sealed class SkillSlotInputProxy : MonoBehaviour, IPointerClickHandler, I
         return m_ResolveSkillSlotIndex != null ? m_ResolveSkillSlotIndex.Invoke() : -1;
     }
 
-    private void SwapWithDropTarget(PointerEventData eventData)
+    private bool SwapWithDropTarget(PointerEventData eventData)
     {
         int fromIndex = ResolveSkillSlotIndex();
         if (fromIndex < 0)
-            return;
+            return false;
 
         SkillSlotInputProxy target = GetDropTarget(eventData);
         if (target == null)
-            return;
+            return false;
 
         int toIndex = target.ResolveSkillSlotIndex();
         if (toIndex < 0 || toIndex == fromIndex)
-            return;
+            return false;
+        if (!SkillRuntimeDataModel.CanSwapSkillSlots(fromIndex, toIndex))
+            return false;
 
         SkillRuntimeDataModel.RequestSwapSkillSlots(fromIndex, toIndex);
+        return true;
     }
 
     private static SkillSlotInputProxy GetDropTarget(PointerEventData eventData)

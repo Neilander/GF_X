@@ -13,6 +13,11 @@ public abstract class InstantActiveSkillSO : ActiveSkillSO
         };
     }
 
+    public override void StartSkill(IEntityContext body, FixVector2 requestedWorldPosition, out SkillInfo info)
+    {
+        StartSkill(body, out info);
+    }
+
     public override void TickSkill(SkillInfo info, Fix64 deltaTime)
     {
         if (info != null)

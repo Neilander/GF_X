@@ -65,6 +65,7 @@ namespace AAAGame.MiniMap.FOG3
             float cellSize = Mathf.Max(0.01f, manager.configuration.cellSize);
             Vector3 origin = manager.transform.position - new Vector3(cellSize * 0.5f, 0f, cellSize * 0.5f);
             bool[] walkable = CreateFilledMask(width, height, true);
+            BuildTileWorldHeightData(manager, width, height, out int[] platformHeights, out bool[] slopeMask);
 
             if (settings.UseTileWorldBlueprintLayerAsWalkable && !string.IsNullOrEmpty(settings.TileWorldWalkableLayerName))
             {
@@ -79,8 +80,97 @@ namespace AAAGame.MiniMap.FOG3
                 ApplyPhysicsWalkableMask(walkable, width, height, cellSize, origin, settings);
             }
 
-            terrainInfo = new Fog3TerrainInfo(width, height, cellSize, origin, walkable, "TileWorldCreator");
+            terrainInfo = new Fog3TerrainInfo(
+                width,
+                height,
+                cellSize,
+                origin,
+                walkable,
+                platformHeights,
+                slopeMask,
+                "TileWorldCreator");
             return true;
+        }
+
+        private static void BuildTileWorldHeightData(
+            GiantGrey.TileWorldCreator.TileWorldCreatorManager manager,
+            int width,
+            int height,
+            out int[] platformHeights,
+            out bool[] slopeMask)
+        {
+            int length = checked(width * height);
+            var resolvedPlatformHeights = new int[length];
+            var resolvedSlopeMask = new bool[length];
+            Array.Fill(resolvedPlatformHeights, -1);
+
+            bool foundPlatformLayer = false;
+            for (int platformHeight = 0; platformHeight <= 5; platformHeight++)
+            {
+                GiantGrey.TileWorldCreator.BlueprintLayer layer = manager.GetBlueprintLayer("Plane_H" + platformHeight);
+                if (layer == null)
+                    continue;
+
+                foundPlatformLayer = true;
+                ApplyLayerCells(layer, width, height, cell =>
+                {
+                    int index = cell.x + cell.y * width;
+                    if (platformHeight > resolvedPlatformHeights[index])
+                        resolvedPlatformHeights[index] = platformHeight;
+                });
+            }
+
+            if (!foundPlatformLayer)
+                throw new InvalidOperationException("Fog3 TileWorld terrain requires at least one Plane_H0..Plane_H5 blueprint layer.");
+
+            GiantGrey.TileWorldCreator.BlueprintLayer slopeLayer = manager.GetBlueprintLayer("Slope");
+            if (slopeLayer != null)
+            {
+                ApplyLayerCells(slopeLayer, width, height, cell => resolvedSlopeMask[cell.x + cell.y * width] = true);
+            }
+
+            for (int i = 0; i < resolvedSlopeMask.Length; i++)
+            {
+                if (resolvedSlopeMask[i] && resolvedPlatformHeights[i] < 0)
+                {
+                    int x = i % width;
+                    int y = i / width;
+                    throw new InvalidOperationException(
+                        $"Fog3 slope cell ({x},{y}) has no inferred Plane_H* support. Reimport the LDtk level before play.");
+                }
+            }
+
+            platformHeights = resolvedPlatformHeights;
+            slopeMask = resolvedSlopeMask;
+        }
+
+        private static void ApplyLayerCells(
+            GiantGrey.TileWorldCreator.BlueprintLayer layer,
+            int width,
+            int height,
+            Action<Vector2Int> apply)
+        {
+            if (layer == null)
+                throw new ArgumentNullException(nameof(layer));
+            if (apply == null)
+                throw new ArgumentNullException(nameof(apply));
+            if (!layer.isEnabled)
+                return;
+
+            foreach (Vector2 position in layer.allPositions)
+            {
+                int x = Mathf.RoundToInt(position.x);
+                int y = Mathf.RoundToInt(position.y);
+                if (!Mathf.Approximately(position.x, x) || !Mathf.Approximately(position.y, y))
+                    throw new InvalidOperationException($"Fog3 blueprint layer '{layer.layerName}' contains a non-grid cell {position}.");
+                if (x < 0 || x >= width || y < 0 || y >= height)
+                {
+                    throw new InvalidOperationException(
+                        $"Fog3 blueprint layer '{layer.layerName}' cell ({x},{y}) is outside {width}x{height}.");
+                }
+
+                apply(new Vector2Int(x, y));
+            }
         }
 
         private static bool TryDetectAstarGrid(out Fog3TerrainInfo terrainInfo)

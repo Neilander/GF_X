@@ -18,17 +18,17 @@ public sealed class BuildingTechRuntimeDeterminismTests
 
             effect.Activate(new TechEffectContext
             {
-                TechId = "Tech_Buil_SortingCenter_Lv3_Opt2",
+                TechId = "Tech_Buil_ResearchCenter_Lv2_Opt2",
                 OwnerFactionId = EntitySideHelper.PlayerFactionId,
                 SourceBuildingInstanceId = "building-source",
                 TechData = new TechData(
-                    "Tech_Buil_SortingCenter_Lv3_Opt2",
+                    "Tech_Buil_ResearchCenter_Lv2_Opt2",
                     string.Empty,
                     string.Empty,
                     string.Empty,
                     0,
                     new[] { (Fix64)2, (Fix64)1 },
-                    TechScopeType.AllBuil,
+                    TechScopeType.Special,
                     System.Array.Empty<string>(),
                     System.Array.Empty<UnitSize>(),
                     System.Array.Empty<UnitTag>(),

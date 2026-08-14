@@ -8537,6 +8537,12 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException(
                 $"Static collision shadow source is invalid. agentType={agentTypeId}, world={world.Version}, size={world.Width}x{world.Height}.");
         }
+        if (world.BaseNeighborTraversalMask != null
+            && world.BaseNeighborTraversalMask.Length != world.Width * world.Height)
+        {
+            throw new InvalidOperationException(
+                $"Static collision shadow source neighbor traversal mask is invalid. agentType={agentTypeId}, world={world.Version}, size={world.Width}x{world.Height}.");
+        }
 
         source = new LogicStaticCollisionSourceData(
             world.AgentTypeId,
@@ -8548,6 +8554,7 @@ public static partial class FlowFieldCrowdMovementSystem
             world.OriginXGridRaw,
             world.OriginZGridRaw,
             world.BaseWalkableMask,
+            world.BaseNeighborTraversalMask,
             ResolveStaticCollisionObstacleSnapshot());
         return true;
     }
@@ -8807,6 +8814,63 @@ public static partial class FlowFieldCrowdMovementSystem
             maxSnapDistance,
             edgeClearance,
             out legalPoint);
+    }
+
+    public static bool HasBaseWalkableLineFixed(FixVector2 from, FixVector2 to, int agentTypeId)
+    {
+        if (!TryGetCommittedNavigationQueryWorld(agentTypeId, allowSynchronousBuild: true, out NavigationWorld world))
+            throw new InvalidOperationException($"Base walkable line query requires a committed navigation world. agentType={agentTypeId}");
+        if (!world.WorldToGridFixed(from, out int x0, out int y0)
+            || !world.WorldToGridFixed(to, out int x1, out int y1))
+        {
+            return false;
+        }
+        if (world.BaseWalkableMask == null || world.BaseWalkableMask.Length != world.Width * world.Height)
+            throw new InvalidOperationException("Base walkable line query has an invalid base mask.");
+
+        int dx = Math.Abs(x1 - x0);
+        int dy = Math.Abs(y1 - y0);
+        int stepX = Math.Sign(x1 - x0);
+        int stepY = Math.Sign(y1 - y0);
+        int x = x0;
+        int y = y0;
+        int error = dx - dy;
+        while (true)
+        {
+            if (!IsBaseWalkableCell(world, x, y))
+                return false;
+            if (x == x1 && y == y1)
+                return true;
+
+            int twiceError = error * 2;
+            if (twiceError == 0 && stepX != 0 && stepY != 0)
+            {
+                if (!IsBaseWalkableCell(world, x + stepX, y)
+                    || !IsBaseWalkableCell(world, x, y + stepY))
+                {
+                    return false;
+                }
+            }
+            if (twiceError > -dy)
+            {
+                error -= dy;
+                x += stepX;
+            }
+            if (twiceError < dx)
+            {
+                error += dx;
+                y += stepY;
+            }
+        }
+    }
+
+    private static bool IsBaseWalkableCell(NavigationWorld world, int x, int y)
+    {
+        return x >= 0
+               && x < world.Width
+               && y >= 0
+               && y < world.Height
+               && world.BaseWalkableMask[world.GetIndex(x, y)];
     }
 
     public static bool TryResolveLegalNavigationPointFixedNonBlocking(

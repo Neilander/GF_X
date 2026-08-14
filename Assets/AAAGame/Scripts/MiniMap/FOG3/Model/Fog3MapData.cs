@@ -83,6 +83,8 @@ namespace AAAGame.MiniMap.FOG3
     {
         private readonly bool[] explored;
         private readonly bool[] walkable;
+        private readonly int[] platformHeights;
+        private readonly bool[] slopeMask;
         private readonly float[] currentVisibility;
         private readonly ulong terrainHash;
         private readonly long cellSizeGridRaw;
@@ -111,7 +113,11 @@ namespace AAAGame.MiniMap.FOG3
             explored = new bool[length];
             currentVisibility = new float[length];
             walkable = new bool[length];
+            platformHeights = new int[length];
+            slopeMask = new bool[length];
             System.Array.Copy(terrainInfo.WalkableMask, walkable, length);
+            System.Array.Copy(terrainInfo.PlatformHeights, platformHeights, length);
+            System.Array.Copy(terrainInfo.SlopeMask, slopeMask, length);
             terrainHash = ComputeTerrainHash();
         }
 
@@ -308,6 +314,82 @@ namespace AAAGame.MiniMap.FOG3
             return IsValidCell(x, y) && walkable[GetIndex(x, y)];
         }
 
+        public int GetPlatformHeight(int x, int y)
+        {
+            if (!IsValidCell(x, y))
+                throw new ArgumentOutOfRangeException(nameof(x), $"Fog terrain cell ({x},{y}) is outside {Width}x{Height}.");
+
+            return platformHeights[GetIndex(x, y)];
+        }
+
+        public bool IsSlope(int x, int y)
+        {
+            if (!IsValidCell(x, y))
+                throw new ArgumentOutOfRangeException(nameof(x), $"Fog terrain cell ({x},{y}) is outside {Width}x{Height}.");
+
+            return slopeMask[GetIndex(x, y)];
+        }
+
+        public bool IsVisionBlockedByHigherPlatform(int viewerX, int viewerY, int targetX, int targetY)
+        {
+            if (!IsValidCell(viewerX, viewerY))
+                throw new ArgumentOutOfRangeException(nameof(viewerX), $"Fog viewer cell ({viewerX},{viewerY}) is outside {Width}x{Height}.");
+            if (!IsValidCell(targetX, targetY))
+                throw new ArgumentOutOfRangeException(nameof(targetX), $"Fog target cell ({targetX},{targetY}) is outside {Width}x{Height}.");
+
+            int viewerHeight = platformHeights[GetIndex(viewerX, viewerY)];
+            if (viewerHeight < 0)
+            {
+                throw new InvalidOperationException(
+                    $"Fog viewer cell ({viewerX},{viewerY}) has no Plane_H* support height.");
+            }
+
+            int x = viewerX;
+            int y = viewerY;
+            int deltaX = Math.Abs(targetX - viewerX);
+            int deltaY = Math.Abs(targetY - viewerY);
+            int stepX = Math.Sign(targetX - viewerX);
+            int stepY = Math.Sign(targetY - viewerY);
+            int crossedX = 0;
+            int crossedY = 0;
+
+            while (crossedX < deltaX || crossedY < deltaY)
+            {
+                long xDecision = (1L + (crossedX << 1)) * deltaY;
+                long yDecision = (1L + (crossedY << 1)) * deltaX;
+                if (xDecision == yDecision)
+                {
+                    if (IsHigherPlatformOccluder(x + stepX, y, viewerHeight)
+                        || IsHigherPlatformOccluder(x, y + stepY, viewerHeight))
+                    {
+                        return true;
+                    }
+
+                    x += stepX;
+                    y += stepY;
+                    crossedX++;
+                    crossedY++;
+                }
+                else if (xDecision < yDecision)
+                {
+                    x += stepX;
+                    crossedX++;
+                }
+                else
+                {
+                    y += stepY;
+                    crossedY++;
+                }
+
+                if (x == targetX && y == targetY)
+                    return false;
+                if (IsHigherPlatformOccluder(x, y, viewerHeight))
+                    return true;
+            }
+
+            return false;
+        }
+
         public bool WorldToGrid(Vector3 worldPos, out int gridX, out int gridY)
         {
             gridX = NavigationGridFixedMath.WorldToGridCell(worldPos.x, originXGridRaw, cellSizeGridRaw);
@@ -443,8 +525,20 @@ namespace AAAGame.MiniMap.FOG3
             {
                 hash ^= walkable[i] ? (byte)1 : (byte)0;
                 hash *= prime;
+                AddHash(ref hash, unchecked((ulong)platformHeights[i]), prime);
+                hash ^= slopeMask[i] ? (byte)1 : (byte)0;
+                hash *= prime;
             }
             return hash;
+        }
+
+        private bool IsHigherPlatformOccluder(int x, int y, int viewerHeight)
+        {
+            if (!IsValidCell(x, y))
+                return false;
+
+            int index = GetIndex(x, y);
+            return !slopeMask[index] && platformHeights[index] > viewerHeight;
         }
 
         private void AddExplorationDigest(int index)

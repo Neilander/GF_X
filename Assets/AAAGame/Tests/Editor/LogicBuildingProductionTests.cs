@@ -156,19 +156,6 @@ public sealed class LogicBuildingProductionTests
     }
 
     [Test]
-    public void BuildingPhaseCostModifier_UsesDemolishInsteadOfUndo()
-    {
-        const string buildingInstanceId = "building-cost-modifier-undo";
-        InGameDataModel.RecordBuildingPhaseModification(buildingInstanceId, "Buil_ResearchCenter_Lv1", 8);
-        InGameDataModel.RecordBuildingPhaseTech(
-            buildingInstanceId,
-            "Tech_Buil_ResearchCenter_Lv2_Opt2");
-
-        Assert.IsTrue(BuildingTechRuntimeEffect.ChangesBuildingCost(
-            "Tech_Buil_ResearchCenter_Lv2_Opt2"));
-    }
-
-    [Test]
     public void BuildingPhaseUndo_RemainsAllowedForTechThatDoesNotChangeBuildingCosts()
     {
         const string buildingInstanceId = "building-normal-tech-undo";
@@ -277,51 +264,32 @@ public sealed class LogicBuildingProductionTests
     }
 
     [Test]
-    public void ServiceDesk_OccupiedStrongholdsUseConfiguredStepAndCap()
+    public void FreshMarket_DecreasesForEveryTwoOtherBuildingsAndStopsAtFloor()
     {
-        InitializeStrongholds(
-            EntitySideHelper.PlayerFactionId,
-            EntitySideHelper.PlayerFactionId,
-            EntitySideHelper.PlayerFactionId,
-            EntitySideHelper.PlayerFactionId,
-            EntitySideHelper.EnemyFactionId);
-        LogicEntityState serviceDesk = CreateProductionBuilding(
-            "Buil_ServiceDesk_Lv1",
-            "production-service-desk-1",
-            10);
+        LogicEntityState market = CreateProductionBuilding("Buil_FreshMarket_Lv1", "fresh-market", 5);
+        for (int i = 0; i < 10; i++)
+            CreateProductionBuilding($"Buil_Prod_Test_{i}_Lv1", $"fresh-market-neighbor-{i}", 1);
 
-        LogicBuildingProductionService.Refresh(serviceDesk);
+        LogicBuildingProductionService.Refresh(market);
 
-        Assert.AreEqual(ProductionType.ByOccupiedStrongholdCount, serviceDesk.ProductionProps.ProductionType);
-        Assert.AreEqual(4, serviceDesk.ProductionProps.ConditionCount);
-        Assert.AreEqual((Fix64)2, serviceDesk.ProductionProps.DynamicProduction);
-        Assert.AreEqual(12, LogicBuildingProductionService.GetProduction(serviceDesk));
+        Assert.AreEqual(ProductionType.DecreasingByOtherBuildingCount, market.ProductionProps.ProductionType);
+        Assert.AreEqual(10, market.ProductionProps.ConditionCount);
+        Assert.AreEqual(1, LogicBuildingProductionService.GetProduction(market));
     }
 
     [Test]
-    public void TrophyRack_UsesPreviousDayHeavyKillsAndConfiguredCap()
+    public void CampfireGrill_IncreasesForEveryTwoOtherBuildingsAndStopsAtBonusCap()
     {
-        InitializeStrongholds(EntitySideHelper.PlayerFactionId);
-        LogicEntityState trophyRack = CreateProductionBuilding(
-            "Buil_TrophyRack_Lv1",
-            "production-trophy-rack-1",
-            10);
-        LogicEntityId first = CreateUnit("Unit_BoneButcher", SideType.EnemySide, "SH_0_1", FixVector2.Zero);
-        LogicEntityId second = CreateUnit("Unit_BoneButcher", SideType.EnemySide, "SH_0_1", FixVector2.Zero);
-        LogicEntityId third = CreateUnit("Unit_BoneButcher", SideType.EnemySide, "SH_0_1", FixVector2.Zero);
-        LogicTimeControlService.BeginFrame(2);
-        LogicEntityLifecycleService.ApplyFrame(2);
-        LogicProductionConditionState.RecordUnitDeath(LogicEntityStateStore.GetRequired(first));
-        LogicProductionConditionState.RecordUnitDeath(LogicEntityStateStore.GetRequired(second));
-        LogicProductionConditionState.RecordUnitDeath(LogicEntityStateStore.GetRequired(third));
-        InGameDataModel.SetValue(IngameValueType.Day, 2, false);
+        LogicEntityState grill = CreateProductionBuilding("Buil_CampfireGrill_Lv1", "campfire-grill", 1);
+        for (int i = 0; i < 6; i++)
+            CreateProductionBuilding($"Buil_Prod_Test_{i}_Lv1", $"campfire-grill-neighbor-{i}", 1);
 
-        LogicBuildingProductionService.Refresh(trophyRack);
+        LogicBuildingProductionService.Refresh(grill);
 
-        Assert.AreEqual(ProductionType.ByHeavyKillCount, trophyRack.ProductionProps.ProductionType);
-        Assert.AreEqual(3, trophyRack.ProductionProps.ConditionCount);
-        Assert.AreEqual((Fix64)2, trophyRack.ProductionProps.DynamicProduction);
-        Assert.AreEqual(12, LogicBuildingProductionService.GetProduction(trophyRack));
+        Assert.AreEqual(ProductionType.IncreasingByOtherBuildingCount, grill.ProductionProps.ProductionType);
+        Assert.AreEqual(6, grill.ProductionProps.ConditionCount);
+        Assert.AreEqual((Fix64)2, grill.ProductionProps.DynamicProduction);
+        Assert.AreEqual(3, LogicBuildingProductionService.GetProduction(grill));
     }
 
     [Test]
@@ -347,33 +315,47 @@ public sealed class LogicBuildingProductionTests
     }
 
     [Test]
-    public void InsuranceOffice_AccumulatesEachBuildBoundaryAndReleasesAfterPreviousDayDamage()
+    public void PackageRack_AccumulatesAtIncomeBoundaryAndReleasesImmediatelyWhenDestroyed()
     {
         InitializeStrongholds(EntitySideHelper.PlayerFactionId);
-        LogicEntityState insurance = CreateProductionBuilding(
-            "Buil_InsuranceOffice_Lv1",
-            "production-insurance-1",
-            10);
+        m_RewardManagerObject = new GameObject("PackageRack_RewardManager");
+        RewardManager manager = m_RewardManagerObject.AddComponent<RewardManager>();
+        SetPrivateField(manager, "m_RuntimeDependenciesPrepared", true);
+        SubscribeRewardManagerForTest(manager);
+        LogicEntityState rack = CreateProductionBuilding("Buil_PackageRack_Lv1", "package-rack", 2);
+        InGameDataModel.EnsureProductionBuildingCoinReserves(rack.BuildingInstanceId, 100);
         InGameDataModel.SetValue(IngameValueType.Day, 2, false);
 
         LogicBuildingProductionService.PrepareBuildPhase(true);
 
-        Assert.AreEqual(ProductionType.StoredUntilBuildingDamaged, insurance.ProductionProps.ProductionType);
-        Assert.AreEqual(10, insurance.ProductionProps.StoredProduction);
-        Assert.AreEqual(0, LogicBuildingProductionService.GetProduction(insurance));
+        Assert.AreEqual(ProductionType.StoredUntilDestroyed, rack.ProductionProps.ProductionType);
+        Assert.AreEqual(2, rack.ProductionProps.StoredProduction);
+        Assert.AreEqual(0, LogicBuildingProductionService.GetProduction(rack));
 
-        insurance.TakeDamage(Fix64.One, HealthModifyType.reduce);
-        InGameDataModel.SetValue(IngameValueType.Day, 3, false);
-        LogicBuildingProductionService.PrepareBuildPhase(true);
+        rack.TakeDamage((Fix64)150, HealthModifyType.reduce);
 
-        Assert.AreEqual(20, insurance.ProductionProps.ConditionCount);
-        Assert.AreEqual(20, insurance.ProductionProps.StoredProduction);
-        Assert.AreEqual(20, LogicBuildingProductionService.GetProduction(insurance));
+        Assert.AreEqual(2, InGameDataModel.GetValue(IngameValueType.Coin));
+        Assert.AreEqual(0, rack.ProductionProps.StoredProduction);
+        Assert.IsFalse(InGameDataModel.ConsumeDemolishedPlayerProductionBuilding(rack.BuildingInstanceId));
+    }
 
-        InGameDataModel.EnsureProductionBuildingCoinReserves(insurance.BuildingInstanceId, 20);
-        Assert.AreEqual(20, LogicBuildingProductionService.GrantProduction(insurance));
-        Assert.AreEqual(0, insurance.ProductionProps.StoredProduction);
-        Assert.AreEqual(0, LogicBuildingProductionService.GetProduction(insurance));
+    [Test]
+    public void Residence_DestroyedIncomeIsZeroForOneBoundaryOnly()
+    {
+        m_RewardManagerObject = new GameObject("Residence_RewardManager");
+        RewardManager manager = m_RewardManagerObject.AddComponent<RewardManager>();
+        SetPrivateField(manager, "m_RuntimeDependenciesPrepared", true);
+        SubscribeRewardManagerForTest(manager);
+        LogicEntityState residence = CreateProductionBuilding("Buil_Residence_Lv1", "residence", 3);
+        InGameDataModel.EnsureProductionBuildingCoinReserves(residence.BuildingInstanceId, 100);
+
+        residence.TakeDamage((Fix64)150, HealthModifyType.reduce);
+        residence.RestoreBuildingToFullHealth();
+        InvokeGrantProductionIncome(manager);
+        Assert.AreEqual(0, InGameDataModel.GetValue(IngameValueType.Coin));
+
+        InvokeGrantProductionIncome(manager);
+        Assert.AreEqual(3, InGameDataModel.GetValue(IngameValueType.Coin));
     }
 
     [Test]
@@ -442,6 +424,91 @@ public sealed class LogicBuildingProductionTests
         Assert.AreEqual(12, LogicBuildingProductionService.GetProduction(nursery));
     }
 
+    [Test]
+    public void ArmyLevelTechs_ApplyNewLifetimeHealAndCriticalEffectsWithoutRemovedAttackSpeed()
+    {
+        List<BuffData> internLv2 = CreateArmyInitialBuffs(UnitType.Unit_Intern, 2);
+        List<BuffData> internLv3 = CreateArmyInitialBuffs(UnitType.Unit_Intern, 3);
+        Assert.AreEqual((Fix64)34, FindBuff(internLv2, "timed_death").duration);
+        Assert.AreEqual((Fix64)33, FindBuff(internLv3, "timed_death").duration);
+
+        Fix64 butcherLv1Heal = ReadOnKillHealPercent(CreateArmyInitialBuffs(UnitType.Unit_BoneButcher, 1));
+        Fix64 butcherLv2Heal = ReadOnKillHealPercent(CreateArmyInitialBuffs(UnitType.Unit_BoneButcher, 2));
+        Fix64 butcherLv3Heal = ReadOnKillHealPercent(CreateArmyInitialBuffs(UnitType.Unit_BoneButcher, 3));
+        Assert.AreEqual((Fix64)2, butcherLv2Heal - butcherLv1Heal);
+        Assert.AreEqual((Fix64)5, butcherLv3Heal - butcherLv1Heal);
+
+        List<BuffData> poacherLv3 = CreateArmyInitialBuffs(UnitType.Unit_Poacher, 3);
+        CriticalDamageBonusBuff critical = FindModule<CriticalDamageBonusBuff>(poacherLv3);
+        Assert.NotNull(critical);
+        Assert.AreEqual((Fix64)50, critical.GetCriticalDamageBonusPercent());
+
+        foreach (UnitType unitType in new[]
+                 {
+                     UnitType.Unit_CanMaker,
+                     UnitType.Unit_Brat,
+                     UnitType.Unit_LongbowHunter,
+                     UnitType.Unit_Poacher,
+                 })
+        {
+            Assert.IsNull(
+                FindModule<AttackSpeedBonusBuff>(CreateArmyInitialBuffs(unitType, 3)),
+                $"{unitType} retained a removed army-level attack-speed effect.");
+        }
+    }
+
+    [Test]
+    public void ResearchCenterArmyForceTechs_TargetArmyBuildingsWithoutResolvedUnitScope()
+    {
+        LogicEntityState internBuilding = CreateArmyBuilding(
+            "Buil_InterviewRoom_Lv3",
+            "army-force-intern",
+            UnitType.Unit_Intern);
+        LogicEntityState hunterBuilding = CreateArmyBuilding(
+            "Buil_Fletcher_Lv3",
+            "army-force-hunter",
+            UnitType.Unit_LongbowHunter);
+        var managerObject = new GameObject("GlobalBuffManager_ArmyForceScope_Test");
+        var manager = managerObject.AddComponent<GlobalBuffManager>();
+        var effect = new BuildingTechRuntimeEffect();
+        try
+        {
+            effect.Activate(new TechEffectContext
+            {
+                TechId = "Tech_Buil_ResearchCenter_Lv2_Opt2",
+                OwnerFactionId = EntitySideHelper.PlayerFactionId,
+                SourceBuildingInstanceId = "research-center-source",
+                TechData = CreateTechData(
+                    "Tech_Buil_ResearchCenter_Lv2_Opt2",
+                    new[] { (Fix64)2, Fix64.One },
+                    TechScopeType.Special),
+                ResolvedScope = null,
+                GlobalBuffManager = manager,
+            });
+            effect.Activate(new TechEffectContext
+            {
+                TechId = "Tech_Buil_ResearchCenter_Lv3_Opt2",
+                OwnerFactionId = EntitySideHelper.PlayerFactionId,
+                SourceBuildingInstanceId = "research-center-source",
+                TechData = CreateTechData(
+                    "Tech_Buil_ResearchCenter_Lv3_Opt2",
+                    new[] { (Fix64)2 },
+                    TechScopeType.AllBuil),
+                ResolvedScope = null,
+                GlobalBuffManager = manager,
+            });
+
+            Assert.AreEqual((Fix64)3, manager.CalculateRuntimeArmyForceBonus(internBuilding));
+            Assert.AreEqual(Fix64.One, manager.CalculateRuntimeArmyForceBonus(hunterBuilding));
+        }
+        finally
+        {
+            effect.ClearRuntimeState();
+            manager.ClearLevelRuntimeState();
+            UnityEngine.Object.DestroyImmediate(managerObject);
+        }
+    }
+
     private static LogicEntityState CreateProductionBuilding(
         string identifier,
         string buildingInstanceId,
@@ -501,9 +568,142 @@ public sealed class LogicBuildingProductionTests
                 LogicBuildingProductionService.Configure(state);
             });
 
-        LogicTimeControlService.BeginFrame(1);
-        LogicEntityLifecycleService.ApplyFrame(1);
+        ulong spawnFrame = checked(LogicTimeControlService.CurrentFrame + 1);
+        LogicTimeControlService.BeginFrame(spawnFrame);
+        LogicEntityLifecycleService.ApplyFrame(spawnFrame);
         return LogicEntityStateStore.GetRequired(entityId);
+    }
+
+    private static LogicEntityState CreateArmyBuilding(
+        string identifier,
+        string buildingInstanceId,
+        UnitType unitType)
+    {
+        LogicEntityId entityId = LogicEntityLifecycleService.RequestConfiguredSpawn(
+            new LogicEntitySpawnDescriptor(
+                FixVector2.Zero,
+                new FixVector2(Fix64.Zero, Fix64.One),
+                SideType.PlayerSide,
+                identifier),
+            state =>
+            {
+                state.Configure(
+                    null,
+                    new CreaturePropertyManager(property =>
+                        property == CreatureMainProperty.Health ? (Fix64)100 : Fix64.Zero),
+                    0,
+                    true,
+                    null,
+                    false);
+                var move = new NoMoveComp();
+                state.SetMoveComp(move);
+                move.Init(state);
+                var attack = new NoAtkComp();
+                state.SetAtkComp(attack);
+                attack.Init(state);
+                var targeting = new NoTargetingComp();
+                state.SetTargetingComp(targeting);
+                targeting.Init(state);
+                state.ConfigureBuilding(
+                    new BuildingData(
+                        identifier,
+                        BuilType.Army,
+                        Archetype.None,
+                        "Tests/ArmyBuilding",
+                        identifier,
+                        identifier,
+                        3,
+                        0,
+                        (Fix64)100,
+                        null,
+                        Fix64.Zero,
+                        Array.Empty<Fix64>(),
+                        unitType.ToString(),
+                        1,
+                        Array.Empty<string>()),
+                    buildingInstanceId,
+                    "SH_0_1",
+                    EntitySideHelper.PlayerFactionId,
+                    LogicCombatShape.AxisAlignedBox(
+                        FixVector2.Zero,
+                        new FixVector2(Fix64.One, Fix64.One)),
+                    Array.Empty<LogicCombatShape>(),
+                    Array.Empty<LogicInteractionOptionDescriptor>(),
+                    true,
+                    1);
+            });
+
+        ulong spawnFrame = checked(LogicTimeControlService.CurrentFrame + 1);
+        LogicTimeControlService.BeginFrame(spawnFrame);
+        LogicEntityLifecycleService.ApplyFrame(spawnFrame);
+        return LogicEntityStateStore.GetRequired(entityId);
+    }
+
+    private static List<BuffData> CreateArmyInitialBuffs(UnitType unitType, int level)
+    {
+        var buffs = new List<BuffData>();
+        MethodInfo method = typeof(SoldierFactory).GetMethod(
+            "AddInitialBuffs",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        method.Invoke(null, new object[] { buffs, unitType, level });
+        return buffs;
+    }
+
+    private static BuffData FindBuff(List<BuffData> buffs, string id)
+    {
+        BuffData result = buffs.Find(buff => string.Equals(buff.id, id, StringComparison.Ordinal));
+        Assert.NotNull(result, $"Buff '{id}' was not created.");
+        return result;
+    }
+
+    private static T FindModule<T>(List<BuffData> buffs) where T : BuffCallback
+    {
+        for (int i = 0; i < buffs.Count; i++)
+        {
+            List<BuffCallback> modules = buffs[i].modules;
+            if (modules == null)
+                continue;
+            for (int moduleIndex = 0; moduleIndex < modules.Count; moduleIndex++)
+            {
+                if (modules[moduleIndex] is T result)
+                    return result;
+            }
+        }
+
+        return null;
+    }
+
+    private static Fix64 ReadOnKillHealPercent(List<BuffData> buffs)
+    {
+        OnKillHealBuff module = FindModule<OnKillHealBuff>(buffs);
+        Assert.NotNull(module);
+        FieldInfo field = typeof(OnKillHealBuff).GetField(
+            "_curHpPercent",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        return (Fix64)field.GetValue(module);
+    }
+
+    private static TechData CreateTechData(
+        string identifier,
+        Fix64[] uniqueValues,
+        TechScopeType scopeType)
+    {
+        return new TechData(
+            identifier,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            0,
+            uniqueValues,
+            scopeType,
+            Array.Empty<string>(),
+            Array.Empty<UnitSize>(),
+            Array.Empty<UnitTag>(),
+            Array.Empty<Archetype>(),
+            string.Empty,
+            false);
     }
 
     private static LogicEntityId CreateUnit(
@@ -647,6 +847,15 @@ public sealed class LogicBuildingProductionTests
             BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(subscribed);
         Assert.IsTrue((bool)subscribed.GetValue(manager));
+    }
+
+    private static void InvokeGrantProductionIncome(RewardManager manager)
+    {
+        MethodInfo method = typeof(RewardManager).GetMethod(
+            "GrantBuildPhaseIncomeFromPlayerProdBuildings",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        method.Invoke(manager, null);
     }
 
     private static BuildingTable[] LoadBuildingRows()

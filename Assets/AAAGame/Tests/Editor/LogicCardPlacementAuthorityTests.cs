@@ -101,6 +101,260 @@ public sealed class LogicCardPlacementAuthorityTests
     }
 
     [Test]
+    public void VisibilityLoss_IsDelayedUntilTheConfiguredFrameBoundary()
+    {
+        Fog3MapData map = CreateMap(3, 1);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)0.49f, LogicFrameRuntime.FixedDeltaTime * (Fix64)2);
+        var player = new SimEntityContext
+        {
+            PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            Side = SideType.PlayerSide,
+        };
+        EntityRegistry.Register(player);
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicCardPlacementAuthority.ApplyFrame(1);
+        player.PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f);
+
+        LogicTimeControlService.BeginFrame(2);
+        LogicCardPlacementAuthority.ApplyFrame(2);
+        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
+
+        LogicTimeControlService.BeginFrame(3);
+        LogicCardPlacementAuthority.ApplyFrame(3);
+        Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(0, 0));
+    }
+
+    [Test]
+    public void VisibilityLossDelay_IsRefreshedWhenTheCellBecomesVisibleAgain()
+    {
+        Fog3MapData map = CreateMap(2, 1);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)0.49f, LogicFrameRuntime.FixedDeltaTime * (Fix64)2);
+        var player = new SimEntityContext
+        {
+            PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            Side = SideType.PlayerSide,
+        };
+        EntityRegistry.Register(player);
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicCardPlacementAuthority.ApplyFrame(1);
+        player.PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f);
+        LogicTimeControlService.BeginFrame(2);
+        LogicCardPlacementAuthority.ApplyFrame(2);
+        player.PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f);
+        LogicTimeControlService.BeginFrame(3);
+        LogicCardPlacementAuthority.ApplyFrame(3);
+        player.PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f);
+
+        LogicTimeControlService.BeginFrame(4);
+        LogicCardPlacementAuthority.ApplyFrame(4);
+        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
+
+        LogicTimeControlService.BeginFrame(5);
+        LogicCardPlacementAuthority.ApplyFrame(5);
+        Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(0, 0));
+    }
+
+    [Test]
+    public void VisibilityLossDelay_StartsAfterTheLastRevealerLeaves()
+    {
+        Fog3MapData map = CreateMap(3, 1);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)0.49f, LogicFrameRuntime.FixedDeltaTime * (Fix64)2);
+        var first = new SimEntityContext
+        {
+            PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            Side = SideType.PlayerSide,
+        };
+        var second = new SimEntityContext
+        {
+            PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            Side = SideType.PlayerSide,
+        };
+        EntityRegistry.Register(first);
+        EntityRegistry.Register(second);
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicCardPlacementAuthority.ApplyFrame(1);
+        first.PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f);
+        LogicTimeControlService.BeginFrame(2);
+        LogicCardPlacementAuthority.ApplyFrame(2);
+        second.PositionFixed = new FixVector2((Fix64)2.5f, (Fix64)0.5f);
+
+        LogicTimeControlService.BeginFrame(3);
+        LogicCardPlacementAuthority.ApplyFrame(3);
+        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
+
+        LogicTimeControlService.BeginFrame(4);
+        LogicCardPlacementAuthority.ApplyFrame(4);
+        Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(0, 0));
+    }
+
+    [Test]
+    public void HigherPlatformOcclusion_StartsTheSameVisibilityLossDelay()
+    {
+        Fog3MapData map = CreateHeightMap(4, 1, new[] { 0, 0, 1, 0 }, new bool[4]);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)4, LogicFrameRuntime.FixedDeltaTime * (Fix64)2);
+        var player = new SimEntityContext
+        {
+            PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            Side = SideType.PlayerSide,
+        };
+        EntityRegistry.Register(player);
+        LogicTimeControlService.BeginFrame(1);
+        LogicCardPlacementAuthority.ApplyFrame(1);
+        player.PositionFixed = new FixVector2((Fix64)3.5f, (Fix64)0.5f);
+
+        LogicTimeControlService.BeginFrame(2);
+        LogicCardPlacementAuthority.ApplyFrame(2);
+        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
+
+        LogicTimeControlService.BeginFrame(3);
+        LogicCardPlacementAuthority.ApplyFrame(3);
+        Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(0, 0));
+    }
+
+    [Test]
+    public void HigherPlatform_BlocksLowerViewerExplorationAndVisibility()
+    {
+        Fog3MapData map = CreateHeightMap(5, 1, new[] { 0, 0, 1, 0, 0 }, new bool[5]);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)5);
+        LogicEntityState player = CreateUnit(
+            1,
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            SideType.PlayerSide,
+            false);
+        EntityRegistry.RegisterAsPlayer(player);
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicCardPlacementAuthority.ApplyFrame(1);
+
+        Assert.IsTrue(map.IsExplored(1, 0));
+        Assert.IsTrue(map.IsExplored(2, 0), "The occluding platform edge itself must remain visible.");
+        Assert.IsFalse(map.IsExplored(3, 0), "Cells behind higher terrain must remain hidden.");
+        Assert.AreEqual(Fog3CellState.Hidden, map.GetCellState(3, 0));
+    }
+
+    [Test]
+    public void SlopeCell_NeverOccludesLowerViewer()
+    {
+        Fog3MapData map = CreateHeightMap(4, 1, new[] { 0, 1, 0, 0 }, new[] { false, true, false, false });
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)4);
+
+        LogicCardPlacementAuthority.RevealCircleForTests(
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            (Fix64)4);
+
+        Assert.IsTrue(map.IsExplored(1, 0));
+        Assert.IsTrue(map.IsExplored(2, 0));
+        Assert.IsTrue(map.IsExplored(3, 0));
+    }
+
+    [Test]
+    public void ViewerOnSlope_IsBlockedByHigherPlatform()
+    {
+        Fog3MapData map = CreateHeightMap(4, 1, new[] { 0, 0, 1, 0 }, new[] { true, false, false, false });
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)4);
+
+        LogicCardPlacementAuthority.RevealCircleForTests(
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            (Fix64)4);
+
+        Assert.IsTrue(map.IsExplored(1, 0));
+        Assert.IsTrue(map.IsExplored(2, 0));
+        Assert.IsFalse(map.IsExplored(3, 0));
+    }
+
+    [Test]
+    public void SameHeightPlatform_DoesNotOccludeViewer()
+    {
+        Fog3MapData map = CreateHeightMap(4, 1, new[] { 1, 1, 1, 1 }, new bool[4]);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)4);
+
+        LogicCardPlacementAuthority.RevealCircleForTests(
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            (Fix64)4);
+
+        Assert.IsTrue(map.IsExplored(3, 0));
+    }
+
+    [Test]
+    public void DiagonalVision_CannotLeakPastCornerTouchingHigherPlatforms()
+    {
+        Fog3MapData map = CreateHeightMap(
+            3,
+            3,
+            new[]
+            {
+                0, 1, 0,
+                1, 0, 0,
+                0, 0, 0,
+            },
+            new bool[9]);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)4);
+
+        LogicCardPlacementAuthority.RevealCircleForTests(
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            (Fix64)4);
+
+        Assert.IsFalse(map.IsExplored(1, 1));
+        Assert.IsFalse(map.IsExplored(2, 2));
+    }
+
+    [Test]
+    public void TileWorldTerrainDetection_UsesTopPlatformLayerAndMarksSlopeCells()
+    {
+        var configuration = ScriptableObject.CreateInstance<GiantGrey.TileWorldCreator.Configuration>();
+        var h0 = ScriptableObject.CreateInstance<GiantGrey.TileWorldCreator.BlueprintLayer>();
+        var h2 = ScriptableObject.CreateInstance<GiantGrey.TileWorldCreator.BlueprintLayer>();
+        var slope = ScriptableObject.CreateInstance<GiantGrey.TileWorldCreator.BlueprintLayer>();
+        GameObject terrainObject = new GameObject("Fog3TerrainHeightDetectionTest");
+        try
+        {
+            configuration.width = 3;
+            configuration.height = 1;
+            configuration.cellSize = 1f;
+            var folder = new GiantGrey.TileWorldCreator.BlueprintLayerFolder("Root");
+            configuration.blueprintLayerFolders.Add(folder);
+
+            h0.layerName = "Plane_H0";
+            h0.allPositions.UnionWith(new[] { new Vector2(0, 0), new Vector2(1, 0), new Vector2(2, 0) });
+            h2.layerName = "Plane_H2";
+            h2.allPositions.Add(new Vector2(1, 0));
+            slope.layerName = "Slope";
+            slope.allPositions.Add(new Vector2(2, 0));
+            folder.blueprintLayers.Add(h0);
+            folder.blueprintLayers.Add(h2);
+            folder.blueprintLayers.Add(slope);
+
+            GiantGrey.TileWorldCreator.TileWorldCreatorManager manager =
+                terrainObject.AddComponent<GiantGrey.TileWorldCreator.TileWorldCreatorManager>();
+            manager.configuration = configuration;
+
+            Fog3TerrainInfo terrain = Fog3TerrainDetector.Detect(new Fog3TerrainSettings
+            {
+                SourceMode = Fog3TerrainSourceMode.TileWorldCreator,
+                RequireTileWorldCreatorManager = true,
+            });
+
+            Assert.NotNull(terrain);
+            Assert.AreEqual(0, terrain.GetPlatformHeight(0, 0));
+            Assert.AreEqual(2, terrain.GetPlatformHeight(1, 0));
+            Assert.AreEqual(0, terrain.GetPlatformHeight(2, 0));
+            Assert.IsFalse(terrain.IsSlope(1, 0));
+            Assert.IsTrue(terrain.IsSlope(2, 0));
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(terrainObject);
+            UnityEngine.Object.DestroyImmediate(h0);
+            UnityEngine.Object.DestroyImmediate(h2);
+            UnityEngine.Object.DestroyImmediate(slope);
+            UnityEngine.Object.DestroyImmediate(configuration);
+        }
+    }
+
+    [Test]
     public void GhostHero_IlluminatesExploredCellsWithoutRevealingHiddenCells()
     {
         Fog3MapData map = CreateMap(4, 1);
@@ -343,6 +597,46 @@ public sealed class LogicCardPlacementAuthorityTests
     }
 
     [Test]
+    public void DeterministicState_ChangesWhenVisibilityHistoryChanges()
+    {
+        Fix64 delay = LogicFrameRuntime.FixedDeltaTime * (Fix64)2;
+        var first = new SimEntityContext
+        {
+            PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            Side = SideType.PlayerSide,
+        };
+        EntityRegistry.Register(first);
+        Fog3MapData firstMap = CreateMap(2, 1);
+        Bind(firstMap, Array.Empty<LogicCombatShape>(), (Fix64)0.49f, delay);
+        LogicTimeControlService.BeginFrame(1);
+        LogicCardPlacementAuthority.ApplyFrame(1);
+        first.PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f);
+        LogicTimeControlService.BeginFrame(2);
+        LogicCardPlacementAuthority.ApplyFrame(2);
+        var firstState = new LogicStateHasher();
+        LogicCardPlacementAuthority.WriteDeterministicState(firstState);
+
+        LogicCardPlacementAuthority.UnbindWorld();
+        EntityRegistry.Clear();
+        var second = new SimEntityContext
+        {
+            PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f),
+            Side = SideType.PlayerSide,
+        };
+        EntityRegistry.Register(second);
+        Fog3MapData secondMap = CreateMap(2, 1);
+        secondMap.MarkExplored(0, 0);
+        Bind(secondMap, Array.Empty<LogicCombatShape>(), (Fix64)0.49f, delay);
+        var secondState = new LogicStateHasher();
+        LogicCardPlacementAuthority.WriteDeterministicState(secondState);
+
+        Assert.AreEqual(firstMap.ExplorationXorDigest, secondMap.ExplorationXorDigest);
+        Assert.AreEqual(firstMap.ExplorationSumDigest, secondMap.ExplorationSumDigest);
+        Assert.AreEqual(LogicCardPlacementAuthority.LastAppliedFrame, 2UL);
+        Assert.AreNotEqual(firstState.Hash, secondState.Hash);
+    }
+
+    [Test]
     public void RevealCircle_BlocksHiddenPropagationBeyondEnemyStronghold()
     {
         Fog3MapData map = CreateMap(5, 1);
@@ -456,14 +750,16 @@ public sealed class LogicCardPlacementAuthorityTests
     private static void Bind(
         Fog3MapData map,
         IReadOnlyList<LogicCombatShape> staticForbiddenShapes,
-        Fix64 visionRadius)
+        Fix64 visionRadius,
+        Fix64 visionLossDelay = default)
     {
         LogicCardPlacementAuthority.BindWorldForTests(
             map,
             staticForbiddenShapes,
             visionRadius,
             visionRadius,
-            visionRadius);
+            visionRadius,
+            visionLossDelay: visionLossDelay);
     }
 
     private static Fog3MapData CreateMap(int width, int height)
@@ -478,6 +774,22 @@ public sealed class LogicCardPlacementAuthorityTests
             Vector3.zero,
             walkable,
             "LogicCardPlacementAuthorityTests"));
+    }
+
+    private static Fog3MapData CreateHeightMap(int width, int height, int[] platformHeights, bool[] slopeMask)
+    {
+        var walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        return new Fog3MapData(new Fog3TerrainInfo(
+            width,
+            height,
+            1f,
+            Vector3.zero,
+            walkable,
+            platformHeights,
+            slopeMask,
+            "LogicCardPlacementHeightTests"));
     }
 
     private static void MarkAllExplored(Fog3MapData map)
