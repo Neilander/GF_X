@@ -63,3 +63,8 @@
 	59	生涯结算_适配度与等级	CareerSettlement_ExperienceGrade	CareerSettlement.ExperienceGrade
 	60	生涯结算_经验明细	CareerSettlement_ExperienceBreakdown	CareerSettlement.ExperienceBreakdown
 	61	生涯结算_偏移率倍率	CareerSettlement_OffsetMultiplier	CareerSettlement.OffsetMultiplier
+	62	建筑面板_单位攻击距离_近战	Building_Unit_Range_Melee	Building.Unit.Range.Melee
+	63	建筑描述模板_核心	Building_Description_Base_Format	Building.Description.Base.Format
+	64	建筑描述模板_军事	Building_Description_Army_Format	Building.Description.Army.Format
+	65	建筑技能提示_获得	Building_Skill_Obtain_Format	Building.Skill.Obtain.Format
+	66	建筑技能提示_升级	Building_Skill_Upgrade_Format	Building.Skill.Upgrade.Format

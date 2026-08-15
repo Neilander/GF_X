@@ -4,6 +4,7 @@ using System;
 using GameFramework.Event;
 using UnityEngine;
 using System.Text;
+using TMPro;
 
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName)]
 public partial class BuildingInfoTips : UIFormBase
@@ -28,8 +29,10 @@ public partial class BuildingInfoTips : UIFormBase
     private BuildingEntity m_TargetBuilding;
     private BuildingInfoItem m_ItemTemplate;
     private GameObject m_IconNumTemplate;
+    private TextMeshProUGUI m_LevelTitleText;
     private float m_RecycleHoldProgress;
     private bool m_RecycleTriggered;
+    private bool m_HasDetailPanel;
 
     private sealed class SelectedUpgradeInfo
     {
@@ -81,7 +84,9 @@ public partial class BuildingInfoTips : UIFormBase
     private void RefreshView()
     {
         CacheTemplates();
+        RefreshLevelTitle();
         ClearSpawnedItems();
+        m_HasDetailPanel = false;
         RefreshRecycleArea();
 
         if (!CanShowInfoTips())
@@ -100,6 +105,7 @@ public partial class BuildingInfoTips : UIFormBase
 
         PopulateProperties(item, m_TargetBuilding);
         PopulateCoinReserves(item, m_TargetBuilding);
+        item.ApplyPanelLayout(reservePreviewColumn: true, reserveProgressRow: false);
     }
 
     private void PopulateProperties(BuildingInfoItem item, BuildingEntity building)
@@ -138,25 +144,30 @@ public partial class BuildingInfoTips : UIFormBase
 
         var stats = new List<BuildingPanelStat>();
         BuildingPanelPresentation.CollectBuildingCombatStats(building.buildingData, building, stats);
-        BuildingPanelPresentation.CollectUnitStats(building.buildingData, stats);
-        List<SelectedUpgradeInfo> selected = CollectSelectedUpgrades(building);
-        var displayedSkillIds = new HashSet<string>(StringComparer.Ordinal);
-        for (int i = 0; i < selected.Count; i++)
-        {
-            TechData tech = selected[i].TechData;
-            if (tech?.ScopeType != TechScopeType.Skill)
-                continue;
-            if (!displayedSkillIds.Add(tech.SkillID))
-                continue;
-            int level = SkillRuntimeDataModel.GetLevel(tech.SkillID);
-            if (level <= 0)
-                throw new InvalidOperationException($"Selected skill tech has no unlocked skill. tech={tech.Identifier}, skill={tech.SkillID}");
-            SkillData skill = SkillDataModel.GetSkillData(tech.SkillID)
-                              ?? throw new InvalidOperationException($"Selected skill tech is missing skill data. skill={tech.SkillID}");
-            BuildingPanelPresentation.CollectSkillStats(skill, level, stats);
-        }
         for (int i = 0; i < stats.Count; i++)
             SpawnGlyphProperty(root, stats[i]);
+
+        PopulateDetailProperties(item, building);
+    }
+
+    private void PopulateDetailProperties(BuildingInfoItem item, BuildingEntity building)
+    {
+        BuildingData data = building?.buildingData;
+        if (data != null && data.Type == BuilType.Army)
+        {
+            item.SetDetailData(
+                BuildingPanelPresentation.GetUnitName(data),
+                BuildingPanelPresentation.GetUnitDescription(data));
+            Transform unitRoot = item.DetailPropertyListRoot.transform;
+            var unitStats = new List<BuildingPanelStat>();
+            BuildingPanelPresentation.CollectUnitStats(data, unitStats);
+            for (int i = 0; i < unitStats.Count; i++)
+                SpawnGlyphProperty(unitRoot, unitStats[i]);
+            m_HasDetailPanel = true;
+            return;
+        }
+
+        item.SetDetailInfoVisible(false);
     }
 
     private void SpawnProperty(Transform root, string iconPath, string numberText)
@@ -203,6 +214,8 @@ public partial class BuildingInfoTips : UIFormBase
             return;
 
         iconNum.SetData(CoinIconPath, $"{CoinReservesPrefix}{reserves}");
+        iconNum.FitParentRect();
+        iconNum.AlignContentRight();
     }
 
     private void ComposeDisplayText(BuildingEntity building, out string name, out string desc)
@@ -215,7 +228,7 @@ public partial class BuildingInfoTips : UIFormBase
 
         BuildingData data = building.buildingData;
         // Name 作为标题展示，不走富文本；描述默认走富文本规则。
-        name = LocalizationTextManager.GetLocalizedText(data.NameKey, false);
+        name = BuildingPanelPresentation.GetBuildingName(data);
         desc = BuildingPanelPresentation.GetDescription(data);
 
         List<SelectedUpgradeInfo> selected = CollectSelectedUpgrades(building);
@@ -228,13 +241,12 @@ public partial class BuildingInfoTips : UIFormBase
 
         name += "-" + markBuilder;
 
-        var displayedSkillIds = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < selected.Count; i++)
         {
             TechData techData = selected[i].TechData;
             if (techData == null)
                 continue;
-            if (techData.ScopeType == TechScopeType.Skill && !displayedSkillIds.Add(techData.SkillID))
+            if (techData.ScopeType == TechScopeType.Skill)
                 continue;
 
             string optionDesc = techData.GetFormattedDesc();
@@ -334,7 +346,11 @@ public partial class BuildingInfoTips : UIFormBase
             return;
 
         Vector3 uiPos = GF.UI.PositionWorldToUI(worldPos, parentRect);
-        panelRect.anchoredPosition = (Vector2)uiPos + uiOffset;
+        Vector2 detailOffset = m_HasDetailPanel
+            ? Vector2.left * BuildingInfoItem.DetailPanelCenterOffset
+            : Vector2.zero;
+        panelRect.anchoredPosition = (Vector2)uiPos + uiOffset + detailOffset;
+        BuildingPanelScreenClamp.ClampToParent(panelRect, parentRect);
     }
 
     private void OnTechUnlocked(object sender, GameEventArgs e)
@@ -384,6 +400,16 @@ public partial class BuildingInfoTips : UIFormBase
 
     private void CacheTemplates()
     {
+        if (m_LevelTitleText == null)
+        {
+            Transform title = varInfoPanel != null
+                ? varInfoPanel.Find("LevelTitleBadge/Title")
+                : null;
+            m_LevelTitleText = title != null ? title.GetComponent<TextMeshProUGUI>() : null;
+            if (m_LevelTitleText == null)
+                throw new InvalidOperationException("BuildingInfoTips requires InfoPanel/LevelTitleBadge/Title.");
+        }
+
         if (varBuildingInfoItem == null)
             return;
 
@@ -394,6 +420,14 @@ public partial class BuildingInfoTips : UIFormBase
             return;
 
         m_IconNumTemplate = m_ItemTemplate.IconNumTemplate;
+    }
+
+    private void RefreshLevelTitle()
+    {
+        if (m_TargetBuilding?.buildingData == null)
+            return;
+
+        m_LevelTitleText.text = BuildingPanelPresentation.GetBuildingLevelTitle(m_TargetBuilding.buildingData.Lv);
     }
 
     private void ClearSpawnedItems()

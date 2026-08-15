@@ -535,10 +535,11 @@ public sealed class CareerSystemsTests
         Assert.IsFalse(EntityPresetPoint.IsInitialBaseIdentifier("InitBase"));
         Assert.IsFalse(EntityPresetPoint.IsInitialBaseIdentifier("Buil_ResearchCenter_Lv1"));
 
-        AssertInitialBaseCount("Level_1", 0);
-        AssertInitialBaseCount("Level_2", 1);
-        AssertInitialBaseCount("Level_3", 1);
-        AssertInitialBaseCount("LvTest", 1);
+        Dictionary<string, LevelTable> levels = GetStaticDictionary<LevelTable>("s_Levels");
+        AssertInitialBaseMatchesDefaultArchetype(levels["Lv_1"]);
+        AssertInitialBaseMatchesDefaultArchetype(levels["Lv_2"]);
+        AssertInitialBaseMatchesDefaultArchetype(levels["Lv_3"]);
+        AssertInitialBaseMatchesDefaultArchetype(levels["LvTest"]);
     }
 
     [Test]
@@ -611,15 +612,16 @@ public sealed class CareerSystemsTests
         field.SetValue(progress, value);
     }
 
-    private static void AssertInitialBaseCount(string prefabName, int expectedCount)
+    private static void AssertInitialBaseMatchesDefaultArchetype(LevelTable level)
     {
-        string path = $"Assets/AAAGame/Prefabs/Entity/Level/{prefabName}.prefab";
+        string path = $"Assets/AAAGame/Prefabs/Entity/{level.PrefabPath}.prefab";
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
         Assert.IsNotNull(prefab, $"Level prefab is missing: {path}");
         int actualCount = prefab.GetComponentsInChildren<EntityPresetPoint>(true).Count(point =>
             point.PointType == EntityPresetPointType.Building
             && EntityPresetPoint.IsInitialBaseIdentifier(point.Identifier));
-        Assert.AreEqual(expectedCount, actualCount, path);
+        int expectedCount = level.DefaultArchetype == Archetype.None ? 0 : 1;
+        Assert.AreEqual(expectedCount, actualCount, $"{path} DefaultArchetype={level.DefaultArchetype}");
     }
 
     private static void AssertGrowth(

@@ -72,7 +72,7 @@ public sealed class SkillReworkDataTests
             ["Skill_GiantSlayer"] = Archetype.Hunting,
             ["Skill_NeatAndTidy"] = Archetype.Gardening,
             ["Skill_Injection"] = Archetype.Medical,
-            ["Skill_Cheer Squad"] = Archetype.Sports,
+            ["Skill_CheerSquad"] = Archetype.Sports,
         };
 
         Assert.AreEqual(expected.Count, map.Count);
@@ -91,7 +91,7 @@ public sealed class SkillReworkDataTests
         Assert.IsNotNull(character);
         AssertFactory(player.skills, player.passiveSkills);
         AssertFactory(character.skills, character.passiveSkills);
-        Assert.IsInstanceOf<BladeDanceActiveSkillSO>(FindAsset(player.skills, "Skill_InsatiableThirst"));
+        Assert.IsInstanceOf<InsatiableThirstActiveSkillSO>(FindAsset(player.skills, "Skill_InsatiableThirst"));
         Assert.IsInstanceOf<UrgentRequestActiveSkillSO>(FindAsset(player.skills, "Skill_UrgentRequest"));
         Assert.IsInstanceOf<LightLoadDashActiveSkillSO>(FindAsset(player.skills, "Skill_ExpressDelivery"));
         Assert.IsInstanceOf<FireDrillPassiveSkillSO>(FindAsset(player.passiveSkills, "Skill_ForgedInFire"));

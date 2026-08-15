@@ -10,5 +10,5 @@
 	6	Skill_RiotArmor	防暴装甲	英雄+{0}护甲。	5						4						SkillType.Passive	Skill_Name_RiotArmor	Skill_Desc_RiotArmor	
 	7	Skill_GiantSlayer	巨人杀手	英雄攻击时，额外造成敌人当前生命{0}%的伤害。	8						4						SkillType.Passive	Skill_Name_GiantSlayer	Skill_Desc_GiantSlayer	
 	8	Skill_Injection	打针	立刻对英雄附近的敌方单位施加恐惧，使其尝试远离恐惧来源。			300	4	1	8			50	1	1		SkillType.Active	Skill_Name_Injection	Skill_Desc_Injection	
-	9	Skill_Cheer Squad	啦啦队	每有{0}个我方单位在场，英雄便+{1}攻击、+{2}攻速。	3,1,2						0,0.5,1						SkillType.Passive	Skill_Name_Cheer Squad	Skill_Desc_Cheer Squad	
+	9	Skill_CheerSquad	啦啦队	每有{0}个我方单位在场，英雄便+{1}攻击、+{2}攻速。	3,1,2						0,0.5,1						SkillType.Passive	Skill_Name_Cheer Squad	Skill_Desc_Cheer Squad	
 	10	Skill_NeatAndTidy	整整齐齐	英雄的普通攻击也会对目标附近生命比例更高的单位造成{0}%伤害。	30		200				15		30				SkillType.Passive	Skill_Name_NeatAndTidy	Skill_Desc_NeatAndTidy	

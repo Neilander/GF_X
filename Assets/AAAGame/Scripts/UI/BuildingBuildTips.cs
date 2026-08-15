@@ -331,7 +331,7 @@ public partial class BuildingBuildTips : UIFormBase
             string actionName = $"Player/Build{i + 1}";
             string keyText = InputGetKeyText.GetKeyText(actionName);
             // name 作为标题展示，按需求不走富文本规则（避免关键词高亮污染标题视觉）。
-            string name = LocalizationTextManager.GetLocalizedText(data.NameKey, false);
+            string name = BuildingPanelPresentation.GetBuildingName(data);
             // desc 默认走富文本（关键词高亮、正负数字着色）。
             string desc = BuildingPanelPresentation.GetDescription(data);
             infoItem.SetData(keyText, name, desc);
@@ -354,6 +354,7 @@ public partial class BuildingBuildTips : UIFormBase
             };
 
             SpawnProgressStars(binding);
+            infoItem.ApplyPanelLayout(reservePreviewColumn: true, reserveProgressRow: true);
             m_BuildOptionBindings.Add(binding);
         }
 
@@ -414,6 +415,8 @@ public partial class BuildingBuildTips : UIFormBase
 
         int cost = ResolveBuildCost(data);
         iconNum.SetData(CoinIconPath, cost.ToString());
+        iconNum.FitParentRect();
+        iconNum.AlignContentRight();
         if (!HasEnoughCoinForBuild(cost))
             iconNum.SetNumberColor(Color.red);
     }
@@ -459,9 +462,27 @@ public partial class BuildingBuildTips : UIFormBase
 
         var stats = new List<BuildingPanelStat>();
         BuildingPanelPresentation.CollectBuildingCombatStats(data, null, stats);
-        BuildingPanelPresentation.CollectUnitStats(data, stats);
         for (int i = 0; i < stats.Count; i++)
             SpawnGlyphProperty(infoItem.PropertyListRoot.transform, stats[i]);
+
+        PopulateUnitProperties(infoItem, data);
+    }
+
+    private void PopulateUnitProperties(BuildingInfoItem infoItem, BuildingData data)
+    {
+        bool visible = data != null && data.Type == BuilType.Army;
+        infoItem.SetUnitInfoVisible(visible);
+        if (!visible)
+            return;
+
+        infoItem.SetUnitData(
+            BuildingPanelPresentation.GetUnitName(data),
+            BuildingPanelPresentation.GetUnitDescription(data));
+        Transform root = infoItem.UnitPropertyListRoot.transform;
+        var stats = new List<BuildingPanelStat>();
+        BuildingPanelPresentation.CollectUnitStats(data, stats);
+        for (int i = 0; i < stats.Count; i++)
+            SpawnGlyphProperty(root, stats[i]);
     }
 
     private void SpawnProperty(Transform root, string iconPath, string numberText)
@@ -508,6 +529,8 @@ public partial class BuildingBuildTips : UIFormBase
             return;
 
         iconNum.SetData(CoinIconPath, $"{CoinReservesPrefix}{reserves}");
+        iconNum.FitParentRect();
+        iconNum.AlignContentRight();
     }
 
     private void SpawnProgressStars(BuildOptionBinding binding)
@@ -742,7 +765,22 @@ public partial class BuildingBuildTips : UIFormBase
             return;
 
         Vector3 uiPos = GF.UI.PositionWorldToUI(m_TargetHost.GetPromptPosition(), parentRect);
-        panelRect.anchoredPosition = (Vector2)uiPos + uiOffset;
+        Vector2 unitOffset = HasArmyBuildOption()
+            ? Vector2.left * BuildingInfoItem.DetailPanelCenterOffset
+            : Vector2.zero;
+        panelRect.anchoredPosition = (Vector2)uiPos + uiOffset + unitOffset;
+        BuildingPanelScreenClamp.ClampToParent(panelRect, parentRect);
+    }
+
+    private bool HasArmyBuildOption()
+    {
+        for (int i = 0; i < m_BuildOptionBindings.Count; i++)
+        {
+            if (m_BuildOptionBindings[i]?.BuildingData?.Type == BuilType.Army)
+                return true;
+        }
+
+        return false;
     }
 
     private void OnResourceChanged(object sender, GameEventArgs e)

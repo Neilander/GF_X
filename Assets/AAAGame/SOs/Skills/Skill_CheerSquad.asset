@@ -12,4 +12,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 866dde5a44b65a3429852fe46b435ba3, type: 3}
   m_Name: Skill_CheerSquad
   m_EditorClassIdentifier: 
-  skillId: Skill_Cheer Squad
+  skillId: Skill_CheerSquad

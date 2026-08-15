@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System;
 using System.Text;
 using GameFramework.Event;
+using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName)]
 public partial class BuildingUpgradeTips : UIFormBase
@@ -19,11 +21,20 @@ public partial class BuildingUpgradeTips : UIFormBase
 
     private const string ConditionBaseLevelTextId = "Building_Upgrade_Cond_BaseLevel";
     private const string ConditionUniqueTechTextId = "Building_Upgrade_Cond_UniqueTech";
+    private const string ObtainSkillTextId = "Building_Skill_Obtain_Format";
+    private const string UpgradeSkillTextId = "Building_Skill_Upgrade_Format";
     private const float HoldPerStarMinSeconds = 0.1f;
     private const float HoldPerStarMaxSeconds = 0.4f;
     private const float HoldAlignedDurationSeconds = 2f;
     private const float HoldDurationMinSeconds = 1f;
     private const float RecycleHoldDurationSeconds = 2f;
+    private const float MinimumInfoHeight = 176f;
+    private const float HeaderHeight = 72f;
+    private const float BottomPadding = 16f;
+    private const float ConditionGap = 12f;
+    private const float OptionGap = 8f;
+    private const float SeparationInset = 4f;
+    private const float SeparationBandHeight = 24f;
     private const string DemolishText = "拆除";
     private const string UndoTextFormat = "撤销  <sprite name=\"Coin\"> {0}";
     private static readonly Color32 DefaultLitColor = new(250, 112, 36, 255);
@@ -39,6 +50,19 @@ public partial class BuildingUpgradeTips : UIFormBase
     private BuildingInfoItem m_ItemTemplate;
     private GameObject m_IconNumTemplate;
     private GameObject m_StarTemplate;
+    private TextMeshProUGUI m_CurrentLevelTitleText;
+    private TextMeshProUGUI m_NextLevelTitleText;
+    private RectTransform m_Background;
+    private RectTransform m_LevelTitleBadge;
+    private RectTransform m_CurrentPreviewFrame;
+    private RectTransform m_UpgradePreviewFrame;
+    private RectTransform m_CurrentInfoBottomLine;
+    private RectTransform m_UpgradeInfoTopLine;
+    private RectTransform m_UpgradeInfoBottomLine;
+    private float m_CurrentInfoHeight = MinimumInfoHeight;
+    private float m_UpgradeInfoHeight = MinimumInfoHeight;
+    private float m_StableConditionHeight;
+    private bool m_ReserveDetailPanelSpace;
 
     private UpgradeOptionBinding m_SelectedBinding;
     private UpgradeOptionBinding m_HoldBinding;
@@ -109,6 +133,7 @@ public partial class BuildingUpgradeTips : UIFormBase
     private void RefreshView()
     {
         CacheTemplates();
+        RefreshLevelTitle();
         ClearAllSpawnedItems();
         ClearRuntimeState();
         RefreshRecycleArea();
@@ -118,6 +143,7 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         SpawnCurrentInfoItem();
         BuildUpgradeCandidates();
+        PrepareStableOptionLayout();
         SpawnUpgradeButtons();
         SelectDefaultOption();
     }
@@ -139,6 +165,7 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         PopulateCurrentProperties(item, m_TargetBuilding);
         PopulateCoinReserves(item, m_TargetBuilding);
+        m_CurrentInfoHeight = item.ApplyPanelLayout(reservePreviewColumn: true, reserveProgressRow: true);
     }
 
     private void BuildUpgradeCandidates()
@@ -318,12 +345,13 @@ public partial class BuildingUpgradeTips : UIFormBase
         BuildingData previewData = m_SelectedBinding.UpgradeBuildingData
                                    ?? throw new InvalidOperationException(
                                        $"Upgrade preview is missing building data. building={m_SelectedBinding.UpgradeBuildingId}.");
-        string desc = BuildingPanelPresentation.GetDescription(previewData);
-        if (m_SelectedBinding.TechData?.ScopeType == TechScopeType.Skill)
+        List<SelectedUpgradeInfo> previewUpgrades = CollectSelectedUpgrades(m_TargetBuilding);
+        previewUpgrades.Add(new SelectedUpgradeInfo
         {
-            int targetSkillLevel = ResolveTargetSkillLevel(m_SelectedBinding.TechData);
-            desc += "\n·" + m_SelectedBinding.TechData.GetSkillTechFormattedDesc(targetSkillLevel);
-        }
+            OptionIndex = m_SelectedBinding.OptionIndex,
+            TechData = m_SelectedBinding.TechData,
+        });
+        string desc = ComposeDescription(previewData, previewUpgrades, m_SelectedBinding.TechData);
         preview.SetData(keyText, name, desc);
         preview.SetPreviewVisible(false);
         preview.SetExecutable(IsSelectedOptionExecutable());
@@ -335,6 +363,11 @@ public partial class BuildingUpgradeTips : UIFormBase
         PopulatePreviewProperties(preview, previewData);
 
         SpawnProgressStars(m_SelectedBinding, Mathf.Max(1, cost));
+        float stableInfoHeight = MeasureStableUpgradeInfoHeight(preview, previewData);
+        m_UpgradeInfoHeight = preview.ApplyPanelLayout(
+            reservePreviewColumn: true,
+            reserveProgressRow: true,
+            minimumPanelHeight: stableInfoHeight);
     }
 
     private void RefreshConditionArea()
@@ -343,6 +376,15 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         if (m_SelectedBinding == null || varConditionArea == null || varGoalConditionItem == null)
             return;
+
+        SpawnConditions(m_SelectedBinding);
+        ApplyAdaptiveLayout();
+    }
+
+    private void SpawnConditions(UpgradeOptionBinding binding)
+    {
+        if (binding == null)
+            throw new ArgumentNullException(nameof(binding));
 
         // 条件1：基地等级条件（非 Base/Tech 建筑升级到 n 级）
         if (m_TargetBuilding != null && m_TargetBuilding.buildingData != null)
@@ -354,9 +396,7 @@ public partial class BuildingUpgradeTips : UIFormBase
                 string baseName = ResolveArchetypeBaseName(current.Arche);
                 string format = LocalizationTextDataModel.GetText(ConditionBaseLevelTextId);
                 string text = string.Format(format, baseName, requiredLevel);
-                string capturedUpgradeBuildingId = m_SelectedBinding != null
-                    ? m_SelectedBinding.UpgradeBuildingId
-                    : BuildingDataModel.GetUpgradeID(current.Identifier);
+                string capturedUpgradeBuildingId = binding.UpgradeBuildingId;
                 BuildingData capturedUpgradeBuildingData = !string.IsNullOrWhiteSpace(capturedUpgradeBuildingId)
                     ? BuildingDataModel.GetBuildingData(capturedUpgradeBuildingId)
                     : null;
@@ -368,13 +408,70 @@ public partial class BuildingUpgradeTips : UIFormBase
         }
 
         // 条件2：全局唯一科技
-        if (m_SelectedBinding.TechData != null && !m_SelectedBinding.TechData.IsStackable)
+        if (binding.TechData != null && !binding.TechData.IsStackable)
         {
             string text = LocalizationTextDataModel.GetText(ConditionUniqueTechTextId);
-            bool satisfied = !InGameDataModel.HasUnlockedTech(m_SelectedBinding.TechId);
+            bool satisfied = !InGameDataModel.HasUnlockedTech(binding.TechId);
             SpawnCondition(text, satisfied);
         }
+    }
 
+    private void PrepareStableOptionLayout()
+    {
+        m_ReserveDetailPanelSpace = m_TargetBuilding?.buildingData?.Type == BuilType.Army;
+        m_StableConditionHeight = 0f;
+
+        for (int i = 0; i < m_UpgradeBindings.Count; i++)
+        {
+            UpgradeOptionBinding binding = m_UpgradeBindings[i]
+                                           ?? throw new InvalidOperationException($"Upgrade option {i} is missing its binding.");
+            if (binding.TechData?.ScopeType == TechScopeType.Skill)
+                m_ReserveDetailPanelSpace = true;
+
+            UnspawnItemTemplate(varGoalConditionItem);
+            SpawnConditions(binding);
+            SetTopCenteredRect(varConditionArea, Vector2.zero, new Vector2(600f, 0f));
+            LayoutRebuilder.ForceRebuildLayoutImmediate(varConditionArea);
+            float height = Mathf.Max(0f, LayoutUtility.GetPreferredHeight(varConditionArea));
+            if (HasActiveConditionItem(varConditionArea) && height <= 0f)
+                throw new InvalidOperationException($"Upgrade option {i} conditions have content but no preferred height.");
+            m_StableConditionHeight = Mathf.Max(m_StableConditionHeight, height);
+        }
+
+        UnspawnItemTemplate(varGoalConditionItem);
+    }
+
+    private float MeasureStableUpgradeInfoHeight(BuildingInfoItem preview, BuildingData previewData)
+    {
+        if (preview == null)
+            throw new ArgumentNullException(nameof(preview));
+        if (previewData == null)
+            throw new ArgumentNullException(nameof(previewData));
+
+        float height = MinimumInfoHeight;
+        List<SelectedUpgradeInfo> history = CollectSelectedUpgrades(m_TargetBuilding);
+        for (int i = 0; i < m_UpgradeBindings.Count; i++)
+        {
+            UpgradeOptionBinding binding = m_UpgradeBindings[i]
+                                           ?? throw new InvalidOperationException($"Upgrade option {i} is missing its binding.");
+            var selected = new List<SelectedUpgradeInfo>(history)
+            {
+                new SelectedUpgradeInfo
+                {
+                    OptionIndex = binding.OptionIndex,
+                    TechData = binding.TechData,
+                },
+            };
+            string description = ComposeDescription(previewData, selected, binding.TechData);
+            height = Mathf.Max(
+                height,
+                preview.MeasurePanelHeight(
+                    description,
+                    reservePreviewColumn: true,
+                    reserveProgressRow: true));
+        }
+
+        return height;
     }
 
     private void SpawnCondition(string text, bool satisfied)
@@ -424,7 +521,7 @@ public partial class BuildingUpgradeTips : UIFormBase
                 break;
         }
 
-        PopulateDetailedStats(root, building.buildingData, building);
+        PopulateDetailedStats(item, building.buildingData, building);
     }
 
     private void PopulatePreviewProperties(BuildingInfoItem item, BuildingData data)
@@ -447,42 +544,64 @@ public partial class BuildingUpgradeTips : UIFormBase
                 break;
         }
 
-        PopulateDetailedStats(root, data, null);
+        PopulateDetailedStats(item, data, null);
     }
 
-    private void PopulateDetailedStats(Transform root, BuildingData data, BuildingEntity runtimeBuilding)
+    private void PopulateDetailedStats(BuildingInfoItem item, BuildingData data, BuildingEntity runtimeBuilding)
     {
+        Transform root = item.PropertyListRoot.transform;
         var stats = new List<BuildingPanelStat>();
         BuildingPanelPresentation.CollectBuildingCombatStats(data, runtimeBuilding, stats);
+        for (int i = 0; i < stats.Count; i++)
+            SpawnGlyphProperty(root, stats[i]);
+
+        PopulateDetailProperties(item, data, runtimeBuilding);
+    }
+
+    private void PopulateDetailProperties(BuildingInfoItem item, BuildingData data, BuildingEntity runtimeBuilding)
+    {
+        if (data != null && data.Type == BuilType.Army)
+        {
+            item.SetDetailData(
+                BuildingPanelPresentation.GetUnitName(data),
+                BuildingPanelPresentation.GetUnitDescription(data));
+            PopulateDetailStats(item, data);
+            return;
+        }
+
+        TechData skillTech = m_SelectedBinding?.TechData?.ScopeType == TechScopeType.Skill
+            ? m_SelectedBinding.TechData
+            : null;
+        if (skillTech == null)
+        {
+            item.SetDetailInfoVisible(false);
+            return;
+        }
+
+        int currentLevel = SkillRuntimeDataModel.GetLevel(skillTech.SkillID);
+        int level = ResolveSkillDetailLevel(runtimeBuilding != null, currentLevel);
+        if (level <= 0)
+        {
+            item.SetDetailInfoVisible(false);
+            return;
+        }
+
+        SkillData skill = SkillDataModel.GetSkillData(skillTech.SkillID)
+                          ?? throw new InvalidOperationException($"Selected skill tech is missing skill data. skill={skillTech.SkillID}");
+        string skillName = LocalizationTextManager.GetLocalizedText(skill.NameKey, false);
+        item.SetDetailData($"{skillName} Lv{level}", skill.GetFormattedDesc(level));
+        Transform root = item.DetailPropertyListRoot.transform;
+        var stats = new List<BuildingPanelStat>();
+        BuildingPanelPresentation.CollectSkillStats(skill, level, stats);
+        for (int i = 0; i < stats.Count; i++)
+            SpawnGlyphProperty(root, stats[i]);
+    }
+
+    private void PopulateDetailStats(BuildingInfoItem item, BuildingData data)
+    {
+        Transform root = item.DetailPropertyListRoot.transform;
+        var stats = new List<BuildingPanelStat>();
         BuildingPanelPresentation.CollectUnitStats(data, stats);
-        if (runtimeBuilding != null)
-        {
-            List<SelectedUpgradeInfo> selected = CollectSelectedUpgrades(runtimeBuilding);
-            var displayedSkillIds = new HashSet<string>(StringComparer.Ordinal);
-            for (int i = 0; i < selected.Count; i++)
-            {
-                TechData tech = selected[i].TechData;
-                if (tech?.ScopeType != TechScopeType.Skill)
-                    continue;
-                if (!displayedSkillIds.Add(tech.SkillID))
-                    continue;
-                int level = SkillRuntimeDataModel.GetLevel(tech.SkillID);
-                if (level <= 0)
-                    throw new InvalidOperationException($"Selected skill tech has no unlocked skill. tech={tech.Identifier}, skill={tech.SkillID}");
-                SkillData skill = SkillDataModel.GetSkillData(tech.SkillID)
-                                  ?? throw new InvalidOperationException($"Selected skill tech is missing skill data. skill={tech.SkillID}");
-                BuildingPanelPresentation.CollectSkillStats(skill, level, stats);
-            }
-        }
-        else if (m_SelectedBinding?.TechData?.ScopeType == TechScopeType.Skill)
-        {
-            SkillData skill = SkillDataModel.GetSkillData(m_SelectedBinding.TechData.SkillID)
-                              ?? throw new InvalidOperationException($"Upgrade skill tech is missing skill data. skill={m_SelectedBinding.TechData.SkillID}");
-            BuildingPanelPresentation.CollectSkillStats(
-                skill,
-                ResolveTargetSkillLevel(m_SelectedBinding.TechData),
-                stats);
-        }
         for (int i = 0; i < stats.Count; i++)
             SpawnGlyphProperty(root, stats[i]);
     }
@@ -492,7 +611,15 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (tech == null || tech.ScopeType != TechScopeType.Skill || string.IsNullOrWhiteSpace(tech.SkillID))
             throw new ArgumentException("Target skill level requires a skill tech.", nameof(tech));
         int current = SkillRuntimeDataModel.GetLevel(tech.SkillID);
-        return current > 0 ? current + 1 : 1;
+        return ResolveSkillDetailLevel(false, current);
+    }
+
+    internal static int ResolveSkillDetailLevel(bool currentBuilding, int currentLevel)
+    {
+        if (currentLevel < 0)
+            throw new ArgumentOutOfRangeException(nameof(currentLevel), currentLevel, "Skill level cannot be negative.");
+
+        return currentBuilding ? currentLevel : currentLevel + 1;
     }
 
     private void PopulatePrice(BuildingInfoItem item, int cost)
@@ -509,6 +636,8 @@ public partial class BuildingUpgradeTips : UIFormBase
             return;
 
         iconNum.SetData(CoinIconPath, cost.ToString());
+        iconNum.FitParentRect();
+        iconNum.AlignContentRight();
         bool hasEnoughMoney = InGameDataModel.GetValue(IngameValueType.Coin) >= cost;
         UpdatePriceNumberColor(item, hasEnoughMoney);
     }
@@ -557,6 +686,8 @@ public partial class BuildingUpgradeTips : UIFormBase
             return;
 
         iconNum.SetData(CoinIconPath, $"{CoinReservesPrefix}{reserves}");
+        iconNum.FitParentRect();
+        iconNum.AlignContentRight();
     }
 
     private void SpawnProgressStars(UpgradeOptionBinding binding, int cost)
@@ -742,6 +873,114 @@ public partial class BuildingUpgradeTips : UIFormBase
             RefreshView();
     }
 
+    private void ApplyAdaptiveLayout()
+    {
+        CacheLayoutReferences();
+
+        SetTopCenteredRect(varConditionArea, Vector2.zero, new Vector2(600f, 0f));
+        LayoutRebuilder.ForceRebuildLayoutImmediate(varConditionArea);
+        float activeConditionHeight = Mathf.Max(0f, LayoutUtility.GetPreferredHeight(varConditionArea));
+        if (HasActiveConditionItem(varConditionArea) && activeConditionHeight <= 0f)
+            throw new InvalidOperationException("Upgrade conditions have content but no preferred height.");
+        if (activeConditionHeight > m_StableConditionHeight + 0.01f)
+            throw new InvalidOperationException(
+                $"Selected upgrade condition height exceeds the stable panel reservation. active={activeConditionHeight}, reserved={m_StableConditionHeight}.");
+        float conditionHeight = m_StableConditionHeight;
+
+        float optionHeight = 0f;
+        for (int i = 0; i < m_UpgradeBindings.Count; i++)
+        {
+            RectTransform optionRoot = m_UpgradeBindings[i]?.ButtonItem?.HoldRoot;
+            if (optionRoot != null)
+                optionHeight = Mathf.Max(optionHeight, optionRoot.rect.height);
+        }
+        if (optionHeight <= 0f)
+            throw new InvalidOperationException("Upgrade option row has no measurable option objects.");
+
+        float totalHeight = HeaderHeight
+                            + m_CurrentInfoHeight
+                            + SeparationInset
+                            + SeparationBandHeight
+                            + SeparationInset
+                            + m_UpgradeInfoHeight
+                            + SeparationInset
+                            + ConditionGap
+                            + conditionHeight
+                            + OptionGap
+                            + optionHeight
+                            + BottomPadding;
+        varUpgradePanel.sizeDelta = new Vector2(varUpgradePanel.sizeDelta.x, totalHeight);
+        SetCenteredRect(m_Background, Vector2.zero, new Vector2(m_Background.sizeDelta.x, totalHeight));
+
+        float top = totalHeight * 0.5f;
+        SetCenteredPosition(m_LevelTitleBadge, new Vector2(m_LevelTitleBadge.anchoredPosition.x, top - 39f));
+        SetCenteredPosition(
+            varRecycleBtn.transform as RectTransform,
+            new Vector2((varRecycleBtn.transform as RectTransform).anchoredPosition.x, top - 32.24f));
+
+        float currentTop = top - HeaderHeight;
+        float currentCenter = currentTop - m_CurrentInfoHeight * 0.5f;
+        SetCenteredPosition(varInfoRoot, new Vector2(0f, currentCenter));
+        SetCenteredPosition(
+            m_CurrentPreviewFrame,
+            new Vector2(m_CurrentPreviewFrame.anchoredPosition.x, currentCenter + 12f));
+
+        float currentBottomLine = currentTop - m_CurrentInfoHeight - SeparationInset;
+        SetCenteredPosition(m_CurrentInfoBottomLine, new Vector2(0f, currentBottomLine));
+
+        float upgradeTopLine = currentBottomLine - SeparationBandHeight;
+        SetCenteredPosition(m_UpgradeInfoTopLine, new Vector2(0f, upgradeTopLine));
+
+        float upgradeTop = upgradeTopLine - SeparationInset;
+        float upgradeCenter = upgradeTop - m_UpgradeInfoHeight * 0.5f;
+        SetCenteredPosition(varUpgradeRoot, new Vector2(0f, upgradeCenter));
+        SetCenteredPosition(
+            m_UpgradePreviewFrame,
+            new Vector2(m_UpgradePreviewFrame.anchoredPosition.x, upgradeCenter + 12f));
+
+        float upgradeBottomLine = upgradeTop - m_UpgradeInfoHeight - SeparationInset;
+        SetCenteredPosition(m_UpgradeInfoBottomLine, new Vector2(0f, upgradeBottomLine));
+
+        float conditionTop = upgradeBottomLine - ConditionGap;
+        SetTopCenteredRect(varConditionArea, new Vector2(0f, conditionTop), new Vector2(600f, conditionHeight));
+
+        float optionTop = conditionTop - conditionHeight - OptionGap;
+        SetCenteredRect(
+            varUpgradeButtonArea,
+            new Vector2(0f, optionTop - optionHeight * 0.5f),
+            new Vector2(varUpgradeButtonArea.sizeDelta.x, optionHeight));
+        LayoutRebuilder.ForceRebuildLayoutImmediate(varUpgradeButtonArea);
+    }
+
+    private static void SetCenteredPosition(RectTransform rect, Vector2 anchoredPosition)
+    {
+        if (rect == null)
+            throw new ArgumentNullException(nameof(rect));
+
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = anchoredPosition;
+    }
+
+    private static void SetCenteredRect(RectTransform rect, Vector2 anchoredPosition, Vector2 sizeDelta)
+    {
+        SetCenteredPosition(rect, anchoredPosition);
+        rect.sizeDelta = sizeDelta;
+    }
+
+    private static void SetTopCenteredRect(RectTransform rect, Vector2 anchoredPosition, Vector2 sizeDelta)
+    {
+        if (rect == null)
+            throw new ArgumentNullException(nameof(rect));
+
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = sizeDelta;
+    }
+
     private void UpdatePanelPosition()
     {
         if (m_TargetHost == null || varUpgradePanel == null)
@@ -752,7 +991,14 @@ public partial class BuildingUpgradeTips : UIFormBase
             return;
 
         Vector3 uiPos = GF.UI.PositionWorldToUI(m_TargetHost.GetPromptPosition(), parent);
-        varUpgradePanel.anchoredPosition = (Vector2)uiPos + uiOffset;
+        Vector2 detailOffset = m_ReserveDetailPanelSpace
+            ? Vector2.left * BuildingInfoItem.DetailPanelCenterOffset
+            : Vector2.zero;
+        varUpgradePanel.anchoredPosition = (Vector2)uiPos + uiOffset + detailOffset;
+        BuildingPanelScreenClamp.ClampToParent(
+            varUpgradePanel,
+            parent,
+            m_ReserveDetailPanelSpace ? BuildingInfoItem.DetailPanelWidth : 0f);
     }
 
     private void ComposeCurrentInfoText(BuildingEntity building, out string name, out string desc)
@@ -763,10 +1009,10 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (building == null || building.buildingData == null)
             return;
 
-        name = LocalizationTextManager.GetLocalizedText(building.buildingData.NameKey, false);
-        desc = BuildingPanelPresentation.GetDescription(building.buildingData);
+        name = BuildingPanelPresentation.GetBuildingName(building.buildingData);
 
         List<SelectedUpgradeInfo> selected = CollectSelectedUpgrades(building);
+        desc = ComposeDescription(building.buildingData, selected);
         if (selected.Count <= 0)
             return;
 
@@ -776,18 +1022,54 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         name += "-" + marks;
 
-        var displayedSkillIds = new HashSet<string>(StringComparer.Ordinal);
-        for (int i = 0; i < selected.Count; i++)
+    }
+
+    private static string ComposeDescription(
+        BuildingData data,
+        IReadOnlyList<SelectedUpgradeInfo> selectedUpgrades,
+        TechData highlightedSkillTech = null)
+    {
+        if (data == null)
+            throw new ArgumentNullException(nameof(data));
+
+        StringBuilder builder = new(BuildingPanelPresentation.GetDescription(data));
+        if (selectedUpgrades == null)
+            return builder.ToString();
+
+        for (int i = 0; i < selectedUpgrades.Count; i++)
         {
-            TechData tech = selected[i].TechData;
-            if (tech?.ScopeType == TechScopeType.Skill && !displayedSkillIds.Add(tech.SkillID))
+            TechData tech = selectedUpgrades[i]?.TechData;
+            if (tech == null || tech.ScopeType == TechScopeType.Skill)
                 continue;
-            string optionDesc = tech != null ? tech.GetFormattedDesc() : string.Empty;
+
+            string optionDesc = tech.GetFormattedDesc();
             if (string.IsNullOrWhiteSpace(optionDesc))
                 continue;
 
-            desc += "\n·" + optionDesc;
+            builder.Append('\n').Append('\u00B7').Append(optionDesc.Trim());
         }
+
+        if (highlightedSkillTech?.ScopeType == TechScopeType.Skill)
+        {
+            string skillNotice = GetSkillUpgradeNotice(highlightedSkillTech);
+            builder.Append('\n').Append('\u00B7').Append(skillNotice);
+        }
+
+        return builder.ToString();
+    }
+
+    private static string GetSkillUpgradeNotice(TechData tech)
+    {
+        if (tech == null || tech.ScopeType != TechScopeType.Skill || string.IsNullOrWhiteSpace(tech.SkillID))
+            throw new ArgumentException("Skill upgrade notice requires a skill tech.", nameof(tech));
+
+        SkillData skill = SkillDataModel.GetSkillData(tech.SkillID)
+                          ?? throw new InvalidOperationException($"Skill tech references missing skill data. tech={tech.Identifier}, skill={tech.SkillID}");
+        string skillName = LocalizationTextManager.GetLocalizedText(skill.NameKey, false);
+        string textId = SkillRuntimeDataModel.GetLevel(tech.SkillID) > 0
+            ? UpgradeSkillTextId
+            : ObtainSkillTextId;
+        return LocalizationTextDataModel.GetText(textId).Replace("{Skill}", skillName);
     }
 
     private string ComposePreviewName(BuildingEntity building, UpgradeOptionBinding selected)
@@ -795,18 +1077,24 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (building == null || building.buildingData == null || selected == null)
             return string.Empty;
 
-        string baseName = LocalizationTextManager.GetLocalizedText(building.buildingData.NameKey, false);
-        List<SelectedUpgradeInfo> history = CollectSelectedUpgrades(building);
-        history.Add(new SelectedUpgradeInfo { OptionIndex = selected.OptionIndex, TechData = selected.TechData });
+        BuildingData previewData = selected.UpgradeBuildingData
+                                   ?? throw new InvalidOperationException(
+                                       $"Upgrade name is missing building data. building={building.buildingData.Identifier}.");
+        return BuildingPanelPresentation.GetBuildingName(previewData);
+    }
 
-        if (history.Count <= 0)
-            return baseName;
+    internal static bool HasActiveConditionItem(RectTransform conditionArea)
+    {
+        if (conditionArea == null)
+            throw new ArgumentNullException(nameof(conditionArea));
 
-        StringBuilder marks = new();
-        for (int i = 0; i < history.Count; i++)
-            marks.Append(GetOptionMark(history[i].OptionIndex));
+        for (int i = 0; i < conditionArea.childCount; i++)
+        {
+            if (conditionArea.GetChild(i).gameObject.activeInHierarchy)
+                return true;
+        }
 
-        return baseName + "-" + marks;
+        return false;
     }
 
     private bool CanShowUpgradeTips()
@@ -1208,6 +1496,23 @@ public partial class BuildingUpgradeTips : UIFormBase
 
     private void CacheTemplates()
     {
+        CacheLayoutReferences();
+
+        if (m_CurrentLevelTitleText == null || m_NextLevelTitleText == null)
+        {
+            Transform badge = varUpgradePanel != null
+                ? varUpgradePanel.Find("LevelTitleBadge")
+                : null;
+            m_CurrentLevelTitleText = badge != null
+                ? badge.Find("CurrentLevel")?.GetComponent<TextMeshProUGUI>()
+                : null;
+            m_NextLevelTitleText = badge != null
+                ? badge.Find("NextLevel")?.GetComponent<TextMeshProUGUI>()
+                : null;
+            if (m_CurrentLevelTitleText == null || m_NextLevelTitleText == null)
+                throw new InvalidOperationException("BuildingUpgradeTips requires current and next level title fields.");
+        }
+
         if (varBuildingInfoItem == null)
             return;
 
@@ -1228,6 +1533,41 @@ public partial class BuildingUpgradeTips : UIFormBase
         }
     }
 
+    private void CacheLayoutReferences()
+    {
+        if (varUpgradePanel == null)
+            throw new InvalidOperationException("BuildingUpgradeTips requires an upgrade panel root.");
+
+        m_Background ??= varUpgradePanel.Find("Bg") as RectTransform;
+        m_LevelTitleBadge ??= varUpgradePanel.Find("LevelTitleBadge") as RectTransform;
+        m_CurrentPreviewFrame ??= varUpgradePanel.Find("CurrentPreviewFrame") as RectTransform;
+        m_UpgradePreviewFrame ??= varUpgradePanel.Find("UpgradePreviewFrame") as RectTransform;
+        m_CurrentInfoBottomLine ??= varUpgradePanel.Find("CurrentInfoBottomLine") as RectTransform;
+        m_UpgradeInfoTopLine ??= varUpgradePanel.Find("UpgradeInfoTopLine") as RectTransform;
+        m_UpgradeInfoBottomLine ??= varUpgradePanel.Find("UpgradeInfoBottomLine") as RectTransform;
+
+        if (m_Background == null
+            || m_LevelTitleBadge == null
+            || m_CurrentPreviewFrame == null
+            || m_UpgradePreviewFrame == null
+            || m_CurrentInfoBottomLine == null
+            || m_UpgradeInfoTopLine == null
+            || m_UpgradeInfoBottomLine == null)
+        {
+            throw new InvalidOperationException("BuildingUpgradeTips layout references are incomplete.");
+        }
+    }
+
+    private void RefreshLevelTitle()
+    {
+        if (m_TargetBuilding?.buildingData == null)
+            return;
+
+        int currentLevel = m_TargetBuilding.buildingData.Lv;
+        m_CurrentLevelTitleText.text = BuildingPanelPresentation.GetBuildingLevelTitle(currentLevel);
+        m_NextLevelTitleText.text = BuildingPanelPresentation.GetBuildingLevelTitle(currentLevel + 1);
+    }
+
     private void ClearAllSpawnedItems()
     {
         UnspawnItemTemplate(m_IconNumTemplate);
@@ -1241,6 +1581,10 @@ public partial class BuildingUpgradeTips : UIFormBase
     {
         m_UpgradeBindings.Clear();
         m_SelectedBinding = null;
+        m_CurrentInfoHeight = MinimumInfoHeight;
+        m_UpgradeInfoHeight = MinimumInfoHeight;
+        m_StableConditionHeight = 0f;
+        m_ReserveDetailPanelSpace = false;
         ResetHoldState();
         ResetRecycleHoldState();
     }

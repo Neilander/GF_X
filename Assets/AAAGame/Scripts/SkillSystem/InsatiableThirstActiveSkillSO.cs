@@ -2,8 +2,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(fileName = "BladeDanceActiveSkillSO", menuName = "Skills/Active/Blade Dance")]
-public sealed class BladeDanceActiveSkillSO : InstantActiveSkillSO
+[CreateAssetMenu(fileName = "InsatiableThirstActiveSkillSO", menuName = "Skills/Active/Insatiable Thirst")]
+public sealed class InsatiableThirstActiveSkillSO : InstantActiveSkillSO
 {
     protected override void ApplyInstant(IEntityContext caster)
     {
@@ -11,7 +11,7 @@ public sealed class BladeDanceActiveSkillSO : InstantActiveSkillSO
         Fix64 attackSpeedPercent = GetValue(0);
         Fix64 lifeStealPercent = GetValue(1);
         if (duration <= Fix64.Zero)
-            throw new InvalidOperationException($"BladeDance duration invalid. skillId={skillId}");
+            throw new InvalidOperationException($"InsatiableThirst duration invalid. skillId={skillId}");
 
         AddTimedBuff(
             caster,

@@ -33,6 +33,32 @@ public static class BuildingPanelPresentation
     public const string UsageGlyph = "USE";
     public const string CooldownGlyph = "CD";
     public const string StackGlyph = "STACK";
+    public const string MeleeRangeTextId = "Building_Unit_Range_Melee";
+    public const string BaseDescriptionTextId = "Building_Description_Base_Format";
+    public const string ArmyDescriptionTextId = "Building_Description_Army_Format";
+
+    public static string GetBuildingLevelTitle(int level)
+    {
+        switch (level)
+        {
+            case 1:
+                return "I";
+            case 2:
+                return "II";
+            case 3:
+                return "III";
+            default:
+                throw new ArgumentOutOfRangeException(nameof(level), level, "Building panel level must be between 1 and 3.");
+        }
+    }
+
+    public static string GetUpgradeLevelTitle(int currentLevel)
+    {
+        if (currentLevel < 1 || currentLevel >= 3)
+            throw new ArgumentOutOfRangeException(nameof(currentLevel), currentLevel, "Upgradeable building level must be 1 or 2.");
+
+        return GetBuildingLevelTitle(currentLevel) + "\u2192" + GetBuildingLevelTitle(currentLevel + 1);
+    }
 
     public static void CollectBuildingCombatStats(
         BuildingData data,
@@ -50,8 +76,8 @@ public static class BuildingPanelPresentation
         Fix64 defense = runtimeBuilding != null
             ? RequireRuntimeProperties(runtimeBuilding).GetProperty(CreatureMainProperty.Def)
             : data.Def;
-        results.Add(new BuildingPanelStat(HealthGlyph, "B " + health));
-        results.Add(new BuildingPanelStat(DefenseGlyph, "B " + defense));
+        results.Add(new BuildingPanelStat(HealthGlyph, FormatStatValue(health)));
+        results.Add(new BuildingPanelStat(DefenseGlyph, FormatStatValue(defense)));
 
         if (data.Weapon == null || data.Weapon.Type == WeaponType.None || data.Weapon.Atk <= Fix64.Zero)
             return;
@@ -60,14 +86,14 @@ public static class BuildingPanelPresentation
         if (runtimeBuilding != null && runtimeWeapon == null)
             throw new InvalidOperationException($"Attacking building is missing its runtime weapon. building={data.Identifier}.");
 
-        results.Add(new BuildingPanelStat(AttackGlyph, "B " + (runtimeWeapon?.Atk ?? data.Weapon.Atk)));
-        results.Add(new BuildingPanelStat(IntervalGlyph, "B " + ResolveBuildingInterval(data, runtimeWeapon)));
-        results.Add(new BuildingPanelStat(RangeGlyph, "B " + (runtimeWeapon?.Range ?? data.Weapon.Range)));
+        results.Add(new BuildingPanelStat(AttackGlyph, FormatStatValue(runtimeWeapon?.Atk ?? data.Weapon.Atk)));
+        results.Add(new BuildingPanelStat(IntervalGlyph, FormatStatValue(ResolveBuildingInterval(data, runtimeWeapon))));
+        results.Add(new BuildingPanelStat(RangeGlyph, FormatStatValue(runtimeWeapon?.Range ?? data.Weapon.Range)));
 
         if (runtimeWeapon != null)
-            AddWeaponAbilityStats(runtimeWeapon, "B ", results);
+            AddWeaponAbilityStats(runtimeWeapon, results);
         else
-            AddWeaponAbilityStats(data.Weapon, "B ", results);
+            AddWeaponAbilityStats(data.Weapon, results);
     }
 
     public static void CollectUnitStats(BuildingData data, List<BuildingPanelStat> results)
@@ -91,18 +117,18 @@ public static class BuildingPanelPresentation
 
         results.Add(new BuildingPanelStat(
             HealthGlyph,
-            "U " + CharacterDataDetailAccessor.GetMainValue(unit, CreatureMainProperty.Health, level)));
+            FormatStatValue(CharacterDataDetailAccessor.GetMainValue(unit, CreatureMainProperty.Health, level))));
         results.Add(new BuildingPanelStat(
             DefenseGlyph,
-            "U " + CharacterDataDetailAccessor.GetMainValue(unit, CreatureMainProperty.Def, level)));
-        results.Add(new BuildingPanelStat(AttackGlyph, "U " + weapon.Atk));
-        results.Add(new BuildingPanelStat(IntervalGlyph, "U " + interval));
-        results.Add(new BuildingPanelStat(RangeGlyph, "U " + weapon.Range));
+            FormatStatValue(CharacterDataDetailAccessor.GetMainValue(unit, CreatureMainProperty.Def, level))));
+        results.Add(new BuildingPanelStat(AttackGlyph, FormatStatValue(weapon.Atk)));
+        results.Add(new BuildingPanelStat(IntervalGlyph, FormatStatValue(interval)));
+        results.Add(new BuildingPanelStat(RangeGlyph, FormatUnitRange(weapon)));
         results.Add(new BuildingPanelStat(
             MoveSpeedGlyph,
-            "U " + CharacterDataDetailAccessor.GetMainValue(unit, CreatureMainProperty.Speed, level)));
+            FormatStatValue(CharacterDataDetailAccessor.GetMainValue(unit, CreatureMainProperty.Speed, level))));
 
-        AddWeaponAbilityStats(weapon, "U ", results);
+        AddWeaponAbilityStats(weapon, results);
 
         Fix64 criticalDamageBonus = SoldierFactory.ResolveArmyPresentationCriticalDamageBonusPercent(
             ParseUnitType(data.UnitID),
@@ -111,38 +137,140 @@ public static class BuildingPanelPresentation
         {
             results.Add(new BuildingPanelStat(
                 CriticalGlyph,
-                "U +" + (CriticalDamageUtility.BaseCriticalDamageRate + criticalDamageBonus) + "%"));
+                "+" + FormatStatValue(CriticalDamageUtility.BaseCriticalDamageRate + criticalDamageBonus) + "%"));
         }
 
         Fix64 healOnHit = SoldierFactory.ResolveArmyPresentationHealOnHit(ParseUnitType(data.UnitID), level);
         if (healOnHit > Fix64.Zero)
-            results.Add(new BuildingPanelStat(HealOnHitGlyph, "U +" + healOnHit));
+            results.Add(new BuildingPanelStat(HealOnHitGlyph, "+" + FormatStatValue(healOnHit)));
+    }
+
+    internal static string FormatUnitRange(WeaponData weapon)
+    {
+        if (weapon == null)
+            throw new ArgumentNullException(nameof(weapon));
+
+        return IsMeleeWeaponType(weapon.Type)
+            ? LocalizationTextDataModel.GetText(MeleeRangeTextId, applyRichText: false)
+            : FormatStatValue(weapon.Range);
+    }
+
+    internal static bool IsMeleeWeaponType(WeaponType type)
+    {
+        return type.ToString().IndexOf("Melee", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     public static string GetDescription(BuildingData data)
     {
         if (data == null)
-            return string.Empty;
+            throw new ArgumentNullException(nameof(data));
+
+        if (data.Arche == Archetype.None)
+        {
+            return DescriptionValueFormatter.LocalizeAndFill(
+                data.DescKey,
+                ResolveBuildingDescriptionValues(data));
+        }
+
+        string archetypeName = ResolveArchetypeName(data.Arche);
+        if (data.Type == BuilType.Base)
+        {
+            return FillBuildingDescriptionTemplate(
+                LocalizationTextDataModel.GetText(BaseDescriptionTextId),
+                archetypeName,
+                data.Lv,
+                string.Empty);
+        }
+
+        if (data.Type == BuilType.Army)
+        {
+            return FillBuildingDescriptionTemplate(
+                LocalizationTextDataModel.GetText(ArmyDescriptionTextId),
+                archetypeName,
+                data.Lv,
+                GetUnitName(data));
+        }
 
         string description = DescriptionValueFormatter.LocalizeAndFill(
             data.DescKey,
             ResolveBuildingDescriptionValues(data));
-        if (data.Type != BuilType.Army)
+        return FillBuildingDescriptionTemplate(description, archetypeName, data.Lv, string.Empty);
+    }
+
+    public static string GetBuildingName(BuildingData data)
+    {
+        if (data == null)
+            throw new ArgumentNullException(nameof(data));
+
+        string name = LocalizationTextManager.GetLocalizedText(data.NameKey, false);
+        return FormatBuildingName(name, data.Lv);
+    }
+
+    internal static string FormatBuildingName(string name, int level)
+    {
+        return level <= 1 ? name : $"{name}-Lv{level}";
+    }
+
+    internal static string FillBuildingDescriptionTemplate(
+        string template,
+        string archetypeName,
+        int level,
+        string unitName)
+    {
+        if (string.IsNullOrWhiteSpace(template))
+            return string.Empty;
+        if (string.IsNullOrWhiteSpace(archetypeName))
+            throw new ArgumentException("Building description requires a localized archetype name.", nameof(archetypeName));
+
+        return template
+            .Replace("{Arch}", archetypeName)
+            .Replace("{Lv}", level.ToString())
+            .Replace("{Unit}", unitName ?? string.Empty);
+    }
+
+    public static string ResolveArchetypeName(Archetype archetype)
+    {
+        if (archetype == Archetype.None)
+            throw new ArgumentException("Building description requires a concrete archetype.", nameof(archetype));
+
+        return LocalizationTextDataModel.GetText($"Archetype_{archetype}", applyRichText: false);
+    }
+
+    internal static string StripUnitDescriptionSuffix(string description)
+    {
+        if (string.IsNullOrWhiteSpace(description))
             return description;
+
+        int fullWidthColon = description.IndexOf('：');
+        int asciiColon = description.IndexOf(':');
+        int separatorIndex = fullWidthColon < 0
+            ? asciiColon
+            : asciiColon < 0 ? fullWidthColon : Math.Min(fullWidthColon, asciiColon);
+        return separatorIndex < 0
+            ? description
+            : description.Substring(0, separatorIndex).TrimEnd();
+    }
+
+    public static string GetUnitName(BuildingData data)
+    {
+        if (data == null || data.Type != BuilType.Army)
+            return string.Empty;
+
+        CharacterDataDetail unit = GetRequiredUnit(data);
+        return LocalizationTextManager.GetLocalizedText(unit.NameKey, false);
+    }
+
+    public static string GetUnitDescription(BuildingData data)
+    {
+        if (data == null || data.Type != BuilType.Army)
+            return string.Empty;
 
         CharacterDataDetail unit = GetRequiredUnit(data);
         UnitType unitType = ParseUnitType(data.UnitID);
         Fix64[] abilityValues = SoldierFactory.ResolveArmyPresentationAbilityValues(
             unitType,
             Math.Max(1, Math.Min(3, data.Lv)));
-        string unitName = LocalizationTextManager.GetLocalizedText(unit.NameKey, false);
-        string unitDescription = DescriptionValueFormatter.LocalizeAndFill(unit.DescKey, abilityValues);
-        if (string.IsNullOrWhiteSpace(unitDescription))
-            return description;
-
-        return string.IsNullOrWhiteSpace(description)
-            ? unitName + ": " + unitDescription
-            : description + "\n" + unitName + ": " + unitDescription;
+        return DescriptionValueFormatter.LocalizeAndFill(unit.DescKey, abilityValues);
     }
 
     public static void CollectSkillStats(SkillData skill, int level, List<BuildingPanelStat> results)
@@ -347,37 +475,37 @@ public static class BuildingPanelPresentation
 
     private static void AddWeaponAbilityStats(
         WeaponData weapon,
-        string prefix,
         List<BuildingPanelStat> results)
     {
         if (weapon.SplashRadius > Fix64.Zero)
-            results.Add(new BuildingPanelStat(SplashGlyph, prefix + weapon.SplashRadius));
+            results.Add(new BuildingPanelStat(SplashGlyph, FormatStatValue(weapon.SplashRadius)));
         if (weapon.AmmunitionCapacity > Fix64.Zero)
-            results.Add(new BuildingPanelStat(AmmoGlyph, prefix + weapon.AmmunitionCapacity));
+            results.Add(new BuildingPanelStat(AmmoGlyph, FormatStatValue(weapon.AmmunitionCapacity)));
         if (weapon.ProjectileCount > Fix64.One)
-            results.Add(new BuildingPanelStat(ProjectileCountGlyph, prefix + weapon.ProjectileCount));
+            results.Add(new BuildingPanelStat(ProjectileCountGlyph, FormatStatValue(weapon.ProjectileCount)));
         if (weapon.SplitAngle > Fix64.Zero)
-            results.Add(new BuildingPanelStat(SplitAngleGlyph, prefix + weapon.SplitAngle));
+            results.Add(new BuildingPanelStat(SplitAngleGlyph, FormatStatValue(weapon.SplitAngle)));
         if (weapon.SplitDist > Fix64.Zero)
-            results.Add(new BuildingPanelStat(SplitDistanceGlyph, prefix + weapon.SplitDist));
+            results.Add(new BuildingPanelStat(SplitDistanceGlyph, FormatStatValue(weapon.SplitDist)));
     }
 
     private static void AddWeaponAbilityStats(
         Weapon weapon,
-        string prefix,
         List<BuildingPanelStat> results)
     {
         if (weapon.SplashRadius > Fix64.Zero)
-            results.Add(new BuildingPanelStat(SplashGlyph, prefix + weapon.SplashRadius));
+            results.Add(new BuildingPanelStat(SplashGlyph, FormatStatValue(weapon.SplashRadius)));
         if (weapon.AmmunitionCapacity > Fix64.Zero)
-            results.Add(new BuildingPanelStat(AmmoGlyph, prefix + weapon.AmmunitionCapacity));
+            results.Add(new BuildingPanelStat(AmmoGlyph, FormatStatValue(weapon.AmmunitionCapacity)));
         if (weapon.ProjectileCount > Fix64.One)
-            results.Add(new BuildingPanelStat(ProjectileCountGlyph, prefix + weapon.ProjectileCount));
+            results.Add(new BuildingPanelStat(ProjectileCountGlyph, FormatStatValue(weapon.ProjectileCount)));
         if (weapon.SplitAngle > Fix64.Zero)
-            results.Add(new BuildingPanelStat(SplitAngleGlyph, prefix + weapon.SplitAngle));
+            results.Add(new BuildingPanelStat(SplitAngleGlyph, FormatStatValue(weapon.SplitAngle)));
         if (weapon.SplitDist > Fix64.Zero)
-            results.Add(new BuildingPanelStat(SplitDistanceGlyph, prefix + weapon.SplitDist));
+            results.Add(new BuildingPanelStat(SplitDistanceGlyph, FormatStatValue(weapon.SplitDist)));
     }
+
+    private static string FormatStatValue(Fix64 value) => value.ToStringRound();
 
     private static bool HasIntrinsicCriticalAbility(string unitId)
     {

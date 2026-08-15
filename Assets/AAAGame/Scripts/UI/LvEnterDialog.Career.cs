@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -24,7 +23,6 @@ public partial class LvEnterDialog
     private bool m_IsVariableExperiment;
     private Archetype m_SelectedArchetype;
     private string m_SelectedKeepsakeIdentifier;
-    private int m_IndustryVisibilityRequestVersion;
     private int m_KeepsakeIconRequestVersion;
 
     private void InitializeCareerEntryUI()
@@ -56,7 +54,6 @@ public partial class LvEnterDialog
         m_AvailableKeepsakes.Clear();
         m_SelectedArchetype = Archetype.None;
         m_SelectedKeepsakeIdentifier = null;
-        m_IndustryVisibilityRequestVersion++;
         m_KeepsakeIconRequestVersion++;
         ShutdownMissionBriefingUI();
     }
@@ -211,50 +208,14 @@ public partial class LvEnterDialog
                 m_AvailableArchetypes,
                 defaultArchetype);
         }
-        m_IndustryTitle.gameObject.SetActive(false);
-        m_IndustryList.gameObject.SetActive(false);
+        m_IndustryTitle.gameObject.SetActive(hasStartingIndustry);
+        m_IndustryList.gameObject.SetActive(hasStartingIndustry);
         m_IndustryTitle.text = hasStartingIndustry
             ? $"\u521d\u59cb\u884c\u4e1a: {GetIndustryName(m_SelectedArchetype)}"
             : string.Empty;
         RebuildIndustryButtons();
 
-        int requestVersion = ++m_IndustryVisibilityRequestVersion;
-        RefreshIndustryVisibilityAsync(requestVersion).Forget();
         RefreshMissionBriefingContent();
-    }
-
-    private async UniTaskVoid RefreshIndustryVisibilityAsync(int requestVersion)
-    {
-        try
-        {
-            bool hasInitialBase = await LevelStartingIndustryService.HasInitialBaseAsync(
-                s_LevelIdentifier,
-                m_IsVariableExperiment);
-            if (requestVersion != m_IndustryVisibilityRequestVersion || m_IndustryTitle == null || m_IndustryList == null)
-                return;
-
-            string runtimeLevelIdentifier = CareerRunSettings.ResolveRuntimeLevelIdentifier(
-                s_LevelIdentifier,
-                m_IsVariableExperiment);
-            LevelTable runtimeLevel = CareerConfigRuntime.GetLevelRequired(runtimeLevelIdentifier);
-            bool hasConfiguredStartingIndustry = runtimeLevel.DefaultArchetype != Archetype.None;
-            if (hasInitialBase != hasConfiguredStartingIndustry)
-            {
-                throw new InvalidOperationException(
-                    $"Level '{runtimeLevelIdentifier}' initial-base prefab state does not match DefaultArchetype '{runtimeLevel.DefaultArchetype}'.");
-            }
-
-            m_IndustryTitle.gameObject.SetActive(hasInitialBase);
-            m_IndustryList.gameObject.SetActive(hasInitialBase);
-        }
-        catch (Exception exception)
-        {
-            Log.Error(
-                "[LvEnterDialog] Failed to inspect initial base placeholder. level={0}, experiment={1}, error={2}",
-                s_LevelIdentifier,
-                m_IsVariableExperiment,
-                exception);
-        }
     }
 
     private void RebuildIndustryButtons()
