@@ -200,6 +200,40 @@ public sealed class SkillReworkDataTests
         }
     }
 
+    [Test]
+    public void SkillSlot_MainTextIsCenteredAndDoesNotShowLevel()
+    {
+        var formObject = new GameObject("InGameUIForm", typeof(RectTransform), typeof(InGameUIForm));
+        var slot = new GameObject("SkillSlot", typeof(RectTransform));
+        var textObject = new GameObject("MainText", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(slot.transform, false);
+        try
+        {
+            ((RectTransform)slot.transform).sizeDelta = new Vector2(140f, 80f);
+            SkillData skill = CreateSkillData(FindSkill("Skill_InsatiableThirst"));
+            var info = new SkillRuntimeInfo(skill, 2, 0, 0, 0);
+            MethodInfo method = typeof(InGameUIForm).GetMethod(
+                "SetSkillSlotName",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(method);
+
+            method.Invoke(formObject.GetComponent<InGameUIForm>(), new object[] { slot, info, 0 });
+
+            TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+            Assert.AreEqual(new Vector2(6f, 6f), text.rectTransform.offsetMin);
+            Assert.AreEqual(new Vector2(-6f, -6f), text.rectTransform.offsetMax);
+            Assert.IsFalse(text.enableWordWrapping);
+            Assert.AreEqual(10f, text.fontSizeMin, 0.01f);
+            StringAssert.DoesNotContain("Lv2", text.text);
+            StringAssert.DoesNotContain("-Lv", text.text);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(formObject);
+            UnityEngine.Object.DestroyImmediate(slot);
+        }
+    }
+
     private static void AssertSkillStats(string skillId, int level, params (string Glyph, string Value)[] expected)
     {
         SkillTable row = FindSkill(skillId);

@@ -887,7 +887,9 @@ namespace AAAGame.MiniMap.FOG3
         private Vector3 ResolveOverlayWorldOffset(Fog3TerrainInfo terrainInfo, float overlayLocalHeight)
         {
             Vector3 offset = viewSettings.CloudLayerWorldOffset;
-            if (viewSettings.SurfaceMode != Fog3OverlaySurfaceMode.CloudLayer || !viewSettings.UseCameraAngleOffset)
+            if (viewSettings.SurfaceMode != Fog3OverlaySurfaceMode.CloudLayer
+                || viewSettings.ProjectCloudLayerToCameraView
+                || !viewSettings.UseCameraAngleOffset)
                 return offset;
 
             if (!TryGetReferenceCamera(out Camera referenceCamera))
@@ -1648,8 +1650,16 @@ namespace AAAGame.MiniMap.FOG3
             if (side != SideType.PlayerSide)
                 return false;
 
-            if (logic is BuildingEntity)
+            if (logic is BuildingEntity building)
+            {
+                if (building.buildingData == null)
+                    throw new InvalidOperationException(
+                        $"Fog3Manager found a building view without BuildingData. entity={building.Id}.");
+                if (building.buildingData.Lv == 0)
+                    return false;
+
                 return TryReadVisionRadiusFromConfig(BuildingVisionRadiusConfigKey, buildingVisionRadius, out radius);
+            }
 
             else if (brainType == BrainType.Player || logic is PlayerEntity)
                 return TryReadVisionRadiusFromConfig(HeroVisionRadiusConfigKey, currentPlayerVisionRadius, out radius);

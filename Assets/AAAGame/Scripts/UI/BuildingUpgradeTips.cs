@@ -17,7 +17,6 @@ public partial class BuildingUpgradeTips : UIFormBase
     private const string CoinIconPath = "UI/Icon/Coin.png";
     private const string ForceIconPath = "UI/Icon/Force.png";
     private const string SupplyIconPath = "UI/Icon/Supply.png";
-    private const string CoinReservesPrefix = "剩余";
 
     private const string ConditionBaseLevelTextId = "Building_Upgrade_Cond_BaseLevel";
     private const string ConditionUniqueTechTextId = "Building_Upgrade_Cond_UniqueTech";
@@ -30,7 +29,7 @@ public partial class BuildingUpgradeTips : UIFormBase
     private const float RecycleHoldDurationSeconds = 2f;
     private const float MinimumInfoHeight = 176f;
     private const float HeaderHeight = 72f;
-    private const float BottomPadding = 16f;
+    private const float BottomPadding = 24f;
     private const float ConditionGap = 12f;
     private const float OptionGap = 8f;
     private const float SeparationInset = 4f;
@@ -589,7 +588,9 @@ public partial class BuildingUpgradeTips : UIFormBase
         SkillData skill = SkillDataModel.GetSkillData(skillTech.SkillID)
                           ?? throw new InvalidOperationException($"Selected skill tech is missing skill data. skill={skillTech.SkillID}");
         string skillName = LocalizationTextManager.GetLocalizedText(skill.NameKey, false);
-        item.SetDetailData($"{skillName} Lv{level}", skill.GetFormattedDesc(level));
+        item.SetDetailData(
+            BuildingPanelPresentation.FormatSkillName(skillName, level),
+            skill.GetFormattedDesc(level));
         Transform root = item.DetailPropertyListRoot.transform;
         var stats = new List<BuildingPanelStat>();
         BuildingPanelPresentation.CollectSkillStats(skill, level, stats);
@@ -685,9 +686,9 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (iconNum == null)
             return;
 
-        iconNum.SetData(CoinIconPath, $"{CoinReservesPrefix}{reserves}");
+        iconNum.SetLeadingLabelData("剩余", "Coin", reserves.ToString());
         iconNum.FitParentRect();
-        iconNum.AlignContentRight();
+        iconNum.AlignTextRight();
     }
 
     private void SpawnProgressStars(UpgradeOptionBinding binding, int cost)
@@ -1065,7 +1066,8 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         SkillData skill = SkillDataModel.GetSkillData(tech.SkillID)
                           ?? throw new InvalidOperationException($"Skill tech references missing skill data. tech={tech.Identifier}, skill={tech.SkillID}");
-        string skillName = LocalizationTextManager.GetLocalizedText(skill.NameKey, false);
+        string skillName = LocalizationTextManager.ProcessText(
+            LocalizationTextManager.GetLocalizedText(skill.NameKey, false));
         string textId = SkillRuntimeDataModel.GetLevel(tech.SkillID) > 0
             ? UpgradeSkillTextId
             : ObtainSkillTextId;
@@ -1185,7 +1187,7 @@ public partial class BuildingUpgradeTips : UIFormBase
             if (data == null || data.Type != BuilType.Base || data.Arche != archetype || data.Lv != 1)
                 continue;
 
-            return LocalizationTextManager.GetLocalizedText(data.NameKey, false);
+            return LocalizationTextManager.GetLocalizedText(data.NameKey);
         }
 
         return archetype.ToString();

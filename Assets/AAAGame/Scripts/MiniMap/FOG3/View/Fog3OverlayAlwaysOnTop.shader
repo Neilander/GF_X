@@ -4,6 +4,7 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
     {
         _MainTex ("Texture", 2D) = "white" {}
         _Color ("Color", Color) = (1, 1, 1, 1)
+        [Enum(UnityEngine.Rendering.CompareFunction)] _ZTest ("Depth Test", Float) = 8
     }
 
     SubShader
@@ -23,7 +24,8 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
 
             Cull Off
             ZWrite Off
-            ZTest Always
+            ZTest [_ZTest]
+            Offset -1, -1
             Blend SrcAlpha OneMinusSrcAlpha
 
             HLSLPROGRAM
@@ -84,7 +86,8 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
         {
             Cull Off
             ZWrite Off
-            ZTest Always
+            ZTest [_ZTest]
+            Offset -1, -1
             Blend SrcAlpha OneMinusSrcAlpha
 
             CGPROGRAM

@@ -80,16 +80,6 @@ public class LoadHotfixDllProcedure : ProcedureBase
     /// </summary>
     private void PreloadAndInitData()
     {
-        //显示进度条
-        bool showStartupLevelSwitch = AppSettings.Instance != null && AppSettings.Instance.ShowStartupLevelSwitch;
-        if (showStartupLevelSwitch)
-        {
-            GFBuiltin.BuiltinView.HideLoadingProgress();
-        }
-        else
-        {
-            GFBuiltin.BuiltinView.ShowLoadingProgress();
-        }
         totalProgress = 0;
         loadedProgress = 0;
         hotfixListIsLoaded = true;
@@ -183,10 +173,6 @@ public class LoadHotfixDllProcedure : ProcedureBase
         }
 
         loadedProgress++;
-        if (AppSettings.Instance == null || !AppSettings.Instance.ShowStartupLevelSwitch)
-        {
-            GFBuiltin.BuiltinView.SetLoadingProgress(loadedProgress / (float)totalProgress);
-        }
 
         //所有依赖dll加载完成后再加载Hotfix.dll
         if (hotfixDlls.Contains(args.DllName))

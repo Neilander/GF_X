@@ -2,6 +2,9 @@
 
 public partial class IconNumItem : UIItemBase
 {
+    private const float IconNumberGap = 8f;
+    private const string InlineIconNumberGap = "<space=8>";
+
     private Color _defaultNumColor;
     private bool _defaultNumColorCached;
 
@@ -37,6 +40,21 @@ public partial class IconNumItem : UIItemBase
         ResetNumberColor();
     }
 
+    internal void SetLeadingLabelData(string label, string spriteName, string numberText)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+            throw new System.ArgumentException("Leading label is required.", nameof(label));
+        if (string.IsNullOrWhiteSpace(spriteName))
+            throw new System.ArgumentException("Inline sprite name is required.", nameof(spriteName));
+
+        CacheDefaultNumColorIfNeeded();
+        varIcon.gameObject.SetActive(false);
+        ConfigureNumberLayout(hasIcon: false);
+        string text = $"{label} <sprite name=\"{spriteName}\">{InlineIconNumberGap}{numberText ?? string.Empty}";
+        varNum.text = LocalizationTextManager.ProcessText(text);
+        ResetNumberColor();
+    }
+
     public void SetNumberColor(Color color)
     {
         if (varNum != null)
@@ -64,25 +82,48 @@ public partial class IconNumItem : UIItemBase
     {
         RectTransform root = transform as RectTransform
                              ?? throw new System.InvalidOperationException("Icon number item requires RectTransform.");
+        const float rightInset = 8f;
+        const float iconWidth = 16f;
         float textWidth = Mathf.Clamp(
             Mathf.Ceil(varNum.GetPreferredValues(varNum.text, 0f, root.rect.height).x),
             12f,
-            Mathf.Max(12f, root.rect.width - 22f));
+            Mathf.Max(12f, root.rect.width - rightInset - IconNumberGap - iconWidth));
 
         RectTransform numberRect = varNum.rectTransform;
         numberRect.anchorMin = new Vector2(1f, 0.5f);
         numberRect.anchorMax = new Vector2(1f, 0.5f);
         numberRect.pivot = new Vector2(1f, 0.5f);
-        numberRect.anchoredPosition = new Vector2(-1f, 0f);
+        numberRect.anchoredPosition = new Vector2(-rightInset, 0f);
         numberRect.sizeDelta = new Vector2(textWidth, root.rect.height);
-        varNum.alignment = TMPro.TextAlignmentOptions.Right;
+        varNum.alignment = TMPro.TextAlignmentOptions.Left;
 
         RectTransform iconRect = varIcon.rectTransform;
         iconRect.anchorMin = new Vector2(1f, 0.5f);
         iconRect.anchorMax = new Vector2(1f, 0.5f);
         iconRect.pivot = new Vector2(0.5f, 0.5f);
-        iconRect.anchoredPosition = new Vector2(-textWidth - 11f, 0f);
-        iconRect.sizeDelta = new Vector2(16f, 16f);
+        iconRect.sizeDelta = new Vector2(iconWidth, iconWidth);
+        iconRect.anchoredPosition = new Vector2(
+            -rightInset - textWidth - IconNumberGap - iconRect.sizeDelta.x * 0.5f,
+            0f);
+    }
+
+    internal void AlignTextRight()
+    {
+        RectTransform root = transform as RectTransform
+                             ?? throw new System.InvalidOperationException("Icon number item requires RectTransform.");
+        const float rightInset = 8f;
+        float textWidth = Mathf.Clamp(
+            Mathf.Ceil(varNum.GetPreferredValues(varNum.text, 0f, root.rect.height).x),
+            12f,
+            Mathf.Max(12f, root.rect.width - rightInset));
+
+        RectTransform numberRect = varNum.rectTransform;
+        numberRect.anchorMin = new Vector2(1f, 0.5f);
+        numberRect.anchorMax = new Vector2(1f, 0.5f);
+        numberRect.pivot = new Vector2(1f, 0.5f);
+        numberRect.anchoredPosition = new Vector2(-rightInset, 0f);
+        numberRect.sizeDelta = new Vector2(textWidth, root.rect.height);
+        varNum.alignment = TMPro.TextAlignmentOptions.Left;
     }
 
     private void CacheDefaultNumColorIfNeeded()
@@ -106,13 +147,16 @@ public partial class IconNumItem : UIItemBase
         RectTransform rect = varNum.rectTransform;
         rect.anchorMin = Vector2.zero;
         rect.anchorMax = Vector2.one;
-        rect.offsetMin = new Vector2(hasIcon ? 26f : 1f, 0f);
+        rect.offsetMin = new Vector2(
+            hasIcon ? iconRect.anchoredPosition.x + iconRect.sizeDelta.x * 0.5f + IconNumberGap : 1f,
+            0f);
         rect.offsetMax = new Vector2(-1f, 0f);
         varNum.enableAutoSizing = true;
         varNum.fontSizeMin = 8f;
         varNum.fontSizeMax = 16f;
         varNum.enableWordWrapping = false;
         varNum.characterSpacing = 0f;
+        varNum.margin = Vector4.zero;
         varNum.alignment = TMPro.TextAlignmentOptions.Left;
     }
 }

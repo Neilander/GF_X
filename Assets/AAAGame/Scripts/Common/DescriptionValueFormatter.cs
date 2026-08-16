@@ -48,9 +48,11 @@ public static class DescriptionValueFormatter
 
         SkillData skillData = SkillDataModel.GetSkillData(data.SkillID)
                               ?? throw new InvalidOperationException($"Skill tech references missing skill data. tech={data.Identifier}, skill={data.SkillID}");
-        string skillName = LocalizationTextManager.GetLocalizedText(skillData.NameKey, false);
+        string skillName = BuildingPanelPresentation.FormatSkillName(
+            LocalizationTextManager.GetLocalizedText(skillData.NameKey, false),
+            targetSkillLevel);
         string skillDesc = skillData.GetFormattedDesc(targetSkillLevel);
-        return $"{skillName} Lv{targetSkillLevel}\n{skillDesc}";
+        return $"{skillName}\n{skillDesc}";
     }
 
     public static string GetFormattedDesc(this CharacterDataDetail data)

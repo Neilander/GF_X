@@ -85,6 +85,7 @@ namespace AAAGame.MiniMap.FOG3
         private readonly bool[] walkable;
         private readonly int[] platformHeights;
         private readonly bool[] slopeMask;
+        private readonly Fog3SlopeCellInfo[] slopeCells;
         private readonly float[] currentVisibility;
         private readonly ulong terrainHash;
         private readonly long cellSizeGridRaw;
@@ -115,9 +116,11 @@ namespace AAAGame.MiniMap.FOG3
             walkable = new bool[length];
             platformHeights = new int[length];
             slopeMask = new bool[length];
+            slopeCells = new Fog3SlopeCellInfo[length];
             System.Array.Copy(terrainInfo.WalkableMask, walkable, length);
             System.Array.Copy(terrainInfo.PlatformHeights, platformHeights, length);
             System.Array.Copy(terrainInfo.SlopeMask, slopeMask, length);
+            System.Array.Copy(terrainInfo.SlopeCells, slopeCells, length);
             terrainHash = ComputeTerrainHash();
         }
 
@@ -330,19 +333,57 @@ namespace AAAGame.MiniMap.FOG3
             return slopeMask[GetIndex(x, y)];
         }
 
-        public bool IsVisionBlockedByHigherPlatform(int viewerX, int viewerY, int targetX, int targetY)
+        public int GetVisionHeight(FixVector2 worldPosition)
+        {
+            if (!WorldToGrid(worldPosition, out int x, out int y))
+                throw new ArgumentOutOfRangeException(nameof(worldPosition), $"Fog viewer position {worldPosition} is outside {Width}x{Height}.");
+
+            int index = GetIndex(x, y);
+            int platformHeight = platformHeights[index];
+            if (platformHeight < 0)
+                throw new InvalidOperationException($"Fog viewer cell ({x},{y}) has no Plane_H* support height.");
+            if (!slopeMask[index])
+                return platformHeight;
+
+            Fog3SlopeCellInfo slope = slopeCells[index];
+            long lowerXRaw = checked(originXGridRaw + checked((long)x * cellSizeGridRaw));
+            long lowerYRaw = checked(originZGridRaw + checked((long)y * cellSizeGridRaw));
+            Fix64 progress = slope.DirectionX != 0
+                ? NavigationGridFixedMath.ResolveCellFraction(
+                    NavigationGridFixedMath.Fix64ToGridRaw(worldPosition.x),
+                    lowerXRaw,
+                    cellSizeGridRaw)
+                : NavigationGridFixedMath.ResolveCellFraction(
+                    NavigationGridFixedMath.Fix64ToGridRaw(worldPosition.y),
+                    lowerYRaw,
+                    cellSizeGridRaw);
+            if (slope.DirectionX < 0 || slope.DirectionY < 0)
+                progress = Fix64.One - progress;
+
+            Fix64 height = ((Fix64)slope.BaseHeightNumerator + progress * (Fix64)slope.Rise) / (Fix64)slope.Run;
+            return (int)Fix64.Floor(height);
+        }
+
+        public bool IsVisionBlockedByHigherPlatform(FixVector2 viewerPosition, int targetX, int targetY)
+        {
+            if (!WorldToGrid(viewerPosition, out int viewerX, out int viewerY))
+                throw new ArgumentOutOfRangeException(nameof(viewerPosition), $"Fog viewer position {viewerPosition} is outside {Width}x{Height}.");
+            return IsVisionBlockedByHigherPlatform(viewerX, viewerY, GetVisionHeight(viewerPosition), targetX, targetY);
+        }
+
+        public bool IsVisionBlockedByHigherPlatform(
+            int viewerX,
+            int viewerY,
+            int viewerHeight,
+            int targetX,
+            int targetY)
         {
             if (!IsValidCell(viewerX, viewerY))
                 throw new ArgumentOutOfRangeException(nameof(viewerX), $"Fog viewer cell ({viewerX},{viewerY}) is outside {Width}x{Height}.");
+            if (viewerHeight < 0)
+                throw new ArgumentOutOfRangeException(nameof(viewerHeight));
             if (!IsValidCell(targetX, targetY))
                 throw new ArgumentOutOfRangeException(nameof(targetX), $"Fog target cell ({targetX},{targetY}) is outside {Width}x{Height}.");
-
-            int viewerHeight = platformHeights[GetIndex(viewerX, viewerY)];
-            if (viewerHeight < 0)
-            {
-                throw new InvalidOperationException(
-                    $"Fog viewer cell ({viewerX},{viewerY}) has no Plane_H* support height.");
-            }
 
             int x = viewerX;
             int y = viewerY;
@@ -359,8 +400,8 @@ namespace AAAGame.MiniMap.FOG3
                 long yDecision = (1L + (crossedY << 1)) * deltaX;
                 if (xDecision == yDecision)
                 {
-                    if (IsHigherPlatformOccluder(x + stepX, y, viewerHeight)
-                        || IsHigherPlatformOccluder(x, y + stepY, viewerHeight))
+                    if (IsAboveViewerVisionHeight(x + stepX, y, viewerHeight)
+                        || IsAboveViewerVisionHeight(x, y + stepY, viewerHeight))
                     {
                         return true;
                     }
@@ -382,8 +423,8 @@ namespace AAAGame.MiniMap.FOG3
                 }
 
                 if (x == targetX && y == targetY)
-                    return false;
-                if (IsHigherPlatformOccluder(x, y, viewerHeight))
+                    return IsAboveViewerVisionHeight(x, y, viewerHeight);
+                if (IsAboveViewerVisionHeight(x, y, viewerHeight))
                     return true;
             }
 
@@ -528,17 +569,32 @@ namespace AAAGame.MiniMap.FOG3
                 AddHash(ref hash, unchecked((ulong)platformHeights[i]), prime);
                 hash ^= slopeMask[i] ? (byte)1 : (byte)0;
                 hash *= prime;
+                if (slopeMask[i])
+                {
+                    Fog3SlopeCellInfo slope = slopeCells[i];
+                    AddHash(ref hash, unchecked((ulong)slope.DirectionX), prime);
+                    AddHash(ref hash, unchecked((ulong)slope.DirectionY), prime);
+                    AddHash(ref hash, unchecked((ulong)slope.BaseHeightNumerator), prime);
+                    AddHash(ref hash, unchecked((ulong)slope.Run), prime);
+                    AddHash(ref hash, unchecked((ulong)slope.Rise), prime);
+                }
             }
             return hash;
         }
 
-        private bool IsHigherPlatformOccluder(int x, int y, int viewerHeight)
+        private bool IsAboveViewerVisionHeight(int x, int y, int viewerHeight)
         {
             if (!IsValidCell(x, y))
                 return false;
 
             int index = GetIndex(x, y);
-            return !slopeMask[index] && platformHeights[index] > viewerHeight;
+            if (!slopeMask[index])
+                return platformHeights[index] > viewerHeight;
+
+            Fog3SlopeCellInfo slope = slopeCells[index];
+            int upperNumerator = checked(slope.BaseHeightNumerator + slope.Rise);
+            int maximumHeight = checked(upperNumerator + slope.Run - 1) / slope.Run;
+            return maximumHeight > checked(viewerHeight + 1);
         }
 
         private void AddExplorationDigest(int index)

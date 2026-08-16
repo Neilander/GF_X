@@ -24,6 +24,7 @@ namespace AAAGame.Tools.Editor
         private const string PlaneLayerName = "Plane_H0";
         private const string LegacyPlaneLayerName = "Plane";
         private const string PlatformLayerPrefix = "Plane_H";
+        private const string PlatformDualControlLayerPrefix = "__LDtkDualControl_Plane_H";
         private const string SlopeLayerName = "Slope";
         private const string WaterLayerName = "Water";
         private const string StrongholdLayerName = "SH";
@@ -44,6 +45,7 @@ namespace AAAGame.Tools.Editor
         private const int MaximumPlatformHeight = 5;
         private const string RampPrefabPath = "Assets/AAAGame/Models/SlopePlaceholder/Ramp.prefab";
         private const string LastLdtkPathPreference = "AAAGame.LdtkToTileWorldCreator.LastLdtkPath";
+        private const float SourceActionButtonWidth = 220f;
 
         [SerializeField]
         private UnityEngine.Object ldtkLevelAsset;
@@ -131,14 +133,14 @@ namespace AAAGame.Tools.Editor
                 {
                     using (new EditorGUILayout.HorizontalScope())
                     {
-                        DrawSourceActionButtons(GUILayout.ExpandWidth(true));
+                        DrawSourceActionButtons(scrollContentWidth);
                     }
                 }
                 else
                 {
                     using (new EditorGUILayout.VerticalScope())
                     {
-                        DrawSourceActionButtons(GUILayout.Width(Mathf.Min(240f, scrollContentWidth)));
+                        DrawSourceActionButtons(scrollContentWidth);
                     }
                 }
 
@@ -202,8 +204,9 @@ namespace AAAGame.Tools.Editor
             }
         }
 
-        private void DrawSourceActionButtons(GUILayoutOption width)
+        private void DrawSourceActionButtons(float availableWidth)
         {
+            GUILayoutOption width = GUILayout.Width(Mathf.Min(SourceActionButtonWidth, availableWidth));
             if (GUILayout.Button("Auto Setup Selected LDtk", width))
             {
                 AutoResolveReferences(autoCreateMissingAssets, autoCreateSceneManager, out string report);
@@ -310,6 +313,7 @@ namespace AAAGame.Tools.Editor
             if (!EnsurePlatformAndSlopeLayers(
                     plan,
                     out Dictionary<int, BlueprintLayer> platformLayers,
+                    out Dictionary<int, BlueprintLayer> platformDualControlLayers,
                     out BlueprintLayer slopeLayer,
                     out string terrainLayerReport))
             {
@@ -345,6 +349,10 @@ namespace AAAGame.Tools.Editor
             foreach (PlatformImport platform in plan.platforms)
             {
                 clearedModifierCount += ImportCells(platformLayers[platform.height], platform.cells, clearBlueprintModifiers);
+                clearedModifierCount += ImportCells(
+                    platformDualControlLayers[platform.height],
+                    platform.dualControlCells,
+                    clearBlueprintModifiers);
             }
 
             clearedModifierCount += ImportCells(slopeLayer, plan.slopeCells, clearBlueprintModifiers);
@@ -415,7 +423,12 @@ namespace AAAGame.Tools.Editor
 
             if (!generateBuildLayers)
             {
-                MarkImportedAssetsDirty(configuration, platformLayers.Values, slopeLayer, waterLayer, strongholdLayers);
+                MarkImportedAssetsDirty(
+                    configuration,
+                    platformLayers.Values.Concat(platformDualControlLayers.Values),
+                    slopeLayer,
+                    waterLayer,
+                    strongholdLayers);
                 AssetDatabase.SaveAssets();
             }
             else
@@ -914,6 +927,39 @@ namespace AAAGame.Tools.Editor
                 })
                 .OrderBy(x => x.height)
                 .ToList();
+
+            foreach (PlatformImport platform in platformImports)
+            {
+                if (!LdtkDualGridControlBuilder.TryBuildExactControls(
+                        platform.cells,
+                        out platform.dualControlCells,
+                        out HashSet<Vector2> missingCells,
+                        out HashSet<Vector2> extraCells,
+                        out string controlError))
+                {
+                    string message = "Platform layer " + BuildPlatformLayerName(platform.height) +
+                                     " cannot be represented exactly by TWC dual grid.";
+                    if (!string.IsNullOrEmpty(controlError))
+                    {
+                        message += " " + controlError;
+                    }
+
+                    if (missingCells.Count > 0)
+                    {
+                        message += " Missing output cells: " + FormatCellsForError(missingCells) + ".";
+                    }
+
+                    if (extraCells.Count > 0)
+                    {
+                        message += " Extra output cells: " + FormatCellsForError(extraCells) + ".";
+                    }
+
+                    Debug.LogError("[LDtk Import] " + message);
+                    EditorUtility.DisplayDialog("LDtk import failed", message, "OK");
+                    return false;
+                }
+            }
+
             HashSet<Vector2> slopeCells = slope != null
                 ? ReadIntGridCells(slope, width, height)
                 : new HashSet<Vector2>();
@@ -1354,10 +1400,12 @@ namespace AAAGame.Tools.Editor
         private bool EnsurePlatformAndSlopeLayers(
             ImportPlan plan,
             out Dictionary<int, BlueprintLayer> platformLayers,
+            out Dictionary<int, BlueprintLayer> platformDualControlLayers,
             out BlueprintLayer slopeLayer,
             out string report)
         {
             platformLayers = new Dictionary<int, BlueprintLayer>();
+            platformDualControlLayers = new Dictionary<int, BlueprintLayer>();
             slopeLayer = null;
             report = string.Empty;
             if (!TryFindBlueprintLayer(PlaneLayerName, out BlueprintLayer planeTemplate))
@@ -1396,13 +1444,31 @@ namespace AAAGame.Tools.Editor
                 blueprint.isEnabled = true;
                 platformLayers.Add(platform.height, blueprint);
 
+                string dualControlName = BuildPlatformDualControlLayerName(platform.height);
+                BlueprintLayer dualControlLayer = GetBlueprintLayers(configuration)
+                    .FirstOrDefault(layer => string.Equals(layer.layerName, dualControlName, StringComparison.OrdinalIgnoreCase));
+                if (dualControlLayer == null)
+                {
+                    if (!TryCloneBlueprintLayer(blueprint, dualControlName, out dualControlLayer))
+                    {
+                        EditorUtility.DisplayDialog("LDtk import failed", "Failed to create TWC blueprint layer: " + dualControlName, "OK");
+                        return false;
+                    }
+
+                    changes.Add("Created " + dualControlName);
+                }
+
+                dualControlLayer.defaultLayerHeight = blueprint.defaultLayerHeight;
+                dualControlLayer.isEnabled = true;
+                platformDualControlLayers.Add(platform.height, dualControlLayer);
+
                 string buildLayerName = "Build " + blueprintName;
                 TilesBuildLayer buildLayer = GetBuildLayers(configuration)
                     .OfType<TilesBuildLayer>()
                     .FirstOrDefault(layer => string.Equals(layer.layerName, buildLayerName, StringComparison.OrdinalIgnoreCase));
                 if (buildLayer == null)
                 {
-                    if (!TryCloneTilesBuildLayer(buildTemplate, blueprint, buildLayerName, out buildLayer))
+                    if (!TryCloneTilesBuildLayer(buildTemplate, dualControlLayer, buildLayerName, out buildLayer))
                     {
                         EditorUtility.DisplayDialog("LDtk import failed", "Failed to create TWC build layer: " + buildLayerName, "OK");
                         return false;
@@ -1411,10 +1477,12 @@ namespace AAAGame.Tools.Editor
                     changes.Add("Created " + buildLayerName);
                 }
 
-                buildLayer.assignedBlueprintLayerGuid = blueprint.guid;
-                buildLayer.currentBlueprintLayer = blueprint;
+                buildLayer.assignedBlueprintLayerGuid = dualControlLayer.guid;
+                buildLayer.currentBlueprintLayer = dualControlLayer;
+                buildLayer.useDualGrid = true;
                 buildLayer.isEnabled = true;
                 EditorUtility.SetDirty(blueprint);
+                EditorUtility.SetDirty(dualControlLayer);
                 EditorUtility.SetDirty(buildLayer);
             }
 
@@ -1462,7 +1530,7 @@ namespace AAAGame.Tools.Editor
             }
 
             if (!TryCalculatePlatformSurfaceBase(buildTemplate, planeTemplate, plan.cellSize, out float surfaceBaseHeight) ||
-                !TryCalculateSlopeHighEndExtension(buildTemplate, plan.cellSize, out float highEndExtension) ||
+                !TryCalculateSlopePlatformEndExtension(buildTemplate, plan.cellSize, out float platformEndExtension) ||
                 !TryCalculateMaximumWalkableSlopeAngle(out float maximumSlopeAngle))
             {
                 return false;
@@ -1474,7 +1542,7 @@ namespace AAAGame.Tools.Editor
             if (!LdtkSlopeLayoutResolver.TryResolve(
                     plan.slopeCells,
                     importedTopHeights,
-                    highEndExtension,
+                    platformEndExtension,
                     maximumSlopeAngle,
                     out _,
                     out string slopeError))
@@ -1491,7 +1559,7 @@ namespace AAAGame.Tools.Editor
                 .Select(pair => new LdtkSlopeBuildLayer.PlatformLevel { height = pair.Key, layer = pair.Value })
                 .ToList();
             slopeBuildLayer.rampPrefab = ramp;
-            slopeBuildLayer.highEndExtension = highEndExtension;
+            slopeBuildLayer.platformEndExtension = platformEndExtension;
             slopeBuildLayer.maximumSlopeAngle = maximumSlopeAngle;
             slopeBuildLayer.surfaceBaseHeight = surfaceBaseHeight;
             slopeBuildLayer.surfaceHeightStep = plan.cellSize;
@@ -1500,7 +1568,7 @@ namespace AAAGame.Tools.Editor
                 : configuration.objectLayer;
             slopeBuildLayer.isEnabled = true;
             Debug.Log(
-                "[LDtk Slope] Configured continuous ramp: highEndExtension=" + highEndExtension.ToString("0.###") +
+                "[LDtk Slope] Configured continuous ramp: platformEndExtension=" + platformEndExtension.ToString("0.###") +
                 " cells, maximumSlopeAngle=" + maximumSlopeAngle.ToString("0.##") + " degrees.");
 
             EditorUtility.SetDirty(slopeLayer);
@@ -1513,6 +1581,11 @@ namespace AAAGame.Tools.Editor
         private static string BuildPlatformLayerName(int height)
         {
             return PlatformLayerPrefix + height.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private static string BuildPlatformDualControlLayerName(int height)
+        {
+            return PlatformDualControlLayerPrefix + height.ToString(CultureInfo.InvariantCulture);
         }
 
         private bool TryCloneTilesBuildLayer(
@@ -1574,7 +1647,26 @@ namespace AAAGame.Tools.Editor
                     EditorUtility.SetDirty(blueprint);
                 }
 
+                string dualControlName = BuildPlatformDualControlLayerName(height);
+                BlueprintLayer dualControlLayer = GetBlueprintLayers(configuration)
+                    .FirstOrDefault(layer => string.Equals(layer.layerName, dualControlName, StringComparison.OrdinalIgnoreCase));
+                if (dualControlLayer != null)
+                {
+                    dualControlLayer.ClearLayer(false);
+                    EditorUtility.SetDirty(dualControlLayer);
+                }
+
             }
+        }
+
+        private static string FormatCellsForError(IEnumerable<Vector2> cells)
+        {
+            return string.Join(
+                ", ",
+                cells.OrderBy(cell => cell.y)
+                    .ThenBy(cell => cell.x)
+                    .Take(16)
+                    .Select(FormatCell));
         }
 
         private static bool TryCalculatePlatformSurfaceBase(
@@ -1609,12 +1701,12 @@ namespace AAAGame.Tools.Editor
             return true;
         }
 
-        private static bool TryCalculateSlopeHighEndExtension(
+        private static bool TryCalculateSlopePlatformEndExtension(
             TilesBuildLayer buildLayer,
             float cellSize,
-            out float highEndExtension)
+            out float platformEndExtension)
         {
-            highEndExtension = 0f;
+            platformEndExtension = 0f;
             if (cellSize <= 0f)
             {
                 EditorUtility.DisplayDialog("LDtk import failed", "TWC cell size must be positive to measure the slope connection.", "OK");
@@ -1643,12 +1735,12 @@ namespace AAAGame.Tools.Editor
 
             float scaleX = Mathf.Abs(buildLayer.scaleOffset.x) * (buildLayer.scaleTileToCellSize ? 1f : 1f / cellSize);
             float scaleZ = Mathf.Abs(buildLayer.scaleOffset.z) * (buildLayer.scaleTileToCellSize ? 1f : 1f / cellSize);
-            highEndExtension = Mathf.Max(
+            platformEndExtension = Mathf.Max(
                 (fillBounds.max.x - edgeBounds.max.x) * scaleX,
                 (edgeBounds.min.x - fillBounds.min.x) * scaleX,
                 (fillBounds.max.z - edgeBounds.max.z) * scaleZ,
                 (edgeBounds.min.z - fillBounds.min.z) * scaleZ);
-            if (highEndExtension <= 0.0001f)
+            if (platformEndExtension <= 0.0001f)
             {
                 EditorUtility.DisplayDialog(
                     "LDtk import failed",
@@ -3305,6 +3397,7 @@ namespace AAAGame.Tools.Editor
         {
             public int height;
             public HashSet<Vector2> cells;
+            public HashSet<Vector2> dualControlCells;
         }
 
         private struct EntityPresetPointData

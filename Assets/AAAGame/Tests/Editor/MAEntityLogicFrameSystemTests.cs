@@ -25,7 +25,8 @@ public class MAEntityLogicFrameSystemTests
             System.Array.Empty<LogicCombatShape>(),
             (Fix64)worldSize,
             (Fix64)worldSize,
-            (Fix64)worldSize);
+            (Fix64)worldSize,
+            (Fix64)1000);
         fogMap.MarkVisible(0, 0);
     }
 
@@ -1565,7 +1566,7 @@ public class MAEntityLogicFrameSystemTests
     }
 
     [Test]
-    public void MoveCommit_PlayerUnitCannotEnterNonVisibleArea()
+    public void MoveCommit_NonGhostPlayerUnitCanEnterNonVisibleArea()
     {
         LogicTimeControlService.BeginTimeline();
         LogicCardPlacementAuthority.BeginTimeline();
@@ -1583,7 +1584,8 @@ public class MAEntityLogicFrameSystemTests
             new LogicCombatShape[0],
             Fix64.One,
             Fix64.One,
-            Fix64.One);
+            Fix64.One,
+            (Fix64)1000);
         var start = new FixVector2((Fix64)0.5f, (Fix64)0.5f);
         var entity = new RegionConstraintProbeEntity
         {
@@ -1601,10 +1603,10 @@ public class MAEntityLogicFrameSystemTests
         {
             LogicFrameRuntime.Tick(1);
 
-            Assert.AreEqual(start, entity.PositionFixed);
-            Assert.AreEqual(1, LogicAgentCollisionShadowService.LastRegionConstraintChangedCount);
+            Assert.AreEqual(new FixVector2((Fix64)2.5f, (Fix64)0.5f), entity.PositionFixed);
+            Assert.AreEqual(0, LogicAgentCollisionShadowService.LastRegionConstraintChangedCount);
             Assert.AreEqual(
-                LogicMovementRegionConstraintFailure.NotVisible,
+                LogicMovementRegionConstraintFailure.None,
                 LogicAgentCollisionShadowService.LastStates[0].RegionConstraintFailure);
         }
         finally
@@ -2098,7 +2100,7 @@ public class MAEntityLogicFrameSystemTests
         }
     }
 
-    private sealed class RegionConstraintProbeEntity : SimEntityContext, ILogicFrameEntity
+    private sealed class RegionConstraintProbeEntity : SimEntityContext, ILogicFrameEntity, IHeroLogicContext
     {
         private MAEntityLogicFramePhase m_NextPhase;
 
@@ -2116,6 +2118,18 @@ public class MAEntityLogicFrameSystemTests
         public bool NavigationConstraintEnabled { get; set; }
         public bool PreserveSpeedOnStaticSlide { get; set; }
         public int NavigationAgentTypeIdOverride { get; set; }
+        public bool IsHeroEntity => true;
+        public bool IsGhostState { get; set; }
+
+        public void SetGhostStateByBuff(bool enabled)
+        {
+            IsGhostState = enabled;
+        }
+
+        public void RestoreFromGhostState()
+        {
+            IsGhostState = false;
+        }
 
         public void BeginLogicFrame(Fix64 deltaTime)
         {

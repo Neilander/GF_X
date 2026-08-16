@@ -49,4 +49,4 @@
 	DemolishedProdRevenueLossRate	生产建筑损毁当天损失收入百分比	50
 	DemolishEnemyProdReward	敌方生产建筑损毁提供奖励	2
 	CombatTeleportationWindUp	战斗阶段传送前摇	1
-	VisionLossDelay	视野消失延迟	0.5
+	VisionExpandSpeed	视野内缩/外扩速度	5000

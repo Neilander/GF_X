@@ -149,7 +149,7 @@ public static class LogicMovementRegionConstraintService
             return frameStart;
         }
 
-        if (IsNonVisibleBlocked(candidate))
+        if (IsNonVisibleBlocked(entity, candidate))
         {
             failure = LogicMovementRegionConstraintFailure.NotVisible;
             return frameStart;
@@ -181,7 +181,7 @@ public static class LogicMovementRegionConstraintService
             return false;
         }
 
-        if (IsNonVisibleBlocked(position))
+        if (IsNonVisibleBlocked(entity, position))
         {
             failure = LogicMovementRegionConstraintFailure.NotVisible;
             return false;
@@ -290,8 +290,11 @@ public static class LogicMovementRegionConstraintService
                != EntitySideHelper.PlayerFactionId;
     }
 
-    private static bool IsNonVisibleBlocked(FixVector2 position)
+    private static bool IsNonVisibleBlocked(IEntityContext entity, FixVector2 position)
     {
+        if (entity is not IHeroLogicContext hero || !hero.IsGhostState)
+            return false;
+
         if (LogicCardPlacementAuthority.IsActive && LogicCardPlacementAuthority.IsWorldBound)
             return !LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(position);
 

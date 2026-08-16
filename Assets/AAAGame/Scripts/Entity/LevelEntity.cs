@@ -17,7 +17,6 @@ public partial class LevelEntity : EntityBase
 
     private TileWorldCreatorManager tileWorldCreatorManager;
     private int m_RuntimeInitializationVersion;
-    private bool m_HiddenDuringRuntimeInitialization;
     private EntityPresetPoint[] m_RuntimePresetPoints;
     private readonly Queue<StrongholdCapturePresentation> m_PendingCapturePresentation = new();
 
@@ -64,17 +63,12 @@ public partial class LevelEntity : EntityBase
         activeLevelEntity = this;
         LogicBuildingDisabledEventService.BuildingDisabled += OnLogicBuildingDisabled;
         IsRuntimeInitializationCompleted = false;
-        m_HiddenDuringRuntimeInitialization = LevelSelectionService.IsLevelLoading;
 
         int initVersion = ++m_RuntimeInitializationVersion;
 
         CollectStrongholds();
         m_RuntimePresetPoints = GetComponentsInChildren<EntityPresetPoint>(true);
         PhaseManager.ConfigureInvadeSpawnPoints(m_RuntimePresetPoints);
-        if (m_HiddenDuringRuntimeInitialization)
-        {
-            LevelSelectionService.HideEntityRenderersDuringLoad(this);
-        }
 
         InitializeRuntimeAsync(initVersion).Forget();
     }
@@ -99,7 +93,6 @@ public partial class LevelEntity : EntityBase
         tileWorldCreatorManager = null;
         m_RuntimePresetPoints = null;
         IsRuntimeInitializationCompleted = false;
-        m_HiddenDuringRuntimeInitialization = false;
         RuntimeInitializationCompleted = null;
         m_PendingCapturePresentation.Clear();
         m_RuntimeInitializationVersion++;

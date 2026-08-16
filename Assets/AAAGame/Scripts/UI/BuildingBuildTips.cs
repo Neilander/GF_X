@@ -14,7 +14,6 @@ public partial class BuildingBuildTips : UIFormBase
     private const string CoinIconPath = "UI/Icon/Coin.png";
     private const string ForceIconPath = "UI/Icon/Force.png";
     private const string SupplyIconPath = "UI/Icon/Supply.png";
-    private const string CoinReservesPrefix = "剩余";
     private const string BuildPreviewFolder = "建筑预览";
     private const string BaseMilestoneTechPattern = "Tech_BaseBuilt_{0}_Lv1";
     private const float HoldPerStarMinSeconds = 0.1f;
@@ -218,7 +217,7 @@ public partial class BuildingBuildTips : UIFormBase
             string actionName = $"Player/Industry{optionIndex + 1}";
             string keyText = InputGetKeyText.GetKeyText(actionName);
             // Archetype_* 属于 LocalizationTextTable 标识符，必须走 LocalizationTextDataModel。
-            string industryName = LocalizationTextDataModel.GetText($"Archetype_{archetype}", applyRichText: false);
+            string industryName = LocalizationTextDataModel.GetText($"Archetype_{archetype}");
 
             Archetype captured = archetype;
             optionItem.SetData(keyText, industryName, false, () => SelectIndustry(captured, true));
@@ -528,9 +527,9 @@ public partial class BuildingBuildTips : UIFormBase
         if (iconNum == null)
             return;
 
-        iconNum.SetData(CoinIconPath, $"{CoinReservesPrefix}{reserves}");
+        iconNum.SetLeadingLabelData("剩余", "Coin", reserves.ToString());
         iconNum.FitParentRect();
-        iconNum.AlignContentRight();
+        iconNum.AlignTextRight();
     }
 
     private void SpawnProgressStars(BuildOptionBinding binding)

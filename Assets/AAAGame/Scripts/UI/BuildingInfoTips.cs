@@ -16,8 +16,10 @@ public partial class BuildingInfoTips : UIFormBase
     private const string CoinIconPath = "UI/Icon/Coin.png";
     private const string ForceIconPath = "UI/Icon/Force.png";
     private const string SupplyIconPath = "UI/Icon/Supply.png";
-    private const string CoinReservesPrefix = "剩余";
     private const float RecycleHoldDurationSeconds = 2f;
+    private const float HeaderHeight = 72f;
+    private const float BottomPadding = 10f;
+    private const float PreviewReservedInfoHeight = 152f;
     private const string DemolishText = "拆除";
     private const string UndoTextFormat = "撤销  <sprite name=\"Coin\"> {0}";
 
@@ -105,7 +107,58 @@ public partial class BuildingInfoTips : UIFormBase
 
         PopulateProperties(item, m_TargetBuilding);
         PopulateCoinReserves(item, m_TargetBuilding);
-        item.ApplyPanelLayout(reservePreviewColumn: true, reserveProgressRow: false);
+        float infoHeight = item.ApplyPanelLayout(
+            reservePreviewColumn: true,
+            reserveProgressRow: false,
+            minimumPanelHeight: PreviewReservedInfoHeight,
+            compactToContent: true);
+        ApplyAdaptiveLayout(infoHeight);
+    }
+
+    private void ApplyAdaptiveLayout(float infoHeight)
+    {
+        if (varInfoPanel == null || varInfoRoot == null)
+            throw new InvalidOperationException("BuildingInfoTips adaptive layout references are incomplete.");
+        if (infoHeight <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(infoHeight));
+
+        RectTransform background = varInfoPanel.Find("Bg") as RectTransform;
+        RectTransform levelBadge = varInfoPanel.Find("LevelTitleBadge") as RectTransform;
+        RectTransform previewFrame = varInfoPanel.Find("PreviewFrame") as RectTransform;
+        if (background == null || levelBadge == null || previewFrame == null)
+            throw new InvalidOperationException("BuildingInfoTips adaptive layout objects are missing.");
+
+        float totalHeight = HeaderHeight + infoHeight + BottomPadding;
+        varInfoPanel.sizeDelta = new Vector2(varInfoPanel.sizeDelta.x, totalHeight);
+        SetCenteredRect(background, Vector2.zero, new Vector2(background.sizeDelta.x, totalHeight));
+
+        float top = totalHeight * 0.5f;
+        SetCenteredPosition(levelBadge, new Vector2(levelBadge.anchoredPosition.x, top - 39f));
+        if (varRecycleBtn != null)
+        {
+            RectTransform recycle = varRecycleBtn.transform as RectTransform
+                                    ?? throw new InvalidOperationException("BuildingInfoTips recycle button requires RectTransform.");
+            SetCenteredPosition(recycle, new Vector2(recycle.anchoredPosition.x, top - 32f));
+        }
+
+        float infoTop = top - HeaderHeight;
+        float infoCenter = infoTop - infoHeight * 0.5f;
+        SetCenteredPosition(varInfoRoot, new Vector2(0f, infoCenter));
+        SetCenteredPosition(previewFrame, new Vector2(previewFrame.anchoredPosition.x, infoCenter + 12f));
+    }
+
+    private static void SetCenteredPosition(RectTransform rect, Vector2 anchoredPosition)
+    {
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = anchoredPosition;
+    }
+
+    private static void SetCenteredRect(RectTransform rect, Vector2 anchoredPosition, Vector2 sizeDelta)
+    {
+        SetCenteredPosition(rect, anchoredPosition);
+        rect.sizeDelta = sizeDelta;
     }
 
     private void PopulateProperties(BuildingInfoItem item, BuildingEntity building)
@@ -213,9 +266,9 @@ public partial class BuildingInfoTips : UIFormBase
         if (iconNum == null)
             return;
 
-        iconNum.SetData(CoinIconPath, $"{CoinReservesPrefix}{reserves}");
+        iconNum.SetLeadingLabelData("剩余", "Coin", reserves.ToString());
         iconNum.FitParentRect();
-        iconNum.AlignContentRight();
+        iconNum.AlignTextRight();
     }
 
     private void ComposeDisplayText(BuildingEntity building, out string name, out string desc)

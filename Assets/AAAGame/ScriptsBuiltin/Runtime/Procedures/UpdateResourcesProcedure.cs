@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using GameFramework;
 using GameFramework.Event;
 using GameFramework.Fsm;
@@ -7,9 +6,7 @@ using GameFramework.Procedure;
 using GameFramework.Resource;
 using UnityEngine;
 using UnityGameFramework.Runtime;
-using ResourceUpdateChangedEventArgs = UnityGameFramework.Runtime.ResourceUpdateChangedEventArgs;
 using ResourceUpdateFailureEventArgs = UnityGameFramework.Runtime.ResourceUpdateFailureEventArgs;
-using ResourceUpdateStartEventArgs = UnityGameFramework.Runtime.ResourceUpdateStartEventArgs;
 using ResourceUpdateSuccessEventArgs = UnityGameFramework.Runtime.ResourceUpdateSuccessEventArgs;
 using ResourceVerifyFailureEventArgs = UnityGameFramework.Runtime.ResourceVerifyFailureEventArgs;
 using ResourceVerifyStartEventArgs = UnityGameFramework.Runtime.ResourceVerifyStartEventArgs;
@@ -43,23 +40,16 @@ public class UpdateResourcesProcedure : ProcedureBase
     private bool initComplete = false;
     private bool waitPersistenceReady = false;
     private bool versionCheckStarted = false;
-    private bool showBuiltinProgress;
-    private long mDownloadTotalZipLength = 0L;
-    private List<DownloadProgressData> mDownloadProgressData;
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
         base.OnEnter(procedureOwner);
         initComplete = false;
         waitPersistenceReady = false;
         versionCheckStarted = false;
-        showBuiltinProgress = AppSettings.Instance == null || !AppSettings.Instance.ShowStartupLevelSwitch;
-        mDownloadProgressData = new List<DownloadProgressData>();
 
 
         GFBuiltin.Event.Subscribe(WebRequestSuccessEventArgs.EventId, OnWebRequestSuccess);
         GFBuiltin.Event.Subscribe(WebRequestFailureEventArgs.EventId, OnWebRequestFailure);
-        GFBuiltin.Event.Subscribe(UnityGameFramework.Runtime.ResourceUpdateStartEventArgs.EventId, OnResourceUpdateStart);
-        GFBuiltin.Event.Subscribe(UnityGameFramework.Runtime.ResourceUpdateChangedEventArgs.EventId, OnResourceUpdateChanged);
         GFBuiltin.Event.Subscribe(UnityGameFramework.Runtime.ResourceUpdateSuccessEventArgs.EventId, OnResourceUpdateSuccess);
         GFBuiltin.Event.Subscribe(UnityGameFramework.Runtime.ResourceUpdateAllCompleteEventArgs.EventId, OnResourceUpdateAllComplete);
         GFBuiltin.Event.Subscribe(UnityGameFramework.Runtime.ResourceUpdateFailureEventArgs.EventId, OnResourceUpdateFailure);
@@ -72,7 +62,6 @@ public class UpdateResourcesProcedure : ProcedureBase
         {
             WebGLPersistence.Initialize();
             GFBuiltin.Log("等待持久化资源文件系统初始化...");
-            ShowLoadingProgress(0f);
         }
         else
         {
@@ -85,8 +74,6 @@ public class UpdateResourcesProcedure : ProcedureBase
     {
         GFBuiltin.Event.Unsubscribe(WebRequestSuccessEventArgs.EventId, OnWebRequestSuccess);
         GFBuiltin.Event.Unsubscribe(WebRequestFailureEventArgs.EventId, OnWebRequestFailure);
-        GFBuiltin.Event.Unsubscribe(UnityGameFramework.Runtime.ResourceUpdateStartEventArgs.EventId, OnResourceUpdateStart);
-        GFBuiltin.Event.Unsubscribe(UnityGameFramework.Runtime.ResourceUpdateChangedEventArgs.EventId, OnResourceUpdateChanged);
         GFBuiltin.Event.Unsubscribe(UnityGameFramework.Runtime.ResourceUpdateSuccessEventArgs.EventId, OnResourceUpdateSuccess);
         GFBuiltin.Event.Unsubscribe(UnityGameFramework.Runtime.ResourceUpdateAllCompleteEventArgs.EventId, OnResourceUpdateAllComplete);
         GFBuiltin.Event.Unsubscribe(UnityGameFramework.Runtime.ResourceUpdateFailureEventArgs.EventId, OnResourceUpdateFailure);
@@ -142,7 +129,6 @@ public class UpdateResourcesProcedure : ProcedureBase
             string verFileUrl = UtilityBuiltin.AssetsPath.GetCombinePath(AppSettings.Instance.CheckVersionUrl, GetPlatformPath(), ConstBuiltin.VersionFile);
             Log.Info("请求版本信息地址:{0}", verFileUrl);
             GFBuiltin.WebRequest.AddWebRequest(verFileUrl, this);
-            ShowLoadingProgress(0f);
         }
         else
         {
@@ -270,7 +256,6 @@ public class UpdateResourcesProcedure : ProcedureBase
 
     private void OnCheckResurcesComplete(int movedCount, int removedCount, int updateCount, long updateTotalLength, long updateTotalZipLength)
     {
-        mDownloadTotalZipLength = updateTotalZipLength;
         if (updateCount <= 0)
         {
             Log.Info("资源已是最新,无需更新.");
@@ -281,34 +266,6 @@ public class UpdateResourcesProcedure : ProcedureBase
             Log.Info<int, long, string>("需要更新资源个数:{0},资源大小:{1},下载地址:{2}", updateCount, updateTotalZipLength, GFBuiltin.Resource.UpdatePrefixUri);
             GFBuiltin.Resource.UpdateResources(OnUpdateResourceComplete);
         }
-    }
-    private void RefreshDownloadProgress()
-    {
-        long currentTotalUpdateLength = 0L;
-        for (int i = 0; i < mDownloadProgressData.Count; i++)
-        {
-            currentTotalUpdateLength += mDownloadProgressData[i].Length;
-        }
-
-        float progressTotal = (float)currentTotalUpdateLength / mDownloadTotalZipLength;
-        SetLoadingProgress(progressTotal);
-    }
-    private void OnResourceUpdateStart(object sender, GameEventArgs e)
-    {
-        ResourceUpdateStartEventArgs ne = (ResourceUpdateStartEventArgs)e;
-
-        for (int i = 0; i < mDownloadProgressData.Count; i++)
-        {
-            if (mDownloadProgressData[i].Name == ne.Name)
-            {
-                //Log.Warning("Update resource '{0}' is invalid.", ne.Name);
-                mDownloadProgressData[i].Length = 0;
-                RefreshDownloadProgress();
-                return;
-            }
-        }
-
-        mDownloadProgressData.Add(new DownloadProgressData(ne.Name));
     }
     private void OnResourceUpdateFailure(object sender, GameEventArgs e)
     {
@@ -323,44 +280,11 @@ public class UpdateResourcesProcedure : ProcedureBase
             Log.Warning("Download '{0}' failure from '{1}' with error message '{2}', retry count '{3}'.", ne.Name, ne.DownloadUri, ne.ErrorMessage, ne.RetryCount);
         }
 
-        for (int i = 0; i < mDownloadProgressData.Count; i++)
-        {
-            if (mDownloadProgressData[i].Name == ne.Name)
-            {
-                mDownloadProgressData.Remove(mDownloadProgressData[i]);
-                RefreshDownloadProgress();
-                return;
-            }
-        }
     }
     private void OnResourceUpdateSuccess(object sender, GameEventArgs e)
     {
         ResourceUpdateSuccessEventArgs ne = (ResourceUpdateSuccessEventArgs)e;
         Log.Info("Download '{0}' success.", ne.Name);
-
-        for (int i = 0; i < mDownloadProgressData.Count; i++)
-        {
-            if (mDownloadProgressData[i].Name == ne.Name)
-            {
-                mDownloadProgressData[i].Length = ne.CompressedLength;
-                RefreshDownloadProgress();
-                return;
-            }
-        }
-    }
-    private void OnResourceUpdateChanged(object sender, GameEventArgs e)
-    {
-        ResourceUpdateChangedEventArgs ne = (ResourceUpdateChangedEventArgs)e;
-
-        for (int i = 0; i < mDownloadProgressData.Count; i++)
-        {
-            if (mDownloadProgressData[i].Name == ne.Name)
-            {
-                mDownloadProgressData[i].Length = ne.CurrentLength;
-                RefreshDownloadProgress();
-                return;
-            }
-        }
     }
     private void OnUpdateResourceComplete(IResourceGroup resourceGroup, bool result)
     {
@@ -414,47 +338,4 @@ public class UpdateResourcesProcedure : ProcedureBase
         GFBuiltin.Log("All Resource Completed!");
     }
 
-    private void ShowLoadingProgress(float progress)
-    {
-        if (showBuiltinProgress)
-        {
-            GFBuiltin.BuiltinView.ShowLoadingProgress(progress);
-        }
-        else
-        {
-            GFBuiltin.BuiltinView.HideLoadingProgress();
-        }
-    }
-
-    private void SetLoadingProgress(float progress)
-    {
-        if (showBuiltinProgress)
-        {
-            GFBuiltin.BuiltinView.SetLoadingProgress(progress);
-        }
-    }
-
-    private class DownloadProgressData
-    {
-        private readonly string m_Name;
-
-        public DownloadProgressData(string name)
-        {
-            m_Name = name;
-        }
-
-        public string Name
-        {
-            get
-            {
-                return m_Name;
-            }
-        }
-
-        public int Length
-        {
-            get;
-            set;
-        }
-    }
 }

@@ -17,23 +17,35 @@ namespace AAAGame.Card
 
     public static class LogicCardPlacementAuthority
     {
+        private enum VisibilityTransitionState : byte
+        {
+            Hidden = 0,
+            Expanding = 1,
+            Visible = 2,
+            Contracting = 3,
+        }
+
         private const string HeroVisionRadiusConfigKey = "HeroVisionRadius";
         private const string UnitVisionRadiusConfigKey = "UnitVisionRadius";
         private const string BuildingVisionRadiusConfigKey = "BuildingVisionRadius";
-        private const string VisionLossDelayConfigKey = "VisionLossDelay";
+        private const string VisionExpandSpeedConfigKey = "VisionExpandSpeed";
         private static readonly Fix64 s_EnemyBuildingBasePadding = (Fix64)3;
         private static readonly List<LogicCombatShape> s_StaticForbiddenShapes = new();
         private static Fog3MapData s_MapData;
         private static Fix64 s_HeroVisionRadius;
         private static Fix64 s_UnitVisionRadius;
         private static Fix64 s_BuildingVisionRadius;
-        private static Fix64 s_VisionLossDelay;
-        private static ulong s_VisionLossDelayFrames;
-        private static ulong[] s_LastVisibleFrames;
-        private static bool[] s_HasVisibilityHistory;
-        private static int s_VisibilityHistoryCount;
-        private static ulong s_VisibilityHistoryXorDigest;
-        private static ulong s_VisibilityHistorySumDigest;
+        private static Fix64 s_VisionExpandSpeed;
+        private static Fix64 s_VisionExpandStep;
+        private static bool[] s_ActualVisibility;
+        private static Fix64[] s_ActualVisibilityDistance;
+        private static Fix64[] s_ActualVisibilityDepth;
+        private static byte[] s_VisibilityTransitionStates;
+        private static Fix64[] s_VisibilityTransitionDistances;
+        private static Fix64[] s_LastVisibilityDepths;
+        private static int s_VisibilityTransitionCount;
+        private static ulong s_VisibilityTransitionXorDigest;
+        private static ulong s_VisibilityTransitionSumDigest;
         private static bool s_BlockHiddenRevealByEnemyStronghold;
         private static ulong s_StaticForbiddenHash;
 
@@ -80,7 +92,7 @@ namespace AAAGame.Card
                 ResolveVisionRadius(UnitVisionRadiusConfigKey),
                 ResolveVisionRadius(BuildingVisionRadiusConfigKey),
                 blockHiddenRevealByEnemyStronghold,
-                DistanceUnitConverter.ReadRequiredFixedConfig(VisionLossDelayConfigKey));
+                ResolveVisionExpandSpeed());
         }
 
         public static void UnbindWorld()
@@ -103,7 +115,7 @@ namespace AAAGame.Card
             if (LogicTimeControlService.CurrentFrame != 0)
                 throw new InvalidOperationException("LogicCardPlacementAuthority.ResetFrameTimeline failed: time-control frame is not zero.");
             LastAppliedFrame = 0;
-            ClearVisibilityHistory();
+            ClearVisibilityTransitions();
         }
 
         public static void ApplyFrame(ulong frameId)
@@ -120,13 +132,14 @@ namespace AAAGame.Card
                     $"LogicCardPlacementAuthority.ApplyFrame requires contiguous frames. previous={LastAppliedFrame}, current={frameId}.");
             }
 
-            RebuildVisibilityFromCurrentEntities(frameId);
+            RebuildVisibilityFromCurrentEntities();
             LastAppliedFrame = frameId;
         }
 
-        private static void RebuildVisibilityFromCurrentEntities(ulong frameId)
+        private static void RebuildVisibilityFromCurrentEntities()
         {
             s_MapData.ClearCurrentVisibility();
+            Array.Clear(s_ActualVisibility, 0, s_ActualVisibility.Length);
             IList<IEntityContext> entities = EntityRegistry.AllEntities;
             bool hasGhostHero = HasPlayerGhostHero(entities);
             for (int i = 0; i < entities.Count; i++)
@@ -134,23 +147,12 @@ namespace AAAGame.Card
                 IEntityContext entity = entities[i];
                 if (entity == null)
                     throw new InvalidOperationException($"LogicCardPlacementAuthority found a null registry entity at index {i}.");
-                if (!TryGetRevealRadius(entity, out Fix64 radius)
-                    || !CanRevealHidden(entity, hasGhostHero))
-                    continue;
-                RevealCircle(entity.PositionFixed, radius);
-            }
-
-            for (int i = 0; i < entities.Count; i++)
-            {
-                IEntityContext entity = entities[i];
-                if (entity == null)
-                    throw new InvalidOperationException($"LogicCardPlacementAuthority found a null registry entity at index {i}.");
                 if (!TryGetRevealRadius(entity, out Fix64 radius))
                     continue;
-                AddCurrentVisibilityCircle(entity.PositionFixed, radius, CanRevealHidden(entity, hasGhostHero), frameId);
+                AddActualVisibilityCircle(entity.PositionFixed, radius, CanRevealHidden(entity, hasGhostHero));
             }
 
-            RetainDelayedVisibility(frameId);
+            ApplyVisibilityTransitions();
         }
 
         public static LogicCardPlacementInvalidReason Evaluate(
@@ -272,11 +274,11 @@ namespace AAAGame.Card
             hasher.Add(s_HeroVisionRadius.RawValue);
             hasher.Add(s_UnitVisionRadius.RawValue);
             hasher.Add(s_BuildingVisionRadius.RawValue);
-            hasher.Add(s_VisionLossDelay.RawValue);
-            hasher.Add(s_VisionLossDelayFrames);
-            hasher.Add(s_VisibilityHistoryCount);
-            hasher.Add(s_VisibilityHistoryXorDigest);
-            hasher.Add(s_VisibilityHistorySumDigest);
+            hasher.Add(s_VisionExpandSpeed.RawValue);
+            hasher.Add(s_VisionExpandStep.RawValue);
+            hasher.Add(s_VisibilityTransitionCount);
+            hasher.Add(s_VisibilityTransitionXorDigest);
+            hasher.Add(s_VisibilityTransitionSumDigest);
             hasher.Add(ResolveEnemyBuildingPadding().RawValue);
             hasher.Add(s_BlockHiddenRevealByEnemyStronghold);
         }
@@ -288,8 +290,8 @@ namespace AAAGame.Card
             Fix64 heroVisionRadius,
             Fix64 unitVisionRadius,
             Fix64 buildingVisionRadius,
-            bool blockHiddenRevealByEnemyStronghold = false,
-            Fix64 visionLossDelay = default)
+            Fix64 visionExpandSpeed,
+            bool blockHiddenRevealByEnemyStronghold = false)
         {
             BindWorld(
                 mapData,
@@ -298,7 +300,7 @@ namespace AAAGame.Card
                 unitVisionRadius,
                 buildingVisionRadius,
                 blockHiddenRevealByEnemyStronghold,
-                visionLossDelay);
+                visionExpandSpeed);
         }
 
         public static void RevealCircleForTests(FixVector2 position, Fix64 radius)
@@ -315,7 +317,7 @@ namespace AAAGame.Card
             Fix64 unitVisionRadius,
             Fix64 buildingVisionRadius,
             bool blockHiddenRevealByEnemyStronghold,
-            Fix64 visionLossDelay)
+            Fix64 visionExpandSpeed)
         {
             EnsureActive();
             if (IsWorldBound)
@@ -326,8 +328,8 @@ namespace AAAGame.Card
                 throw new ArgumentNullException(nameof(staticForbiddenShapes));
             if (heroVisionRadius <= Fix64.Zero || unitVisionRadius <= Fix64.Zero || buildingVisionRadius <= Fix64.Zero)
                 throw new ArgumentOutOfRangeException(nameof(heroVisionRadius), "All card-placement vision radii must be positive.");
-            if (visionLossDelay < Fix64.Zero)
-                throw new ArgumentOutOfRangeException(nameof(visionLossDelay), "Vision loss delay must not be negative.");
+            if (visionExpandSpeed <= Fix64.Zero)
+                throw new ArgumentOutOfRangeException(nameof(visionExpandSpeed), "Vision expand speed must be positive.");
             if (blockHiddenRevealByEnemyStronghold && !LogicStrongholdMap.IsInitialized)
             {
                 throw new InvalidOperationException(
@@ -338,11 +340,17 @@ namespace AAAGame.Card
             s_HeroVisionRadius = heroVisionRadius;
             s_UnitVisionRadius = unitVisionRadius;
             s_BuildingVisionRadius = buildingVisionRadius;
-            s_VisionLossDelay = visionLossDelay;
-            s_VisionLossDelayFrames = ResolveVisionLossDelayFrames(visionLossDelay);
+            s_VisionExpandSpeed = visionExpandSpeed;
+            s_VisionExpandStep = visionExpandSpeed * LogicFrameRuntime.FixedDeltaTime;
+            if (s_VisionExpandStep <= Fix64.Zero)
+                throw new InvalidOperationException($"Vision expand speed is too small for one logic frame. raw={visionExpandSpeed.RawValue}.");
             int cellCount = checked(mapData.Width * mapData.Height);
-            s_LastVisibleFrames = new ulong[cellCount];
-            s_HasVisibilityHistory = new bool[cellCount];
+            s_ActualVisibility = new bool[cellCount];
+            s_ActualVisibilityDistance = new Fix64[cellCount];
+            s_ActualVisibilityDepth = new Fix64[cellCount];
+            s_VisibilityTransitionStates = new byte[cellCount];
+            s_VisibilityTransitionDistances = new Fix64[cellCount];
+            s_LastVisibilityDepths = new Fix64[cellCount];
             s_BlockHiddenRevealByEnemyStronghold = blockHiddenRevealByEnemyStronghold;
             s_StaticForbiddenShapes.Clear();
             for (int i = 0; i < staticForbiddenShapes.Count; i++)
@@ -351,7 +359,7 @@ namespace AAAGame.Card
             s_StaticForbiddenHash = ComputeStaticForbiddenHash(s_StaticForbiddenShapes);
             LastAppliedFrame = LogicTimeControlService.CurrentFrame;
             if (LastAppliedFrame != 0)
-                RebuildVisibilityFromCurrentEntities(LastAppliedFrame);
+                RebuildVisibilityFromCurrentEntities();
         }
 
         private static Fix64 ResolveVisionRadius(string configKey)
@@ -363,6 +371,15 @@ namespace AAAGame.Card
             return radius;
         }
 
+        private static Fix64 ResolveVisionExpandSpeed()
+        {
+            Fix64 configured = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(VisionExpandSpeedConfigKey);
+            Fix64 speed = DistanceUnitConverter.ConvertToWorld(configured);
+            if (speed <= Fix64.Zero)
+                throw new InvalidOperationException($"Vision expand speed config converted to {speed.RawValue} raw.");
+            return speed;
+        }
+
         private static void RevealCircle(FixVector2 position, Fix64 radius)
         {
             if (radius <= Fix64.Zero)
@@ -370,6 +387,7 @@ namespace AAAGame.Card
             if (!TryWorldToCell(position, out int centerX, out int centerY))
                 return;
 
+            int viewerHeight = s_MapData.GetVisionHeight(position);
             int range = s_MapData.GetCellRangeForRadius(radius);
             Fix64 radiusSquared = radius * radius;
             for (int y = centerY - range; y <= centerY + range; y++)
@@ -381,7 +399,7 @@ namespace AAAGame.Card
                     FixVector2 cellCenter = s_MapData.GetCellCenterFixed(x, y);
                     if (FixVector2.SqrMagnitude(cellCenter - position) > radiusSquared)
                         continue;
-                    if (s_MapData.IsVisionBlockedByHigherPlatform(centerX, centerY, x, y))
+                    if (s_MapData.IsVisionBlockedByHigherPlatform(centerX, centerY, viewerHeight, x, y))
                         continue;
                     if (s_BlockHiddenRevealByEnemyStronghold
                         && IsHiddenRevealBlockedByEnemyStronghold(centerX, centerY, x, y))
@@ -393,17 +411,17 @@ namespace AAAGame.Card
             }
         }
 
-        private static void AddCurrentVisibilityCircle(
+        private static void AddActualVisibilityCircle(
             FixVector2 position,
             Fix64 radius,
-            bool canRevealHidden,
-            ulong frameId)
+            bool canRevealHidden)
         {
             if (radius <= Fix64.Zero)
                 throw new ArgumentOutOfRangeException(nameof(radius));
             if (!TryWorldToCell(position, out int centerX, out int centerY))
                 return;
 
+            int viewerHeight = s_MapData.GetVisionHeight(position);
             int range = s_MapData.GetCellRangeForRadius(radius);
             Fix64 radiusSquared = radius * radius;
             for (int y = centerY - range; y <= centerY + range; y++)
@@ -415,7 +433,7 @@ namespace AAAGame.Card
                     FixVector2 cellCenter = s_MapData.GetCellCenterFixed(x, y);
                     if (FixVector2.SqrMagnitude(cellCenter - position) > radiusSquared)
                         continue;
-                    if (s_MapData.IsVisionBlockedByHigherPlatform(centerX, centerY, x, y))
+                    if (s_MapData.IsVisionBlockedByHigherPlatform(centerX, centerY, viewerHeight, x, y))
                         continue;
 
                     bool targetExplored = s_MapData.IsExplored(x, y);
@@ -428,72 +446,117 @@ namespace AAAGame.Card
                         continue;
                     }
 
-                    s_MapData.MarkVisible(x, y);
-                    RecordCurrentVisibility(x, y, frameId);
+                    Fix64 distance = FixVector2.Magnitude(cellCenter - position);
+                    Fix64 depth = radius - distance;
+                    int index = checked(y * s_MapData.Width + x);
+                    if (!s_ActualVisibility[index])
+                    {
+                        s_ActualVisibility[index] = true;
+                        s_ActualVisibilityDistance[index] = distance;
+                        s_ActualVisibilityDepth[index] = depth;
+                    }
+                    else
+                    {
+                        if (distance < s_ActualVisibilityDistance[index])
+                            s_ActualVisibilityDistance[index] = distance;
+                        if (depth > s_ActualVisibilityDepth[index])
+                            s_ActualVisibilityDepth[index] = depth;
+                    }
                 }
             }
         }
 
-        private static ulong ResolveVisionLossDelayFrames(Fix64 delay)
+        private static void ApplyVisibilityTransitions()
         {
-            long frames = (long)Fix64.Ceiling(delay / LogicFrameRuntime.FixedDeltaTime);
-            if (frames < 0)
-                throw new InvalidOperationException($"Vision loss delay resolved to a negative frame count. raw={delay.RawValue}.");
-            return (ulong)frames;
-        }
-
-        private static void RecordCurrentVisibility(int x, int y, ulong frameId)
-        {
-            if (s_VisionLossDelayFrames == 0)
-                return;
-
-            int index = checked(y * s_MapData.Width + x);
-            if (s_HasVisibilityHistory[index])
+            s_VisibilityTransitionCount = 0;
+            s_VisibilityTransitionXorDigest = 0;
+            s_VisibilityTransitionSumDigest = 0;
+            for (int index = 0; index < s_VisibilityTransitionStates.Length; index++)
             {
-                ulong previousHash = ComputeVisibilityHistoryCellHash(index, s_LastVisibleFrames[index]);
-                s_VisibilityHistoryXorDigest ^= previousHash;
-                s_VisibilityHistorySumDigest = unchecked(s_VisibilityHistorySumDigest - previousHash);
-            }
-            else
-            {
-                s_HasVisibilityHistory[index] = true;
-                s_VisibilityHistoryCount++;
-            }
-
-            s_LastVisibleFrames[index] = frameId;
-            ulong nextHash = ComputeVisibilityHistoryCellHash(index, frameId);
-            s_VisibilityHistoryXorDigest ^= nextHash;
-            s_VisibilityHistorySumDigest = unchecked(s_VisibilityHistorySumDigest + nextHash);
-        }
-
-        private static void RetainDelayedVisibility(ulong frameId)
-        {
-            if (s_VisionLossDelayFrames == 0)
-                return;
-
-            for (int index = 0; index < s_HasVisibilityHistory.Length; index++)
-            {
-                if (!s_HasVisibilityHistory[index])
-                    continue;
-
-                ulong lastVisibleFrame = s_LastVisibleFrames[index];
-                if (lastVisibleFrame > frameId)
+                VisibilityTransitionState state = (VisibilityTransitionState)s_VisibilityTransitionStates[index];
+                bool actual = s_ActualVisibility[index];
+                switch (state)
                 {
-                    throw new InvalidOperationException(
-                        $"Visibility history is ahead of the current frame. cell={index}, lastVisible={lastVisibleFrame}, current={frameId}.");
+                    case VisibilityTransitionState.Hidden:
+                        if (actual)
+                        {
+                            state = VisibilityTransitionState.Expanding;
+                            s_VisibilityTransitionDistances[index] = Fix64.Zero;
+                        }
+                        break;
+                    case VisibilityTransitionState.Expanding:
+                        if (!actual)
+                        {
+                            state = VisibilityTransitionState.Hidden;
+                            s_VisibilityTransitionDistances[index] = Fix64.Zero;
+                        }
+                        break;
+                    case VisibilityTransitionState.Visible:
+                        if (!actual)
+                        {
+                            state = VisibilityTransitionState.Contracting;
+                            s_VisibilityTransitionDistances[index] = s_LastVisibilityDepths[index];
+                        }
+                        break;
+                    case VisibilityTransitionState.Contracting:
+                        if (actual)
+                        {
+                            state = VisibilityTransitionState.Visible;
+                            s_VisibilityTransitionDistances[index] = Fix64.Zero;
+                        }
+                        break;
+                    default:
+                        throw new InvalidOperationException($"Unknown visibility transition state {(byte)state} at cell {index}.");
                 }
-                if (frameId - lastVisibleFrame >= s_VisionLossDelayFrames)
-                    continue;
 
-                int y = index / s_MapData.Width;
-                int x = index - y * s_MapData.Width;
-                s_MapData.MarkVisible(x, y);
+                if (state == VisibilityTransitionState.Expanding)
+                {
+                    s_VisibilityTransitionDistances[index] += s_VisionExpandStep;
+                    if (s_VisibilityTransitionDistances[index] >= s_ActualVisibilityDistance[index])
+                    {
+                        state = VisibilityTransitionState.Visible;
+                        s_VisibilityTransitionDistances[index] = Fix64.Zero;
+                    }
+                }
+                else if (state == VisibilityTransitionState.Contracting)
+                {
+                    s_VisibilityTransitionDistances[index] -= s_VisionExpandStep;
+                    if (s_VisibilityTransitionDistances[index] <= Fix64.Zero)
+                    {
+                        state = VisibilityTransitionState.Hidden;
+                        s_VisibilityTransitionDistances[index] = Fix64.Zero;
+                        s_LastVisibilityDepths[index] = Fix64.Zero;
+                    }
+                }
+
+                if (actual && state == VisibilityTransitionState.Visible)
+                    s_LastVisibilityDepths[index] = s_ActualVisibilityDepth[index];
+
+                s_VisibilityTransitionStates[index] = (byte)state;
+                if (state == VisibilityTransitionState.Visible || state == VisibilityTransitionState.Contracting)
+                {
+                    int y = index / s_MapData.Width;
+                    int x = index - y * s_MapData.Width;
+                    if (actual)
+                        s_MapData.MarkExplored(x, y);
+                    s_MapData.MarkVisible(x, y);
+                }
+
+                if (state == VisibilityTransitionState.Hidden)
+                    continue;
+                ulong stateHash = ComputeVisibilityTransitionCellHash(index, state);
+                s_VisibilityTransitionCount++;
+                s_VisibilityTransitionXorDigest ^= stateHash;
+                s_VisibilityTransitionSumDigest = unchecked(s_VisibilityTransitionSumDigest + stateHash);
             }
         }
 
-        private static ulong ComputeVisibilityHistoryCellHash(int index, ulong frameId)
+        private static ulong ComputeVisibilityTransitionCellHash(int index, VisibilityTransitionState state)
         {
-            ulong value = unchecked(frameId ^ ((ulong)(uint)index * 0x9E3779B97F4A7C15UL));
+            ulong value = unchecked((ulong)(uint)index * 0x9E3779B97F4A7C15UL);
+            value ^= (ulong)state * 0xD6E8FEB86659FD93UL;
+            value ^= unchecked((ulong)s_VisibilityTransitionDistances[index].RawValue);
+            value ^= unchecked((ulong)s_LastVisibilityDepths[index].RawValue) * 0xA0761D6478BD642FUL;
             value ^= value >> 30;
             value *= 0xBF58476D1CE4E5B9UL;
             value ^= value >> 27;
@@ -501,15 +564,19 @@ namespace AAAGame.Card
             return value ^ (value >> 31);
         }
 
-        private static void ClearVisibilityHistory()
+        private static void ClearVisibilityTransitions()
         {
-            if (s_LastVisibleFrames != null)
-                Array.Clear(s_LastVisibleFrames, 0, s_LastVisibleFrames.Length);
-            if (s_HasVisibilityHistory != null)
-                Array.Clear(s_HasVisibilityHistory, 0, s_HasVisibilityHistory.Length);
-            s_VisibilityHistoryCount = 0;
-            s_VisibilityHistoryXorDigest = 0;
-            s_VisibilityHistorySumDigest = 0;
+            if (s_ActualVisibility != null)
+                Array.Clear(s_ActualVisibility, 0, s_ActualVisibility.Length);
+            if (s_VisibilityTransitionStates != null)
+                Array.Clear(s_VisibilityTransitionStates, 0, s_VisibilityTransitionStates.Length);
+            if (s_VisibilityTransitionDistances != null)
+                Array.Clear(s_VisibilityTransitionDistances, 0, s_VisibilityTransitionDistances.Length);
+            if (s_LastVisibilityDepths != null)
+                Array.Clear(s_LastVisibilityDepths, 0, s_LastVisibilityDepths.Length);
+            s_VisibilityTransitionCount = 0;
+            s_VisibilityTransitionXorDigest = 0;
+            s_VisibilityTransitionSumDigest = 0;
         }
 
         private static bool TryWorldToCell(FixVector2 position, out int x, out int y)
@@ -583,13 +650,23 @@ namespace AAAGame.Card
             if (!entity.Alive || entity.Side != SideType.PlayerSide)
                 return false;
 
-            bool isBuilding = entity.TryGetLogicBuilding(out _);
+            if (entity is LogicEntityState { IsBuildingEntity: true, BuildingData: null })
+            {
+                throw new InvalidOperationException(
+                    $"LogicCardPlacementAuthority found a building without BuildingData. entity={entity.LogicEntityId.Value}.");
+            }
+
+            if (entity.TryGetLogicBuilding(out IBuildingLogicContext building))
+            {
+                if (building.BuildingData.Lv == 0)
+                    return false;
+
+                radius = s_BuildingVisionRadius;
+                return true;
+            }
+
             bool isHero = IsLogicHero(entity);
-            radius = isBuilding
-                ? s_BuildingVisionRadius
-                : isHero
-                    ? s_HeroVisionRadius
-                    : s_UnitVisionRadius;
+            radius = isHero ? s_HeroVisionRadius : s_UnitVisionRadius;
             return true;
         }
 
@@ -649,13 +726,17 @@ namespace AAAGame.Card
             s_HeroVisionRadius = Fix64.Zero;
             s_UnitVisionRadius = Fix64.Zero;
             s_BuildingVisionRadius = Fix64.Zero;
-            s_VisionLossDelay = Fix64.Zero;
-            s_VisionLossDelayFrames = 0;
-            s_LastVisibleFrames = null;
-            s_HasVisibilityHistory = null;
-            s_VisibilityHistoryCount = 0;
-            s_VisibilityHistoryXorDigest = 0;
-            s_VisibilityHistorySumDigest = 0;
+            s_VisionExpandSpeed = Fix64.Zero;
+            s_VisionExpandStep = Fix64.Zero;
+            s_ActualVisibility = null;
+            s_ActualVisibilityDistance = null;
+            s_ActualVisibilityDepth = null;
+            s_VisibilityTransitionStates = null;
+            s_VisibilityTransitionDistances = null;
+            s_LastVisibilityDepths = null;
+            s_VisibilityTransitionCount = 0;
+            s_VisibilityTransitionXorDigest = 0;
+            s_VisibilityTransitionSumDigest = 0;
             s_BlockHiddenRevealByEnemyStronghold = false;
             s_StaticForbiddenHash = 0;
             s_StaticForbiddenShapes.Clear();

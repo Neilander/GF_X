@@ -126,7 +126,7 @@ namespace AAAGame.MiniMap.FOG3
 
         [Header("颜色")]
         [Tooltip("从未探索区域的颜色。")]
-        public Color HiddenColor = new Color(0f, 0f, 0f, 0.98f);
+        public Color HiddenColor = new Color(0f, 0f, 0f, 1f);
         [Tooltip("曾经看过但当前不可见区域的颜色。")]
         public Color ExploredColor = new Color(0f, 0f, 0f, 0.55f);
         [Tooltip("当前可见区域的颜色。")]

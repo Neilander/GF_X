@@ -26,8 +26,6 @@ public abstract class RuntimeProcedureBase : ProcedureBase
 {
     private const int MaxLogicTicksPerRenderFrame = 4;
 
-    public static bool SuppressNextBuiltinLoadingProgress { get; set; }
-
     private RuntimeInitPipeline m_RuntimeInitPipeline;
     private IFsm<IProcedureManager> m_ProcedureOwner;
     private bool m_InPlaceLevelSwitchInProgress;
@@ -102,7 +100,6 @@ public abstract class RuntimeProcedureBase : ProcedureBase
 
         if (LevelSelectionService.ShouldShowStartupLevelSwitch)
         {
-            GF.BuiltinView.HideLoadingProgress();
             if (!LevelSelectionService.OpenLevelSwitch(true))
                 throw new InvalidOperationException($"{RuntimeInitLogTag} Failed to open startup level switch UI.");
 
@@ -112,9 +109,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         if (!TryValidatePreparedCareerRunLevel(RuntimeLevelIdentifier, out string careerError))
             throw new InvalidOperationException(careerError);
 
-        bool showBuiltinProgress = !SuppressNextBuiltinLoadingProgress;
-        SuppressNextBuiltinLoadingProgress = false;
-        StartRuntimeInitPipeline(RuntimeLevelIdentifier, showBuiltinProgress);
+        StartRuntimeInitPipeline(RuntimeLevelIdentifier);
     }
 
     protected override void OnUpdate(IFsm<IProcedureManager> procedureOwner, float elapseSeconds, float realElapseSeconds)
@@ -332,7 +327,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         }
 
         ChangeSceneProcedure.SelectedLevelIdentifier = levelIdentifier;
-        StartRuntimeInitPipeline(RuntimeLevelIdentifier, false);
+        StartRuntimeInitPipeline(RuntimeLevelIdentifier);
         return true;
     }
 
@@ -459,7 +454,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                 LogicEntityIdAllocator.LastAllocatedValue);
             await UniTask.Yield(PlayerLoopTiming.Update);
 
-            m_RuntimeInitPipeline = new RuntimeInitPipeline(RuntimeInitLogTag, RuntimeLevelIdentifier, RequiredRuntimeSystems, false);
+            m_RuntimeInitPipeline = new RuntimeInitPipeline(RuntimeInitLogTag, RuntimeLevelIdentifier, RequiredRuntimeSystems);
             m_RuntimeInitPipeline.Start(() =>
             {
                 try
@@ -504,10 +499,10 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         }
     }
 
-    private void StartRuntimeInitPipeline(string levelIdentifier, bool showBuiltinProgress)
+    private void StartRuntimeInitPipeline(string levelIdentifier)
     {
         m_LogicFrameClockStarted = false;
-        m_RuntimeInitPipeline = new RuntimeInitPipeline(RuntimeInitLogTag, levelIdentifier, RequiredRuntimeSystems, showBuiltinProgress);
+        m_RuntimeInitPipeline = new RuntimeInitPipeline(RuntimeInitLogTag, levelIdentifier, RequiredRuntimeSystems);
         m_RuntimeInitPipeline.Start(OnRuntimeInitialized);
     }
 
@@ -862,7 +857,6 @@ internal sealed class RuntimeInitPipeline
     private readonly string m_LogTag;
     private readonly string m_LevelIdentifier;
     private readonly RuntimeInitSystemFlags m_RuntimeSystems;
-    private readonly bool m_ShowBuiltinProgress;
 
     private GeneralSetup m_GeneralSetup;
     private Action m_OnCompleted;
@@ -880,12 +874,11 @@ internal sealed class RuntimeInitPipeline
     public bool RequiresAuthoritativeFogPresentation =>
         HasFlag(RuntimeInitSystemFlags.MinimapSystem) || HasFlag(RuntimeInitSystemFlags.MinimapUI);
 
-    public RuntimeInitPipeline(string logTag, string levelIdentifier, RuntimeInitSystemFlags runtimeSystems, bool showBuiltinProgress = true)
+    public RuntimeInitPipeline(string logTag, string levelIdentifier, RuntimeInitSystemFlags runtimeSystems)
     {
         m_LogTag = string.IsNullOrWhiteSpace(logTag) ? "[RuntimeInit]" : logTag;
         m_LevelIdentifier = string.IsNullOrWhiteSpace(levelIdentifier) ? "Lv_1" : levelIdentifier;
         m_RuntimeSystems = runtimeSystems;
-        m_ShowBuiltinProgress = showBuiltinProgress;
         m_MinimapUIFormId = -1;
         m_InGameUIFormId = -1;
     }
@@ -910,14 +903,6 @@ internal sealed class RuntimeInitPipeline
         LogRuntimeInitTiming("cancel-phase-flows");
         LevelSelectionService.NotifyLevelLoadStarted();
         NotifyLevelLoadProgress();
-        if (m_ShowBuiltinProgress)
-        {
-            GF.BuiltinView.ShowLoadingProgress(RuntimeProgressStart);
-        }
-        else
-        {
-            GF.BuiltinView.HideLoadingProgress();
-        }
 
         m_GeneralSetup = GameEntry.GetComponent<GeneralSetup>();
         if (m_GeneralSetup == null)
@@ -958,10 +943,6 @@ internal sealed class RuntimeInitPipeline
         float delta = Math.Max(0f, elapseSeconds);
         m_DisplayedProgress = Math.Min(m_TargetProgress, m_DisplayedProgress + RuntimeProgressSmoothSpeed * delta);
         NotifyLevelLoadProgress();
-        if (m_ShowBuiltinProgress)
-        {
-            GF.BuiltinView.SetLoadingProgress(m_DisplayedProgress);
-        }
 
         if (m_FinishPending && m_DisplayedProgress >= 0.999f)
         {
@@ -987,8 +968,6 @@ internal sealed class RuntimeInitPipeline
         {
             m_GeneralSetup.GeneralSystemShutDown();
         }
-
-        GF.BuiltinView.HideLoadingProgress();
 
         m_IsStarted = false;
         IsCompleted = false;
@@ -1172,10 +1151,6 @@ internal sealed class RuntimeInitPipeline
         m_DisplayedProgress = 1f;
         m_TargetProgress = 1f;
         NotifyLevelLoadProgress();
-        if (m_ShowBuiltinProgress)
-        {
-            GF.BuiltinView.SetLoadingProgress(1f);
-        }
         m_OnCompleted?.Invoke();
         LevelSelectionService.NotifyLevelRuntimeReadyForFirstFrame();
     }
@@ -1188,8 +1163,6 @@ internal sealed class RuntimeInitPipeline
             return;
 
         m_LoadingPresentationCompleted = true;
-        if (m_ShowBuiltinProgress)
-            GF.BuiltinView.HideLoadingProgress();
         LevelSelectionService.NotifyLevelLoadCompleted();
         LogRuntimeInitTiming("startup-complete");
         Log.Info("{0} Runtime startup completed after authoritative fog presentation.", m_LogTag);

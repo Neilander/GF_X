@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using NUnit.Framework;
 using TMPro;
 using UnityEditor;
@@ -47,6 +48,13 @@ public sealed class BuildingPanelPresentationTests
     {
         Assert.AreEqual("Camp", BuildingPanelPresentation.FormatBuildingName("Camp", 1));
         Assert.AreEqual("Camp-Lv2", BuildingPanelPresentation.FormatBuildingName("Camp", 2));
+    }
+
+    [Test]
+    public void SkillName_AlwaysUsesHyphenBeforeLevel()
+    {
+        Assert.AreEqual("Skill-Lv1", BuildingPanelPresentation.FormatSkillName("Skill", 1));
+        Assert.AreEqual("Skill-Lv3", BuildingPanelPresentation.FormatSkillName("Skill", 3));
     }
 
     [TestCase(true, 0, 0)]
@@ -345,7 +353,7 @@ public sealed class BuildingPanelPresentationTests
             RectTransform progress = (RectTransform)FindChild(card, "Progress");
 
             Assert.AreEqual(-82.76f, key.anchoredPosition.x, 0.01f);
-            Assert.AreEqual(-48f, key.anchoredPosition.y, 0.01f);
+            Assert.AreEqual(-46f, key.anchoredPosition.y, 0.01f);
             Assert.AreEqual(previewScale, preview.localScale);
             Assert.AreEqual(12f, card.rect.xMax - (price.anchoredPosition.x + price.rect.xMax), 0.01f);
             Assert.AreEqual(12f, card.rect.xMax - (reserves.anchoredPosition.x + reserves.rect.xMax), 0.01f);
@@ -481,9 +489,11 @@ public sealed class BuildingPanelPresentationTests
             Rect nameBounds = GetBoundsInParent((RectTransform)FindChild(card, "Name"), card);
             Rect descriptionBounds = GetBoundsInParent((RectTransform)FindChild(card, "Desc"), card);
             Rect progressBounds = GetBoundsInParent((RectTransform)FindChild(card, "Progress"), card);
+            Rect propertyBounds = GetBoundsInParent(propertyList, card);
             Assert.GreaterOrEqual(card.rect.yMax - nameBounds.yMax, 12f);
             Assert.GreaterOrEqual(card.rect.xMax - descriptionBounds.xMax, 36f);
             Assert.GreaterOrEqual(progressBounds.yMin - card.rect.yMin, 6f);
+            Assert.AreEqual(10f, propertyBounds.yMin - progressBounds.yMax, 0.01f);
 
             var occupied = new List<Rect>();
             for (int i = 0; i < items.Count; i++)
@@ -577,6 +587,35 @@ public sealed class BuildingPanelPresentationTests
     }
 
     [Test]
+    public void BuildingInfoItem_NoBottomRowKeepsStatsAboveSlicedBorder()
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            "Assets/AAAGame/Prefabs/UI/Items/BuildingInfoItem.prefab");
+        GameObject instance = UnityEngine.Object.Instantiate(prefab);
+        try
+        {
+            BuildingInfoItem item = instance.GetComponent<BuildingInfoItem>();
+            item.SetData(string.Empty, "Building", "Description");
+            item.SetProgressVisible(false);
+            item.SetCoinReservesVisible(false);
+            item.ApplyPanelLayout(
+                reservePreviewColumn: true,
+                reserveProgressRow: false,
+                minimumPanelHeight: 152f,
+                compactToContent: true);
+
+            RectTransform card = (RectTransform)instance.transform;
+            RectTransform properties = (RectTransform)FindChild(card, "PropertyList");
+            Rect propertyBounds = GetBoundsInParent(properties, card);
+            Assert.AreEqual(12f, propertyBounds.yMin - card.rect.yMin, 0.01f);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(instance);
+        }
+    }
+
+    [Test]
     public void IconNumItem_WideGridCellKeepsIconAndNumberSeparatedInsideCell()
     {
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
@@ -609,27 +648,75 @@ public sealed class BuildingPanelPresentationTests
     {
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
             "Assets/AAAGame/Prefabs/UI/Items/IconNumItem.prefab");
-        GameObject instance = UnityEngine.Object.Instantiate(prefab);
+        GameObject canvasObject = new("Canvas", typeof(RectTransform), typeof(Canvas));
+        Canvas canvas = canvasObject.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        GameObject instance = UnityEngine.Object.Instantiate(prefab, canvasObject.transform);
         try
         {
             RectTransform root = (RectTransform)instance.transform;
             root.sizeDelta = new Vector2(96f, 24f);
             IconNumItem item = instance.GetComponent<IconNumItem>();
             TextMeshProUGUI number = FindChild(root, "Num").GetComponent<TextMeshProUGUI>();
-            number.text = "Remaining 50";
+            number.text = "50";
             item.ConfigureNumberLayout(hasIcon: true);
+
+            Canvas.ForceUpdateCanvases();
+            Rect iconBounds = GetBoundsInParent((RectTransform)FindChild(root, "Icon"), root);
+            float gridVisualGap = GetFirstGlyphLeftInParent(number, root) - iconBounds.xMax;
             item.AlignContentRight();
 
-            Rect iconBounds = GetBoundsInParent((RectTransform)FindChild(root, "Icon"), root);
+            Canvas.ForceUpdateCanvases();
+            iconBounds = GetBoundsInParent((RectTransform)FindChild(root, "Icon"), root);
             Rect numberBounds = GetBoundsInParent(number.rectTransform, root);
-            Assert.AreEqual(root.rect.xMax - 1f, numberBounds.xMax, 0.01f);
-            Assert.LessOrEqual(iconBounds.xMax, numberBounds.xMin);
+            float alignedVisualGap = GetFirstGlyphLeftInParent(number, root) - iconBounds.xMax;
+            Assert.AreEqual(root.rect.xMax - 8f, numberBounds.xMax, 0.01f);
+            Assert.AreEqual(8f, numberBounds.xMin - iconBounds.xMax, 0.01f);
+            Assert.AreEqual(gridVisualGap, alignedVisualGap, 0.01f);
             AssertRectInside(iconBounds, root.rect, "Icon");
             AssertRectInside(numberBounds, root.rect, "Num");
         }
         finally
         {
-            UnityEngine.Object.DestroyImmediate(instance);
+            UnityEngine.Object.DestroyImmediate(canvasObject);
+        }
+    }
+
+    [Test]
+    public void IconNumItem_LeadingReserveLabelPreservesStatRowVisualGap()
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            "Assets/AAAGame/Prefabs/UI/Items/IconNumItem.prefab");
+        GameObject canvasObject = new("Canvas", typeof(RectTransform), typeof(Canvas));
+        Canvas canvas = canvasObject.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        GameObject instance = UnityEngine.Object.Instantiate(prefab, canvasObject.transform);
+        try
+        {
+            RectTransform root = (RectTransform)instance.transform;
+            root.sizeDelta = new Vector2(160f, 24f);
+            IconNumItem item = instance.GetComponent<IconNumItem>();
+            RectTransform icon = (RectTransform)FindChild(root, "Icon");
+            TextMeshProUGUI number = FindChild(root, "Num").GetComponent<TextMeshProUGUI>();
+
+            number.text = "50";
+            item.ConfigureNumberLayout(hasIcon: true);
+            Canvas.ForceUpdateCanvases();
+            float statRowGap = GetFirstGlyphLeftInParent(number, root)
+                               - GetBoundsInParent(icon, root).xMax;
+
+            item.SetLeadingLabelData("剩余", "Coin", "50");
+            item.AlignTextRight();
+            Canvas.ForceUpdateCanvases();
+
+            Assert.That(number.text, Does.StartWith("剩余 "));
+            Assert.IsFalse(icon.gameObject.activeSelf);
+            Assert.AreEqual(statRowGap, GetInlineSpriteToFollowingGlyphGap(number), 0.01f);
+            AssertRectInside(GetBoundsInParent(number.rectTransform, root), root.rect, "Reserve text");
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(canvasObject);
         }
     }
 
@@ -776,6 +863,40 @@ public sealed class BuildingPanelPresentationTests
         Assert.AreEqual(-12f, ((RectTransform)FindChild(panel, "InfoRoot")).anchoredPosition.y - previewFrame.anchoredPosition.y, 0.01f);
     }
 
+    [Test]
+    public void MaxLevelPanel_AdaptsOuterHeightToMeasuredInformation()
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            "Assets/AAAGame/Prefabs/UI/BuildingInfoTips.prefab");
+        GameObject instance = UnityEngine.Object.Instantiate(prefab);
+        try
+        {
+            BuildingInfoTips tips = instance.GetComponent<BuildingInfoTips>();
+            MethodInfo method = typeof(BuildingInfoTips).GetMethod(
+                "ApplyAdaptiveLayout",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(method);
+
+            RectTransform panel = (RectTransform)FindChild(instance.transform, "InfoPanel");
+            RectTransform background = (RectTransform)FindChild(panel, "Bg");
+            RectTransform infoRoot = (RectTransform)FindChild(panel, "InfoRoot");
+            RectTransform preview = (RectTransform)FindChild(panel, "PreviewFrame");
+            Vector3 previewScale = preview.localScale;
+
+            method.Invoke(tips, new object[] { 152f });
+
+            Assert.AreEqual(234f, panel.rect.height, 0.01f);
+            Assert.AreEqual(panel.rect.height, background.rect.height, 0.01f);
+            Assert.AreEqual(-31f, infoRoot.anchoredPosition.y, 0.01f);
+            Assert.AreEqual(infoRoot.anchoredPosition.y + 12f, preview.anchoredPosition.y, 0.01f);
+            Assert.AreEqual(previewScale, preview.localScale);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(instance);
+        }
+    }
+
     private static void AssertStat(List<BuildingPanelStat> stats, string glyph, string value)
     {
         for (int i = 0; i < stats.Count; i++)
@@ -814,6 +935,38 @@ public sealed class BuildingPanelPresentationTests
         Vector3 min = parent.InverseTransformPoint(corners[0]);
         Vector3 max = parent.InverseTransformPoint(corners[2]);
         return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+    }
+
+    private static float GetFirstGlyphLeftInParent(TextMeshProUGUI text, RectTransform parent)
+    {
+        text.ForceMeshUpdate(ignoreActiveState: true, forceTextReparsing: true);
+        Assert.Greater(text.textInfo.characterCount, 0);
+        Vector3 worldPosition = text.rectTransform.TransformPoint(text.textInfo.characterInfo[0].bottomLeft);
+        return parent.InverseTransformPoint(worldPosition).x;
+    }
+
+    private static float GetInlineSpriteToFollowingGlyphGap(TextMeshProUGUI text)
+    {
+        text.ForceMeshUpdate(ignoreActiveState: true, forceTextReparsing: true);
+        int spriteIndex = -1;
+        for (int i = 0; i < text.textInfo.characterCount; i++)
+        {
+            TMP_CharacterInfo character = text.textInfo.characterInfo[i];
+            if (character.elementType == TMP_TextElementType.Sprite)
+            {
+                spriteIndex = i;
+                continue;
+            }
+
+            if (spriteIndex >= 0 && character.isVisible)
+            {
+                TMP_CharacterInfo sprite = text.textInfo.characterInfo[spriteIndex];
+                return character.bottomLeft.x - sprite.topRight.x;
+            }
+        }
+
+        Assert.Fail("Reserve text must contain an inline sprite followed by a visible number.");
+        return 0f;
     }
 
     private static BuildingData CreateArmyBuilding(string identifier, string unitId, int level)

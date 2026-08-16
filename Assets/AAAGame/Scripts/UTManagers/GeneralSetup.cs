@@ -195,11 +195,6 @@ public partial class GeneralSetup : GameFrameworkComponent
 
             TryEnterInitialPhaseIfReady();
         }
-        else
-        {
-            LevelSelectionService.HideEntityRenderersDuringLoad(args.Entity.Logic);
-        }
-
         if (args.Entity.Logic is MAEntity ma)
         {
             // 玩家注册为 Player

@@ -18,7 +18,6 @@ public class PreloadProcedure : ProcedureBase
     private bool preloadAllCompleted;
     private float progressSmoothSpeed = 10f;
     private int m_DataTablesCount;
-    private bool m_ShowBuiltinProgress;
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
         base.OnEnter(procedureOwner);
@@ -28,15 +27,6 @@ public class PreloadProcedure : ProcedureBase
         GF.Event.Subscribe(LoadDataTableFailureEventArgs.EventId, OnLoadDataTableFailure);
         GF.Event.Subscribe(LoadDictionarySuccessEventArgs.EventId, OnLoadDicSuccess);
         GF.Event.Subscribe(LoadDictionaryFailureEventArgs.EventId, OnLoadDicFailure);
-        m_ShowBuiltinProgress = !LevelSelectionService.ShouldShowStartupLevelSwitch;
-        if (m_ShowBuiltinProgress)
-        {
-            GF.BuiltinView.ShowLoadingProgress();
-        }
-        else
-        {
-            GF.BuiltinView.HideLoadingProgress();
-        }
         GF.Log("进入HybridCLR热更流程! 预加载游戏数据...");
 
         InitAppSettings();
@@ -46,10 +36,6 @@ public class PreloadProcedure : ProcedureBase
 
     protected override void OnLeave(IFsm<IProcedureManager> procedureOwner, bool isShutdown)
     {
-        if (m_ShowBuiltinProgress)
-        {
-            GF.BuiltinView.HideLoadingProgress();
-        }
         GF.Event.Unsubscribe(LoadConfigSuccessEventArgs.EventId, OnLoadConfigSuccess);
         GF.Event.Unsubscribe(LoadConfigFailureEventArgs.EventId, OnLoadConfigFailure);
         GF.Event.Unsubscribe(LoadDataTableSuccessEventArgs.EventId, OnLoadDataTableSuccess);
@@ -67,10 +53,6 @@ public class PreloadProcedure : ProcedureBase
 
         smoothProgress = Mathf.Lerp(smoothProgress, loadedProgress / (float)totalProgress, elapseSeconds * progressSmoothSpeed);
 
-        if (m_ShowBuiltinProgress)
-        {
-            GF.BuiltinView.SetLoadingProgress(smoothProgress);
-        }
         //预加载完成 切换场景
         if (loadedProgress >= totalProgress && smoothProgress >= 0.99f)
         {

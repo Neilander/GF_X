@@ -115,21 +115,21 @@ public partial class InGameUIForm
             throw new InvalidOperationException($"Skill slot is missing child TextMeshProUGUI. slot={slot.name}, skillId={skillData.Identifier}");
 
         string skillName = LocalizationTextManager.GetLocalizedText(skillData.NameKey, false);
-        string levelText = $"Lv{skillInfo.Level}";
+        string displayName = LocalizationTextManager.ProcessText(skillName);
         RectTransform textRect = text.rectTransform;
         textRect.anchorMin = Vector2.zero;
         textRect.anchorMax = Vector2.one;
-        textRect.offsetMin = new Vector2(6f, 20f);
+        textRect.offsetMin = new Vector2(6f, 6f);
         textRect.offsetMax = new Vector2(-6f, -6f);
         text.alignment = TextAlignmentOptions.Center;
-        text.enableWordWrapping = true;
+        text.enableWordWrapping = false;
         text.enableAutoSizing = true;
-        text.fontSizeMin = 12f;
+        text.fontSizeMin = 10f;
         text.fontSizeMax = 18f;
         text.overflowMode = TextOverflowModes.Truncate;
         text.text = skillData.Type == SkillType.Active
-            ? $"{SkillInputRuntime.GetKeyLabel(slotIndex)}\n{skillName}\n{levelText}"
-            : $"{skillName}\n{levelText}";
+            ? $"{SkillInputRuntime.GetKeyLabel(slotIndex)}\n{displayName}"
+            : displayName;
     }
 
     private void BindSkillInputProxies()

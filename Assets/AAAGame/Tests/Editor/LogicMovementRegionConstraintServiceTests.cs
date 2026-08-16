@@ -363,7 +363,7 @@ public sealed class LogicMovementRegionConstraintServiceTests
     }
 
     [Test]
-    public void Invade_PlayerMoveIntoNonVisibleArea_IsRejected()
+    public void Invade_OnlyGhostHeroMoveIntoNonVisibleArea_IsRejected()
     {
         LogicStrongholdMap.Clear();
         LogicCardPlacementAuthority.BeginTimeline();
@@ -372,7 +372,8 @@ public sealed class LogicMovementRegionConstraintServiceTests
             Array.Empty<LogicCombatShape>(),
             Fix64.One,
             Fix64.One,
-            Fix64.One);
+            Fix64.One,
+            (Fix64)1000);
         SimEntityContext player = CreateEntity(SideType.PlayerSide);
         player.PositionFixed = CellCenter(0);
         EntityRegistry.RegisterAsPlayer(player);
@@ -403,15 +404,35 @@ public sealed class LogicMovementRegionConstraintServiceTests
 
         Assert.IsFalse(hiddenVisible);
         Assert.AreEqual(
-            player.PositionFixed,
+            hidden,
             resolved,
-            $"A non-visible candidate must not be committed. start={player.PositionFixed}, candidate={hidden}, resolved={resolved}, failure={hiddenFailure}.");
-        Assert.AreEqual(LogicMovementRegionConstraintFailure.NotVisible, hiddenFailure);
-        Assert.IsFalse(LogicMovementRegionConstraintService.IsPositionAllowed(
+            $"A non-ghost player must be allowed into non-visible terrain. start={player.PositionFixed}, candidate={hidden}, resolved={resolved}, failure={hiddenFailure}.");
+        Assert.AreEqual(LogicMovementRegionConstraintFailure.None, hiddenFailure);
+        Assert.IsTrue(LogicMovementRegionConstraintService.IsPositionAllowed(
             player,
             hidden,
             out LogicMovementRegionConstraintFailure positionFailure));
-        Assert.AreEqual(LogicMovementRegionConstraintFailure.NotVisible, positionFailure);
+        Assert.AreEqual(LogicMovementRegionConstraintFailure.None, positionFailure);
+
+        var ghost = new SimHeroEntityContext
+        {
+            Side = SideType.PlayerSide,
+            PositionFixed = player.PositionFixed,
+            IsGhostState = true,
+        };
+        Assert.AreEqual(
+            ghost.PositionFixed,
+            LogicMovementRegionConstraintService.ResolvePosition(
+                ghost,
+                ghost.PositionFixed,
+                hidden,
+                out LogicMovementRegionConstraintFailure ghostFailure));
+        Assert.AreEqual(LogicMovementRegionConstraintFailure.NotVisible, ghostFailure);
+        Assert.IsFalse(LogicMovementRegionConstraintService.IsPositionAllowed(
+            ghost,
+            hidden,
+            out LogicMovementRegionConstraintFailure ghostPositionFailure));
+        Assert.AreEqual(LogicMovementRegionConstraintFailure.NotVisible, ghostPositionFailure);
 
         SimEntityContext enemy = CreateEntity(SideType.EnemySide);
         Assert.AreEqual(
@@ -427,7 +448,12 @@ public sealed class LogicMovementRegionConstraintServiceTests
     [Test]
     public void RunningLogicTimeline_RejectsPlayerMoveWhenFogAuthorityIsUnbound()
     {
-        SimEntityContext player = CreateEntity(SideType.PlayerSide);
+        var player = new SimHeroEntityContext
+        {
+            Side = SideType.PlayerSide,
+            PositionFixed = StrongholdPoint(0),
+            IsGhostState = true,
+        };
         LogicFrameRuntime.Begin();
         LogicFrameRuntime.StartTimeline();
         try
@@ -547,5 +573,21 @@ public sealed class LogicMovementRegionConstraintServiceTests
             Vector3.zero,
             walkable,
             "LogicMovementRegionConstraintServiceTests"));
+    }
+
+    private sealed class SimHeroEntityContext : SimEntityContext, IHeroLogicContext
+    {
+        public bool IsHeroEntity => true;
+        public bool IsGhostState { get; set; }
+
+        public void SetGhostStateByBuff(bool enabled)
+        {
+            IsGhostState = enabled;
+        }
+
+        public void RestoreFromGhostState()
+        {
+            IsGhostState = false;
+        }
     }
 }

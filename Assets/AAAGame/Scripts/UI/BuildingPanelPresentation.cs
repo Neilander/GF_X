@@ -211,6 +211,14 @@ public static class BuildingPanelPresentation
         return level <= 1 ? name : $"{name}-Lv{level}";
     }
 
+    internal static string FormatSkillName(string name, int level)
+    {
+        if (level <= 0)
+            throw new ArgumentOutOfRangeException(nameof(level));
+
+        return LocalizationTextManager.ProcessText($"{name}-Lv{level}");
+    }
+
     internal static string FillBuildingDescriptionTemplate(
         string template,
         string archetypeName,
@@ -233,7 +241,7 @@ public static class BuildingPanelPresentation
         if (archetype == Archetype.None)
             throw new ArgumentException("Building description requires a concrete archetype.", nameof(archetype));
 
-        return LocalizationTextDataModel.GetText($"Archetype_{archetype}", applyRichText: false);
+        return LocalizationTextDataModel.GetText($"Archetype_{archetype}");
     }
 
     internal static string StripUnitDescriptionSuffix(string description)
@@ -257,7 +265,8 @@ public static class BuildingPanelPresentation
             return string.Empty;
 
         CharacterDataDetail unit = GetRequiredUnit(data);
-        return LocalizationTextManager.GetLocalizedText(unit.NameKey, false);
+        string name = LocalizationTextManager.GetLocalizedText(unit.NameKey, false);
+        return LocalizationTextManager.ProcessText(FormatBuildingName(name, data.Lv));
     }
 
     public static string GetUnitDescription(BuildingData data)
@@ -310,7 +319,9 @@ public static class BuildingPanelPresentation
     public static string GetSkillTooltip(SkillRuntimeInfo info)
     {
         SkillData skill = info.Data ?? throw new ArgumentException("Skill runtime info has no data.", nameof(info));
-        string name = LocalizationTextManager.GetLocalizedText(skill.NameKey, false);
+        string name = FormatSkillName(
+            LocalizationTextManager.GetLocalizedText(skill.NameKey, false),
+            info.Level);
         string description = skill.GetFormattedDesc(info.Level);
         var stats = new List<BuildingPanelStat>();
         CollectSkillStats(skill, info.Level, stats);
@@ -318,8 +329,8 @@ public static class BuildingPanelPresentation
         for (int i = 0; i < stats.Count; i++)
             parts.Add(stats[i].Glyph + " " + stats[i].Value);
         return parts.Count > 0
-            ? $"{name} Lv{info.Level}\n{description}\n{string.Join("   ", parts)}"
-            : $"{name} Lv{info.Level}\n{description}";
+            ? $"{name}\n{description}\n{string.Join("   ", parts)}"
+            : $"{name}\n{description}";
     }
 
     public static string FormatBaseWithTotalModifier(int baseValue, int actualValue)

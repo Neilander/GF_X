@@ -43,7 +43,6 @@ public class HealthBarComp : MonoBehaviour
     private bool _pendingDestroy;
     private bool _isFriendly;
     private bool _visibleByFog = true;
-    private bool _visibleByLevelLoad = true;
     private readonly List<Image> _ammoSegments = new List<Image>();
 
     /// <summary>
@@ -64,7 +63,6 @@ public class HealthBarComp : MonoBehaviour
             ownerCanvas = GetComponent<Canvas>();
 
         _visibleByFog = true;
-        _visibleByLevelLoad = !LevelSelectionService.IsLevelLoading;
         ApplyCanvasVisibility();
 
         _isFriendly = ResolveIsFriendlyFromTarget(followTarget, _isFriendly);
@@ -363,7 +361,7 @@ public class HealthBarComp : MonoBehaviour
             throw new System.InvalidOperationException($"HealthBar owner canvas is missing. entityId={entityId}.");
 
         return cached._visibleByFog == visible
-               && cached.ownerCanvas.enabled == (visible && cached._visibleByLevelLoad);
+               && cached.ownerCanvas.enabled == visible;
     }
 
     public static void ResetFogVisibilityDiagnostics()
@@ -402,32 +400,12 @@ public class HealthBarComp : MonoBehaviour
         }
     }
 
-    internal static void SetLevelLoading(bool isLoading)
-    {
-        int updatedCount = 0;
-        foreach (HealthBarComp comp in ActiveBars.Values)
-        {
-            if (comp == null)
-                continue;
-
-            comp._visibleByLevelLoad = !isLoading;
-            comp.ApplyCanvasVisibility();
-            updatedCount++;
-        }
-
-        Log.Info(
-            "[HealthBarLoading] loading={0}, activeBars={1}, updatedBars={2}.",
-            isLoading,
-            ActiveBars.Count,
-            updatedCount);
-    }
-
     private void SetFogVisibleInternal(bool visible)
     {
         long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         try
         {
-            bool shouldEnableCanvas = visible && _visibleByLevelLoad;
+            bool shouldEnableCanvas = visible;
             if (_visibleByFog == visible && ownerCanvas != null && ownerCanvas.enabled == shouldEnableCanvas)
             {
                 s_fogVisibleNoOps++;
@@ -458,7 +436,7 @@ public class HealthBarComp : MonoBehaviour
         }
     }
 
-    private bool IsPresentationVisible => _visibleByFog && _visibleByLevelLoad;
+    private bool IsPresentationVisible => _visibleByFog;
 
     private void ApplyCanvasVisibility()
     {

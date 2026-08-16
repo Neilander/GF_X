@@ -2,7 +2,10 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
+using AAAGame.Tilemap;
 
 namespace AAAGame.MiniMap.FOG3
 {
@@ -64,8 +67,15 @@ namespace AAAGame.MiniMap.FOG3
             int height = Mathf.Max(1, manager.configuration.height);
             float cellSize = Mathf.Max(0.01f, manager.configuration.cellSize);
             Vector3 origin = manager.transform.position - new Vector3(cellSize * 0.5f, 0f, cellSize * 0.5f);
+            float platformEdgeInset = ResolvePlatformEdgeInset(manager, cellSize);
             bool[] walkable = CreateFilledMask(width, height, true);
-            BuildTileWorldHeightData(manager, width, height, out int[] platformHeights, out bool[] slopeMask);
+            BuildTileWorldHeightData(
+                manager,
+                width,
+                height,
+                out int[] platformHeights,
+                out bool[] slopeMask,
+                out Fog3SlopeCellInfo[] slopeCells);
 
             if (settings.UseTileWorldBlueprintLayerAsWalkable && !string.IsNullOrEmpty(settings.TileWorldWalkableLayerName))
             {
@@ -88,8 +98,46 @@ namespace AAAGame.MiniMap.FOG3
                 walkable,
                 platformHeights,
                 slopeMask,
+                slopeCells,
+                platformEdgeInset,
                 "TileWorldCreator");
             return true;
+        }
+
+        private static float ResolvePlatformEdgeInset(
+            GiantGrey.TileWorldCreator.TileWorldCreatorManager manager,
+            float cellSize)
+        {
+            var slopeBuildLayers = new List<LdtkSlopeBuildLayer>();
+            if (manager.configuration.buildLayerFolders != null)
+            {
+                foreach (GiantGrey.TileWorldCreator.BuildLayerFolder folder in manager.configuration.buildLayerFolders)
+                {
+                    if (folder?.buildLayers == null)
+                        continue;
+
+                    foreach (GiantGrey.TileWorldCreator.BuildLayer buildLayer in folder.buildLayers)
+                    {
+                        if (buildLayer is LdtkSlopeBuildLayer slopeBuildLayer)
+                            slopeBuildLayers.Add(slopeBuildLayer);
+                    }
+                }
+            }
+
+            if (slopeBuildLayers.Count != 1)
+            {
+                throw new InvalidOperationException(
+                    $"Fog3 TileWorld terrain requires exactly one LdtkSlopeBuildLayer, actual={slopeBuildLayers.Count}.");
+            }
+
+            float inset = slopeBuildLayers[0].platformEndExtension * cellSize;
+            if (inset < 0f || inset >= cellSize * 0.5f)
+            {
+                throw new InvalidOperationException(
+                    $"Fog3 TileWorld platform edge inset must be in [0, {cellSize * 0.5f}), actual={inset}.");
+            }
+
+            return inset;
         }
 
         private static void BuildTileWorldHeightData(
@@ -97,11 +145,13 @@ namespace AAAGame.MiniMap.FOG3
             int width,
             int height,
             out int[] platformHeights,
-            out bool[] slopeMask)
+            out bool[] slopeMask,
+            out Fog3SlopeCellInfo[] slopeCells)
         {
             int length = checked(width * height);
             var resolvedPlatformHeights = new int[length];
             var resolvedSlopeMask = new bool[length];
+            var resolvedSlopeCells = new Fog3SlopeCellInfo[length];
             Array.Fill(resolvedPlatformHeights, -1);
 
             bool foundPlatformLayer = false;
@@ -129,6 +179,56 @@ namespace AAAGame.MiniMap.FOG3
                 ApplyLayerCells(slopeLayer, width, height, cell => resolvedSlopeMask[cell.x + cell.y * width] = true);
             }
 
+            if (resolvedSlopeMask.Any(value => value))
+            {
+                var topHeights = new Dictionary<Vector2, int>();
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        int platformHeight = resolvedPlatformHeights[x + y * width];
+                        if (platformHeight >= 0)
+                            topHeights.Add(new Vector2(x, y), platformHeight);
+                    }
+                }
+
+                if (!LdtkSlopeLayoutResolver.TryResolve(
+                        slopeLayer.allPositions.ToHashSet(),
+                        topHeights,
+                        0f,
+                        90f,
+                        out LdtkSlopeLayout layout,
+                        out string error))
+                {
+                    throw new InvalidOperationException("Cannot resolve fog slope height metadata: " + error);
+                }
+
+                foreach (LdtkSlopeRamp ramp in layout.ramps)
+                {
+                    Vector2 firstCell = ramp.anchor - ramp.direction * ((ramp.run - 1) * 0.5f);
+                    int directionX = Mathf.RoundToInt(ramp.direction.x);
+                    int directionY = Mathf.RoundToInt(ramp.direction.y);
+                    for (int offset = 0; offset < ramp.run; offset++)
+                    {
+                        Vector2 position = firstCell + ramp.direction * offset;
+                        int x = Mathf.RoundToInt(position.x);
+                        int y = Mathf.RoundToInt(position.y);
+                        if (!Mathf.Approximately(position.x, x) || !Mathf.Approximately(position.y, y))
+                            throw new InvalidOperationException($"Resolved fog slope contains a non-grid cell {position}.");
+
+                        int index = checked(x + y * width);
+                        if (resolvedSlopeCells[index].IsDefined)
+                            throw new InvalidOperationException($"Fog slope cell ({x},{y}) belongs to multiple ramps.");
+                        resolvedSlopeCells[index] = new Fog3SlopeCellInfo(
+                            directionX,
+                            directionY,
+                            checked(ramp.lowHeight * ramp.run + offset * ramp.rise),
+                            ramp.run,
+                            ramp.rise);
+                    }
+                }
+            }
+
             for (int i = 0; i < resolvedSlopeMask.Length; i++)
             {
                 if (resolvedSlopeMask[i] && resolvedPlatformHeights[i] < 0)
@@ -138,10 +238,17 @@ namespace AAAGame.MiniMap.FOG3
                     throw new InvalidOperationException(
                         $"Fog3 slope cell ({x},{y}) has no inferred Plane_H* support. Reimport the LDtk level before play.");
                 }
+                if (resolvedSlopeMask[i] && !resolvedSlopeCells[i].IsDefined)
+                {
+                    int x = i % width;
+                    int y = i / width;
+                    throw new InvalidOperationException($"Fog3 slope cell ({x},{y}) has no resolved height metadata.");
+                }
             }
 
             platformHeights = resolvedPlatformHeights;
             slopeMask = resolvedSlopeMask;
+            slopeCells = resolvedSlopeCells;
         }
 
         private static void ApplyLayerCells(

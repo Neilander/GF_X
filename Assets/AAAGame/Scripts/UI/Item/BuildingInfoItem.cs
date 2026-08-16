@@ -73,7 +73,8 @@ public partial class BuildingInfoItem : UIItemBase
     public float ApplyPanelLayout(
         bool reservePreviewColumn,
         bool reserveProgressRow,
-        float minimumPanelHeight = 0f)
+        float minimumPanelHeight = 0f,
+        bool compactToContent = false)
     {
         RectTransform root = HoldRoot;
         if (root == null || varName == null || varDesc == null || varPropertyList == null || varProgress == null)
@@ -104,11 +105,13 @@ public partial class BuildingInfoItem : UIItemBase
         const float titleGap = 6f;
         const float contentGap = 6f;
         const float bottomRowHeight = 24f;
-        float panelHeight = Mathf.Max(176f, naturalHeight, minimumPanelHeight);
+        float panelHeight = compactToContent
+            ? Mathf.Max(naturalHeight, minimumPanelHeight)
+            : Mathf.Max(176f, naturalHeight, minimumPanelHeight);
         root.sizeDelta = new Vector2(624f, panelHeight);
 
         if (varKey != null)
-            SetRect(varKey.rectTransform, new Vector2(-82.76f, -48f), new Vector2(20f, 24f));
+            SetRect(varKey.rectTransform, new Vector2(-82.76f, -46f), new Vector2(20f, 24f));
 
         float top = panelHeight * 0.5f - topPadding;
         float titleCenterY = top - titleHeight * 0.5f;
@@ -131,16 +134,20 @@ public partial class BuildingInfoItem : UIItemBase
             cursor -= descriptionHeight + contentGap;
         }
 
-        SetRect(
-            varPropertyList.transform as RectTransform,
-            new Vector2(contentCenter, cursor - propertyHeight * 0.5f),
-            new Vector2(contentWidth, propertyHeight));
-        cursor -= propertyHeight;
-
         const float bottomPadding = 2f;
+        const float contentBottomPadding = 12f;
+        bool hasBottomRow = reserveProgressRow || varProgress.activeSelf || varCoinReserves.activeSelf;
         float bottomRowCenterY = -panelHeight * 0.5f + bottomPadding + bottomRowHeight * 0.5f;
         SetRect(varProgress.transform as RectTransform, new Vector2(contentCenter, bottomRowCenterY), new Vector2(contentWidth, 16f));
         SetRect(varCoinReserves.transform as RectTransform, new Vector2(252f, bottomRowCenterY), new Vector2(96f, 24f));
+
+        float propertyBottom = -panelHeight * 0.5f
+                               + (hasBottomRow ? bottomPadding : contentBottomPadding)
+                               + (hasBottomRow ? bottomRowHeight + contentGap : 0f);
+        SetRect(
+            varPropertyList.transform as RectTransform,
+            new Vector2(contentCenter, propertyBottom + propertyHeight * 0.5f),
+            new Vector2(contentWidth, propertyHeight));
 
         ApplyDetailPanelLayout(panelHeight);
 
@@ -228,6 +235,7 @@ public partial class BuildingInfoItem : UIItemBase
 
         const float topPadding = 12f;
         const float bottomPadding = 2f;
+        const float contentBottomPadding = 12f;
         const float titleHeight = 28f;
         const float titleGap = 6f;
         const float contentGap = 6f;
@@ -241,7 +249,7 @@ public partial class BuildingInfoItem : UIItemBase
                         + (descriptionHeight > 0f ? contentGap : 0f)
                         + propertyHeight
                         + bottomRowSpace
-                        + bottomPadding;
+                        + (hasBottomRow ? bottomPadding : contentBottomPadding);
     }
 
     private static void SetRect(RectTransform rect, Vector2 anchoredPosition, Vector2 sizeDelta)

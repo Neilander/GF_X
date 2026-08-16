@@ -17,6 +17,7 @@ namespace AAAGame.MiniMap.FOG3
         private MeshFilter fogMeshFilter;
         private Bounds fogMeshBounds;
         private bool fogMeshUsesCameraProjectionGrid;
+        private readonly RaycastHit[] projectionHeightHits = new RaycastHit[32];
         private readonly System.Collections.Generic.List<OutsideMaskQuad> outsideMaskQuads = new System.Collections.Generic.List<OutsideMaskQuad>();
 
         private struct OutsideMaskQuad
@@ -223,7 +224,7 @@ namespace AAAGame.MiniMap.FOG3
             MeshRenderer meshRenderer = plane.AddComponent<MeshRenderer>();
             fogMeshFilter = meshFilter;
             fogMeshBounds = CreateLocalTerrainBounds(terrainInfo);
-            fogMeshUsesCameraProjectionGrid = false;
+            fogMeshUsesCameraProjectionGrid = ShouldProjectCloudLayerToCamera();
             if (settings.SurfaceMode == Fog3OverlaySurfaceMode.TerrainConforming)
                 meshFilter.sharedMesh = CreateConformingTerrainMesh(terrainInfo, "FOG3_WorldOverlayMesh");
             else if (fogMeshUsesCameraProjectionGrid)
@@ -267,88 +268,312 @@ namespace AAAGame.MiniMap.FOG3
 
         private Mesh CreateConformingTerrainMesh(Fog3TerrainInfo terrainInfo, string meshName)
         {
-            int vertexWidth = terrainInfo.Width + 1;
-            int vertexHeight = terrainInfo.Height + 1;
-            int vertexCount = vertexWidth * vertexHeight;
-            Vector3[] vertices = new Vector3[vertexCount];
-            Vector2[] uvs = new Vector2[vertexCount];
+            int cellCount = checked(terrainInfo.Width * terrainInfo.Height);
+            var vertices = new System.Collections.Generic.List<Vector3>(cellCount * 4);
+            var uvs = new System.Collections.Generic.List<Vector2>(cellCount * 4);
+            var triangles = new System.Collections.Generic.List<int>(cellCount * 6);
+            float surfaceOffset = Mathf.Max(0f, settings.SurfaceOffset);
 
-            for (int z = 0; z < vertexHeight; z++)
-            {
-                for (int x = 0; x < vertexWidth; x++)
-                {
-                    int index = x + z * vertexWidth;
-                    float localX = x * terrainInfo.CellSize;
-                    float localZ = z * terrainInfo.CellSize;
-                    float worldX = terrainInfo.Origin.x + localX;
-                    float worldZ = terrainInfo.Origin.z + localZ;
-                    float worldY = SampleTerrainHeight(terrainInfo, worldX, worldZ);
-                    vertices[index] = new Vector3(localX, worldY - terrainInfo.Origin.y, localZ);
-                    uvs[index] = new Vector2((float)x / terrainInfo.Width, (float)z / terrainInfo.Height);
-                }
-            }
-
-            int[] triangles = new int[terrainInfo.Width * terrainInfo.Height * 6];
-            int triangleIndex = 0;
             for (int z = 0; z < terrainInfo.Height; z++)
             {
                 for (int x = 0; x < terrainInfo.Width; x++)
                 {
-                    int bottomLeft = x + z * vertexWidth;
-                    int bottomRight = bottomLeft + 1;
-                    int topLeft = bottomLeft + vertexWidth;
-                    int topRight = topLeft + 1;
+                    ResolveConformingCellFootprint(
+                        terrainInfo,
+                        x,
+                        z,
+                        out float minX,
+                        out float maxX,
+                        out float minZ,
+                        out float maxZ);
 
-                    triangles[triangleIndex++] = bottomLeft;
-                    triangles[triangleIndex++] = topLeft;
-                    triangles[triangleIndex++] = bottomRight;
-                    triangles[triangleIndex++] = topLeft;
-                    triangles[triangleIndex++] = topRight;
-                    triangles[triangleIndex++] = bottomRight;
+                    bool isSlope = terrainInfo.IsSlope(x, z);
+                    float flatLocalY = 0f;
+                    if (!isSlope)
+                    {
+                        float centerWorldX = terrainInfo.Origin.x + (minX + maxX) * 0.5f;
+                        float centerWorldZ = terrainInfo.Origin.z + (minZ + maxZ) * 0.5f;
+                        flatLocalY = SampleProjectionSourceHeight(terrainInfo, centerWorldX, centerWorldZ) +
+                                     surfaceOffset - terrainInfo.Origin.y;
+                    }
+
+                    int vertexIndex = vertices.Count;
+                    AddConformingTopVertex(terrainInfo, vertices, uvs, minX, minZ, minX, maxX, minZ, maxZ, isSlope, flatLocalY, (float)x / terrainInfo.Width, (float)z / terrainInfo.Height, surfaceOffset);
+                    AddConformingTopVertex(terrainInfo, vertices, uvs, minX, maxZ, minX, maxX, minZ, maxZ, isSlope, flatLocalY, (float)x / terrainInfo.Width, (float)(z + 1) / terrainInfo.Height, surfaceOffset);
+                    AddConformingTopVertex(terrainInfo, vertices, uvs, maxX, minZ, minX, maxX, minZ, maxZ, isSlope, flatLocalY, (float)(x + 1) / terrainInfo.Width, (float)z / terrainInfo.Height, surfaceOffset);
+                    AddConformingTopVertex(terrainInfo, vertices, uvs, maxX, maxZ, minX, maxX, minZ, maxZ, isSlope, flatLocalY, (float)(x + 1) / terrainInfo.Width, (float)(z + 1) / terrainInfo.Height, surfaceOffset);
+
+                    triangles.Add(vertexIndex);
+                    triangles.Add(vertexIndex + 1);
+                    triangles.Add(vertexIndex + 2);
+                    triangles.Add(vertexIndex + 1);
+                    triangles.Add(vertexIndex + 3);
+                    triangles.Add(vertexIndex + 2);
+                }
+            }
+
+            for (int x = 0; x + 1 < terrainInfo.Width; x++)
+            {
+                int previousWallVertexIndex = -1;
+                for (int z = 0; z < terrainInfo.Height; z++)
+                {
+                    int left = checked((x + z * terrainInfo.Width) * 4);
+                    int right = left + 4;
+                    int wallVertexIndex = AddConformingCliffWall(
+                        vertices,
+                        uvs,
+                        triangles,
+                        left + 2,
+                        left + 3,
+                        right,
+                        right + 1);
+                    AddConformingCliffWallJunction(
+                        vertices,
+                        uvs,
+                        triangles,
+                        previousWallVertexIndex,
+                        wallVertexIndex);
+                    previousWallVertexIndex = wallVertexIndex;
+                }
+            }
+
+            for (int z = 0; z + 1 < terrainInfo.Height; z++)
+            {
+                int previousWallVertexIndex = -1;
+                for (int x = 0; x < terrainInfo.Width; x++)
+                {
+                    int lower = checked((x + z * terrainInfo.Width) * 4);
+                    int upper = checked((x + (z + 1) * terrainInfo.Width) * 4);
+                    int wallVertexIndex = AddConformingCliffWall(
+                        vertices,
+                        uvs,
+                        triangles,
+                        lower + 1,
+                        lower + 3,
+                        upper,
+                        upper + 2);
+                    AddConformingCliffWallJunction(
+                        vertices,
+                        uvs,
+                        triangles,
+                        previousWallVertexIndex,
+                        wallVertexIndex);
+                    previousWallVertexIndex = wallVertexIndex;
                 }
             }
 
             Mesh mesh = new Mesh { name = meshName };
-            if (vertexCount > 65000)
+            if (vertices.Count > 65000)
                 mesh.indexFormat = IndexFormat.UInt32;
 
-            mesh.vertices = vertices;
-            mesh.uv = uvs;
-            mesh.triangles = triangles;
+            mesh.SetVertices(vertices);
+            mesh.SetUVs(0, uvs);
+            mesh.SetTriangles(triangles, 0);
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
             return mesh;
         }
 
+        private void AddConformingTopVertex(
+            Fog3TerrainInfo terrainInfo,
+            System.Collections.Generic.List<Vector3> vertices,
+            System.Collections.Generic.List<Vector2> uvs,
+            float localX,
+            float localZ,
+            float minX,
+            float maxX,
+            float minZ,
+            float maxZ,
+            bool sampleSlopeHeight,
+            float flatLocalY,
+            float uvX,
+            float uvY,
+            float surfaceOffset)
+        {
+            float localY = flatLocalY;
+            if (sampleSlopeHeight)
+            {
+                float sampleInset = terrainInfo.CellSize * 0.01f;
+                float sampleLocalX = Mathf.Clamp(
+                    Mathf.Approximately(localX, minX) ? localX + sampleInset : localX - sampleInset,
+                    minX,
+                    maxX);
+                float sampleLocalZ = Mathf.Clamp(
+                    Mathf.Approximately(localZ, minZ) ? localZ + sampleInset : localZ - sampleInset,
+                    minZ,
+                    maxZ);
+                float worldX = terrainInfo.Origin.x + sampleLocalX;
+                float worldZ = terrainInfo.Origin.z + sampleLocalZ;
+                localY = SampleProjectionSourceHeight(terrainInfo, worldX, worldZ) + surfaceOffset - terrainInfo.Origin.y;
+            }
+
+            vertices.Add(new Vector3(localX, localY, localZ));
+            uvs.Add(new Vector2(uvX, uvY));
+        }
+
+        private static void ResolveConformingCellFootprint(
+            Fog3TerrainInfo terrainInfo,
+            int x,
+            int z,
+            out float minX,
+            out float maxX,
+            out float minZ,
+            out float maxZ)
+        {
+            float cellSize = terrainInfo.CellSize;
+            float edgeInset = terrainInfo.PlatformEdgeInset;
+            minX = x * cellSize;
+            maxX = (x + 1) * cellSize;
+            minZ = z * cellSize;
+            maxZ = (z + 1) * cellSize;
+            if (edgeInset <= 0f)
+                return;
+
+            if (terrainInfo.IsSlope(x, z))
+            {
+                Fog3SlopeCellInfo slope = terrainInfo.GetSlopeCellInfo(x, z);
+                if (!HasMatchingSlopeNeighbor(terrainInfo, x - slope.DirectionX, z - slope.DirectionY, slope))
+                    ExtendSlopeFootprint(ref minX, ref maxX, ref minZ, ref maxZ, -slope.DirectionX, -slope.DirectionY, edgeInset);
+                if (!HasMatchingSlopeNeighbor(terrainInfo, x + slope.DirectionX, z + slope.DirectionY, slope))
+                    ExtendSlopeFootprint(ref minX, ref maxX, ref minZ, ref maxZ, slope.DirectionX, slope.DirectionY, edgeInset);
+                return;
+            }
+
+            int platformHeight = terrainInfo.GetPlatformHeight(x, z);
+            if (platformHeight < 0)
+                return;
+
+            if (!HasMatchingFlatPlatformNeighbor(terrainInfo, x - 1, z, platformHeight))
+                minX += edgeInset;
+            if (!HasMatchingFlatPlatformNeighbor(terrainInfo, x + 1, z, platformHeight))
+                maxX -= edgeInset;
+            if (!HasMatchingFlatPlatformNeighbor(terrainInfo, x, z - 1, platformHeight))
+                minZ += edgeInset;
+            if (!HasMatchingFlatPlatformNeighbor(terrainInfo, x, z + 1, platformHeight))
+                maxZ -= edgeInset;
+        }
+
+        private static bool HasMatchingFlatPlatformNeighbor(Fog3TerrainInfo terrainInfo, int x, int z, int platformHeight)
+        {
+            return x >= 0 && x < terrainInfo.Width && z >= 0 && z < terrainInfo.Height &&
+                   !terrainInfo.IsSlope(x, z) && terrainInfo.GetPlatformHeight(x, z) == platformHeight;
+        }
+
+        private static bool HasMatchingSlopeNeighbor(
+            Fog3TerrainInfo terrainInfo,
+            int x,
+            int z,
+            Fog3SlopeCellInfo slope)
+        {
+            if (x < 0 || x >= terrainInfo.Width || z < 0 || z >= terrainInfo.Height || !terrainInfo.IsSlope(x, z))
+                return false;
+
+            Fog3SlopeCellInfo neighbor = terrainInfo.GetSlopeCellInfo(x, z);
+            return neighbor.DirectionX == slope.DirectionX &&
+                   neighbor.DirectionY == slope.DirectionY &&
+                   neighbor.Run == slope.Run &&
+                   neighbor.Rise == slope.Rise;
+        }
+
+        private static void ExtendSlopeFootprint(
+            ref float minX,
+            ref float maxX,
+            ref float minZ,
+            ref float maxZ,
+            int directionX,
+            int directionZ,
+            float extension)
+        {
+            if (directionX < 0)
+                minX -= extension;
+            else if (directionX > 0)
+                maxX += extension;
+            else if (directionZ < 0)
+                minZ -= extension;
+            else if (directionZ > 0)
+                maxZ += extension;
+        }
+
+        private static int AddConformingCliffWall(
+            System.Collections.Generic.List<Vector3> vertices,
+            System.Collections.Generic.List<Vector2> uvs,
+            System.Collections.Generic.List<int> triangles,
+            int firstEdgeStart,
+            int firstEdgeEnd,
+            int secondEdgeStart,
+            int secondEdgeEnd)
+        {
+            float firstHeight = (vertices[firstEdgeStart].y + vertices[firstEdgeEnd].y) * 0.5f;
+            float secondHeight = (vertices[secondEdgeStart].y + vertices[secondEdgeEnd].y) * 0.5f;
+            if (Mathf.Abs(firstHeight - secondHeight) <= 0.001f)
+                return -1;
+
+            bool firstIsHigher = firstHeight > secondHeight;
+            int highStart = firstIsHigher ? firstEdgeStart : secondEdgeStart;
+            int highEnd = firstIsHigher ? firstEdgeEnd : secondEdgeEnd;
+            int lowStart = firstIsHigher ? secondEdgeStart : firstEdgeStart;
+            int lowEnd = firstIsHigher ? secondEdgeEnd : firstEdgeEnd;
+            Vector3 highStartPosition = vertices[highStart];
+            Vector3 highEndPosition = vertices[highEnd];
+            Vector3 lowStartPosition = vertices[lowStart];
+            Vector3 lowEndPosition = vertices[lowEnd];
+            int vertexIndex = vertices.Count;
+            vertices.Add(highStartPosition);
+            vertices.Add(highEndPosition);
+            vertices.Add(lowStartPosition);
+            vertices.Add(lowEndPosition);
+            uvs.Add(uvs[highStart]);
+            uvs.Add(uvs[highEnd]);
+            uvs.Add(uvs[highStart]);
+            uvs.Add(uvs[highEnd]);
+            triangles.Add(vertexIndex);
+            triangles.Add(vertexIndex + 1);
+            triangles.Add(vertexIndex + 2);
+            triangles.Add(vertexIndex + 1);
+            triangles.Add(vertexIndex + 3);
+            triangles.Add(vertexIndex + 2);
+            return vertexIndex;
+        }
+
+        private static void AddConformingCliffWallJunction(
+            System.Collections.Generic.List<Vector3> vertices,
+            System.Collections.Generic.List<Vector2> uvs,
+            System.Collections.Generic.List<int> triangles,
+            int previousWallVertexIndex,
+            int wallVertexIndex)
+        {
+            if (previousWallVertexIndex < 0 || wallVertexIndex < 0)
+                return;
+
+            Vector3 sharedHighEnd = vertices[previousWallVertexIndex + 1];
+            Vector3 sharedHighStart = vertices[wallVertexIndex];
+            if ((sharedHighEnd - sharedHighStart).sqrMagnitude > 0.000001f)
+                return;
+
+            Vector3 previousLowEnd = vertices[previousWallVertexIndex + 3];
+            Vector3 lowStart = vertices[wallVertexIndex + 2];
+            if (Vector3.Cross(previousLowEnd - sharedHighEnd, lowStart - sharedHighEnd).sqrMagnitude <= 0.000001f)
+                return;
+
+            int vertexIndex = vertices.Count;
+            vertices.Add(sharedHighEnd);
+            vertices.Add(previousLowEnd);
+            vertices.Add(lowStart);
+            uvs.Add(uvs[previousWallVertexIndex + 1]);
+            uvs.Add(uvs[previousWallVertexIndex + 3]);
+            uvs.Add(uvs[wallVertexIndex + 2]);
+            triangles.Add(vertexIndex);
+            triangles.Add(vertexIndex + 1);
+            triangles.Add(vertexIndex + 2);
+        }
+
         private Mesh CreateCameraProjectedCloudMesh(Fog3TerrainInfo terrainInfo, string meshName)
         {
-            int vertexWidth = terrainInfo.Width + 1;
-            int vertexHeight = terrainInfo.Height + 1;
-            int vertexCount = vertexWidth * vertexHeight;
+            int vertexCount = terrainInfo.Width * terrainInfo.Height * 4;
             Vector3[] vertices = new Vector3[vertexCount];
             Vector2[] uvs = new Vector2[vertexCount];
 
             FillCameraProjectedCloudVertices(terrainInfo, vertices, uvs);
-
-            int[] triangles = new int[terrainInfo.Width * terrainInfo.Height * 6];
-            int triangleIndex = 0;
-            for (int z = 0; z < terrainInfo.Height; z++)
-            {
-                for (int x = 0; x < terrainInfo.Width; x++)
-                {
-                    int bottomLeft = x + z * vertexWidth;
-                    int bottomRight = bottomLeft + 1;
-                    int topLeft = bottomLeft + vertexWidth;
-                    int topRight = topLeft + 1;
-
-                    triangles[triangleIndex++] = bottomLeft;
-                    triangles[triangleIndex++] = topLeft;
-                    triangles[triangleIndex++] = bottomRight;
-                    triangles[triangleIndex++] = topLeft;
-                    triangles[triangleIndex++] = topRight;
-                    triangles[triangleIndex++] = bottomRight;
-                }
-            }
 
             Mesh mesh = new Mesh { name = meshName };
             if (vertexCount > 65000)
@@ -356,7 +581,7 @@ namespace AAAGame.MiniMap.FOG3
 
             mesh.vertices = vertices;
             mesh.uv = uvs;
-            mesh.triangles = triangles;
+            mesh.triangles = CreateCameraProjectedCloudTriangles(terrainInfo);
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
             return mesh;
@@ -364,10 +589,11 @@ namespace AAAGame.MiniMap.FOG3
 
         private void UpdateCameraProjectedCloudMesh(Mesh mesh, Fog3TerrainInfo terrainInfo)
         {
-            int vertexCount = (terrainInfo.Width + 1) * (terrainInfo.Height + 1);
+            int vertexCount = terrainInfo.Width * terrainInfo.Height * 4;
             Vector3[] vertices = mesh.vertices;
             Vector2[] uvs = mesh.uv;
-            if (vertices == null || vertices.Length != vertexCount)
+            bool topologyChanged = vertices == null || vertices.Length != vertexCount;
+            if (topologyChanged)
                 vertices = new Vector3[vertexCount];
             if (uvs == null || uvs.Length != vertexCount)
                 uvs = new Vector2[vertexCount];
@@ -375,28 +601,139 @@ namespace AAAGame.MiniMap.FOG3
             FillCameraProjectedCloudVertices(terrainInfo, vertices, uvs);
             mesh.vertices = vertices;
             mesh.uv = uvs;
+            if (topologyChanged)
+                mesh.triangles = CreateCameraProjectedCloudTriangles(terrainInfo);
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
         }
 
         private void FillCameraProjectedCloudVertices(Fog3TerrainInfo terrainInfo, Vector3[] vertices, Vector2[] uvs)
         {
-            int vertexWidth = terrainInfo.Width + 1;
-            int vertexHeight = terrainInfo.Height + 1;
-            for (int z = 0; z < vertexHeight; z++)
+            float cellSize = terrainInfo.CellSize;
+            float sampleInset = cellSize * 0.01f;
+            int vertexIndex = 0;
+            for (int z = 0; z < terrainInfo.Height; z++)
             {
-                for (int x = 0; x < vertexWidth; x++)
+                float localMinZ = z * cellSize;
+                float localMaxZ = (z + 1) * cellSize;
+                float sampleMinZ = localMinZ + sampleInset;
+                float sampleMaxZ = localMaxZ - sampleInset;
+                float uvMinY = (float)z / terrainInfo.Height;
+                float uvMaxY = (float)(z + 1) / terrainInfo.Height;
+                for (int x = 0; x < terrainInfo.Width; x++)
                 {
-                    int index = x + z * vertexWidth;
-                    float localX = x * terrainInfo.CellSize;
-                    float localZ = z * terrainInfo.CellSize;
-                    float worldX = terrainInfo.Origin.x + localX;
-                    float worldZ = terrainInfo.Origin.z + localZ;
-                    float sourceLocalY = SampleProjectionSourceHeight(terrainInfo, worldX, worldZ) - terrainInfo.Origin.y;
-                    vertices[index] = ProjectLocalPointToCloud(localX, sourceLocalY, overlayHeight, localZ);
-                    uvs[index] = new Vector2((float)x / terrainInfo.Width, (float)z / terrainInfo.Height);
+                    float localMinX = x * cellSize;
+                    float localMaxX = (x + 1) * cellSize;
+                    float sampleMinX = localMinX + sampleInset;
+                    float sampleMaxX = localMaxX - sampleInset;
+                    float uvMinX = (float)x / terrainInfo.Width;
+                    float uvMaxX = (float)(x + 1) / terrainInfo.Width;
+                    bool isSlope = terrainInfo.IsSlope(x, z);
+                    float flatSourceLocalY = 0f;
+                    if (!isSlope)
+                    {
+                        float sampleCenterX = terrainInfo.Origin.x + (x + 0.5f) * cellSize;
+                        float sampleCenterZ = terrainInfo.Origin.z + (z + 0.5f) * cellSize;
+                        flatSourceLocalY = SampleProjectionSourceHeight(terrainInfo, sampleCenterX, sampleCenterZ) - terrainInfo.Origin.y;
+                    }
+
+                    FillCameraProjectedCloudVertex(
+                        terrainInfo,
+                        vertices,
+                        uvs,
+                        vertexIndex++,
+                        localMinX,
+                        localMinZ,
+                        sampleMinX,
+                        sampleMinZ,
+                        isSlope,
+                        flatSourceLocalY,
+                        uvMinX,
+                        uvMinY);
+                    FillCameraProjectedCloudVertex(
+                        terrainInfo,
+                        vertices,
+                        uvs,
+                        vertexIndex++,
+                        localMinX,
+                        localMaxZ,
+                        sampleMinX,
+                        sampleMaxZ,
+                        isSlope,
+                        flatSourceLocalY,
+                        uvMinX,
+                        uvMaxY);
+                    FillCameraProjectedCloudVertex(
+                        terrainInfo,
+                        vertices,
+                        uvs,
+                        vertexIndex++,
+                        localMaxX,
+                        localMinZ,
+                        sampleMaxX,
+                        sampleMinZ,
+                        isSlope,
+                        flatSourceLocalY,
+                        uvMaxX,
+                        uvMinY);
+                    FillCameraProjectedCloudVertex(
+                        terrainInfo,
+                        vertices,
+                        uvs,
+                        vertexIndex++,
+                        localMaxX,
+                        localMaxZ,
+                        sampleMaxX,
+                        sampleMaxZ,
+                        isSlope,
+                        flatSourceLocalY,
+                        uvMaxX,
+                        uvMaxY);
                 }
             }
+        }
+
+        private void FillCameraProjectedCloudVertex(
+            Fog3TerrainInfo terrainInfo,
+            Vector3[] vertices,
+            Vector2[] uvs,
+            int vertexIndex,
+            float localX,
+            float localZ,
+            float sampleLocalX,
+            float sampleLocalZ,
+            bool sampleSlopeHeight,
+            float flatSourceLocalY,
+            float uvX,
+            float uvY)
+        {
+            float sourceLocalY = flatSourceLocalY;
+            if (sampleSlopeHeight)
+            {
+                float worldSampleX = terrainInfo.Origin.x + sampleLocalX;
+                float worldSampleZ = terrainInfo.Origin.z + sampleLocalZ;
+                sourceLocalY = SampleProjectionSourceHeight(terrainInfo, worldSampleX, worldSampleZ) - terrainInfo.Origin.y;
+            }
+            vertices[vertexIndex] = ProjectLocalPointToCloud(localX, sourceLocalY, overlayHeight, localZ);
+            uvs[vertexIndex] = new Vector2(uvX, uvY);
+        }
+
+        private static int[] CreateCameraProjectedCloudTriangles(Fog3TerrainInfo terrainInfo)
+        {
+            int cellCount = terrainInfo.Width * terrainInfo.Height;
+            int[] triangles = new int[cellCount * 6];
+            for (int cellIndex = 0; cellIndex < cellCount; cellIndex++)
+            {
+                int vertexIndex = cellIndex * 4;
+                int triangleIndex = cellIndex * 6;
+                triangles[triangleIndex] = vertexIndex;
+                triangles[triangleIndex + 1] = vertexIndex + 1;
+                triangles[triangleIndex + 2] = vertexIndex + 2;
+                triangles[triangleIndex + 3] = vertexIndex + 1;
+                triangles[triangleIndex + 4] = vertexIndex + 3;
+                triangles[triangleIndex + 5] = vertexIndex + 2;
+            }
+            return triangles;
         }
 
         private float SampleTerrainHeight(Fog3TerrainInfo terrainInfo, float worldX, float worldZ)
@@ -417,11 +754,41 @@ namespace AAAGame.MiniMap.FOG3
             float startHeight = Mathf.Max(1f, settings.HeightSampleStartHeight);
             float maxDistance = Mathf.Max(startHeight + 1f, settings.HeightSampleMaxDistance);
             Vector3 rayOrigin = new Vector3(worldX, terrainInfo.Origin.y + startHeight, worldZ);
+            int hitCount = Physics.RaycastNonAlloc(
+                rayOrigin,
+                Vector3.down,
+                projectionHeightHits,
+                maxDistance,
+                heightSampleMask,
+                QueryTriggerInteraction.Ignore);
+            if (hitCount == projectionHeightHits.Length)
+            {
+                throw new System.InvalidOperationException(
+                    $"FOG3 terrain projection hit buffer overflowed at ({worldX:F2}, {worldZ:F2}). capacity={projectionHeightHits.Length}.");
+            }
 
-            if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, maxDistance, heightSampleMask, QueryTriggerInteraction.Ignore))
-                return hit.point.y;
+            int closestTerrainHit = -1;
+            float closestDistance = float.PositiveInfinity;
+            for (int i = 0; i < hitCount; i++)
+            {
+                RaycastHit hit = projectionHeightHits[i];
+                UnityGameFramework.Runtime.EntityLogic entity = hit.collider.GetComponentInParent<UnityGameFramework.Runtime.EntityLogic>();
+                if (entity != null && entity is not LevelEntity)
+                    continue;
+                if (hit.distance >= closestDistance)
+                    continue;
 
-            return terrainInfo.Origin.y;
+                closestTerrainHit = i;
+                closestDistance = hit.distance;
+            }
+
+            if (closestTerrainHit < 0)
+            {
+                throw new System.InvalidOperationException(
+                    $"FOG3 terrain projection found no terrain surface at ({worldX:F2}, {worldZ:F2}). source={terrainInfo.SourceName}.");
+            }
+
+            return projectionHeightHits[closestTerrainHit].point.y;
         }
 
         private void CreateOutsideQuad(string objectName, Vector3 min, Vector3 max, float y)
@@ -538,7 +905,7 @@ namespace AAAGame.MiniMap.FOG3
 
         private Material CreateTransparentMaterial(string materialName, Color color, int transparentQueueOffset)
         {
-            Shader shader = settings.DrawOverSceneGeometry ? settings.OverlayAlwaysOnTopShader : null;
+            Shader shader = settings.OverlayAlwaysOnTopShader;
             if (settings.DrawOverSceneGeometry && shader == null)
             {
                 Debug.LogError("[FOG3] DrawOverSceneGeometry is enabled but OverlayAlwaysOnTopShader is not assigned.");
@@ -670,7 +1037,9 @@ namespace AAAGame.MiniMap.FOG3
 
         private bool ShouldProjectCloudLayerToCamera()
         {
-            return false;
+            return settings != null
+                   && settings.SurfaceMode == Fog3OverlaySurfaceMode.CloudLayer
+                   && settings.ProjectCloudLayerToCameraView;
         }
 
         private static Camera ResolveReferenceCamera()

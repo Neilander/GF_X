@@ -1,6 +1,8 @@
 ﻿using System.IO;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
+using UnityEngine.UI;
 
 public sealed class StartupLevelFlowTests
 {
@@ -20,6 +22,100 @@ public sealed class StartupLevelFlowTests
         Assert.That(
             generalSetup.LastIndexOf("GF.UI.OpenUIForm(UIViews.GoalUIForm);", System.StringComparison.Ordinal),
             Is.EqualTo(openGoal));
+    }
+
+    [Test]
+    public void InPlaceLevelSwitch_UsesLevelSwitchLoadingWithoutWorldVisibilityOverrides()
+    {
+        string scriptsRoot = Path.Combine(Application.dataPath, "AAAGame", "Scripts");
+        string runtime = File.ReadAllText(Path.Combine(scriptsRoot, "Procedures", "RuntimeProcedureBase.cs"));
+        string fog = File.ReadAllText(Path.Combine(scriptsRoot, "MiniMap", "FOG3", "Fog3Manager.cs"));
+        string levelSelection = File.ReadAllText(Path.Combine(scriptsRoot, "GameClass", "LevelSelectionService.cs"));
+        string generalSetup = File.ReadAllText(Path.Combine(scriptsRoot, "UTManagers", "GeneralSetup.cs"));
+        string levelEntity = File.ReadAllText(Path.Combine(scriptsRoot, "Entity", "LevelEntity.cs"));
+        string healthBar = File.ReadAllText(Path.Combine(scriptsRoot, "UI", "HealthBarComp.cs"));
+        string levelSwitchPrefab = File.ReadAllText(Path.Combine(
+            Application.dataPath,
+            "AAAGame",
+            "Prefabs",
+            "UI",
+            "LevelSwitchUIForm.prefab"));
+
+        int transitionStart = runtime.IndexOf(
+            "private async UniTaskVoid EnterRuntimeLevelInPlaceAsync",
+            System.StringComparison.Ordinal);
+        int shutdownPreviousPipeline = runtime.IndexOf(
+            "m_RuntimeInitPipeline?.Shutdown();",
+            transitionStart,
+            System.StringComparison.Ordinal);
+        int startRuntimePipeline = runtime.IndexOf(
+            "new RuntimeInitPipeline(RuntimeInitLogTag, RuntimeLevelIdentifier, RequiredRuntimeSystems)",
+            shutdownPreviousPipeline,
+            System.StringComparison.Ordinal);
+        int completePresentation = runtime.IndexOf(
+            "m_RuntimeInitPipeline.CompleteLoadingPresentation();",
+            startRuntimePipeline,
+            System.StringComparison.Ordinal);
+
+        Assert.That(shutdownPreviousPipeline, Is.GreaterThan(transitionStart));
+        Assert.That(startRuntimePipeline, Is.GreaterThan(shutdownPreviousPipeline));
+        Assert.That(completePresentation, Is.GreaterThan(startRuntimePipeline));
+        Assert.That(levelSwitchPrefab, Does.Contain("m_Color: {r: 0, g: 0, b: 0, a: 1}"));
+        Assert.That(levelSelection, Does.Not.Contain("HideEntityRenderersDuringLoad"));
+        Assert.That(levelSelection, Does.Not.Contain("RestoreHiddenLoadingRenderers"));
+        Assert.That(generalSetup, Does.Not.Contain("HideEntityRenderersDuringLoad"));
+        Assert.That(levelEntity, Does.Not.Contain("m_HiddenDuringRuntimeInitialization"));
+        Assert.That(healthBar, Does.Not.Contain("_visibleByLevelLoad"));
+        Assert.That(fog, Does.Not.Contain("SetWorldOverlayPresentationVisible"));
+    }
+
+    [Test]
+    public void DeprecatedBuiltinLoadingChain_IsRemoved()
+    {
+        string gameRoot = Path.Combine(Application.dataPath, "AAAGame");
+        string runtimeScripts = Path.Combine(gameRoot, "Scripts");
+        string builtinScripts = Path.Combine(gameRoot, "ScriptsBuiltin", "Runtime");
+        string combined = string.Concat(
+            File.ReadAllText(Path.Combine(runtimeScripts, "Procedures", "PreloadProcedure.cs")),
+            File.ReadAllText(Path.Combine(runtimeScripts, "Procedures", "ChangeSceneProcedure.cs")),
+            File.ReadAllText(Path.Combine(runtimeScripts, "Procedures", "RuntimeProcedureBase.cs")),
+            File.ReadAllText(Path.Combine(runtimeScripts, "Procedures", "MenuProcedure.cs")),
+            File.ReadAllText(Path.Combine(builtinScripts, "Extension", "BuiltinViewComponent.cs")),
+            File.ReadAllText(Path.Combine(builtinScripts, "Procedures", "UpdateResourcesProcedure.cs")),
+            File.ReadAllText(Path.Combine(builtinScripts, "Procedures", "LoadHotfixDllProcedure.cs")));
+        string launchScene = File.ReadAllText(Path.Combine(gameRoot, "Scene", "Launch.unity"));
+
+        Assert.That(combined, Does.Not.Contain("ShowLoadingProgress"));
+        Assert.That(combined, Does.Not.Contain("HideLoadingProgress"));
+        Assert.That(combined, Does.Not.Contain("SetLoadingProgress"));
+        Assert.That(combined, Does.Not.Contain("SuppressNextBuiltinLoadingProgress"));
+        Assert.That(launchScene, Does.Not.Contain("m_Name: LoadingView"));
+        Assert.That(launchScene, Does.Not.Contain("loadingProgressNode:"));
+    }
+
+    [Test]
+    public void LevelEntryDialog_HasOpaqueFullscreenBackdrop()
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            "Assets/AAAGame/Prefabs/UI/LvEnterDialog.prefab");
+
+        Assert.That(prefab, Is.Not.Null);
+        Assert.That(prefab.transform.childCount, Is.GreaterThan(0));
+
+        Transform backdropTransform = prefab.transform.GetChild(0);
+        RectTransform backdrop = backdropTransform as RectTransform;
+        Image image = backdropTransform.GetComponent<Image>();
+
+        Assert.That(backdropTransform.name, Is.EqualTo("Backdrop"));
+        Assert.That(backdrop, Is.Not.Null);
+        Assert.That(backdrop.gameObject.activeSelf, Is.True);
+        Assert.That(backdrop.anchorMin, Is.EqualTo(Vector2.zero));
+        Assert.That(backdrop.anchorMax, Is.EqualTo(Vector2.one));
+        Assert.That(backdrop.offsetMin, Is.EqualTo(Vector2.zero));
+        Assert.That(backdrop.offsetMax, Is.EqualTo(Vector2.zero));
+        Assert.That(image, Is.Not.Null);
+        Assert.That(image.color, Is.EqualTo(Color.black));
+        Assert.That(image.raycastTarget, Is.True);
     }
 
     [Test]

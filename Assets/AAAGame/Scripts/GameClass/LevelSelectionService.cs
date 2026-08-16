@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using GameFramework;
 using GameFramework.Resource;
-using UnityEngine;
 using UnityGameFramework.Runtime;
 
 public sealed class LevelSelectionEntry
@@ -29,7 +28,6 @@ public static class LevelSelectionService
     private const int MaxSelectableLevelId = 3;
     public const string TestLevelIdentifier = "LvTest";
     private static bool s_ShouldShowStartupLevelSwitch = AppSettings.Instance == null || AppSettings.Instance.ShowStartupLevelSwitch;
-    private static readonly List<Renderer> s_HiddenLoadingRenderers = new();
 
     public static event Action<float> LevelLoadProgressChanged;
     public static event Action LevelLoadStarted;
@@ -145,7 +143,6 @@ public static class LevelSelectionService
     internal static void NotifyLevelLoadStarted()
     {
         IsLevelLoading = true;
-        HealthBarComp.SetLevelLoading(true);
         LevelLoadStarted?.Invoke();
         NotifyLevelLoadProgress(0f);
     }
@@ -167,8 +164,6 @@ public static class LevelSelectionService
     internal static void NotifyLevelLoadCompleted()
     {
         IsLevelLoading = false;
-        RestoreHiddenLoadingRenderers();
-        HealthBarComp.SetLevelLoading(false);
         NotifyLevelLoadProgress(1f);
         LevelLoadCompleted?.Invoke();
     }
@@ -176,44 +171,7 @@ public static class LevelSelectionService
     internal static void NotifyLevelLoadFailed(string errorMessage)
     {
         IsLevelLoading = false;
-        RestoreHiddenLoadingRenderers();
-        HealthBarComp.SetLevelLoading(false);
         LevelLoadFailed?.Invoke(errorMessage);
-    }
-
-    internal static void HideEntityRenderersDuringLoad(EntityLogic entityLogic)
-    {
-        if (!IsLevelLoading || entityLogic == null)
-        {
-            return;
-        }
-
-        Renderer[] renderers = entityLogic.GetComponentsInChildren<Renderer>(true);
-        for (int i = 0; i < renderers.Length; i++)
-        {
-            Renderer renderer = renderers[i];
-            if (renderer == null || !renderer.enabled)
-            {
-                continue;
-            }
-
-            renderer.enabled = false;
-            s_HiddenLoadingRenderers.Add(renderer);
-        }
-    }
-
-    private static void RestoreHiddenLoadingRenderers()
-    {
-        for (int i = 0; i < s_HiddenLoadingRenderers.Count; i++)
-        {
-            Renderer renderer = s_HiddenLoadingRenderers[i];
-            if (renderer != null)
-            {
-                renderer.enabled = true;
-            }
-        }
-
-        s_HiddenLoadingRenderers.Clear();
     }
 
     public static bool TryGetLevelRow(string levelIdentifier, out LevelTable row, out string errorMessage)
