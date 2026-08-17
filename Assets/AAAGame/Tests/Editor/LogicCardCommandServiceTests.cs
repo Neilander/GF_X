@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using AAAGame.Card;
 
 [TestFixture]
@@ -162,6 +164,72 @@ public sealed class LogicCardCommandServiceTests
     {
         Assert.Throws<InvalidOperationException>(() =>
             CardSystemController.ResolveDiscardResourceReward(new[] { 2, 5, 9 }, cardLevel));
+    }
+
+    [Test]
+    public void CardWithoutEnoughSupply_CanBeginDragForDiscard()
+    {
+        GameObject canvasObject = new GameObject("CardDragTestCanvas", typeof(RectTransform), typeof(Canvas));
+        GameObject cardObject = new GameObject("CardDragTestItem", typeof(RectTransform), typeof(CanvasGroup));
+        cardObject.SetActive(false);
+        cardObject.transform.SetParent(canvasObject.transform, false);
+        try
+        {
+            HandCardItem cardItem = cardObject.AddComponent<HandCardItem>();
+
+            FieldInfo canPlayField = typeof(HandCardItem).GetField(
+                "m_CanPlay",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo isDraggingField = typeof(HandCardItem).GetField(
+                "m_IsDragging",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo rectTransformField = typeof(HandCardItem).GetField(
+                "m_RectTransform",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo canvasGroupField = typeof(HandCardItem).GetField(
+                "canvasGroup",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo canvasField = typeof(HandCardItem).GetField(
+                "m_Canvas",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(canPlayField);
+            Assert.IsNotNull(isDraggingField);
+            Assert.IsNotNull(rectTransformField);
+            Assert.IsNotNull(canvasGroupField);
+            Assert.IsNotNull(canvasField);
+
+            canPlayField.SetValue(cardItem, false);
+            rectTransformField.SetValue(cardItem, cardObject.GetComponent<RectTransform>());
+            canvasGroupField.SetValue(cardItem, cardObject.GetComponent<CanvasGroup>());
+            canvasField.SetValue(cardItem, canvasObject.GetComponent<Canvas>());
+            cardItem.OnBeginDrag(new PointerEventData(null));
+
+            Assert.IsTrue(
+                (bool)isDraggingField.GetValue(cardItem),
+                "A card that cannot be played still needs to enter drag state so the player can discard it.");
+            Assert.IsFalse(cardObject.GetComponent<CanvasGroup>().blocksRaycasts);
+        }
+        finally
+        {
+            if (cardObject != null)
+                UnityEngine.Object.DestroyImmediate(cardObject);
+            UnityEngine.Object.DestroyImmediate(canvasObject);
+        }
+    }
+
+    [TestCase(false, false, false, false)]
+    [TestCase(false, true, false, true)]
+    [TestCase(false, false, true, true)]
+    [TestCase(true, false, false, true)]
+    public void FullPopulationDrag_ContinuesOnlyInsideHandOrTrash(
+        bool canPlay,
+        bool isOverHand,
+        bool isOverTrash,
+        bool expected)
+    {
+        Assert.AreEqual(
+            expected,
+            CardUIForm.IsDragPositionAllowed(canPlay, isOverHand, isOverTrash));
     }
 
     [Test]

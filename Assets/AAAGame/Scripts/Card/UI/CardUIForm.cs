@@ -1167,14 +1167,46 @@ namespace AAAGame.Card
                 SetTrashBinDragFeedback(cardItem, false);
             }
 
-            m_CardSystemController.StartPlacement(cardItem.GetCardModel());
+            if (cardItem.CanPlay())
+            {
+                m_CardSystemController.StartPlacement(cardItem.GetCardModel());
+            }
+            else
+            {
+                Log.Info("[CardUI] Restricted card drag started: placement disabled, discard enabled.");
+            }
         }
 
-        public void OnCardDragging(HandCardItem cardItem, Vector2 screenPosition)
+        public bool OnCardDragging(HandCardItem cardItem, Vector2 screenPosition)
         {
             bool isOverTrash = UpdateTrashBinHint(screenPosition);
             SetTrashBinDragFeedback(cardItem, isOverTrash);
+
+            if (!cardItem.CanPlay())
+            {
+                areaMaterialOverlay?.HideAreaEffect();
+                HideTargetingVisuals();
+                bool isOverHand = IsOverHandCardArea(screenPosition, false);
+                if (!IsDragPositionAllowed(false, isOverHand, isOverTrash))
+                {
+                    m_DraggingCard = null;
+                    RefreshHandCardInteractionVisuals();
+                    SetTrashBinDragFeedback(cardItem, false);
+                    m_CardSystemController.CancelPlacement();
+                    Log.Info("[CardUI] Restricted card drag canceled immediately after leaving the hand area.");
+                    return false;
+                }
+
+                return true;
+            }
+
             UpdateAreaMaterialEffect(cardItem, screenPosition);
+            return true;
+        }
+
+        internal static bool IsDragPositionAllowed(bool canPlay, bool isOverHand, bool isOverTrash)
+        {
+            return canPlay || isOverHand || isOverTrash;
         }
 
         public bool OnCardEndDrag(HandCardItem cardItem, Vector2 screenPosition)
@@ -1212,6 +1244,16 @@ namespace AAAGame.Card
                 RefreshHandCardLayout();
                 RequestDeferredHandLayoutRefresh();
                 RefreshHandCardInteractionVisuals();
+                return true;
+            }
+
+            if (!cardItem.CanPlay())
+            {
+                m_CardSystemController.CancelPlacement();
+                cardItem.RestoreToHandLayoutImmediately();
+                RefreshHandCardLayout();
+                RequestDeferredHandLayoutRefresh();
+                Log.Info("[CardUI] Restricted card drag ended outside the hand and was returned.");
                 return true;
             }
 

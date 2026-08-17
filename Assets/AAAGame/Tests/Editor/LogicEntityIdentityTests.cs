@@ -1083,7 +1083,7 @@ public class LogicEntityIdentityTests
             Assert.AreEqual(source.Forward.x.RawValue, ((Fix64)presentedForward.x).RawValue);
             Assert.AreEqual(source.Forward.y.RawValue, ((Fix64)presentedForward.z).RawValue);
             Assert.Throws<InvalidOperationException>(() => view.TauntLevel = 7);
-            Assert.AreEqual(1, source.TauntLevel);
+            Assert.AreEqual(0, source.TauntLevel);
 
             FixVector2 positionBeforeViewMutation = source.Position;
             Vector3 presentationBeforeViewMutation = gameObject.transform.position;
@@ -2703,7 +2703,7 @@ public class LogicEntityIdentityTests
         state.BuffComp.AddBuff(TauntBuffCallback.CreateTaunt(3), state);
 
         Assert.AreEqual((Fix64)7, state.GetProperty(CreatureMainProperty.Def));
-        Assert.AreEqual(4, state.TauntLevel);
+        Assert.AreEqual(3, state.TauntLevel);
 
         state.TakeDamage((Fix64)40, HealthModifyType.empty);
         state.Heal((Fix64)15);

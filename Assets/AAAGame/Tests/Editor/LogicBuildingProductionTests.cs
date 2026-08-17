@@ -30,7 +30,13 @@ public sealed class LogicBuildingProductionTests
     public void TearDown()
     {
         if (m_RewardManagerObject != null)
+        {
+            RewardManager manager = m_RewardManagerObject.GetComponent<RewardManager>();
+            if (manager != null)
+                UnsubscribeRewardManagerForTest(manager);
             UnityEngine.Object.DestroyImmediate(m_RewardManagerObject);
+            m_RewardManagerObject = null;
+        }
         EntityRegistry.Clear();
         LogicStrongholdMap.Clear();
         LogicProductionConditionState.ClearAll();
@@ -847,6 +853,21 @@ public sealed class LogicBuildingProductionTests
             BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(subscribed);
         Assert.IsTrue((bool)subscribed.GetValue(manager));
+    }
+
+    private static void UnsubscribeRewardManagerForTest(RewardManager manager)
+    {
+        MethodInfo unsubscribe = typeof(RewardManager).GetMethod(
+            "TryUnsubscribeEvents",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(unsubscribe);
+        unsubscribe.Invoke(manager, null);
+
+        FieldInfo subscribed = typeof(RewardManager).GetField(
+            "m_LogicEventsSubscribed",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(subscribed);
+        Assert.IsFalse((bool)subscribed.GetValue(manager));
     }
 
     private static void InvokeGrantProductionIncome(RewardManager manager)

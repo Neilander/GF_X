@@ -67,7 +67,7 @@ public class SimEntityContext : IEntityContext, ITargetable
 
     public HealthContainer Health { get; private set; } = new HealthContainer();
     public Fix64 HealthValue => Health.currentHealth;
-    public int TauntLevel { get; set; } = 1;
+    public int TauntLevel { get; set; }
 
     public IControlBrain Brain { get; set; }
 

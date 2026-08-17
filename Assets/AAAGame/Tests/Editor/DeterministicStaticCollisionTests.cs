@@ -288,24 +288,27 @@ public sealed class DeterministicStaticCollisionTests
     }
 
     [Test]
-    public void LvTestSlopeSide_RepeatedAuthoritativeMovementCannotCrossCliff()
+    public void BlockedTraversalEdge_RepeatedAuthoritativeMovementCannotCrossCliff()
     {
-        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>(
-            "Assets/AAAGame/Tilemap/LvTest_FlowNavigationGrid_Medium.asset");
-        Assert.NotNull(grid);
-        FlowNavigationGridAsset.FixedAuthorityMetadata metadata = grid.GetFixedAuthorityMetadata();
+        const int width = 6;
+        const int height = 6;
+        const int lowerRow = 2;
+        bool[] walkable = CreateMask(width, height);
+        byte[] traversal = CreateFullTraversalMask(width, height);
+        for (int x = 0; x < width; x++)
+            BlockVerticalTraversal(traversal, width, x, lowerRow);
         var world = new LogicStaticCollisionWorld(
-            grid.AgentTypeId,
+            0,
             1,
-            grid.Width,
-            grid.Height,
-            metadata.CellSizeGridRaw,
-            metadata.OriginXGridRaw,
-            metadata.OriginZGridRaw,
-            grid.GetWalkableMaskRuntimeReadOnlyReference(),
-            grid.GetNeighborTraversalMaskRuntimeReadOnlyReference());
-        FixVector2 position = new FixVector2((Fix64)68f, (Fix64)50.01f);
-        FixVector2 step = new FixVector2(Fix64.Zero, (Fix64)(2.5f / 120f));
+            width,
+            height,
+            Fix64.One,
+            FixVector2.Zero,
+            walkable,
+            traversal);
+        Fix64 radius = (Fix64)0.22f;
+        FixVector2 position = new FixVector2((Fix64)2.5f, (Fix64)2.5f);
+        FixVector2 step = new FixVector2(Fix64.Zero, Fix64.One / (Fix64)48);
 
         for (int frame = 0; frame < 120; frame++)
         {
@@ -313,12 +316,17 @@ public sealed class DeterministicStaticCollisionTests
                 world,
                 position,
                 step,
-                (Fix64)0.22f);
+                radius);
             Assert.IsTrue(result.Success, $"frame={frame} failure={result.Failure}");
             position += result.ResolvedDisplacement;
         }
 
-        Assert.Less((float)position.y, 50.5f, $"final={position}");
+        Fix64 cliffBoundary = (Fix64)(lowerRow + 1);
+        Assert.LessOrEqual(
+            position.y.RawValue,
+            (cliffBoundary - radius).RawValue,
+            $"final={position} boundary={cliffBoundary} radius={radius}");
+        Assert.Greater(position.y.RawValue, ((Fix64)2.5f).RawValue);
     }
 
     [Test]

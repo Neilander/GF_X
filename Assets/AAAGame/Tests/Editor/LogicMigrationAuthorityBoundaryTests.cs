@@ -296,6 +296,12 @@ public sealed class LogicMigrationAuthorityBoundaryTests
             LogicEntityId = new LogicEntityId(71002),
             Side = SideType.EnemySide,
         };
+        var friendlyBuffs = new AAAGame.Scripts.BuffSystem.CharacterBuffComp();
+        friendly.BuffComp = friendlyBuffs;
+        friendlyBuffs.Init(friendly);
+        var enemyBuffs = new AAAGame.Scripts.BuffSystem.CharacterBuffComp();
+        enemy.BuffComp = enemyBuffs;
+        enemyBuffs.Init(enemy);
         characterDataSetter.Invoke(friendly, new object[] { supplyRow });
         characterDataSetter.Invoke(enemy, new object[] { supplyRow });
 
@@ -536,8 +542,8 @@ public sealed class LogicMigrationAuthorityBoundaryTests
     public void AuthorityConsumers_UseFixedAndLogicPhaseSources()
     {
         string techSource = ReadProjectSource("AAAGame/Scripts/Build/Tech/BuildingTechRuntimeEffect.cs");
-        Assert.That(techSource, Does.Contain("target.HealthRatioFixed()"));
-        Assert.That(techSource, Does.Not.Contain("(Fix64)target.HealthRatio()"));
+        Assert.That(techSource, Does.Contain("hostEntity.HealthRatioFixed()"));
+        Assert.That(techSource, Does.Not.Contain("(Fix64)hostEntity.HealthRatio()"));
 
         string tutorialSource = ReadProjectSource("AAAGame/Scripts/MeiyouUtility/TutorialManager.cs");
         string initializeTutorial = ExtractSourceBlock(

@@ -294,7 +294,7 @@ internal static class LvTestSlopeSideCliffDiagnosticRunner
         bool available = LogicStaticCollisionShadowService.TrySolveFixed(
             logicHero.NavigationAgentTypeId,
             start,
-            new FixVector2(Fix64.Zero, (Fix64)0.25f),
+            new FixVector2(Fix64.Zero, Fix64.FromRaw(1024)),
             radius,
             out LogicStaticCollisionShadowResult result);
         s_FrameLog.Append("STATIC_PROBE available=").Append(available)

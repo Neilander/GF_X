@@ -574,6 +574,105 @@ public class SteeringMovementTests
     }
 
     [Test]
+    public void Attacking_CurrentTargetLeavesAttackRange_SwitchesToTargetInsideAttackRange()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        var currentTarget = MakeSoldier(new Vector3(3f, 0f, 0f), SideType.EnemySide);
+        var inRangeTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(currentTarget);
+        EntityRegistry.Register(inRangeTarget);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)20 };
+        targeting.Init(self);
+        targeting.CurrentTarget = currentTarget;
+        SetAttacking(self, true);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.Greater(
+            self.LogicFrameDistanceToTargetSurface(currentTarget),
+            (float)self.WeaponComp.AttackRange,
+            "Test setup requires the current target outside attack range.");
+        Assert.LessOrEqual(
+            self.LogicFrameDistanceToTargetSurface(inRangeTarget),
+            (float)self.WeaponComp.AttackRange,
+            "Test setup requires the replacement target inside attack range.");
+        Assert.AreSame(inRangeTarget, targeting.CurrentTarget,
+            "An attack-locked target outside attack range must yield to an attackable target already in range.");
+    }
+
+    [Test]
+    public void Attacking_NonPositiveTargetLeavesAttackRangeWithoutCandidate_ClearsTarget()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        var currentTarget = MakeSoldier(new Vector3(3f, 0f, 0f), SideType.EnemySide);
+        var otherOutOfRangeTarget = MakeSoldier(new Vector3(4f, 0f, 0f), SideType.EnemySide);
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(currentTarget);
+        EntityRegistry.Register(otherOutOfRangeTarget);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)20 };
+        targeting.Init(self);
+        targeting.CurrentTarget = currentTarget;
+        SetAttacking(self, true);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Fix64 threatPerLevel = TargetThreatUtility.ReadThreatPerLevel();
+        Fix64 buildingExtraThreat = TargetThreatUtility.ReadBuildingExtraThreat();
+        Assert.IsNull(targeting.CurrentTarget,
+            $"A non-positive-taunt target outside attack range must not remain in the attack-locked candidate set. " +
+            $"isCurrent={ReferenceEquals(targeting.CurrentTarget, currentTarget)} " +
+            $"isOther={ReferenceEquals(targeting.CurrentTarget, otherOutOfRangeTarget)} " +
+            $"currentDist={self.LogicFrameDistanceToTargetSurface(currentTarget):F3} " +
+            $"otherDist={self.LogicFrameDistanceToTargetSurface(otherOutOfRangeTarget):F3} " +
+            $"attackRange={(float)self.WeaponComp.AttackRange:F3} " +
+            $"currentPursuit={TargetThreatUtility.CalculatePursuitThreat(self, currentTarget, threatPerLevel, buildingExtraThreat)} " +
+            $"otherPursuit={TargetThreatUtility.CalculatePursuitThreat(self, otherOutOfRangeTarget, threatPerLevel, buildingExtraThreat)}.");
+    }
+
+    [Test]
+    public void Pursuing_ContinuouslySwitchesToClosestTargetAtSamePursuitThreat()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        var closerTarget = MakeSoldier(new Vector3(4f, 0f, 0f), SideType.EnemySide);
+        var laterClosestTarget = MakeSoldier(new Vector3(3f, 0f, 0f), SideType.EnemySide);
+        currentTarget.TauntLevel = 1;
+        closerTarget.TauntLevel = 1;
+        laterClosestTarget.TauntLevel = 1;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(currentTarget);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)20 };
+        targeting.Init(self);
+        targeting.CurrentTarget = currentTarget;
+        SetAttacking(self, true);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        SetAttacking(self, false);
+        currentTarget.Position = new Vector3(5f, 0f, 0f);
+        EntityRegistry.Register(closerTarget);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.Greater(
+            self.LogicFrameDistanceToTargetSurface(closerTarget),
+            (float)self.WeaponComp.AttackRange,
+            "Test setup requires the first replacement to remain in pursuit range rather than attack range.");
+        Assert.AreSame(closerTarget, targeting.CurrentTarget,
+            "Pursuit must switch to the closest target in the current taunt-equivalent tier.");
+
+        EntityRegistry.Register(laterClosestTarget);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.Greater(
+            self.LogicFrameDistanceToTargetSurface(laterClosestTarget),
+            (float)self.WeaponComp.AttackRange,
+            "Test setup requires the later replacement to remain outside attack range.");
+        Assert.AreSame(laterClosestTarget, targeting.CurrentTarget,
+            "Pursuit must keep re-evaluating the closest target instead of switching only once.");
+    }
+
+    [Test]
     public void AttackLock_RemainsBetweenAttackAnimations()
     {
         var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
@@ -596,7 +695,7 @@ public class SteeringMovementTests
     }
 
     [Test]
-    public void AdditionalPursuitTarget_RemainsValidOutsideLegacyForgetRange()
+    public void PositivePursuitTarget_RemainsCandidateOutsideLegacyForgetRange()
     {
         var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
         var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
@@ -619,7 +718,104 @@ public class SteeringMovementTests
         targeting.UpdateTargeting(Fix64.One / (Fix64)60);
 
         Assert.AreSame(tauntingTarget, targeting.CurrentTarget,
-            "A target acquired through additional pursuit must remain retained up to attackRange + pursuit distance.");
+            "A positive-taunt target inside attackRange + pursuit distance must remain a candidate on every scan.");
+    }
+
+    [Test]
+    public void HigherPursuitThreatCurrentTarget_DoesNotSwitchToLowerPursuitThreatInsideAttackRange()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        var currentTarget = MakeSoldier(new Vector3(3f, 0f, 0f), SideType.EnemySide);
+        var lowerPursuitThreatInRange = MakeSoldier(new Vector3(0.8f, 0f, 0f), SideType.EnemySide);
+        currentTarget.TauntLevel = 2;
+        lowerPursuitThreatInRange.TauntLevel = 1;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(currentTarget);
+        EntityRegistry.Register(lowerPursuitThreatInRange);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)20 };
+        targeting.Init(self);
+        targeting.CurrentTarget = currentTarget;
+        SetAttacking(self, true);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.Greater(
+            self.LogicFrameDistanceToTargetSurface(currentTarget),
+            (float)self.WeaponComp.AttackRange,
+            "Test setup requires the higher-pursuit target outside attack range.");
+        Assert.LessOrEqual(
+            self.LogicFrameDistanceToTargetSurface(lowerPursuitThreatInRange),
+            (float)self.WeaponComp.AttackRange,
+            "Test setup requires the lower-pursuit target inside attack range.");
+        Assert.AreSame(currentTarget, targeting.CurrentTarget,
+            "A higher taunt-equivalent pursuit source must remain pursued regardless of how that target was acquired.");
+    }
+
+    [Test]
+    public void PositivePursuitTarget_SameThreatCloserReplacementRemainsCandidate()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        var additionalPursuitTarget = MakeSoldier(new Vector3(10f, 0f, 0f), SideType.EnemySide);
+        var closerPursuitPeer = MakeSoldier(new Vector3(9f, 0f, 0f), SideType.EnemySide);
+        currentTarget.TauntLevel = 1;
+        additionalPursuitTarget.TauntLevel = 2;
+        closerPursuitPeer.TauntLevel = 2;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(currentTarget);
+        EntityRegistry.Register(additionalPursuitTarget);
+
+        var targeting = new CharacterTargetingComp
+        {
+            AggroRangeFixed = (Fix64)20,
+            ForgetRangeFixed = (Fix64)8,
+        };
+        targeting.Init(self);
+        targeting.CurrentTarget = currentTarget;
+        SetAttacking(self, true);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(additionalPursuitTarget, targeting.CurrentTarget,
+            "The higher pursuit-threat target must first interrupt the active attack.");
+
+        SetAttacking(self, false);
+        EntityRegistry.Register(closerPursuitPeer);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.Greater(
+            self.LogicFrameDistanceToTargetSurface(closerPursuitPeer),
+            (float)targeting.ForgetRangeFixed,
+            "Test setup requires the closer peer outside the legacy forget range.");
+        Assert.AreSame(closerPursuitPeer, targeting.CurrentTarget,
+            "Positive-taunt pursuit must switch to the closer target in the same pursuit-threat tier.");
+
+        targeting.UpdateTargeting(Fix64.One / (Fix64)60);
+
+        Assert.AreSame(closerPursuitPeer, targeting.CurrentTarget,
+            "The replacement must remain eligible because its own positive pursuit threat grants x + z range.");
+    }
+
+    [Test]
+    public void PositivePursuitTarget_OutsideAdditionalRangeIsNotRetained()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        currentTarget.TauntLevel = 1;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(currentTarget);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)20 };
+        targeting.Init(self);
+        targeting.CurrentTarget = currentTarget;
+        SetAttacking(self, true);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        SetAttacking(self, false);
+        currentTarget.Position = new Vector3(18f, 0f, 0f);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.IsNull(targeting.CurrentTarget,
+            "Positive taunt must grant candidate range x + z on each scan, not sticky retention beyond that range.");
     }
 
     [Test]
@@ -643,6 +839,58 @@ public class SteeringMovementTests
 
         Assert.AreSame(tauntingTarget, targeting.CurrentTarget,
             "Defend-wave units must use the same taunt pursuit interruption rule.");
+    }
+
+    [Test]
+    public void DefendEnemyTargeting_CurrentTargetLeavesAttackRange_SwitchesToTargetInsideAttackRange()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.EnemySide);
+        var currentTarget = MakeSoldier(new Vector3(3f, 0f, 0f), SideType.PlayerSide);
+        var inRangeTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.PlayerSide);
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(currentTarget);
+        EntityRegistry.Register(inRangeTarget);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)20 };
+        targeting.Init(self);
+        targeting.UseDefendEnemyMode(null);
+        targeting.CurrentTarget = currentTarget;
+        SetAttacking(self, true);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(inRangeTarget, targeting.CurrentTarget,
+            "Defend-wave attack lock must yield when its current target leaves attack range and another target is in range.");
+    }
+
+    [Test]
+    public void DefendEnemyTargeting_PursuitSwitchesToCloserSamePursuitThreatOutsideAttackRange()
+    {
+        var self = MakeSoldier(Vector3.zero, SideType.EnemySide);
+        var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.PlayerSide);
+        var closerTarget = MakeSoldier(new Vector3(3f, 0f, 0f), SideType.PlayerSide);
+        currentTarget.TauntLevel = 1;
+        closerTarget.TauntLevel = 1;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(currentTarget);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)20 };
+        targeting.Init(self);
+        targeting.UseDefendEnemyMode(null);
+        targeting.CurrentTarget = currentTarget;
+        SetAttacking(self, true);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        SetAttacking(self, false);
+        currentTarget.Position = new Vector3(5f, 0f, 0f);
+        EntityRegistry.Register(closerTarget);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.Greater(
+            self.LogicFrameDistanceToTargetSurface(closerTarget),
+            (float)self.WeaponComp.AttackRange,
+            "Test setup requires the replacement to remain outside attack range.");
+        Assert.AreSame(closerTarget, targeting.CurrentTarget,
+            "Defend-wave pursuit must continuously select the closest target in the same pursuit-threat tier.");
     }
 
     [Test]

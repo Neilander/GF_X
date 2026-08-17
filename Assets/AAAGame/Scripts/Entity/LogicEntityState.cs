@@ -187,7 +187,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public bool UsesFlowNavigationAgent { get; private set; }
     public bool IsPlayerEntity { get; private set; }
     public bool IsHeroEntity { get; private set; }
-    public int TauntLevel { get; set; } = 1;
+    public int TauntLevel { get; set; }
     public bool IsGhostState { get; private set; }
     public bool IsBuildingEntity => m_BuildingData != null;
     public BuildingData BuildingData => m_BuildingData;

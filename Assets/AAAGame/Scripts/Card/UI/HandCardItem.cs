@@ -13,7 +13,7 @@ namespace AAAGame.Card
     /// 手牌UI项 - 继承 UIItemBase，使用 GF_X 对象池
     /// 单张卡牌的显示和交互组件
     /// </summary>
-    public class HandCardItem : UIItemBase, IBeginDragHandler, IDragHandler, IEndDragHandler, 
+    public class HandCardItem : UIItemBase, IBeginDragHandler, IDragHandler, IEndDragHandler,
         IPointerEnterHandler, IPointerExitHandler
     {
         [Header("UI组件")]
@@ -90,16 +90,16 @@ namespace AAAGame.Card
         protected override void OnInit()
         {
             base.OnInit();
-            
+
             m_RectTransform = GetComponent<RectTransform>();
             ResolveCardBackImage();
-            
+
             canvasGroup = GetComponent<CanvasGroup>();
             if (canvasGroup == null)
             {
                 canvasGroup = gameObject.AddComponent<CanvasGroup>();
             }
-            
+
             m_Canvas = GetComponentInParent<Canvas>();
             m_SortingCanvas = GetComponent<Canvas>();
             if (m_SortingCanvas == null)
@@ -128,7 +128,7 @@ namespace AAAGame.Card
             m_CardModel = cardModel;
             m_ParentForm = parentForm;
             RefreshParentCanvas();
-            
+
             RefreshView();
         }
 
@@ -451,13 +451,6 @@ namespace AAAGame.Card
 
         public void OnBeginDrag(PointerEventData eventData)
         {
-            if (!m_CanPlay)
-            {
-                Log.Warning(Utility.Text.Format("Population not enough to play {0}", 
-                    m_CardModel.DataProvider.CardName));
-                return;
-            }
-
             m_IsDragging = true;
             m_IsPointerInside = false;
             ResetHoverLiftImmediate();
@@ -485,14 +478,18 @@ namespace AAAGame.Card
         {
             if (!m_IsDragging) return;
 
+            bool continueDragging = m_ParentForm?.OnCardDragging(this, eventData.position) ?? true;
+            if (!continueDragging)
+            {
+                RestoreToHandLayoutImmediately();
+                return;
+            }
+
             // 只有在普通拖拽态下才让卡牌本体跟随鼠标
             if (!m_IsTargetingMode)
             {
                 MoveToScreenPosition(eventData.position);
             }
-
-            // 通知父界面
-            m_ParentForm?.OnCardDragging(this, eventData.position);
         }
 
         public void OnEndDrag(PointerEventData eventData)
@@ -571,7 +568,7 @@ namespace AAAGame.Card
             m_MoveTween = m_RectTransform.DOMove(m_OriginalPosition, 0.3f)
                 .SetEase(Ease.OutBack)
                 .SetLink(gameObject);
-            
+
             ScaleTo(1f);
         }
 
@@ -1164,7 +1161,7 @@ namespace AAAGame.Card
                 m_FadeTween?.Kill();
                 m_FadeTween = canvasGroup.DOFade(0f, safePopDuration + safeShrinkDuration).SetLink(gameObject);
             }
-            
+
             Log.Info($"[HandCardItem] ✅ Card discard animation started: {m_CardModel?.GetCardName()}");
         }
 
@@ -1181,26 +1178,26 @@ namespace AAAGame.Card
             canvasGroup.blocksRaycasts = false; // 禁用交互
             ApplyHoverGlow(false);
             UpdateRenderPriority();
-            
+
             // 恢复父级（避免卡在 Canvas 顶层）
             if (m_OriginalParent != null)
             {
                 transform.SetParent(m_OriginalParent);
             }
-            
+
             // 播放消失动画（缩放 + 淡出）
             m_ScaleTween?.Kill();
             m_ScaleTween = transform.DOScale(Vector3.zero, 0.2f)
                 .SetEase(Ease.InBack)
                 .SetLink(gameObject);
-            
+
             // 淡出效果
             if (canvasGroup != null)
             {
                 m_FadeTween?.Kill();
                 m_FadeTween = canvasGroup.DOFade(0f, 0.2f).SetLink(gameObject);
             }
-            
+
             Log.Info($"[HandCardItem] ✅ Card play animation started: {m_CardModel?.GetCardName()}");
         }
 
