@@ -92,14 +92,14 @@ public class UITable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt(columnStrings[index++]);
             index++;
-            SortOrder = DataTableExtension.ParseInt32(columnStrings[index++]);
+            SortOrder = DataTableExtension.ParseInt(columnStrings[index++]);
             UIPrefab = columnStrings[index++];
-            PauseCoveredUI = DataTableExtension.ParseBoolean(columnStrings[index++]);
-            UIGroupId = DataTableExtension.ParseInt32(columnStrings[index++]);
-            EscapeClose = DataTableExtension.ParseBoolean(columnStrings[index++]);
-            BlockCharacterControl = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            PauseCoveredUI = DataTableExtension.ParseBool(columnStrings[index++]);
+            UIGroupId = DataTableExtension.ParseInt(columnStrings[index++]);
+            EscapeClose = DataTableExtension.ParseBool(columnStrings[index++]);
+            BlockCharacterControl = DataTableExtension.ParseBool(columnStrings[index++]);
 
             return true;
         }

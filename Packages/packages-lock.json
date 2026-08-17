@@ -23,6 +23,26 @@
         "com.unity.ugui": "1.0.0"
       }
     },
+    "com.code-philosophy.hybridclr": {
+      "version": "file:com.code-philosophy.hybridclr",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
+    "com.code-philosophy.obfuz": {
+      "version": "https://gitee.com/focus-creative-games/obfuz.git",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "fa2345017a22c74d13d9dd84b21bfc158d13b80d"
+    },
+    "com.code-philosophy.obfuz4hybridclr": {
+      "version": "https://gitee.com/focus-creative-games/obfuz4hybridclr.git",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "40c8b6c1a8cfab893a02d95ceffc7e7a4a6919cd"
+    },
     "com.coplaydev.unity-mcp": {
       "version": "https://github.com/CoplayDev/unity-mcp.git?path=/MCPForUnity#main",
       "depth": 0,

@@ -83,13 +83,13 @@ public class EntityGroupTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt(columnStrings[index++]);
             index++;
             Name = columnStrings[index++];
-            ReleaseInterval = DataTableExtension.ParseSingle(columnStrings[index++]);
-            Capacity = DataTableExtension.ParseInt32(columnStrings[index++]);
-            ExpireTime = DataTableExtension.ParseSingle(columnStrings[index++]);
-            Priority = DataTableExtension.ParseInt32(columnStrings[index++]);
+            ReleaseInterval = DataTableExtension.ParseFloat(columnStrings[index++]);
+            Capacity = DataTableExtension.ParseInt(columnStrings[index++]);
+            ExpireTime = DataTableExtension.ParseFloat(columnStrings[index++]);
+            Priority = DataTableExtension.ParseInt(columnStrings[index++]);
 
             return true;
         }

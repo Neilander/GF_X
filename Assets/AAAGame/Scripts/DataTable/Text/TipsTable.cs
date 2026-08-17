@@ -83,13 +83,13 @@ public class TipsTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt(columnStrings[index++]);
             index++;
             Identifier = columnStrings[index++];
             TitleKey = columnStrings[index++];
             ContentKey = columnStrings[index++];
             Icon = columnStrings[index++];
-            Duration = DataTableExtension.ParseSingle(columnStrings[index++]);
+            Duration = DataTableExtension.ParseFloat(columnStrings[index++]);
 
             return true;
         }

@@ -101,7 +101,7 @@ public class KeepsakeTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt(columnStrings[index++]);
             index++;
             Identifier = columnStrings[index++];
             NameKey = columnStrings[index++];
@@ -109,7 +109,7 @@ public class KeepsakeTable : DataRowBase
             IconPath = columnStrings[index++];
             HeroCharacterKey = columnStrings[index++];
             InitialSkillIdentifiers = DataTableExtension.ParseArray<string>(columnStrings[index++]);
-            InitialUnlocked = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            InitialUnlocked = DataTableExtension.ParseBool(columnStrings[index++]);
 
             return true;
         }

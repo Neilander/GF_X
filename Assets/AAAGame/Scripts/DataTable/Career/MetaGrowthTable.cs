@@ -92,7 +92,7 @@ public class MetaGrowthTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt(columnStrings[index++]);
             index++;
             Identifier = columnStrings[index++];
             NameKey = columnStrings[index++];

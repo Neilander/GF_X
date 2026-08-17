@@ -137,20 +137,20 @@ public class LevelTagTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt(columnStrings[index++]);
             index++;
             index++;
             UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            GroupID = DataTableExtension.ParseInt32(columnStrings[index++]);
+            GroupID = DataTableExtension.ParseInt(columnStrings[index++]);
             Identifier = columnStrings[index++];
             IconSpritePath = columnStrings[index++];
             NameKey = columnStrings[index++];
             DescKey = columnStrings[index++];
             BelongLevelID = DataTableExtension.ParseArray<string>(columnStrings[index++]);
             ExceptLevelID = DataTableExtension.ParseArray<string>(columnStrings[index++]);
-            IsPositiveTag = DataTableExtension.ParseBoolean(columnStrings[index++]);
-            Score = DataTableExtension.ParseInt32(columnStrings[index++]);
-            UnlockGrade = DataTableExtension.ParseInt32(columnStrings[index++]);
+            IsPositiveTag = DataTableExtension.ParseBool(columnStrings[index++]);
+            Score = DataTableExtension.ParseInt(columnStrings[index++]);
+            UnlockGrade = DataTableExtension.ParseInt(columnStrings[index++]);
 
             return true;
         }

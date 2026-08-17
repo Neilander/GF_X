@@ -83,13 +83,13 @@ public class SoundGroupTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt(columnStrings[index++]);
             index++;
             Name = columnStrings[index++];
-            SoundAgentCount = DataTableExtension.ParseInt32(columnStrings[index++]);
-            AvoidBeingReplacedBySamePriority = DataTableExtension.ParseBoolean(columnStrings[index++]);
-            Mute = DataTableExtension.ParseBoolean(columnStrings[index++]);
-            Volume = DataTableExtension.ParseSingle(columnStrings[index++]);
+            SoundAgentCount = DataTableExtension.ParseInt(columnStrings[index++]);
+            AvoidBeingReplacedBySamePriority = DataTableExtension.ParseBool(columnStrings[index++]);
+            Mute = DataTableExtension.ParseBool(columnStrings[index++]);
+            Volume = DataTableExtension.ParseFloat(columnStrings[index++]);
 
             return true;
         }

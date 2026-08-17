@@ -191,7 +191,7 @@ public class SkillTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt(columnStrings[index++]);
             Identifier = columnStrings[index++];
             index++;
             index++;
@@ -199,13 +199,13 @@ public class SkillTable : DataRowBase
             Lv1CastRange = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1EffectRadius = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1Duration = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Lv1UsageCount = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Lv1UsageCount = DataTableExtension.ParseInt(columnStrings[index++]);
             Lv1Cooldown = DataTableExtension.ParseFix64(columnStrings[index++]);
             UpgradeIncrementUniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
             UpgradeIncrementCastRange = DataTableExtension.ParseFix64(columnStrings[index++]);
             UpgradeIncrementEffectRadius = DataTableExtension.ParseFix64(columnStrings[index++]);
             UpgradeIncrementDuration = DataTableExtension.ParseFix64(columnStrings[index++]);
-            UpgradeIncrementUsageCount = DataTableExtension.ParseInt32(columnStrings[index++]);
+            UpgradeIncrementUsageCount = DataTableExtension.ParseInt(columnStrings[index++]);
             UpgradeDecrementCooldown = DataTableExtension.ParseFix64(columnStrings[index++]);
             Type = DataTableExtension.ParseEnum<SkillType>(columnStrings[index++]);
             NameKey = columnStrings[index++];

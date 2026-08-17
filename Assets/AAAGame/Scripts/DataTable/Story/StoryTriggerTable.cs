@@ -74,12 +74,12 @@ public class StoryTriggerTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt(columnStrings[index++]);
             index++;
             LevelIdentifier = columnStrings[index++];
             Timing = DataTableExtension.ParseEnum<StoryTiming>(columnStrings[index++]);
             ScriptID = columnStrings[index++];
-            OnceOnly = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            OnceOnly = DataTableExtension.ParseBool(columnStrings[index++]);
 
             return true;
         }

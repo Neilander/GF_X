@@ -1055,7 +1055,7 @@ public class BuildingTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt(columnStrings[index++]);
             Identifier = columnStrings[index++];
             index++;
             index++;
@@ -1067,9 +1067,9 @@ public class BuildingTable : DataRowBase
             Lv1PrefabPath = columnStrings[index++];
             Lv2PrefabPath = columnStrings[index++];
             Lv3PrefabPath = columnStrings[index++];
-            Lv1Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
-            Lv2Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
-            Lv3Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Lv1Cost = DataTableExtension.ParseInt(columnStrings[index++]);
+            Lv2Cost = DataTableExtension.ParseInt(columnStrings[index++]);
+            Lv3Cost = DataTableExtension.ParseInt(columnStrings[index++]);
             Lv1HP = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1Def = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1Weapon1Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
@@ -1116,13 +1116,13 @@ public class BuildingTable : DataRowBase
             Lv3Weapon1AmmunitionCapacity = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv3Weapon1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
             UnitID = columnStrings[index++];
-            Lv1Production = DataTableExtension.ParseInt32(columnStrings[index++]);
-            Lv2Production = DataTableExtension.ParseInt32(columnStrings[index++]);
-            Lv3Production = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Lv1Production = DataTableExtension.ParseInt(columnStrings[index++]);
+            Lv2Production = DataTableExtension.ParseInt(columnStrings[index++]);
+            Lv3Production = DataTableExtension.ParseInt(columnStrings[index++]);
             Tech1ID = columnStrings[index++];
             index++;
             Tech1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            Tech1Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            Tech1Stackable = DataTableExtension.ParseBool(columnStrings[index++]);
             Tech1ScopeType = DataTableExtension.ParseEnum<TechScopeType>(columnStrings[index++]);
             Tech1UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
             Tech1SizeScope = DataTableExtension.ParseArray<UnitSize>(columnStrings[index++]);
@@ -1131,12 +1131,12 @@ public class BuildingTable : DataRowBase
             Tech1SkillID = columnStrings[index++];
             Tech1NameKey = columnStrings[index++];
             Tech1DescKey = columnStrings[index++];
-            Tech1Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Tech1Cost = DataTableExtension.ParseInt(columnStrings[index++]);
             Tech1SpritePath = columnStrings[index++];
             Tech2ID = columnStrings[index++];
             index++;
             Tech2UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            Tech2Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            Tech2Stackable = DataTableExtension.ParseBool(columnStrings[index++]);
             Tech2ScopeType = DataTableExtension.ParseEnum<TechScopeType>(columnStrings[index++]);
             Tech2UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
             Tech2SizeScope = DataTableExtension.ParseArray<UnitSize>(columnStrings[index++]);
@@ -1145,12 +1145,12 @@ public class BuildingTable : DataRowBase
             Tech2SkillID = columnStrings[index++];
             Tech2NameKey = columnStrings[index++];
             Tech2DescKey = columnStrings[index++];
-            Tech2Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Tech2Cost = DataTableExtension.ParseInt(columnStrings[index++]);
             Tech2SpritePath = columnStrings[index++];
             Tech3ID = columnStrings[index++];
             index++;
             Tech3UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            Tech3Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            Tech3Stackable = DataTableExtension.ParseBool(columnStrings[index++]);
             Tech3ScopeType = DataTableExtension.ParseEnum<TechScopeType>(columnStrings[index++]);
             Tech3UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
             Tech3SizeScope = DataTableExtension.ParseArray<UnitSize>(columnStrings[index++]);
@@ -1159,12 +1159,12 @@ public class BuildingTable : DataRowBase
             Tech3SkillID = columnStrings[index++];
             Tech3NameKey = columnStrings[index++];
             Tech3DescKey = columnStrings[index++];
-            Tech3Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Tech3Cost = DataTableExtension.ParseInt(columnStrings[index++]);
             Tech3SpritePath = columnStrings[index++];
             Tech4ID = columnStrings[index++];
             index++;
             Tech4UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            Tech4Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            Tech4Stackable = DataTableExtension.ParseBool(columnStrings[index++]);
             Tech4ScopeType = DataTableExtension.ParseEnum<TechScopeType>(columnStrings[index++]);
             Tech4UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
             Tech4SizeScope = DataTableExtension.ParseArray<UnitSize>(columnStrings[index++]);
@@ -1173,7 +1173,7 @@ public class BuildingTable : DataRowBase
             Tech4SkillID = columnStrings[index++];
             Tech4NameKey = columnStrings[index++];
             Tech4DescKey = columnStrings[index++];
-            Tech4Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Tech4Cost = DataTableExtension.ParseInt(columnStrings[index++]);
             Tech4SpritePath = columnStrings[index++];
 
             return true;

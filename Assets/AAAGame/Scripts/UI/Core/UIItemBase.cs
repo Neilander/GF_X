@@ -1,5 +1,6 @@
 ﻿using System;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityGameFramework.Runtime;
 
 public class UIItemBase : MonoBehaviour, ISerializeFieldTool
@@ -35,5 +36,27 @@ public class UIItemBase : MonoBehaviour, ISerializeFieldTool
                 textCom.text = LocalizationTextManager.ProcessText(GF.Localization.GetString(t.Key));
             }
         }
+    }
+
+    [Obfuz.ObfuzIgnore]
+    public void ClickUIButton(string btTag)
+    {
+        GF.Sound.PlayEffect("ui/ui_click.wav");
+        OnButtonClick(this, btTag);
+    }
+
+    [Obfuz.ObfuzIgnore]
+    public void ClickUIButton(Button button)
+    {
+        GF.Sound.PlayEffect("ui/ui_click.wav");
+        OnButtonClick(this, button);
+    }
+
+    protected virtual void OnButtonClick(object sender, string buttonId)
+    {
+    }
+
+    protected virtual void OnButtonClick(object sender, Button button)
+    {
     }
 }

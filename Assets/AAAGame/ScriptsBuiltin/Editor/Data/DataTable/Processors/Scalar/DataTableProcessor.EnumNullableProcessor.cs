@@ -1,0 +1,75 @@
+//------------------------------------------------------------
+// Game Framework
+// Copyright © 2013-2020 Jiang Yin. All rights reserved.
+// Homepage: https://gameframework.cn/
+// Feedback: mailto:ellan@gameframework.cn
+//------------------------------------------------------------
+
+using System;
+using System.IO;
+using GameFramework;
+using UnityEngine;
+
+namespace UGF.EditorTools.Data.DataTable
+{
+    public sealed partial class DataTableProcessor
+    {
+        private sealed class EnumNullableProcessor : GenericDataProcessor<int?>
+        {
+            public override bool IsSystem
+            {
+                get
+                {
+                    return true;
+                }
+            }
+
+            public override string LanguageKeyword
+            {
+                get
+                {
+                    return "enum?";
+                }
+            }
+
+            public override int ShowOrder => 10;
+
+            public override string[] GetTypeStrings()
+            {
+                return new string[]
+                {
+                    "enum?",
+                    "system.enum?"
+                };
+            }
+
+            public override int? Parse(string value)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return null;
+                }
+
+                if (DataTableExtension.TryParseEnum(value, out Type enumType, out int enumValue))
+                {
+                    return enumValue;
+                }
+
+                throw new GameFrameworkException(Utility.Text.Format("解析可空枚举类型失败:{0}, 配置枚举格式为: Enum.Item1", value));
+            }
+
+            public override void WriteToStream(DataTableProcessor dataTableProcessor, BinaryWriter binaryWriter, string value)
+            {
+                int? v = Parse(value);
+                if (!v.HasValue)
+                {
+                    binaryWriter.Write(false);
+                    return;
+                }
+
+                binaryWriter.Write(true);
+                binaryWriter.Write7BitEncodedInt32(v.Value);
+            }
+        }
+    }
+}

@@ -155,7 +155,8 @@ public class PreloadProcedure : ProcedureBase
         loadedProgress = 0;
         m_DataTablesCount = -1;
         var appConfig = await AppConfigs.GetInstanceSync();
-        totalProgress = appConfig.DataTables.Length + appConfig.Configs.Length + 9 + AAAGame.Effect.EffectShaderAssetLoader.EssentialShaderCount;//9是多语言、框架扩展、关卡入口界面和六个逻辑组件工厂
+        var runtimeDataTables = GetRuntimeDataTables(appConfig);
+        totalProgress = runtimeDataTables.Count + appConfig.Configs.Length + 9 + AAAGame.Effect.EffectShaderAssetLoader.EssentialShaderCount;//9是多语言、框架扩展、关卡入口界面和六个逻辑组件工厂
         FactoryHelper.PreloadMoveFactory(
             UtilityBuiltin.AssetsPath.GetMoveFactoryPath("CharacterMoveFactory"),
             OnPreloadLogicFactorySuccess,
@@ -224,8 +225,8 @@ public class PreloadProcedure : ProcedureBase
 
     private void OnPreloadShaderFailure(string assetName, LoadResourceStatus status, string errorMessage)
     {
-        loadedProgress++;
-        Log.Error("Load Shader Failure:{0}, status:{1}, error:{2}", assetName, status, errorMessage);
+        throw new GameFrameworkException(
+            Utility.Text.Format("Load shader failed: asset={0}, status={1}, error={2}", assetName, status, errorMessage));
     }
 
     private void OnPreloadLogicFactorySuccess(string assetName)
@@ -243,14 +244,59 @@ public class PreloadProcedure : ProcedureBase
     private async void LoadConfigsAndDataTables()
     {
         var appConfig = await AppConfigs.GetInstanceSync();
-        m_DataTablesCount = appConfig.DataTables.Length;
+        var runtimeDataTables = GetRuntimeDataTables(appConfig);
+        m_DataTablesCount = runtimeDataTables.Count;
         foreach (var item in appConfig.Configs)
         {
             GF.Config.LoadConfig(item, appConfig.LoadFromBytes, this);
         }
-        foreach (var item in appConfig.DataTables)
+        foreach (var item in runtimeDataTables)
         {
             GF.DataTable.LoadDataTable(item, appConfig.LoadFromBytes, this);
+        }
+    }
+
+    private static List<string> GetRuntimeDataTables(AppConfigs appConfig)
+    {
+        if (appConfig == null)
+        {
+            throw new GameFrameworkException("AppConfigs is null while building the runtime data table list.");
+        }
+
+        if (appConfig.DataTables == null)
+        {
+            throw new GameFrameworkException("AppConfigs.DataTables is null.");
+        }
+
+        if (appConfig.Configs == null)
+        {
+            throw new GameFrameworkException("AppConfigs.Configs is null.");
+        }
+
+        var dataTables = new List<string>(ConstBuiltin.FrameworkRequiredDataTables.Length + appConfig.DataTables.Length);
+        AddRuntimeDataTables(dataTables, ConstBuiltin.FrameworkRequiredDataTables);
+        AddRuntimeDataTables(dataTables, appConfig.DataTables);
+        return dataTables;
+    }
+
+    private static void AddRuntimeDataTables(List<string> dataTables, IEnumerable<string> tableNames)
+    {
+        if (tableNames == null)
+        {
+            throw new GameFrameworkException("Runtime data table source is null.");
+        }
+
+        foreach (string tableName in tableNames)
+        {
+            if (string.IsNullOrWhiteSpace(tableName))
+            {
+                throw new GameFrameworkException("Runtime data table name is empty.");
+            }
+
+            if (!dataTables.Contains(tableName))
+            {
+                dataTables.Add(tableName);
+            }
         }
     }
 
@@ -302,17 +348,25 @@ public class PreloadProcedure : ProcedureBase
 
     private void OnLoadGFExtensionSuccess(string assetName, object asset, float duration, object userData)
     {
-        var gfExtPfb = asset as GameObject;
-        if (null != GameObject.Instantiate(gfExtPfb, Vector3.zero, Quaternion.identity, GF.Base.transform))
+        if (!(asset is GameObject gfExtPfb))
         {
-            GF.Log("GF框架扩展成功!");
-            loadedProgress++;
-            LoadConfigsAndDataTables();
+            throw new GameFrameworkException(Utility.Text.Format("GF extension asset is not a GameObject: {0}", assetName));
         }
+
+        GameObject instance = GameObject.Instantiate(gfExtPfb, Vector3.zero, Quaternion.identity, GF.Base.transform);
+        if (instance == null)
+        {
+            throw new GameFrameworkException(Utility.Text.Format("Instantiate GF extension failed: {0}", assetName));
+        }
+
+        GF.Log("GF框架扩展成功!");
+        loadedProgress++;
+        LoadConfigsAndDataTables();
     }
     private void OnLoadGFExtensionFailed(string assetName, LoadResourceStatus status, string errorMessage, object userData)
     {
-        GF.LogError(Utility.Text.Format("GF框架扩展加载失败:{0}, Error:{1}", assetName, errorMessage));
+        throw new GameFrameworkException(
+            Utility.Text.Format("Load GF extension failed: asset={0}, status={1}, error={2}", assetName, status, errorMessage));
     }
     private void OnLoadDicSuccess(object sender, GameEventArgs e)
     {
@@ -365,7 +419,8 @@ public class PreloadProcedure : ProcedureBase
         var args = e as LoadDictionaryFailureEventArgs;
         if (args.UserData != this) return;
 
-        GF.LogError($"Load Dictionary Failed:{args.ErrorMessage}");
+        throw new GameFrameworkException(Utility.Text.Format(
+            "Load dictionary failed: asset={0}, error={1}", args.DictionaryAssetName, args.ErrorMessage));
     }
 
     private void OnLoadDataTableFailure(object sender, GameEventArgs e)
@@ -373,7 +428,8 @@ public class PreloadProcedure : ProcedureBase
         var args = e as LoadDataTableFailureEventArgs;
         if (args.UserData != this) return;
 
-        GF.LogError($"Load DataTable Failed:{args.ErrorMessage}");
+        throw new GameFrameworkException(Utility.Text.Format(
+            "Load data table failed: asset={0}, error={1}", args.DataTableAssetName, args.ErrorMessage));
     }
 
     private void OnLoadConfigFailure(object sender, GameEventArgs e)
@@ -381,6 +437,7 @@ public class PreloadProcedure : ProcedureBase
         var args = e as LoadConfigFailureEventArgs;
         if (args.UserData != this) return;
 
-        GF.LogError($"Load Config Failed:{args.ErrorMessage}");
+        throw new GameFrameworkException(Utility.Text.Format(
+            "Load config failed: asset={0}, error={1}", args.ConfigAssetName, args.ErrorMessage));
     }
 }

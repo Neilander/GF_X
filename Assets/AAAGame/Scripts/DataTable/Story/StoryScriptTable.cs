@@ -146,10 +146,10 @@ public class StoryScriptTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt(columnStrings[index++]);
             index++;
             ScriptID = columnStrings[index++];
-            Order = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Order = DataTableExtension.ParseInt(columnStrings[index++]);
             BgSpritePath = columnStrings[index++];
             PortraitLeft = columnStrings[index++];
             PortraitCenter = columnStrings[index++];

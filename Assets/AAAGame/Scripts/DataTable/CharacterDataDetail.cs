@@ -569,7 +569,7 @@ public class CharacterDataDetail : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt(columnStrings[index++]);
             CharacterKey = columnStrings[index++];
             index++;
             index++;
@@ -579,7 +579,7 @@ public class CharacterDataDetail : DataRowBase
             DescKey = columnStrings[index++];
             Archetype = DataTableExtension.ParseEnum<Archetype>(columnStrings[index++]);
             UnitTags = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
-            Supply = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Supply = DataTableExtension.ParseInt(columnStrings[index++]);
             Size = DataTableExtension.ParseEnum<UnitSize>(columnStrings[index++]);
             TurnRate = DataTableExtension.ParseFix64(columnStrings[index++]);
             Sight = DataTableExtension.ParseFix64(columnStrings[index++]);

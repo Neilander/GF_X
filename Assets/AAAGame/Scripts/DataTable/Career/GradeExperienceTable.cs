@@ -47,9 +47,9 @@ public class GradeExperienceTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt(columnStrings[index++]);
             index++;
-            RequiredTotalExperience = DataTableExtension.ParseInt32(columnStrings[index++]);
+            RequiredTotalExperience = DataTableExtension.ParseInt(columnStrings[index++]);
 
             return true;
         }

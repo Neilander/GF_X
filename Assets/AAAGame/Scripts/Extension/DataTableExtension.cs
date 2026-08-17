@@ -1,6 +1,7 @@
 ﻿using GameFramework;
 using GameFramework.DataTable;
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -9,8 +10,11 @@ using UnityEngine;
 using UnityGameFramework.Runtime;
 public static class DataTableExtension
 {
+    public const string DateTimeFormat = "yyyy-MM-dd HH:mm:ss";
     internal static readonly char[] DataSplitSeparators = new char[] { '\t' };
     internal static readonly char[] DataTrimSeparators = new char[] { '\"' };
+    private static readonly NumberStyles IntegerNumberStyles = NumberStyles.Integer;
+    private static readonly NumberStyles FloatingNumberStyles = NumberStyles.Float | NumberStyles.AllowThousands;
 
     /// <summary>
     /// 加载数据表, 支持A/B测试
@@ -23,15 +27,13 @@ public static class DataTableExtension
     {
         if (string.IsNullOrWhiteSpace(dataTableName))
         {
-            Log.Warning("Data table name is invalid.");
-            return;
+            throw new GameFrameworkException("Data table name is invalid.");
         }
 
         string[] splitNames = dataTableName.Split('_');
         if (splitNames.Length > 2)
         {
-            Log.Warning("Data table name is invalid.");
-            return;
+            throw new GameFrameworkException(Utility.Text.Format("Data table name '{0}' is invalid.", dataTableName));
         }
 
         string dataRowClassName = System.IO.Path.GetFileName(splitNames[0]);
@@ -39,33 +41,13 @@ public static class DataTableExtension
         Type dataRowType = Utility.Assembly.GetType(dataRowClassName);
         if (dataRowType == null)
         {
-            Log.Warning("Can not get data row type with class name '{0}'.", dataRowClassName);
-            return;
+            throw new GameFrameworkException(Utility.Text.Format("Can not get data row type with class name '{0}'.", dataRowClassName));
         }
 
         string name = splitNames.Length > 1 ? splitNames[1] : null;
         DataTableBase dataTable = dataTableComponent.CreateDataTable(dataRowType, name);
 
-        string tableFileName = dataTableName;
-        if (!string.IsNullOrWhiteSpace(abTestGroupName))
-        {
-            var abTableFileName = Utility.Text.Format("{0}{1}{2}", dataTableName, ConstBuiltin.AB_TEST_TAG, abTestGroupName);
-            if (GFBuiltin.Resource.HasAsset(UtilityBuiltin.AssetsPath.GetDataTablePath(abTableFileName, useBytes)) != GameFramework.Resource.HasAssetResult.NotExist)
-            {
-                tableFileName = abTableFileName;
-            }
-        }
-
-        string assetName = UtilityBuiltin.AssetsPath.GetDataTablePath(tableFileName, useBytes);
-        try
-        {
-            dataTable.ReadData(assetName, userData);
-        }
-        catch (Exception e)
-        {
-            Log.Error("Load data table '{0}' failed, asset '{1}'. Error: {2}", dataTableName, assetName, e);
-            dataTableComponent.DestroyDataTable(dataTable);
-        }
+        dataTable.ReadData(GetDataTableAssetName(dataTableName, abTestGroupName, useBytes), userData);
     }
 
     /// <summary>
@@ -79,6 +61,26 @@ public static class DataTableExtension
     {
         string abTestGroup = GFBuiltin.Setting.GetABTestGroup();
         dataTableComponent.LoadDataTable(dataTableName, abTestGroup, useBytes, userData);
+    }
+
+    public static string GetDataTableAssetName(string dataTableName, string abTestGroupName, bool useBytes)
+    {
+        string tableFileName = dataTableName;
+        if (!string.IsNullOrWhiteSpace(abTestGroupName))
+        {
+            string abTableFileName = Utility.Text.Format("{0}{1}{2}", dataTableName, ConstBuiltin.AB_TEST_TAG, abTestGroupName);
+            if (GFBuiltin.Resource.HasAsset(UtilityBuiltin.AssetsPath.GetDataTablePath(abTableFileName, useBytes)) != GameFramework.Resource.HasAssetResult.NotExist)
+            {
+                tableFileName = abTableFileName;
+            }
+        }
+
+        return UtilityBuiltin.AssetsPath.GetDataTablePath(tableFileName, useBytes);
+    }
+
+    public static string GetDataTableAssetName(string dataTableName, bool useBytes)
+    {
+        return GetDataTableAssetName(dataTableName, GFBuiltin.Setting.GetABTestGroup(), useBytes);
     }
     public static Color32 ParseColor32(string value)
     {
@@ -113,7 +115,7 @@ public static class DataTableExtension
     public static DateTime ParseDateTime(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return DateTime.MinValue;
-        return DateTime.Parse(value);
+        return DateTime.ParseExact(value, DateTimeFormat, CultureInfo.InvariantCulture, DateTimeStyles.None);
     }
 
     public static bool ParseBoolean(string value)
@@ -125,67 +127,67 @@ public static class DataTableExtension
     public static byte ParseByte(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return default;
-        return byte.Parse(value);
+        return byte.Parse(value, IntegerNumberStyles, CultureInfo.InvariantCulture);
     }
 
     public static sbyte ParseSByte(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return default;
-        return sbyte.Parse(value);
+        return sbyte.Parse(value, IntegerNumberStyles, CultureInfo.InvariantCulture);
     }
 
     public static short ParseInt16(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return default;
-        return short.Parse(value);
+        return short.Parse(value, IntegerNumberStyles, CultureInfo.InvariantCulture);
     }
 
     public static ushort ParseUInt16(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return default;
-        return ushort.Parse(value);
+        return ushort.Parse(value, IntegerNumberStyles, CultureInfo.InvariantCulture);
     }
 
     public static int ParseInt32(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return default;
-        return int.Parse(value);
+        return int.Parse(value, IntegerNumberStyles, CultureInfo.InvariantCulture);
     }
 
     public static uint ParseUInt32(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return default;
-        return uint.Parse(value);
+        return uint.Parse(value, IntegerNumberStyles, CultureInfo.InvariantCulture);
     }
 
     public static long ParseInt64(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return default;
-        return long.Parse(value);
+        return long.Parse(value, IntegerNumberStyles, CultureInfo.InvariantCulture);
     }
 
     public static ulong ParseUInt64(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return default;
-        return ulong.Parse(value);
+        return ulong.Parse(value, IntegerNumberStyles, CultureInfo.InvariantCulture);
     }
 
     public static float ParseSingle(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return default;
-        return float.Parse(value);
+        return float.Parse(value, FloatingNumberStyles, CultureInfo.InvariantCulture);
     }
 
     public static double ParseDouble(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return default;
-        return double.Parse(value);
+        return double.Parse(value, FloatingNumberStyles, CultureInfo.InvariantCulture);
     }
 
     public static decimal ParseDecimal(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return default;
-        return decimal.Parse(value);
+        return decimal.Parse(value, FloatingNumberStyles, CultureInfo.InvariantCulture);
     }
 
     public static char ParseChar(string value)
@@ -193,6 +195,15 @@ public static class DataTableExtension
         if (string.IsNullOrWhiteSpace(value)) return default;
         return char.Parse(value);
     }
+
+    public static bool ParseBool(string value) => ParseBoolean(value);
+    public static short ParseShort(string value) => ParseInt16(value);
+    public static ushort ParseUShort(string value) => ParseUInt16(value);
+    public static int ParseInt(string value) => ParseInt32(value);
+    public static uint ParseUInt(string value) => ParseUInt32(value);
+    public static long ParseLong(string value) => ParseInt64(value);
+    public static ulong ParseULong(string value) => ParseUInt64(value);
+    public static float ParseFloat(string value) => ParseSingle(value);
 
     public static DateTime ReadDateTime(this BinaryReader binaryReader)
     {
@@ -483,44 +494,23 @@ public static class DataTableExtension
         Type t = typeof(T);
         for (int i = 0; i < strs.Length; i++)
         {
-            try
+            string s = strs[i].Trim();
+            if (t.IsEnum)
             {
-                string s = strs[i].Trim();
-                if (t.IsEnum)
+                if (!TryParseEnum(s, out Type enumType, out int enumValue) || enumType != t)
                 {
-                    int enumValue = 0;
-                    var parts = s.Split('|', StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length == 1)
-                    {
-                        var part = parts[0];
-                        if (part.Contains('.')) part = part.Split('.')[1];
-                        enumValue = (int)Enum.Parse(t, part, true);
-                    }
-                    else
-                    {
-                        foreach (var p in parts)
-                        {
-                            var part = p;
-                            if (part.Contains('.')) part = part.Split('.')[1];
-                            var tmp = (int)Enum.Parse(t, part, true);
-                            enumValue |= tmp;
-                        }
-                    }
-                    arr[i] = (T)Enum.ToObject(t, enumValue);
+                    throw new GameFrameworkException(Utility.Text.Format("Value '{0}' is not defined in enum {1}.", s, t.Name));
                 }
-                else if (t == typeof(Fix64))
-                {
-                    var f = Fix64.Parse(s);
-                    arr[i] = (T)(object)f;
-                }
-                else
-                {
-                    arr[i] = (T)Convert.ChangeType(s, typeof(T));
-                }
+
+                arr[i] = (T)ToEnum(t, enumValue);
             }
-            catch (Exception e)
+            else if (t == typeof(Fix64))
             {
-                Log.Error("解析失败数据失败! 格式有误:{0}\nError:{1}", strs[i], e.Message);
+                arr[i] = (T)(object)ParseFix64(s);
+            }
+            else
+            {
+                arr[i] = (T)Convert.ChangeType(s, t, CultureInfo.InvariantCulture);
             }
         }
         return arr;
@@ -559,9 +549,12 @@ public static class DataTableExtension
         for (int i = 0; i < arr.Length; i++)
         {
             var parts = arr[i].Split(',', 2);
-            var key = parts.Length > 0 ? parts[0] : string.Empty;
-            var num = parts.Length > 1 ? Fix64.Parse(parts[1]) : Fix64.Zero;
-            result[i] = new StringFix64Pair(key, num);
+            if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[1]))
+            {
+                throw new GameFrameworkException(Utility.Text.Format("StringFix64Pair value '{0}' must use '[key,value]' format.", arr[i]));
+            }
+
+            result[i] = new StringFix64Pair(parts[0], ParseFix64(parts[1]));
         }
         return result;
     }
@@ -586,13 +579,12 @@ public static class DataTableExtension
         for (int i = 0; i < arr.Length; i++)
         {
             var parts = arr[i].Split(',', 2);
-            var key = parts.Length > 0 ? parts[0] : string.Empty;
-            int num = 0;
-            if (parts.Length > 1)
+            if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[1]))
             {
-                int.TryParse(parts[1], out num);
+                throw new GameFrameworkException(Utility.Text.Format("StringIntPair value '{0}' must use '[key,value]' format.", arr[i]));
             }
-            result[i] = new StringIntPair(key, num);
+
+            result[i] = new StringIntPair(parts[0], ParseInt(parts[1]));
         }
         return result;
     }
