@@ -18,7 +18,7 @@ public class CameraController : MonoBehaviour
     [SerializeField] Vector3 legacyPivotLocalPosition = new Vector3(85.6f, -67f, 84.55f);
     [SerializeField] Vector3 legacyPivotEuler = new Vector3(30f, 45f, 0f);
     [SerializeField] Vector3 legacyInnerCameraLocalPosition = new Vector3(0f, 0f, -250f);
-    [SerializeField] float legacyOrthographicSize = 30f;
+    [SerializeField] float legacyOrthographicSize = 14.4f;
 
     [Header("Screen Edge Pan")]
     [SerializeField] bool enableScreenEdgePan = true;
@@ -385,7 +385,8 @@ public class CameraController : MonoBehaviour
         var transposer = followerVCamera.GetCinemachineComponent<CinemachineTransposer>();
         transposer.m_BindingMode = CinemachineTransposer.BindingMode.WorldSpace;
 
-        var offset = legacyPivotLocalPosition + Quaternion.Euler(legacyPivotEuler) * legacyInnerCameraLocalPosition;
+        var legacyOffset = legacyPivotLocalPosition + Quaternion.Euler(legacyPivotEuler) * legacyInnerCameraLocalPosition;
+        var offset = Quaternion.Euler(legacyPivotEuler) * Vector3.back * legacyOffset.magnitude;
         SwitchCameraView(offset, Vector3.zero, smooth);
     }
 

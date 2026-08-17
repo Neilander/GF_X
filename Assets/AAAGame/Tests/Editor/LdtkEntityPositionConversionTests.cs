@@ -30,6 +30,22 @@ public sealed class LdtkEntityPositionConversionTests
         Assert.That(position.z, Is.EqualTo(27.25f * 1.4f).Within(0.0001f));
     }
 
+    [TestCase(448, 800, 27.5f, 27.5f)]
+    [TestCase(440, 808, 27f, 27f)]
+    [TestCase(464, 784, 28.5f, 28.5f)]
+    public void ConvertCenteredBuildingPivot_PreservesDualGridOffset(
+        int pixelX,
+        int pixelY,
+        float expectedCellX,
+        float expectedCellZ)
+    {
+        Vector3 position = Convert(pixelX, pixelY, 16, 1248, 1.4f);
+
+        Assert.That(position.x, Is.EqualTo(expectedCellX * 1.4f).Within(0.0001f));
+        Assert.That(position.y, Is.Zero);
+        Assert.That(position.z, Is.EqualTo(expectedCellZ * 1.4f).Within(0.0001f));
+    }
+
     private static Vector3 Convert(int pixelX, int pixelY, int gridSize, int pixelHeight, float cellSize)
     {
         Assert.That(ConvertMethod, Is.Not.Null);

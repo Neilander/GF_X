@@ -16,11 +16,10 @@ public class FbxToPrefab : EditorWindow
 
     private GameObject _sourceFbx;
     private Vector3 _rotation = new(-90f, 0f, 0f);
-    private float _diameter = 1f;
+    private BuilType _buildingType = BuilType.Prod;
     private string _parentObjectName = string.Empty;
     private bool _replaceSameName = true;
     private PrefabType _prefabType = PrefabType.Building;
-    private int _boxGrid = 6; // Box 近似粒度（等于 AutoBoxColliderFromMesh 的 XZResolution）
     private RuntimeAnimatorController _unitAnimatorController;
     private UnitSize _unitSize = UnitSize.Medium;
     private string[] _unitSizeReferencePaths = Array.Empty<string>();
@@ -62,7 +61,7 @@ public class FbxToPrefab : EditorWindow
 
         EditorGUI.BeginChangeCheck();
         if (_prefabType == PrefabType.Building)
-            _diameter = EditorGUILayout.FloatField("Diameter", _diameter);
+            _buildingType = (BuilType)EditorGUILayout.EnumPopup("Building Type", _buildingType);
         else
             _unitSize = (UnitSize)EditorGUILayout.EnumPopup("Unit Size", _unitSize);
         if (EditorGUI.EndChangeCheck())
@@ -73,10 +72,10 @@ public class FbxToPrefab : EditorWindow
 
         if (_prefabType == PrefabType.Building)
         {
-            EditorGUI.BeginChangeCheck();
-            _boxGrid = EditorGUILayout.IntSlider("Box Grid (粒度)", _boxGrid, 2, 16);
-            if (EditorGUI.EndChangeCheck())
-                RebuildBoxPreview();
+            EditorGUILayout.LabelField(
+                "Footprint",
+                $"{BuildingFootprint.ResolveGridSize(_buildingType)} x {BuildingFootprint.ResolveGridSize(_buildingType)} " +
+                $"({BuildingFootprint.ResolveWorldSize(_buildingType):F2} world units)");
         }
         else
         {
@@ -125,7 +124,7 @@ public class FbxToPrefab : EditorWindow
         // Box 近似俯视图
         if (_prefabType == PrefabType.Building && _preview != null && _boxPreview.Count > 0)
         {
-            GUILayout.Label($"Box Approximation (Top View) — {_boxPreview.Count} boxes", EditorStyles.boldLabel);
+            GUILayout.Label("Building Footprint (Top View)", EditorStyles.boldLabel);
             DrawBoxPreviewTopView(GUILayoutUtility.GetRect(256, 256));
         }
 
@@ -219,7 +218,6 @@ public class FbxToPrefab : EditorWindow
             return;
         }
 
-        // 用和 Generate 完全一样的 root+child 结构来算 box，保证预览和实际生成一致
         var tempRoot = new GameObject("_tempBoxCalc");
         tempRoot.hideFlags = HideFlags.HideAndDontSave;
         try
@@ -229,16 +227,14 @@ public class FbxToPrefab : EditorWindow
             child.transform.localRotation = Quaternion.Euler(_rotation);
             child.transform.localPosition = Vector3.zero;
 
-            if (!TryApplyDiameter(child.transform, _diameter, out _)) return;
+            if (!TryApplyDiameter(child.transform, BuildingFootprint.ResolveWorldSize(_buildingType), out _)) return;
             if (!TryAlignToBottomAndCenter(tempRoot.transform, child.transform, out _)) return;
-
-            _boxPreview = AutoBoxColliderFromMesh.ComputeApproximation(tempRoot, _boxGrid, AutoBoxColliderFromMesh.DefaultYLayers);
-            if (_boxPreview.Count > 0)
-            {
-                _boxPreviewAABB = _boxPreview[0];
-                for (int i = 1; i < _boxPreview.Count; i++)
-                    _boxPreviewAABB.Encapsulate(_boxPreview[i]);
-            }
+            Bounds visualBounds = GetBounds(tempRoot);
+            float footprintSize = BuildingFootprint.ResolveWorldSize(_buildingType);
+            _boxPreviewAABB = new Bounds(
+                new Vector3(0f, visualBounds.center.y, 0f),
+                new Vector3(footprintSize, visualBounds.size.y, footprintSize));
+            _boxPreview.Add(_boxPreviewAABB);
         }
         finally
         {
@@ -287,10 +283,7 @@ public class FbxToPrefab : EditorWindow
             if (_prefabType == PrefabType.Building)
             {
                 SetLayerRecursively(child.transform, RequireLayer("Ground"));
-                var boxes = AutoBoxColliderFromMesh.ComputeApproximation(root, _boxGrid, AutoBoxColliderFromMesh.DefaultYLayers);
-                if (boxes.Count == 0)
-                    throw new InvalidOperationException("Building prefab generation produced no BoxCollider approximation.");
-                AutoBoxColliderFromMesh.Apply(root, boxes, recordUndo: false);
+                CreateBuildingFootprintCollider(root, display, _buildingType);
                 animator = child.GetComponentInChildren<Animator>(true);
             }
             else
@@ -448,7 +441,7 @@ public class FbxToPrefab : EditorWindow
     private bool TryApplyConfiguredSize(Transform targetRoot, out string error)
     {
         if (_prefabType == PrefabType.Building)
-            return TryApplyDiameter(targetRoot, _diameter, out error);
+            return TryApplyDiameter(targetRoot, BuildingFootprint.ResolveWorldSize(_buildingType), out error);
 
         Renderer sizeReferenceRenderer;
         try
@@ -467,6 +460,22 @@ public class FbxToPrefab : EditorWindow
         targetRoot.localScale *= targetRadius * 2f / currentDiameter;
         error = null;
         return true;
+    }
+
+    private static BoxCollider CreateBuildingFootprintCollider(GameObject root, Transform display, BuilType buildingType)
+    {
+        Bounds visualBounds = GetBounds(display.gameObject);
+        if (visualBounds.size.y <= Mathf.Epsilon)
+            throw new InvalidOperationException("Building Display has no valid height for footprint collider generation.");
+
+        var colliderObject = new GameObject(BuildingFootprint.ColliderObjectName);
+        colliderObject.layer = RequireLayer("Ground");
+        colliderObject.transform.SetParent(root.transform, false);
+        BoxCollider collider = colliderObject.AddComponent<BoxCollider>();
+        collider.center = new Vector3(0f, root.transform.InverseTransformPoint(visualBounds.center).y, 0f);
+        float footprintSize = BuildingFootprint.ResolveWorldSize(buildingType);
+        collider.size = new Vector3(footprintSize, visualBounds.size.y, footprintSize);
+        return collider;
     }
 
     private void RefreshUnitSizeReferenceCandidates()
@@ -525,19 +534,13 @@ public class FbxToPrefab : EditorWindow
     {
         var bounds = GetBounds(boundsRoot.gameObject);
         var childLocalPosition = childRoot.localPosition;
-        childLocalPosition.y = -bounds.min.y;
+        childLocalPosition.y -= bounds.min.y;
         childRoot.localPosition = childLocalPosition;
 
-        if (!TryGetColliderMesh(childRoot, out var mesh, out var meshTransform))
-        {
-            error = "未找到可用于对齐中心的 Mesh，请确认 FBX 下存在 MeshFilter 或 SkinnedMeshRenderer。";
-            return false;
-        }
-
-        var centerInRoot = boundsRoot.InverseTransformPoint(meshTransform.TransformPoint(mesh.bounds.center));
+        bounds = GetBounds(boundsRoot.gameObject);
         childLocalPosition = childRoot.localPosition;
-        childLocalPosition.x -= centerInRoot.x;
-        childLocalPosition.z -= centerInRoot.z;
+        childLocalPosition.x -= bounds.center.x;
+        childLocalPosition.z -= bounds.center.z;
         childRoot.localPosition = childLocalPosition;
 
         error = null;
@@ -549,29 +552,6 @@ public class FbxToPrefab : EditorWindow
         root.gameObject.layer = layer;
         foreach (Transform child in root)
             SetLayerRecursively(child, layer);
-    }
-
-    static bool TryGetColliderMesh(Transform root, out Mesh mesh, out Transform meshTransform)
-    {
-        foreach (var mf in root.GetComponentsInChildren<MeshFilter>())
-        {
-            if (mf.sharedMesh == null) continue;
-            mesh = mf.sharedMesh;
-            meshTransform = mf.transform;
-            return true;
-        }
-
-        foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>())
-        {
-            if (smr.sharedMesh == null) continue;
-            mesh = smr.sharedMesh;
-            meshTransform = smr.transform;
-            return true;
-        }
-
-        mesh = null;
-        meshTransform = null;
-        return false;
     }
 
     /// <summary>

@@ -14,30 +14,30 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_LoadFromBytes: 0
   mDataTables:
-  - CameraViewTable
-  - CharacterDataDetail
-  - Level/LevelTable
-  - Career/GradeExperienceTable
-  - Level/LevelTagTable
-  - Hero/KeepsakeTable
-  - Career/MetaGrowthTable
-  - Level/VariableExperimentRuleTable
   - Build/BuildingTable
+  - CameraViewTable
+  - Career/GradeExperienceTable
+  - Career/MetaGrowthTable
+  - CharacterDataDetail
   - Core/LanguagesTable
+  - Hero/KeepsakeTable
+  - Hero/SkillTable
   - Item/ItemTable_Material
   - Item/ItemWithEffectTable_Consumable
   - Item/ItemWithEffectTable_Equipment
   - Item/ItemWithEffectTable_Tool
-  - Hero/SkillTable
+  - Level/LevelTable
+  - Level/LevelTagTable
+  - Level/ObjectiveTable
+  - Level/VariableExperimentRuleTable
+  - Story/StoryCommTable
+  - Story/StoryScriptTable
+  - Story/StoryTriggerTable
   - Text/LocalizationTextTable_Archetype
   - Text/LocalizationTextTable_InteractionOption
   - Text/LocalizationTextTable_Misc
   - Text/LocalizationTextTable_Old
-  - Level/ObjectiveTable
   - Text/TipsTable
-  - Story/StoryScriptTable
-  - Story/StoryCommTable
-  - Story/StoryTriggerTable
   mConfigs:
   - GameConfig
   mLanguages:
@@ -56,6 +56,3 @@ MonoBehaviour:
   - MinimapGameProcedure
   - PreloadProcedure
   - RealProcedure
-  - LaunchProcedure
-  - LoadHotfixDllProcedure
-  - UpdateResourcesProcedure

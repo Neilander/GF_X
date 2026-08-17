@@ -606,9 +606,9 @@ MonoBehaviour:
   legacyPivotLocalPosition: {x: 85.6, y: -67, z: 84.55}
   legacyPivotEuler: {x: 30, y: 45, z: 0}
   legacyInnerCameraLocalPosition: {x: 0, y: 0, z: -250}
-  legacyOrthographicSize: 12
+  legacyOrthographicSize: 14.4
   enableScreenEdgePan: 1
-  edgeThresholdRatio: 0.15
+  edgeThresholdRatio: 0.1
   edgeExitThresholdRatio: 0.25
   edgeHoldDuration: 0.8
   panDistanceRatio: 0.2

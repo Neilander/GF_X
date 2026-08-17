@@ -2931,10 +2931,19 @@ namespace AAAGame.Tools.Editor
                     identifier = DefaultHeroIdentifier;
                 }
             }
-            else if (string.Equals(entityType, "Building", StringComparison.OrdinalIgnoreCase))
+            else if (TryGetBuildingEntityGridSize(entityType, out int buildingEntityGridSize))
             {
+                int expectedPixelSize = buildingEntityGridSize * gridSize;
+                if (entity.width != expectedPixelSize || entity.height != expectedPixelSize)
+                {
+                    throw new InvalidOperationException(
+                        $"LDtk {entityType} must be {expectedPixelSize}x{expectedPixelSize} pixels at grid size {gridSize}. " +
+                        $"actual={entity.width}x{entity.height}.");
+                }
                 pointType = EntityPresetPointType.Building;
                 identifier = NormalizeBuildingIdentifier(GetFieldString(entity, "Identifier"));
+                if (string.IsNullOrWhiteSpace(identifier))
+                    throw new InvalidOperationException($"LDtk {entityType} requires a non-empty Identifier field.");
                 isGameEndConditionBuilding = GetFieldBool(entity, "IsGameEndCondition", false);
                 useCustomCoinReserves = TryGetFieldInt(entity, "CoinReserves", out customCoinReserves);
                 if (useCustomCoinReserves)
@@ -2983,14 +2992,61 @@ namespace AAAGame.Tools.Editor
                 isGameEndConditionBuilding = isGameEndConditionBuilding,
                 useCustomCoinReserves = useCustomCoinReserves,
                 customCoinReserves = customCoinReserves,
-                localPosition = ConvertLdtkPivotToLocalPosition(
-                    entity.px[0],
-                    entity.px[1],
-                    gridSize,
-                    pixelHeight,
-                    cellSize)
+                localPosition = pointType == EntityPresetPointType.Building
+                    ? ConvertLdtkBuildingPivotToLocalPosition(entity, gridSize, pixelHeight, cellSize)
+                    : ConvertLdtkPivotToLocalPosition(
+                        entity.px[0],
+                        entity.px[1],
+                        gridSize,
+                        pixelHeight,
+                        cellSize)
             };
             return true;
+        }
+
+        private static bool TryGetBuildingEntityGridSize(string entityType, out int footprintGridSize)
+        {
+            if (string.Equals(entityType, "Building22", StringComparison.OrdinalIgnoreCase))
+            {
+                footprintGridSize = 2;
+                return true;
+            }
+            if (string.Equals(entityType, "Building33", StringComparison.OrdinalIgnoreCase))
+            {
+                footprintGridSize = 3;
+                return true;
+            }
+            if (string.Equals(entityType, "Building44", StringComparison.OrdinalIgnoreCase))
+            {
+                footprintGridSize = 4;
+                return true;
+            }
+
+            footprintGridSize = 0;
+            return false;
+        }
+
+        private static Vector3 ConvertLdtkBuildingPivotToLocalPosition(
+            LdtkEntityInstance entity,
+            int gridSize,
+            int pixelHeight,
+            float cellSize)
+        {
+            if (entity.__pivot == null || entity.__pivot.Length < 2)
+                throw new InvalidOperationException($"LDtk {entity.__identifier} is missing its pivot.");
+            if (!Mathf.Approximately(entity.__pivot[0], 0.5f) || !Mathf.Approximately(entity.__pivot[1], 0.5f))
+            {
+                throw new InvalidOperationException(
+                    $"LDtk {entity.__identifier} pivot must be centered at (0.5, 0.5), " +
+                    $"actual=({entity.__pivot[0]}, {entity.__pivot[1]}).");
+            }
+
+            return ConvertLdtkPivotToLocalPosition(
+                entity.px[0],
+                entity.px[1],
+                gridSize,
+                pixelHeight,
+                cellSize);
         }
 
         private static Vector3 ConvertLdtkPivotToLocalPosition(
@@ -3363,6 +3419,9 @@ namespace AAAGame.Tools.Editor
         private sealed class LdtkEntityInstance
         {
             public string __identifier;
+            public float[] __pivot;
+            public int width;
+            public int height;
             public int[] px;
             public LdtkFieldInstance[] fieldInstances;
         }

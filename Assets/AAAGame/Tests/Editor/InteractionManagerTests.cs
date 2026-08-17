@@ -5,6 +5,12 @@ using UnityEngine;
 [TestFixture]
 public sealed class InteractionManagerTests
 {
+    [Test]
+    public void EffectiveRange_IsReadAsGameConfigCodeUnits()
+    {
+        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)90).RawValue, LogicInteractionAuthorityService.EffectiveRange.RawValue);
+    }
+
     private sealed class VisibleOption : IInteractionOption
     {
         public string DisplayName { get; private set; }

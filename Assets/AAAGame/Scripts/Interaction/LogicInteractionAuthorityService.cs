@@ -13,7 +13,7 @@ public static class LogicInteractionAuthorityService
     }
 
     private static readonly AuthorityListener s_Listener = new AuthorityListener();
-    private static readonly Fix64 s_EffectiveRange = Fix64.FromRaw(8848);
+    private const string BuildingInteractionRadiusConfigKey = "BuildingInteractionRadius";
     private static readonly Fix64 s_DistanceWeight =
         Fix64.FromRaw(2663) / (Fix64.FromRaw(2663) + Fix64.FromRaw(1434));
     private static readonly Fix64 s_AngleWeight =
@@ -29,6 +29,8 @@ public static class LogicInteractionAuthorityService
     public static LogicEntityId CurrentActorId => s_CurrentActorId;
     public static LogicEntityId CurrentTargetId => s_CurrentTargetId;
     public static ulong LastSwitchFrame => s_LastSwitchFrame;
+    public static Fix64 EffectiveRange => DistanceUnitConverter.ConvertToWorld(
+        DistanceUnitConverter.ReadRequiredPositiveFixedConfig(BuildingInteractionRadiusConfigKey));
 
     public static void BeginTimeline()
     {
@@ -247,7 +249,7 @@ public static class LogicInteractionAuthorityService
         return TryComputeScore(
             actorState,
             targetState,
-            s_EffectiveRange,
+            EffectiveRange,
             s_DistanceWeight,
             s_AngleWeight,
             out score);

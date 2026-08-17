@@ -25,6 +25,7 @@ public sealed class LogicAuthorityConfigTestScope : System.IDisposable
     private static readonly string[] ConfigKeys =
     {
         DistanceUnitConverter.DistanceConversionRateKey,
+        "BuildingInteractionRadius",
         "SmallUnitCollisionRadius",
         "MediumUnitCollisionRadius",
         "LargeUnitCollisionRadius",
@@ -53,7 +54,7 @@ public sealed class LogicAuthorityConfigTestScope : System.IDisposable
 
     private static readonly string[] ConfigValues =
     {
-        "0.05", "12", "22", "36", "54", "50", "300", "800", "1200", "500", "2500", "10000", "0.4", "1", "1200",
+        "0.05", "90", "12", "22", "36", "54", "50", "300", "800", "1200", "500", "2500", "10000", "0.4", "1", "1200",
         "1200", "900", "900", "10000", "300", "0.8", "500", "1.2", "0.5", "1"
     };
 

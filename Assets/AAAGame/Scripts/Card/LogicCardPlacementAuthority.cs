@@ -29,7 +29,7 @@ namespace AAAGame.Card
         private const string UnitVisionRadiusConfigKey = "UnitVisionRadius";
         private const string BuildingVisionRadiusConfigKey = "BuildingVisionRadius";
         private const string VisionExpandSpeedConfigKey = "VisionExpandSpeed";
-        private static readonly Fix64 s_EnemyBuildingBasePadding = (Fix64)3;
+        private static readonly Fix64 s_EnemyBuildingBasePadding = (Fix64)BuildingFootprint.GridCellWorldSize;
         private static readonly List<LogicCombatShape> s_StaticForbiddenShapes = new();
         private static Fog3MapData s_MapData;
         private static Fix64 s_HeroVisionRadius;

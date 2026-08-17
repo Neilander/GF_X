@@ -4,7 +4,7 @@
 	MaxAtkSpeed	攻速上限	700
 	MinMoveSpeed	移速下限	100
 	MaxMoveSpeed	移速上限	1000
-	DistanceConversionRate	距离码数转换为unity距离的比例	0.015
+	DistanceConversionRate	距离码数转换为unity距离的比例	0.018
 	SmallUnitCollisionRadius	轻型单位碰撞半径	12
 	MediumUnitCollisionRadius	中型单位碰撞半径	22
 	LargeUnitCollisionRadius	重型单位碰撞半径	36
@@ -50,3 +50,4 @@
 	DemolishEnemyProdReward	敌方生产建筑损毁提供奖励	2
 	CombatTeleportationWindUp	战斗阶段传送前摇	1
 	VisionExpandSpeed	视野内缩/外扩速度	10000
+	BuildingInteractionRadius	建筑面板交互半径（码数）	90

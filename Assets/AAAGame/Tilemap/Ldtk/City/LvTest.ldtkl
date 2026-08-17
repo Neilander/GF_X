@@ -44,7 +44,7 @@
 			"layerDefUid": 19,
 			"pxOffsetX": 0,
 			"pxOffsetY": 0,
-			"visible": false,
+			"visible": true,
 			"optionalRules": [],
 			"intGridCsv": [],
 			"autoLayerTiles": [],
@@ -53,66 +53,66 @@
 			"gridTiles": [],
 			"entityInstances": [
 				{
-					"__identifier": "Building",
-					"__grid": [64,27],
+					"__identifier": "Building44",
+					"__grid": [65,27],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 57, "x": 0, "y": 0, "w": 96, "h": 96 },
 					"__smartColor": "#D77643",
 					"iid": "ef818a50-48b0-11f1-bab9-b32bfee829db",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [1032,440],
+					"width": 64,
+					"height": 64,
+					"defUid": 51,
+					"px": [1040,432],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "InitBase_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "InitBase_Lv1", "__tile": null, "defUid": 52, "realEditorValues": [{
 							"id": "V_String",
 							"params": ["InitBase_Lv1"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 24, "realEditorValues": [{
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 53, "realEditorValues": [{
 							"id": "V_Bool",
 							"params": [ true ]
 						}] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 54, "realEditorValues": [] }
 					],
-					"__worldX": 1032,
-					"__worldY": -792
+					"__worldX": 1040,
+					"__worldY": -800
 				},
 				{
-					"__identifier": "Building",
-					"__grid": [59,67],
+					"__identifier": "Building44",
+					"__grid": [61,68],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 57, "x": 0, "y": 0, "w": 96, "h": 96 },
 					"__smartColor": "#D77643",
 					"iid": "ef818a51-48b0-11f1-bab9-c9b2ef6fa2d2",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [952,1080],
+					"width": 64,
+					"height": 64,
+					"defUid": 51,
+					"px": [976,1088],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_FarmBase_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_FarmBase_Lv1", "__tile": null, "defUid": 52, "realEditorValues": [{
 							"id": "V_String",
 							"params": ["Buil_FarmBase_Lv1"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [null] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 53, "realEditorValues": [null] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 54, "realEditorValues": [] }
 					],
-					"__worldX": 952,
-					"__worldY": -152
+					"__worldX": 976,
+					"__worldY": -144
 				},
 				{
-					"__identifier": "Building",
-					"__grid": [54,27],
+					"__identifier": "Building22",
+					"__grid": [53,26],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 55, "x": 0, "y": 0, "w": 64, "h": 64 },
 					"__smartColor": "#D77643",
 					"iid": "ef818a52-48b0-11f1-bab9-eb7323f75969",
-					"width": 16,
-					"height": 16,
+					"width": 32,
+					"height": 32,
 					"defUid": 12,
-					"px": [872,440],
+					"px": [848,416],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -121,21 +121,21 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 872,
-					"__worldY": -792
+					"__worldX": 848,
+					"__worldY": -816
 				},
 				{
-					"__identifier": "Building",
-					"__grid": [57,27],
+					"__identifier": "Building22",
+					"__grid": [57,26],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 55, "x": 0, "y": 0, "w": 64, "h": 64 },
 					"__smartColor": "#D77643",
 					"iid": "ef818a53-48b0-11f1-bab9-77b52da3fd31",
-					"width": 16,
-					"height": 16,
+					"width": 32,
+					"height": 32,
 					"defUid": 12,
-					"px": [920,440],
+					"px": [912,416],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -144,67 +144,67 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 920,
-					"__worldY": -792
+					"__worldX": 912,
+					"__worldY": -816
 				},
 				{
-					"__identifier": "Building",
-					"__grid": [64,36],
+					"__identifier": "Building33",
+					"__grid": [65,36],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 56, "x": 0, "y": 0, "w": 80, "h": 80 },
 					"__smartColor": "#D77643",
 					"iid": "ef818a54-48b0-11f1-bab9-2fd3b0ea7c2c",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [1032,584],
+					"width": 48,
+					"height": 48,
+					"defUid": 47,
+					"px": [1048,584],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 48, "realEditorValues": [{
 							"id": "V_String",
 							"params": ["Buil_Army_Lv0"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
-					"__worldX": 1032,
+					"__worldX": 1048,
 					"__worldY": -648
 				},
 				{
-					"__identifier": "Building",
-					"__grid": [64,33],
+					"__identifier": "Building33",
+					"__grid": [60,36],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 56, "x": 0, "y": 0, "w": 80, "h": 80 },
 					"__smartColor": "#D77643",
 					"iid": "ef81b160-48b0-11f1-bab9-f11993265b41",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [1032,536],
+					"width": 48,
+					"height": 48,
+					"defUid": 47,
+					"px": [968,584],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 48, "realEditorValues": [{
 							"id": "V_String",
 							"params": ["Buil_Army_Lv0"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
-					"__worldX": 1032,
-					"__worldY": -696
+					"__worldX": 968,
+					"__worldY": -648
 				},
 				{
-					"__identifier": "Building",
-					"__grid": [31,22],
+					"__identifier": "Building22",
+					"__grid": [32,23],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 55, "x": 0, "y": 0, "w": 64, "h": 64 },
 					"__smartColor": "#D77643",
 					"iid": "ef81b161-48b0-11f1-bab9-4dec06134327",
-					"width": 16,
-					"height": 16,
+					"width": 32,
+					"height": 32,
 					"defUid": 12,
-					"px": [504,360],
+					"px": [512,368],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -213,21 +213,21 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 504,
-					"__worldY": -872
+					"__worldX": 512,
+					"__worldY": -864
 				},
 				{
-					"__identifier": "Building",
-					"__grid": [40,30],
+					"__identifier": "Building22",
+					"__grid": [41,31],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 55, "x": 0, "y": 0, "w": 64, "h": 64 },
 					"__smartColor": "#D77643",
 					"iid": "ef81b162-48b0-11f1-bab9-71ba222b5ddf",
-					"width": 16,
-					"height": 16,
+					"width": 32,
+					"height": 32,
 					"defUid": 12,
-					"px": [648,488],
+					"px": [656,496],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Trap_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -236,114 +236,113 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 648,
-					"__worldY": -744
+					"__worldX": 656,
+					"__worldY": -736
 				},
-
 				{
-					"__identifier": "Building",
-					"__grid": [37,30],
+					"__identifier": "Building33",
+					"__grid": [36,30],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 56, "x": 0, "y": 0, "w": 80, "h": 80 },
 					"__smartColor": "#D77643",
 					"iid": "ef81b164-48b0-11f1-bab9-494a9bd43e79",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [600,488],
+					"width": 48,
+					"height": 48,
+					"defUid": 47,
+					"px": [584,488],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 48, "realEditorValues": [{
 							"id": "V_String",
 							"params": ["Buil_Army_Lv0"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
-					"__worldX": 600,
+					"__worldX": 584,
 					"__worldY": -744
 				},
 				{
-					"__identifier": "Building",
-					"__grid": [14,66],
+					"__identifier": "Building44",
+					"__grid": [14,67],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 57, "x": 0, "y": 0, "w": 96, "h": 96 },
 					"__smartColor": "#D77643",
 					"iid": "ef81d870-48b0-11f1-bab9-2bda9753dcc2",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [232,1064],
+					"width": 64,
+					"height": 64,
+					"defUid": 51,
+					"px": [224,1072],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_DreamPark_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_DreamPark_Lv1", "__tile": null, "defUid": 52, "realEditorValues": [{
 							"id": "V_String",
 							"params": ["Buil_DreamPark_Lv1"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 53, "realEditorValues": [] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 54, "realEditorValues": [] }
 					],
-					"__worldX": 232,
-					"__worldY": -168
+					"__worldX": 224,
+					"__worldY": -160
 				},
 				{
-					"__identifier": "Building",
+					"__identifier": "Building33",
 					"__grid": [20,66],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 56, "x": 0, "y": 0, "w": 80, "h": 80 },
 					"__smartColor": "#D77643",
 					"iid": "ef81d871-48b0-11f1-bab9-fdf986637a81",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
+					"width": 48,
+					"height": 48,
+					"defUid": 47,
 					"px": [328,1064],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_DrinkStand_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_DrinkStand_Lv1", "__tile": null, "defUid": 48, "realEditorValues": [{
 							"id": "V_String",
 							"params": ["Buil_DrinkStand_Lv1"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
 					"__worldX": 328,
 					"__worldY": -168
 				},
 				{
-					"__identifier": "Building",
+					"__identifier": "Building33",
 					"__grid": [14,60],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 56, "x": 0, "y": 0, "w": 80, "h": 80 },
 					"__smartColor": "#D77643",
 					"iid": "ef81d872-48b0-11f1-bab9-81e63a83dd45",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
+					"width": 48,
+					"height": 48,
+					"defUid": 47,
 					"px": [232,968],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 48, "realEditorValues": [{
 							"id": "V_String",
 							"params": ["Buil_Army_Lv0"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
 					"__worldX": 232,
 					"__worldY": -264
 				},
 				{
-					"__identifier": "Building",
-					"__grid": [23,56],
+					"__identifier": "Building22",
+					"__grid": [24,57],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 55, "x": 0, "y": 0, "w": 64, "h": 64 },
 					"__smartColor": "#D77643",
 					"iid": "ef81ff80-48b0-11f1-bab9-2b2b7b2e804a",
-					"width": 16,
-					"height": 16,
+					"width": 32,
+					"height": 32,
 					"defUid": 12,
-					"px": [376,904],
+					"px": [384,912],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -352,22 +351,21 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 376,
-					"__worldY": -328
+					"__worldX": 384,
+					"__worldY": -320
 				},
-
 				{
-					"__identifier": "Building",
-					"__grid": [31,25],
+					"__identifier": "Building22",
+					"__grid": [32,27],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 55, "x": 0, "y": 0, "w": 64, "h": 64 },
 					"__smartColor": "#D77643",
 					"iid": "ef81ff82-48b0-11f1-bab9-3baede462abf",
-					"width": 16,
-					"height": 16,
+					"width": 32,
+					"height": 32,
 					"defUid": 12,
-					"px": [504,408],
+					"px": [512,432],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -376,22 +374,21 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 504,
-					"__worldY": -824
+					"__worldX": 512,
+					"__worldY": -800
 				},
-
 				{
-					"__identifier": "Building",
-					"__grid": [47,58],
+					"__identifier": "Building22",
+					"__grid": [48,59],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 55, "x": 0, "y": 0, "w": 64, "h": 64 },
 					"__smartColor": "#D77643",
 					"iid": "ef822691-48b0-11f1-bab9-2b6d23317fdf",
-					"width": 16,
-					"height": 16,
+					"width": 32,
+					"height": 32,
 					"defUid": 12,
-					"px": [760,936],
+					"px": [768,944],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_FreshMarket_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -400,56 +397,55 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 760,
-					"__worldY": -296
+					"__worldX": 768,
+					"__worldY": -288
 				},
 				{
-					"__identifier": "Building",
-					"__grid": [54,67],
+					"__identifier": "Building33",
+					"__grid": [55,67],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 56, "x": 0, "y": 0, "w": 80, "h": 80 },
 					"__smartColor": "#D77643",
 					"iid": "ef822692-48b0-11f1-bab9-6d9cd266bafa",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [872,1080],
+					"width": 48,
+					"height": 48,
+					"defUid": 47,
+					"px": [888,1080],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Slaughterhouse_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Slaughterhouse_Lv1", "__tile": null, "defUid": 48, "realEditorValues": [{
 							"id": "V_String",
 							"params": ["Buil_Slaughterhouse_Lv1"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
-					"__worldX": 872,
+					"__worldX": 888,
 					"__worldY": -152
 				},
 				{
-					"__identifier": "Building",
+					"__identifier": "Building33",
 					"__grid": [59,62],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 56, "x": 0, "y": 0, "w": 80, "h": 80 },
 					"__smartColor": "#D77643",
 					"iid": "ef822693-48b0-11f1-bab9-5baffda45361",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
+					"width": 48,
+					"height": 48,
+					"defUid": 47,
 					"px": [952,1000],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Slaughterhouse_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Slaughterhouse_Lv1", "__tile": null, "defUid": 48, "realEditorValues": [{
 							"id": "V_String",
 							"params": ["Buil_Slaughterhouse_Lv1"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
 					"__worldX": 952,
 					"__worldY": -232
 				},
-
 				{
 					"__identifier": "Soldier",
 					"__grid": [54,60],
@@ -644,7 +640,7 @@
 				},
 				{
 					"__identifier": "DefendSpawn",
-					"__grid": [33,28],
+					"__grid": [36,26],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
 					"__tile": null,
@@ -653,10 +649,10 @@
 					"width": 16,
 					"height": 16,
 					"defUid": 27,
-					"px": [536,456],
+					"px": [584,424],
 					"fieldInstances": [{ "__identifier": "Weight", "__type": "Float", "__value": 3, "__tile": null, "defUid": 28, "realEditorValues": [{ "id": "V_Float", "params": [3] }] }],
-					"__worldX": 536,
-					"__worldY": -776
+					"__worldX": 584,
+					"__worldY": -808
 				},
 				{
 					"__identifier": "DefendSpawn",
@@ -691,17 +687,17 @@
 					"__worldY": -312
 				},
 				{
-					"__identifier": "Building",
-					"__grid": [54,36],
+					"__identifier": "Building22",
+					"__grid": [62,32],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 55, "x": 0, "y": 0, "w": 64, "h": 64 },
 					"__smartColor": "#D77643",
 					"iid": "66d11550-6fc0-11f1-8f2a-91cfb8a99630",
-					"width": 16,
-					"height": 16,
+					"width": 32,
+					"height": 32,
 					"defUid": 12,
-					"px": [872,584],
+					"px": [992,512],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Def_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -710,21 +706,21 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 872,
-					"__worldY": -648
+					"__worldX": 992,
+					"__worldY": -720
 				},
 				{
-					"__identifier": "Building",
-					"__grid": [57,36],
+					"__identifier": "Building22",
+					"__grid": [66,32],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 55, "x": 0, "y": 0, "w": 64, "h": 64 },
 					"__smartColor": "#D77643",
 					"iid": "7f9bfa00-6fc0-11f1-8f2a-3d55d727a3ce",
-					"width": 16,
-					"height": 16,
+					"width": 32,
+					"height": 32,
 					"defUid": 12,
-					"px": [920,584],
+					"px": [1056,512],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Def_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -733,35 +729,34 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 920,
-					"__worldY": -648
+					"__worldX": 1056,
+					"__worldY": -720
 				},
-
 				{
-					"__identifier": "Building",
-					"__grid": [40,22],
+					"__identifier": "Building44",
+					"__grid": [40,23],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": null,
+					"__tile": { "tilesetUid": 57, "x": 0, "y": 0, "w": 96, "h": 96 },
 					"__smartColor": "#D77643",
 					"iid": "a660c030-6fc0-11f1-8f2a-f93108ff25d2",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [648,360],
+					"width": 64,
+					"height": 64,
+					"defUid": 51,
+					"px": [640,368],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_WildernessCamp_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_WildernessCamp_Lv1", "__tile": null, "defUid": 52, "realEditorValues": [{
 							"id": "V_String",
 							"params": ["Buil_WildernessCamp_Lv1"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 24, "realEditorValues": [{
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 53, "realEditorValues": [{
 							"id": "V_Bool",
 							"params": [ true ]
 						}] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 54, "realEditorValues": [] }
 					],
-					"__worldX": 648,
-					"__worldY": -872
+					"__worldX": 640,
+					"__worldY": -864
 				},
 				{
 					"__identifier": "Teleportation",
@@ -797,7 +792,7 @@
 				},
 				{
 					"__identifier": "Teleportation",
-					"__grid": [59,30],
+					"__grid": [58,31],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
 					"__tile": null,
@@ -806,10 +801,10 @@
 					"width": 16,
 					"height": 16,
 					"defUid": 38,
-					"px": [952,488],
+					"px": [936,504],
 					"fieldInstances": [],
-					"__worldX": 952,
-					"__worldY": -744
+					"__worldX": 936,
+					"__worldY": -728
 				},
 				{
 					"__identifier": "Teleportation",
@@ -7763,7 +7758,7 @@
 			"layerDefUid": 2,
 			"pxOffsetX": 0,
 			"pxOffsetY": 0,
-			"visible": false,
+			"visible": true,
 			"optionalRules": [],
 			"intGridCsv": [
 				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -9330,7 +9325,7 @@
 			"layerDefUid": 45,
 			"pxOffsetX": 0,
 			"pxOffsetY": 0,
-			"visible": false,
+			"visible": true,
 			"optionalRules": [],
 			"intGridCsv": [
 				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -9548,7 +9543,7 @@
 			"layerDefUid": 44,
 			"pxOffsetX": 0,
 			"pxOffsetY": 0,
-			"visible": false,
+			"visible": true,
 			"optionalRules": [],
 			"intGridCsv": [
 				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -9766,7 +9761,7 @@
 			"layerDefUid": 43,
 			"pxOffsetX": 0,
 			"pxOffsetY": 0,
-			"visible": false,
+			"visible": true,
 			"optionalRules": [],
 			"intGridCsv": [
 				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,

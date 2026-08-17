@@ -598,7 +598,7 @@ public sealed class LogicCardPlacementAuthorityTests
         Assert.AreEqual(
             LogicCardPlacementInvalidReason.EnemyBuildingForbiddenArea,
             LogicCardPlacementAuthority.Evaluate(
-                new FixVector2((Fix64)10.5f, (Fix64)7),
+                new FixVector2((Fix64)9.4f, (Fix64)7),
                 (Fix64)0.5f,
                 GamePhase.Invade));
         Assert.AreEqual(
@@ -629,7 +629,7 @@ public sealed class LogicCardPlacementAuthorityTests
                     new FixVector2(Fix64.One, Fix64.One)),
             });
         EntityRegistry.Register(enemy);
-        var placementPosition = new FixVector2((Fix64)10.5f, (Fix64)7);
+        var placementPosition = new FixVector2((Fix64)9.4f, (Fix64)7);
 
         Assert.AreEqual(
             LogicCardPlacementInvalidReason.EnemyBuildingForbiddenArea,

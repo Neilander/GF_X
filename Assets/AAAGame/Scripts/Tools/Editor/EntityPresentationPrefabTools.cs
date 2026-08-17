@@ -33,7 +33,7 @@ public static class EntityPresentationPrefabTools
         int unitCount = CreateMissingPrefabs(ReadUnitPrefabPaths(), UnitProxySource, true);
         int buildingCount = CreateMissingPrefabs(ReadBuildingPrefabPaths(), BuildingProxySource, false);
         MigrateAllExistingPrefabs();
-        int resizedUnitCount = NormalizePlaceholderUnitVisualRadiiInternal();
+        int resizedUnitCount = NormalizeUnitVisualRadiiInternal();
         ExecuteRequiredMenuItem("Tools/AAAGame/Bake Building Logic Obstacle Shapes");
         ExecuteRequiredMenuItem("Tools/AAAGame/Bake Building Combat Shapes");
         AssetDatabase.SaveAssets();
@@ -41,12 +41,12 @@ public static class EntityPresentationPrefabTools
         Debug.Log($"[EntityPresentationPrefabTools] Created proxies. units={unitCount}, buildings={buildingCount}, resizedUnits={resizedUnitCount}.");
     }
 
-    [MenuItem("Tools/AAAGame/Presentation/Normalize Placeholder Unit Visual Radii")]
-    public static void NormalizePlaceholderUnitVisualRadii()
+    [MenuItem("Tools/AAAGame/Presentation/Normalize Unit Visual Radii")]
+    public static void NormalizeUnitVisualRadii()
     {
-        int changed = NormalizePlaceholderUnitVisualRadiiInternal();
+        int changed = NormalizeUnitVisualRadiiInternal();
         AssetDatabase.SaveAssets();
-        Debug.Log($"[EntityPresentationPrefabTools] Normalized placeholder unit visual radii. changed={changed}.");
+        Debug.Log($"[EntityPresentationPrefabTools] Normalized unit visual radii. changed={changed}.");
     }
 
     public static float GetUnitVisualRadius(UnitSize size)
@@ -398,7 +398,7 @@ public static class EntityPresentationPrefabTools
         return created;
     }
 
-    private static int NormalizePlaceholderUnitVisualRadiiInternal()
+    private static int NormalizeUnitVisualRadiiInternal()
     {
         Dictionary<string, UnitSize> sizesByPath = ReadUnitSizesByRuntimePath();
         int changed = 0;
@@ -411,8 +411,6 @@ public static class EntityPresentationPrefabTools
             EntityPresentationBindings assetBindings = prefab.GetComponent<EntityPresentationBindings>();
             if (assetBindings == null)
                 throw new InvalidOperationException($"Unit prefab has no EntityPresentationBindings. path={assetPath}.");
-            if (!assetBindings.IsPlaceholder)
-                continue;
             GameObject root = PrefabUtility.LoadPrefabContents(assetPath);
             try
             {
@@ -424,12 +422,22 @@ public static class EntityPresentationPrefabTools
                     throw new InvalidOperationException($"Unit has no valid horizontal visual radius. path={assetPath}.");
                 float targetRadius = GetUnitVisualRadius(pair.Value);
                 float scaleFactor = targetRadius / currentRadius;
-                if (Mathf.Abs(scaleFactor - 1f) <= 0.0001f)
-                    continue;
-
                 if (bindings.ProjectileOrigin == null)
                     throw new InvalidOperationException($"Unit has no ProjectileOrigin binding. path={assetPath}.");
-                bindings.DisplayRoot.localScale *= scaleFactor;
+                if (Mathf.Abs(scaleFactor - 1f) > 0.0001f)
+                    bindings.DisplayRoot.localScale *= scaleFactor;
+
+                Bounds presentationBounds = GetPresentationBounds(bindings.DisplayRoot);
+                CharacterController controller = root.GetComponent<CharacterController>()
+                                                 ?? throw new InvalidOperationException($"Unit has no CharacterController. path={assetPath}.");
+                controller.radius = targetRadius;
+                controller.height = presentationBounds.size.y;
+                controller.center = root.transform.InverseTransformPoint(presentationBounds.center);
+
+                BoxCollider hurtCollider = root.transform.Find("HurtBox")?.GetComponent<BoxCollider>()
+                                             ?? throw new InvalidOperationException($"Unit has no HurtBox BoxCollider. path={assetPath}.");
+                hurtCollider.center = controller.center;
+                hurtCollider.size = new Vector3(targetRadius * 2f, controller.height, targetRadius * 2f);
                 bindings.ProjectileOrigin.localPosition = ResolvePresentationCenter(root.transform, bindings.DisplayRoot);
                 ValidateBindingsOrThrow(bindings, true, assetPath);
                 PrefabUtility.SaveAsPrefabAsset(root, assetPath);
@@ -461,8 +469,17 @@ public static class EntityPresentationPrefabTools
             {
                 throw new InvalidOperationException($"CharacterDataDetail row {i + 1} has invalid Size '{sizeText}'.");
             }
-            if (!result.TryAdd(columns[6], size))
-                throw new InvalidOperationException($"CharacterDataDetail contains duplicate PrefabPath '{columns[6]}'.");
+            string prefabPath = columns[6];
+            if (result.TryGetValue(prefabPath, out UnitSize existingSize))
+            {
+                if (existingSize != size)
+                {
+                    throw new InvalidOperationException(
+                        $"CharacterDataDetail maps PrefabPath '{prefabPath}' to conflicting sizes '{existingSize}' and '{size}'.");
+                }
+                continue;
+            }
+            result.Add(prefabPath, size);
         }
         return result;
     }

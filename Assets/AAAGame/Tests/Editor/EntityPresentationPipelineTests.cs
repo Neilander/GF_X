@@ -113,7 +113,7 @@ public sealed class EntityPresentationPipelineTests
     }
 
     [Test]
-    public void PlaceholderUnitVisualBounds_MatchConfiguredCollisionRadius()
+    public void UnitVisualAndPrefabColliders_MatchConfiguredCollisionRadius()
     {
         string[] lines = File.ReadAllLines(UnitTablePath);
         int validatedCount = 0;
@@ -129,9 +129,6 @@ public sealed class EntityPresentationPipelineTests
             Assert.NotNull(prefab, assetPath);
             EntityPresentationBindings assetBindings = prefab.GetComponent<EntityPresentationBindings>();
             Assert.NotNull(assetBindings, assetPath);
-            if (!assetBindings.IsPlaceholder)
-                continue;
-
             GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
             try
             {
@@ -139,7 +136,18 @@ public sealed class EntityPresentationPipelineTests
                 Bounds bounds = EntityPresentationPrefabTools.GetUnitSizeReferenceBounds(bindings.SizeReferenceRenderer);
                 float actualRadius = Mathf.Max(bounds.size.x, bounds.size.z) * 0.5f;
                 float expectedRadius = EntityPresentationPrefabTools.GetUnitVisualRadius(size);
-                Assert.AreEqual(expectedRadius, actualRadius, 0.001f, $"Placeholder unit visual radius mismatch: {assetPath}");
+                Assert.AreEqual(expectedRadius, actualRadius, 0.001f, $"Unit visual radius mismatch: {assetPath}");
+
+                CharacterController controller = instance.GetComponent<CharacterController>();
+                Assert.NotNull(controller, assetPath);
+                Assert.AreEqual(expectedRadius, controller.radius, 0.001f, $"Unit CharacterController radius mismatch: {assetPath}");
+
+                Transform hurtBox = instance.transform.Find("HurtBox");
+                Assert.NotNull(hurtBox, assetPath);
+                BoxCollider hurtCollider = hurtBox.GetComponent<BoxCollider>();
+                Assert.NotNull(hurtCollider, assetPath);
+                Assert.AreEqual(expectedRadius * 2f, hurtCollider.size.x, 0.001f, $"Unit HurtBox width mismatch: {assetPath}");
+                Assert.AreEqual(expectedRadius * 2f, hurtCollider.size.z, 0.001f, $"Unit HurtBox depth mismatch: {assetPath}");
                 validatedCount++;
             }
             finally
@@ -191,7 +199,7 @@ public sealed class EntityPresentationPipelineTests
     }
 
     [Test]
-    public void DefendLv0Placeholder_UsesArmyLv0WithoutSolidCollision()
+    public void DefendLv0_UsesTechLv0WithoutSolidCollision()
     {
         const string prefabPath = "Assets/AAAGame/Prefabs/Entity/Building/Buil_Def_Lv0.prefab";
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
@@ -199,12 +207,47 @@ public sealed class EntityPresentationPipelineTests
 
         Transform display = prefab.transform.Find(EntityPresentationBindings.DisplayObjectName);
         Assert.NotNull(display, $"Prefab has no direct Display child: {prefabPath}");
-        Assert.NotNull(FindDescendant(display, "ArmyLv0"), $"Defend Lv0 placeholder must use the existing ArmyLv0 model: {prefabPath}");
+        Assert.NotNull(FindDescendant(display, "TechLv0"), $"Defend Lv0 must use the restored TechLv0 model: {prefabPath}");
+        EntityPresentationBindings bindings = prefab.GetComponent<EntityPresentationBindings>();
+        Assert.NotNull(bindings, prefabPath);
+        Assert.IsFalse(bindings.IsPlaceholder, $"Defend Lv0 must no longer be marked as a placeholder: {prefabPath}");
 
         Collider[] colliders = prefab.GetComponentsInChildren<Collider>(true);
         Assert.IsNotEmpty(colliders, $"Defend Lv0 placeholder has no authored interaction collider: {prefabPath}");
         foreach (Collider collider in colliders)
             Assert.IsTrue(collider.isTrigger, $"Defend Lv0 placeholder contains a solid collider at '{GetPath(collider.transform)}': {prefabPath}");
+    }
+
+    [Test]
+    public void Lv0BuildingVisuals_AreGrounded()
+    {
+        string[] prefabPaths =
+        {
+            "Assets/AAAGame/Prefabs/Entity/Building/Buil_Prod_Lv0.prefab",
+            "Assets/AAAGame/Prefabs/Entity/Building/Buil_Def_Lv0.prefab",
+            "Assets/AAAGame/Prefabs/Entity/Building/Buil_Army_Lv0.prefab",
+            "Assets/AAAGame/Prefabs/Entity/Building/Buil_Base_Lv0.prefab"
+        };
+
+        for (int i = 0; i < prefabPaths.Length; i++)
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPaths[i]);
+            Assert.NotNull(prefab, prefabPaths[i]);
+            GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            try
+            {
+                Transform display = instance.transform.Find(EntityPresentationBindings.DisplayObjectName);
+                Assert.NotNull(display, prefabPaths[i]);
+                Bounds bounds = GetVisualBounds(display);
+                Assert.AreEqual(0f, bounds.min.y, 0.0002f, prefabPaths[i]);
+                Assert.AreEqual(0f, bounds.center.x, 0.0002f, prefabPaths[i]);
+                Assert.AreEqual(0f, bounds.center.z, 0.0002f, prefabPaths[i]);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(instance);
+            }
+        }
     }
 
     [Test]
