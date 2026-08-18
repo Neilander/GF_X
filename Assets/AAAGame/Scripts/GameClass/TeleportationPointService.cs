@@ -85,6 +85,8 @@ public static class TeleportationPointService
             throw new ArgumentNullException(nameof(point));
         if (point.PointType != EntityPresetPointType.Teleportation)
             throw new ArgumentException($"Point '{point.name}' is not a teleportation point.", nameof(point));
+        if (point.TeleportationId < 0)
+            throw new InvalidOperationException($"Teleportation point '{point.name}' has an invalid ID {point.TeleportationId}.");
 
         LevelEntity level = LevelEntity.ActiveLevelEntity
             ?? throw new InvalidOperationException("Teleportation requires an active level entity.");

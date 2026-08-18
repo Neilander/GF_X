@@ -38,6 +38,13 @@ public class EnemyAIBrain : IControlBrain, ITickBrain
             else
                 Attack = true;
         }
+        else if (self.TargetComp is ILastSeenTargetingComp lastSeen && lastSeen.HasLastSeenPursuit)
+        {
+            FixVector2 to = lastSeen.LastSeenPursuitDestinationFixed
+                            - LogicEntityFrameSnapshotService.GetRequiredPosition(self);
+            if (FixVector2.SqrMagnitude(to) > Fix64.FromRaw(41))
+                desiredMove = to.GetNormalized();
+        }
 
         FixVector2 separation = ResolveSeparation(self, SeparationRadius);
         FixVector2 finalMove = desiredMove + separation * SeparationWeight;

@@ -234,6 +234,15 @@ public class LogicFrameRuntimeTests
     }
 
     [Test]
+    public void DefendSpawnWeights_PreserveFractionalRatio()
+    {
+        Fix64 totalWeight = Fix64.FromRaw(8192L);
+
+        Assert.AreEqual(6, DefendPhaseRuntime.GetEditorTestWeightedSpawnCount(Fix64.FromRaw(6144L), totalWeight, 8));
+        Assert.AreEqual(2, DefendPhaseRuntime.GetEditorTestWeightedSpawnCount(Fix64.FromRaw(2048L), totalWeight, 8));
+    }
+
+    [Test]
     public void DefendSpawnTracking_QueuesSpawnSpeedForVisibilityRelease()
     {
         DefendPhaseRuntime.CancelRuntime();

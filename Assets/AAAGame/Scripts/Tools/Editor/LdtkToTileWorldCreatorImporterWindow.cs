@@ -2460,7 +2460,8 @@ namespace AAAGame.Tools.Editor
                 point.Identifier = pointData.identifier;
                 point.PointType = pointData.pointType;
                 point.UnitSpawnCount = pointData.unitSpawnCount;
-                point.DefendSpawnWeight = pointData.defendSpawnWeight;
+                point.TeleportationId = pointData.teleportationId;
+                point.SetDefendSpawnWeight(pointData.defendSpawnWeight);
                 point.DestinationId = pointData.destinationId;
                 point.DestinationRadius = pointData.destinationRadius;
                 point.IsGameEndConditionBuilding = pointData.isGameEndConditionBuilding;
@@ -2874,6 +2875,7 @@ namespace AAAGame.Tools.Editor
         private static List<EntityPresetPointData> ReadEntityPresetPoints(LdtkLevelJson level, int gridSize, float cellSize)
         {
             var result = new List<EntityPresetPointData>();
+            var teleportationIds = new HashSet<int>();
             LdtkLayerInstance entityLayer = level.layerInstances?.FirstOrDefault(x =>
                 x != null &&
                 string.Equals(x.__identifier, EntityLayerName, StringComparison.OrdinalIgnoreCase));
@@ -2896,6 +2898,11 @@ namespace AAAGame.Tools.Editor
                     continue;
                 }
 
+                if (pointData.pointType == EntityPresetPointType.Teleportation && !teleportationIds.Add(pointData.teleportationId))
+                {
+                    throw new InvalidOperationException($"LDtk level contains duplicate Teleportation ID {pointData.teleportationId}.");
+                }
+
                 result.Add(pointData);
             }
 
@@ -2909,7 +2916,8 @@ namespace AAAGame.Tools.Editor
             EntityPresetPointType pointType;
             string identifier;
             int unitSpawnCount = 0;
-            int defendSpawnWeight = 1;
+            int teleportationId = 0;
+            Fix64 defendSpawnWeight = Fix64.Zero;
             int destinationId = 0;
             float destinationRadius = 0f;
             bool isGameEndConditionBuilding = false;
@@ -2953,9 +2961,7 @@ namespace AAAGame.Tools.Editor
             }
             else if (string.Equals(entityType, "DefendSpawn", StringComparison.OrdinalIgnoreCase))
             {
-                pointType = EntityPresetPointType.DefendSpawn;
-                identifier = GetFieldString(entity, "Identifier");
-                defendSpawnWeight = Mathf.Max(0, Mathf.RoundToInt(GetFieldFloat(entity, "Weight", 1f)));
+                throw new InvalidOperationException("LDtk DefendSpawn is no longer supported. Use one Teleportation entity per stronghold with ID and Weight fields.");
             }
             else if (string.Equals(entityType, "Destination", StringComparison.OrdinalIgnoreCase))
             {
@@ -2974,7 +2980,11 @@ namespace AAAGame.Tools.Editor
             else if (string.Equals(entityType, "Teleportation", StringComparison.OrdinalIgnoreCase))
             {
                 pointType = EntityPresetPointType.Teleportation;
-                identifier = "Teleportation";
+                if (!TryGetStrictFieldInt(entity, "ID", out teleportationId) || teleportationId < 0)
+                    throw new InvalidOperationException($"Teleportation ID must be a non-negative integer, actual={GetFieldValue(entity, "ID")}.");
+                if (!TryGetNonNegativeFixedField(entity, "Weight", out defendSpawnWeight))
+                    throw new InvalidOperationException($"Teleportation {teleportationId} Weight must be a finite non-negative number, actual={GetFieldValue(entity, "Weight")}.");
+                identifier = teleportationId.ToString(CultureInfo.InvariantCulture);
             }
             else
             {
@@ -2986,6 +2996,7 @@ namespace AAAGame.Tools.Editor
                 pointType = pointType,
                 identifier = identifier,
                 unitSpawnCount = unitSpawnCount,
+                teleportationId = teleportationId,
                 defendSpawnWeight = defendSpawnWeight,
                 destinationId = destinationId,
                 destinationRadius = destinationRadius,
@@ -3114,6 +3125,40 @@ namespace AAAGame.Tools.Editor
             }
 
             return int.TryParse(token.ToString(Formatting.None), out value);
+        }
+
+        private static bool TryGetStrictFieldInt(LdtkEntityInstance entity, string fieldName, out int value)
+        {
+            value = default;
+            JToken token = GetFieldValue(entity, fieldName);
+            if (token == null || token.Type != JTokenType.Integer)
+            {
+                return false;
+            }
+
+            value = token.Value<int>();
+            return true;
+        }
+
+        private static bool TryGetNonNegativeFixedField(LdtkEntityInstance entity, string fieldName, out Fix64 value)
+        {
+            value = Fix64.Zero;
+            JToken token = GetFieldValue(entity, fieldName);
+            if (token == null || (token.Type != JTokenType.Integer && token.Type != JTokenType.Float))
+            {
+                return false;
+            }
+
+            try
+            {
+                decimal decimalValue = token.Value<decimal>();
+                value = (Fix64)decimalValue;
+                return decimalValue >= decimal.Zero && value >= Fix64.Zero;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         private static float GetFieldFloat(LdtkEntityInstance entity, string fieldName, float defaultValue)
@@ -3464,7 +3509,8 @@ namespace AAAGame.Tools.Editor
             public EntityPresetPointType pointType;
             public string identifier;
             public int unitSpawnCount;
-            public int defendSpawnWeight;
+            public int teleportationId;
+            public Fix64 defendSpawnWeight;
             public int destinationId;
             public float destinationRadius;
             public bool isGameEndConditionBuilding;

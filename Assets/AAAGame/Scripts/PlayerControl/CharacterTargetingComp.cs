@@ -1,52 +1,87 @@
-﻿using System.Collections.Generic;
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
-public class CharacterTargetingComp : ITargetingComp, INavigationReachabilityTargetingComp, ILogicDeterministicStateContributor
+public interface ILastSeenTargetingComp
 {
-    private readonly struct NavigationRejectedTarget
+    bool HasLastSeenPursuit { get; }
+    FixVector2 LastSeenPositionFixed { get; }
+    FixVector2 LastSeenPursuitDestinationFixed { get; }
+}
+
+public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, INavigationReachabilityTargetingComp, ILastSeenTargetingComp, ILogicDeterministicStateContributor
+{
+    private readonly struct AlertRecord
     {
-        public NavigationRejectedTarget(IEntityContext target, int targetId, FixVector2 targetPosition)
+        public AlertRecord(IEntityContext target, Fix64 remaining)
         {
             Target = target;
-            TargetId = targetId;
+            Remaining = remaining;
+        }
+
+        public IEntityContext Target { get; }
+        public Fix64 Remaining { get; }
+        public AlertRecord WithRemaining(Fix64 remaining) => new AlertRecord(Target, remaining);
+    }
+
+    private readonly struct NavigationRejectedTarget
+    {
+        public NavigationRejectedTarget(IEntityContext target, FixVector2 targetPosition)
+        {
+            Target = target;
             TargetPosition = targetPosition;
         }
 
         public IEntityContext Target { get; }
-        public int TargetId { get; }
         public FixVector2 TargetPosition { get; }
     }
 
-    private enum TargetingMode
+    private readonly struct AggroCandidate
     {
-        Default = 0,
-        DefendEnemy = 1
+        public AggroCandidate(IEntityContext target, Fix64 distance, TargetPriority priority)
+        {
+            Target = target;
+            Distance = distance;
+            Priority = priority;
+        }
+
+        public IEntityContext Target { get; }
+        public Fix64 Distance { get; }
+        public TargetPriority Priority { get; }
     }
 
+    private static readonly Fix64 ScanInterval = Fix64.FromRaw(820);
+    private static readonly Fix64 LastSeenArrivalRadius = Fix64.FromRaw(410);
+    private readonly List<AlertRecord> _alerts = new List<AlertRecord>();
+    private readonly List<NavigationRejectedTarget> _navigationRejectedTargets = new List<NavigationRejectedTarget>();
+    private readonly List<AggroCandidate> _candidateBuffer = new List<AggroCandidate>();
     private IEntityContext _ctx;
     private IEntityContext _currentTarget;
-    private bool _hasAttackedCurrentTarget;
-    private Fix64 _attackLockPursuitFloor;
-    private TargetingMode _targetingMode;
+    private IEntityContext _lostTarget;
+    private FixVector2 _lastSeenPosition;
+    private FixVector2 _lastSeenPursuitDestination;
+    private Fix64 _scanTimer;
     private IEntityContext _defendFallbackTarget;
-    private readonly List<NavigationRejectedTarget> _navigationRejectedTargets = new List<NavigationRejectedTarget>();
+    private bool _defendMode;
     private bool _hasNavigationRejectionEpoch;
     private FixVector2 _navigationRejectionSelfPosition;
     private int _navigationRejectionTopologyVersion;
+
     public IEntityContext CurrentTarget
     {
         get => _currentTarget;
-        set
-        {
-            if (ReferenceEquals(_currentTarget, value))
-                return;
-
-            _currentTarget = value;
-            _hasAttackedCurrentTarget = false;
-            _attackLockPursuitFloor = Fix64.Zero;
-        }
+        set => SetCurrentTarget(value, true);
     }
+
+    public IEntityContext AggroTarget => _currentTarget ?? _lostTarget;
     public IEntityContext FollowTarget { get; private set; }
+    public bool HasLastSeenPursuit => _lostTarget != null;
+    public FixVector2 LastSeenPositionFixed => HasLastSeenPursuit
+        ? _lastSeenPosition
+        : throw new InvalidOperationException("No last-seen pursuit is active.");
+    public FixVector2 LastSeenPursuitDestinationFixed => HasLastSeenPursuit
+        ? _lastSeenPursuitDestination
+        : throw new InvalidOperationException("No last-seen pursuit is active.");
 
     private Fix64 m_AggroRange = (Fix64)6;
     private Fix64 m_ForgetRange = (Fix64)8;
@@ -57,234 +92,428 @@ public class CharacterTargetingComp : ITargetingComp, INavigationReachabilityTar
     public Fix64 FollowSearchRangeFixed { get => m_FollowSearchRange; set => m_FollowSearchRange = LogicTargetingRange.Require(value, nameof(FollowSearchRangeFixed)); }
     public Fix64 AlertRadiusFixed { get => m_AlertRadius; set => m_AlertRadius = LogicTargetingRange.Require(value, nameof(AlertRadiusFixed)); }
 
-    /// <summary>
-    /// 是否启用"视线外仇恨"。建筑等不应被拉走，可关掉。
-    /// </summary>
-    public bool EnableAggroFallback { get; set; } = true;
-
-    /// <summary>视线外仇恨：scan 找不到目标时 fallback 到这个 attacker。第一次受击锁定，nearest 切到别的目标后清掉。</summary>
-    private IEntityContext _lastAttacker;
-
-    private Fix64 _scanTimer = Fix64.Zero;
-    private static readonly Fix64 SCAN_INTERVAL = Fix64.FromRaw(820);
+    public void Init(IEntityContext ctx)
+    {
+        _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
+        _currentTarget = null;
+        _lostTarget = null;
+        FollowTarget = null;
+        _scanTimer = Fix64.Zero;
+        _defendFallbackTarget = null;
+        _defendMode = false;
+        _alerts.Clear();
+        ClearNavigationRejections();
+    }
 
     public void UseDefaultMode()
     {
-        _targetingMode = TargetingMode.Default;
+        _defendMode = false;
         _defendFallbackTarget = null;
-        _hasAttackedCurrentTarget = false;
-        _attackLockPursuitFloor = Fix64.Zero;
     }
 
     public void UseDefendEnemyMode(IEntityContext fallbackTarget)
     {
-        _targetingMode = TargetingMode.DefendEnemy;
+        _defendMode = true;
         _defendFallbackTarget = fallbackTarget;
-        _lastAttacker = null;
-        _hasAttackedCurrentTarget = false;
-        _attackLockPursuitFloor = Fix64.Zero;
     }
 
-    public void Init(IEntityContext ctx)
-    {
-        _ctx = ctx;
-        CurrentTarget = null;
-        FollowTarget = null;
-        _lastAttacker = null;
-        _hasAttackedCurrentTarget = false;
-        _attackLockPursuitFloor = Fix64.Zero;
-        _scanTimer = Fix64.Zero;
-        _targetingMode = TargetingMode.Default;
-        _defendFallbackTarget = null;
-        ClearNavigationRejections();
-    }
-
-    public void RejectNavigationUnreachableTarget(IEntityContext target)
+    public void UpdateTargeting(Fix64 deltaTime)
     {
         if (_ctx == null)
-            throw new System.InvalidOperationException("Cannot reject a navigation target before CharacterTargetingComp.Init.");
-        if (target == null)
-            throw new System.ArgumentNullException(nameof(target));
-        if (!ReferenceEquals(CurrentTarget, target))
+            throw new InvalidOperationException("CharacterTargetingComp.UpdateTargeting called before Init.");
+        if (deltaTime <= Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(deltaTime));
+        if (!_ctx.Alive)
         {
-            throw new System.InvalidOperationException(
-                $"Navigation rejection target is not current. owner={GetLogicId(_ctx)} current={GetLogicId(CurrentTarget)} rejected={GetLogicId(target)}.");
-        }
-        if (!target.LogicEntityId.IsValid)
-            throw new System.InvalidOperationException("Cannot reject a navigation target without a valid logic entity id.");
-
-        PruneNavigationRejections();
-        FixVector2 selfPosition = _ctx.LogicFramePositionFixed();
-        int topologyVersion = FlowFieldCrowdMovementSystem.NavigationTopologyVersion;
-        if (_navigationRejectedTargets.Count == 0)
-        {
-            _hasNavigationRejectionEpoch = true;
-            _navigationRejectionSelfPosition = selfPosition;
-            _navigationRejectionTopologyVersion = topologyVersion;
-        }
-        else if (!_hasNavigationRejectionEpoch
-                 || _navigationRejectionSelfPosition != selfPosition
-                 || _navigationRejectionTopologyVersion != topologyVersion)
-        {
-            throw new System.InvalidOperationException("Navigation rejection epoch changed after pruning.");
+            SetCurrentTarget(null, true);
+            FollowTarget = null;
+            _alerts.Clear();
+            return;
         }
 
-        int targetId = target.LogicEntityId.Value;
-        FixVector2 targetPosition = target.LogicFramePositionFixed();
-        int insertIndex = 0;
-        while (insertIndex < _navigationRejectedTargets.Count
-               && _navigationRejectedTargets[insertIndex].TargetId < targetId)
-        {
-            insertIndex++;
-        }
+        AdvanceAlerts(deltaTime);
+        _scanTimer += deltaTime;
+        bool requiresImmediateScan = (_currentTarget != null
+                                      && (!_currentTarget.IsAttackTargetable()
+                                          || !EntityCombatTeamHelper.IsEnemy(_ctx, _currentTarget)
+                                          || !LogicFactionVisionService.IsEntityVisibleToSide(_ctx.Side, _currentTarget)))
+                                     || (_lostTarget != null
+                                         && LogicFactionVisionService.IsEntityVisibleToSide(_ctx.Side, _lostTarget));
+        if (_scanTimer < ScanInterval && !requiresImmediateScan)
+            return;
+        _scanTimer = Fix64.Zero;
+        RefreshNavigationRejectionEpoch();
+        EvaluateAggroTarget();
+        MaintainFollowTarget();
+    }
 
-        var rejected = new NavigationRejectedTarget(target, targetId, targetPosition);
-        if (insertIndex < _navigationRejectedTargets.Count
-            && _navigationRejectedTargets[insertIndex].TargetId == targetId)
+    private void EvaluateAggroTarget()
+    {
+        Fix64 attackRange = GetEffectiveAttackRange();
+        Fix64 outerRange = LogicFactionVisionService.ReadWorldDistance(LogicFactionVisionService.AggroOuterRangeConfigKey);
+        Fix64 normalCandidateRange = Fix64.Max(
+            LogicFactionVisionService.ReadWorldDistance(LogicFactionVisionService.MinimumAggroCandidateRangeConfigKey),
+            attackRange);
+
+        IEntityContext previousTarget = _currentTarget;
+        if (previousTarget != null && !IsTargetStateValid(previousTarget))
         {
-            if (!ReferenceEquals(_navigationRejectedTargets[insertIndex].Target, target))
+            SetCurrentTarget(null, true);
+            previousTarget = null;
+        }
+        else if (previousTarget != null && LogicFactionVisionService.IsEntityVisibleToSide(_ctx.Side, previousTarget))
+        {
+            if (_ctx.LogicFrameDistanceToTargetSurfaceFixed(previousTarget) > outerRange)
             {
-                throw new System.InvalidOperationException(
-                    $"Navigation rejection found duplicate logic entity id {targetId}.");
+                SetCurrentTarget(null, true);
+                previousTarget = null;
             }
-            _navigationRejectedTargets[insertIndex] = rejected;
+            else
+            {
+                _lastSeenPosition = previousTarget.LogicFramePositionFixed();
+                _lostTarget = null;
+            }
         }
-        else
+        else if (previousTarget != null)
         {
-            _navigationRejectedTargets.Insert(insertIndex, rejected);
+            _lostTarget = previousTarget;
+            SetCurrentTarget(null, false);
         }
 
-        GameDebugSettings.Log(
-            DebugCategory.Targeting,
-            $"{_ctx} 导航拒绝目标 {target} | selfPos={selfPosition} targetPos={targetPosition} topology={topologyVersion}");
-        CurrentTarget = null;
-        _scanTimer = SCAN_INTERVAL;
+        if (_lostTarget != null)
+        {
+            if (!IsTargetStateValid(_lostTarget))
+                ClearLostTarget();
+            else if (LogicFactionVisionService.IsEntityVisibleToSide(_ctx.Side, _lostTarget)
+                     && _ctx.LogicFrameDistanceToTargetSurfaceFixed(_lostTarget) > outerRange)
+                ClearLostTarget();
+            else if (!LogicFactionVisionService.IsEntityVisibleToSide(_ctx.Side, _lostTarget)
+                     && !TryResolveLastSeenPursuitDestination(attackRange, out bool waitForNavigation))
+            {
+                if (waitForNavigation)
+                    return;
+                ClearLostTarget();
+            }
+            else if (FixVector2.Distance(_ctx.LogicFramePositionFixed(), _lastSeenPursuitDestination) <= LastSeenArrivalRadius
+                     && !LogicFactionVisionService.IsEntityVisibleToSide(_ctx.Side, _lostTarget))
+                ClearLostTarget();
+        }
+
+        IEntityContext rankingCurrentTarget = _currentTarget;
+        _candidateBuffer.Clear();
+        IList<IEntityContext> all = EntityRegistry.AllEntities;
+        for (int i = 0; i < all.Count; i++)
+        {
+            IEntityContext candidate = all[i]
+                ?? throw new InvalidOperationException($"CharacterTargetingComp found a null registry entity at index {i}.");
+            if (ReferenceEquals(candidate, _ctx) || !IsHardValid(candidate, outerRange))
+                continue;
+
+            Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(candidate);
+            bool isAlert = IsAlertTarget(candidate);
+            bool retained = ReferenceEquals(candidate, rankingCurrentTarget) || ReferenceEquals(candidate, _lostTarget);
+            if (distance > normalCandidateRange && !isAlert && !retained)
+                continue;
+            if (!LogicFactionVisionService.IsEntityVisibleToSide(_ctx.Side, candidate))
+                continue;
+
+            TargetPriority priority = TargetPriorityUtility.Create(
+                _ctx,
+                candidate,
+                distance,
+                attackRange,
+                rankingCurrentTarget,
+                isAlert);
+            _candidateBuffer.Add(new AggroCandidate(candidate, distance, priority));
+        }
+
+        IEntityContext best = ResolveBestReachableCandidate(attackRange, out bool waitForCandidateNavigation);
+        if (waitForCandidateNavigation)
+            return;
+
+        if (best != null)
+        {
+            SetCurrentTarget(best, true);
+            _lastSeenPosition = best.LogicFramePositionFixed();
+        }
+        else if (_currentTarget != null)
+        {
+            SetCurrentTarget(null, true);
+        }
+
+        if (_currentTarget == null && _lostTarget == null && _defendMode && IsFallbackEligible(outerRange))
+            SetCurrentTarget(_defendFallbackTarget, true);
+    }
+
+    private IEntityContext ResolveBestReachableCandidate(Fix64 attackRange, out bool waitForNavigation)
+    {
+        waitForNavigation = false;
+        while (_candidateBuffer.Count > 0)
+        {
+            int bestIndex = 0;
+            for (int i = 1; i < _candidateBuffer.Count; i++)
+            {
+                if (_candidateBuffer[i].Priority.CompareTo(_candidateBuffer[bestIndex].Priority) > 0)
+                    bestIndex = i;
+            }
+
+            AggroCandidate candidate = _candidateBuffer[bestIndex];
+            int lastIndex = _candidateBuffer.Count - 1;
+            _candidateBuffer[bestIndex] = _candidateBuffer[lastIndex];
+            _candidateBuffer.RemoveAt(lastIndex);
+            if (TryResolveCandidateReachability(
+                    candidate.Target,
+                    candidate.Distance,
+                    attackRange,
+                    out waitForNavigation))
+            {
+                _candidateBuffer.Clear();
+                return candidate.Target;
+            }
+            if (waitForNavigation)
+            {
+                _candidateBuffer.Clear();
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private bool IsHardValid(IEntityContext target, Fix64 outerRange)
+    {
+        return IsTargetStateValid(target)
+               && _ctx.LogicFrameDistanceToTargetSurfaceFixed(target) <= outerRange;
+    }
+
+    private bool IsTargetStateValid(IEntityContext target)
+    {
+        return IsValidEnemyTarget(_ctx, target)
+               && !IsNavigationRejected(target);
+    }
+
+    private bool IsFallbackEligible(Fix64 outerRange)
+    {
+        return _defendFallbackTarget != null
+               && IsHardValid(_defendFallbackTarget, outerRange)
+               && LogicFactionVisionService.IsEntityVisibleToSide(_ctx.Side, _defendFallbackTarget);
+    }
+
+    private bool TryResolveCandidateReachability(
+        IEntityContext target,
+        Fix64 distance,
+        Fix64 attackRange,
+        out bool waitForNavigation)
+    {
+        waitForNavigation = false;
+        if (_ctx.IsLogicBuilding() || distance <= attackRange)
+            return true;
+        if (FlowFieldCrowdMovementSystem.TryResolveReachableAttackAreaPointFixed(
+                _ctx,
+                target,
+                attackRange,
+                out _,
+                out string failureReason,
+                out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind failureKind))
+            return true;
+
+        switch (failureKind)
+        {
+            case FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.PendingRuntimeUpdate:
+                waitForNavigation = true;
+                return false;
+            case FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.Unreachable:
+                GameDebugSettings.Log(
+                    DebugCategory.Targeting,
+                    $"[{_ctx.CharacterKey}] Skip navigation-unreachable aggro candidate target={target.CharacterKey} " +
+                    $"selfPos={_ctx.LogicFramePositionFixed()} targetPos={target.LogicFramePositionFixed()} " +
+                    $"attackRange={attackRange} reason={failureReason}");
+                return false;
+            case FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.Unavailable:
+                throw new InvalidOperationException(
+                    $"Aggro reachability query unavailable. self={_ctx.CharacterKey} target={target.CharacterKey} reason={failureReason}");
+            default:
+                throw new InvalidOperationException(
+                    $"Aggro reachability query failed without a handled reason. self={_ctx.CharacterKey} " +
+                    $"target={target.CharacterKey} kind={failureKind} reason={failureReason}");
+        }
+    }
+
+    private bool TryResolveLastSeenPursuitDestination(Fix64 attackRange, out bool waitForNavigation)
+    {
+        waitForNavigation = false;
+        if (_ctx.IsLogicBuilding())
+        {
+            _lastSeenPursuitDestination = _lastSeenPosition;
+            return true;
+        }
+        if (FlowFieldCrowdMovementSystem.TryResolveReachablePointAreaFixed(
+                _ctx,
+                _lastSeenPosition,
+                attackRange,
+                out _lastSeenPursuitDestination,
+                out string failureReason,
+                out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind failureKind))
+            return true;
+
+        switch (failureKind)
+        {
+            case FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.PendingRuntimeUpdate:
+                waitForNavigation = true;
+                return false;
+            case FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.Unreachable:
+                GameDebugSettings.Log(
+                    DebugCategory.Targeting,
+                    $"[{_ctx.CharacterKey}] Clear navigation-unreachable last-seen pursuit " +
+                    $"lastSeen={_lastSeenPosition} attackRange={attackRange} reason={failureReason}");
+                return false;
+            case FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.Unavailable:
+                throw new InvalidOperationException(
+                    $"Last-seen reachability query unavailable. self={_ctx.CharacterKey} reason={failureReason}");
+            default:
+                throw new InvalidOperationException(
+                    $"Last-seen reachability query failed without a handled reason. self={_ctx.CharacterKey} " +
+                    $"kind={failureKind} reason={failureReason}");
+        }
+    }
+
+    private void MaintainFollowTarget()
+    {
+        if (FollowTarget != null
+            && (!FollowTarget.IsRegisteredInLogicWorld()
+                || !FollowTarget.Alive
+                || FollowTarget.Side != _ctx.Side
+                || _ctx.LogicFrameCenterDistanceFixed(FollowTarget) > m_FollowSearchRange))
+        {
+            FollowTarget = null;
+        }
+        if (FollowTarget != null)
+            return;
+        IEntityContext player = EntityRegistry.Player;
+        if (player != null
+            && player.Alive
+            && player.Side == _ctx.Side
+            && _ctx.LogicFrameCenterDistanceFixed(player) <= m_FollowSearchRange)
+        {
+            FollowTarget = player;
+        }
     }
 
     public void NotifyDamageTaken(IEntityContext attacker)
     {
-        // 基础校验
-        if (attacker == null || attacker == _ctx) return;
-        if (!attacker.IsAttackTargetable()) return;
-        if (!EntityCombatTeamHelper.IsEnemy(_ctx, attacker)) return;
-
-        // 自己记 _lastAttacker（仅 EnableAggroFallback 时；建筑这里不记，原地反击）
-        if (EnableAggroFallback && _lastAttacker == null)
-        {
-            _lastAttacker = attacker;
-            GameDebugSettings.Log(DebugCategory.Targeting,
-                $"{_ctx} 记下受击 attacker={attacker}（视线外仇恨）");
-        }
-
-        // 广播给周围友军：让附近士兵知道有人在打我（建筑被打也走这条路，召唤友军反击）
-        BroadcastEnemyToAllies(attacker);
+        ReportSuccessfulDamage(_ctx, attacker);
     }
 
     public void NotifyAllyFoundEnemy(IEntityContext enemy)
     {
-        if (!EnableAggroFallback) return;
-        if (_lastAttacker != null) return; // 已有记忆（受击或别的友军告警）→ 不覆盖
-        if (enemy == null || enemy == _ctx) return;
-        if (!enemy.IsAttackTargetable()) return;
-        if (!EntityCombatTeamHelper.IsEnemy(_ctx, enemy)) return;
-        _lastAttacker = enemy;
-        GameDebugSettings.Log(DebugCategory.Targeting,
-            $"{_ctx} 收到友军告警 enemy={enemy}（视线外仇恨）");
+        if (_ctx == null)
+            throw new InvalidOperationException("CharacterTargetingComp.NotifyAllyFoundEnemy called before Init.");
+        if (enemy == null)
+            throw new ArgumentNullException(nameof(enemy));
+        if (!EntityCombatTeamHelper.IsEnemy(_ctx, enemy))
+            throw new InvalidOperationException("An alert target must be an enemy of the receiver.");
+        Fix64 duration = LogicFactionVisionService.ReadPositiveConfig(LogicFactionVisionService.DamageAlertTargetDurationConfigKey);
+        for (int i = 0; i < _alerts.Count; i++)
+        {
+            if (!ReferenceEquals(_alerts[i].Target, enemy))
+                continue;
+            _alerts[i] = new AlertRecord(enemy, duration);
+            return;
+        }
+        _alerts.Add(new AlertRecord(enemy, duration));
     }
 
     public void ClearAggro()
     {
-        if (_lastAttacker == null) return;
-        GameDebugSettings.Log(DebugCategory.Targeting,
-            $"{_ctx} 清除受击仇恨 (was={_lastAttacker})");
-        _lastAttacker = null;
+        SetCurrentTarget(null, true);
+        _alerts.Clear();
     }
 
-    private void BroadcastEnemyToAllies(IEntityContext enemy)
+    private void AdvanceAlerts(Fix64 deltaTime)
     {
-        if (enemy == null || m_AlertRadius <= Fix64.Zero) return;
-        Fix64 radiusSquared = m_AlertRadius * m_AlertRadius;
-        var all = EntityRegistry.AllEntities;
-        for (int i = 0; i < all.Count; i++)
+        for (int i = _alerts.Count - 1; i >= 0; i--)
         {
-            var ally = all[i];
-            if (ally == null || ReferenceEquals(ally, _ctx)) continue;
-            if (ally.Side != _ctx.Side) continue;
-            if (!ally.Alive) continue;
-            FixVector2 offset = ally.LogicFramePositionFixed() - _ctx.LogicFramePositionFixed();
-            if (FixVector2.SqrMagnitude(offset) > radiusSquared) continue;
-            ally.TargetComp?.NotifyAllyFoundEnemy(enemy);
+            AlertRecord alert = _alerts[i];
+            Fix64 remaining = alert.Remaining - deltaTime;
+            if (remaining <= Fix64.Zero || alert.Target == null || !alert.Target.Alive)
+                _alerts.RemoveAt(i);
+            else
+                _alerts[i] = alert.WithRemaining(remaining);
         }
     }
 
-    private void PruneNavigationRejections()
+    private bool IsAlertTarget(IEntityContext target)
     {
-        if (_navigationRejectedTargets.Count == 0)
+        for (int i = 0; i < _alerts.Count; i++)
         {
-            if (_hasNavigationRejectionEpoch)
-                ClearNavigationRejections();
-            return;
+            if (ReferenceEquals(_alerts[i].Target, target))
+                return true;
         }
-        if (!_hasNavigationRejectionEpoch)
-            throw new System.InvalidOperationException("Navigation rejection entries exist without an epoch.");
-        if (_ctx == null)
-            throw new System.InvalidOperationException("Navigation rejection entries exist without an owner context.");
+        return false;
+    }
 
-        if (_navigationRejectionSelfPosition != _ctx.LogicFramePositionFixed()
-            || _navigationRejectionTopologyVersion != FlowFieldCrowdMovementSystem.NavigationTopologyVersion)
+    private void SetCurrentTarget(IEntityContext value, bool clearLostTarget)
+    {
+        _currentTarget = value;
+        if (clearLostTarget)
+            ClearLostTarget();
+    }
+
+    private void ClearLostTarget()
+    {
+        _lostTarget = null;
+        _lastSeenPosition = FixVector2.Zero;
+        _lastSeenPursuitDestination = FixVector2.Zero;
+    }
+
+    private Fix64 GetEffectiveAttackRange()
+    {
+        return GetRequiredAttackRange(_ctx);
+    }
+
+    public void RejectNavigationUnreachableTarget(IEntityContext target)
+    {
+        if (target == null) throw new ArgumentNullException(nameof(target));
+        RefreshNavigationRejectionEpoch();
+        for (int i = 0; i < _navigationRejectedTargets.Count; i++)
         {
-            ClearNavigationRejections();
-            return;
+            if (ReferenceEquals(_navigationRejectedTargets[i].Target, target))
+                return;
         }
-
-        for (int i = _navigationRejectedTargets.Count - 1; i >= 0; i--)
-        {
-            NavigationRejectedTarget rejected = _navigationRejectedTargets[i];
-            if (rejected.Target == null)
-                throw new System.InvalidOperationException($"Navigation rejection entry {rejected.TargetId} has no target.");
-            if (!rejected.Target.LogicEntityId.IsValid || rejected.Target.LogicEntityId.Value != rejected.TargetId)
-            {
-                throw new System.InvalidOperationException(
-                    $"Navigation rejection target id changed. expected={rejected.TargetId} actual={GetLogicId(rejected.Target)}.");
-            }
-
-            if (!rejected.Target.IsRegisteredInLogicWorld()
-                || !rejected.Target.IsAttackTargetable()
-                || !EntityCombatTeamHelper.IsEnemy(_ctx, rejected.Target)
-                || rejected.Target.LogicFramePositionFixed() != rejected.TargetPosition)
-            {
-                _navigationRejectedTargets.RemoveAt(i);
-            }
-        }
-
-        if (_navigationRejectedTargets.Count == 0)
-            ClearNavigationRejections();
+        _navigationRejectedTargets.Add(new NavigationRejectedTarget(target, target.LogicFramePositionFixed()));
+        if (ReferenceEquals(_currentTarget, target)) SetCurrentTarget(null, true);
+        if (ReferenceEquals(_lostTarget, target)) ClearLostTarget();
     }
 
     private bool IsNavigationRejected(IEntityContext target)
     {
-        if (target == null)
-            return false;
-        PruneNavigationRejections();
-        if (!target.LogicEntityId.IsValid)
-            return false;
-
-        int targetId = target.LogicEntityId.Value;
         for (int i = 0; i < _navigationRejectedTargets.Count; i++)
         {
-            NavigationRejectedTarget rejected = _navigationRejectedTargets[i];
-            if (rejected.TargetId > targetId)
-                return false;
-            if (rejected.TargetId != targetId)
-                continue;
-            if (!ReferenceEquals(rejected.Target, target))
-            {
-                throw new System.InvalidOperationException(
-                    $"Navigation rejection lookup found duplicate logic entity id {targetId}.");
-            }
-            return true;
+            if (ReferenceEquals(_navigationRejectedTargets[i].Target, target))
+                return true;
         }
         return false;
+    }
+
+    private void RefreshNavigationRejectionEpoch()
+    {
+        FixVector2 selfPosition = _ctx.LogicFramePositionFixed();
+        int topologyVersion = FlowFieldCrowdMovementSystem.NavigationTopologyVersion;
+        if (!_hasNavigationRejectionEpoch
+            || topologyVersion != _navigationRejectionTopologyVersion
+            || selfPosition != _navigationRejectionSelfPosition)
+        {
+            _navigationRejectedTargets.Clear();
+            _hasNavigationRejectionEpoch = true;
+            _navigationRejectionSelfPosition = selfPosition;
+            _navigationRejectionTopologyVersion = topologyVersion;
+            return;
+        }
+        for (int i = _navigationRejectedTargets.Count - 1; i >= 0; i--)
+        {
+            NavigationRejectedTarget rejected = _navigationRejectedTargets[i];
+            if (rejected.Target == null || rejected.Target.LogicFramePositionFixed() != rejected.TargetPosition)
+                _navigationRejectedTargets.RemoveAt(i);
+        }
     }
 
     private void ClearNavigationRejections()
@@ -295,739 +524,70 @@ public class CharacterTargetingComp : ITargetingComp, INavigationReachabilityTar
         _navigationRejectionTopologyVersion = 0;
     }
 
-    private bool IsLastAttackerStillValid()
-    {
-        if (_lastAttacker == null) return false;
-        if (!_lastAttacker.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(_ctx, _lastAttacker))
-        {
-            _lastAttacker = null;
-            return false;
-        }
-        if (IsNavigationRejected(_lastAttacker))
-            return false;
-        return true;
-    }
-
-    public void UpdateTargeting(Fix64 deltaTime)
-    {
-        if (_ctx == null) return;
-        PruneNavigationRejections();
-        if (_targetingMode == TargetingMode.DefendEnemy)
-        {
-            UpdateDefendEnemyTargeting(deltaTime);
-            return;
-        }
-
-        bool useAttackRangeOnlyForThisUnit = ShouldUseAttackRangeOnly(_ctx);
-        bool isBuilding = _ctx.IsLogicBuilding();
-        Fix64 effectiveAttackRange = GetEffectiveAttackRange();
-        Fix64 additionalPursuitRange = isBuilding
-            ? effectiveAttackRange
-            : effectiveAttackRange + TargetThreatUtility.ReadAdditionalPursuitDistanceWorld();
-
-        if (CurrentTarget != null && _ctx.AtkComp != null && _ctx.AtkComp.IsAttacking)
-        {
-            if (!_hasAttackedCurrentTarget && !isBuilding)
-            {
-                Fix64 threatPerLevel = TargetThreatUtility.ReadThreatPerLevel();
-                Fix64 buildingExtraThreat = TargetThreatUtility.ReadBuildingExtraThreat();
-                Fix64 currentPursuitThreat = TargetThreatUtility.CalculatePursuitThreat(
-                    _ctx,
-                    CurrentTarget,
-                    threatPerLevel,
-                    buildingExtraThreat);
-                _attackLockPursuitFloor = Fix64.Min(currentPursuitThreat, Fix64.Zero);
-            }
-            _hasAttackedCurrentTarget = true;
-        }
-        bool targetLockedByAttack = _hasAttackedCurrentTarget
-                                    || (_ctx.AtkComp != null && _ctx.AtkComp.IsAttacking);
-        Fix64 attackLockPursuitFloor = _attackLockPursuitFloor;
-
-        Fix64 currentTargetDist = Fix64.FromRaw(long.MaxValue);
-        Fix64 currentTargetPursuitThreat = -Fix64.FromRaw(long.MaxValue);
-        bool lostCurrentTarget = false;
-
-        // 1. 维护当前敌人目标
-        if (CurrentTarget != null)
-        {
-            bool navigationRejected = IsNavigationRejected(CurrentTarget);
-            if (navigationRejected
-                || !CurrentTarget.IsRegisteredInLogicWorld()
-                || !CurrentTarget.IsAttackTargetable()
-                || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget))
-            {
-                GameDebugSettings.Log(DebugCategory.Targeting,
-                    $"{_ctx} 丢失敌人目标 {CurrentTarget} | active={CurrentTarget.IsRegisteredInLogicWorld()} alive={CurrentTarget.Alive} navigationRejected={navigationRejected}");
-                CurrentTarget = null;
-                lostCurrentTarget = true;
-                currentTargetDist = Fix64.FromRaw(long.MaxValue);
-                currentTargetPursuitThreat = -Fix64.FromRaw(long.MaxValue);
-                if (useAttackRangeOnlyForThisUnit && _lastAttacker != null)
-                    ClearAggro();
-            }
-            else
-            {
-                Fix64 dist = _ctx.LogicFrameDistanceToTargetSurfaceFixed(CurrentTarget);
-                currentTargetDist = dist;
-                Fix64 targetRetentionRange = useAttackRangeOnlyForThisUnit
-                    ? effectiveAttackRange
-                    : m_ForgetRange;
-                if (targetLockedByAttack && !isBuilding)
-                {
-                    Fix64 threatPerLevel = TargetThreatUtility.ReadThreatPerLevel();
-                    Fix64 buildingExtraThreat = TargetThreatUtility.ReadBuildingExtraThreat();
-                    currentTargetPursuitThreat = TargetThreatUtility.CalculatePursuitThreat(
-                        _ctx,
-                        CurrentTarget,
-                        threatPerLevel,
-                        buildingExtraThreat);
-                    targetRetentionRange = GetAttackLockedCandidateRange(
-                        currentTargetPursuitThreat,
-                        attackLockPursuitFloor,
-                        effectiveAttackRange,
-                        additionalPursuitRange);
-                }
-                // 视线外仇恨特例：CurrentTarget 是 fallback 来的 attacker → 跳过距离过滤，让单位一路追上去
-                bool isAggroFallback = !targetLockedByAttack
-                                       && !useAttackRangeOnlyForThisUnit
-                                       && CurrentTarget == _lastAttacker;
-                bool dropByDistance = !isAggroFallback && dist > targetRetentionRange;
-                if (dropByDistance)
-                {
-                    GameDebugSettings.Log(DebugCategory.Targeting,
-                        $"{_ctx} 丢失敌人目标 {CurrentTarget} | dist={dist:F1} retentionRange={targetRetentionRange:F1} alive={CurrentTarget.Alive}");
-                    CurrentTarget = null;
-                    lostCurrentTarget = true;
-                    currentTargetDist = Fix64.FromRaw(long.MaxValue);
-                    currentTargetPursuitThreat = -Fix64.FromRaw(long.MaxValue);
-                    if (useAttackRangeOnlyForThisUnit && _lastAttacker != null)
-                        ClearAggro();
-                }
-            }
-        }
-
-        // 2. 维护跟随目标
-        if (FollowTarget != null)
-        {
-            if (!FollowTarget.IsRegisteredInLogicWorld() || !FollowTarget.Alive)
-            {
-                GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 丢失跟随目标 {FollowTarget} | active={FollowTarget.IsRegisteredInLogicWorld()} alive={FollowTarget.Alive}");
-                FollowTarget = null;
-            }
-            else
-            {
-                Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(FollowTarget);
-                if (dist > m_FollowSearchRange)
-                {
-                    GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 丢失跟随目标 {FollowTarget} | dist={dist:F1} followRange={m_FollowSearchRange} alive={FollowTarget.Alive}");
-                    FollowTarget = null;
-                }
-            }
-        }
-
-        // 3. 降频扫描新目标（仅真实实体使用 SimpleTargeting）
-        _scanTimer += deltaTime;
-        if (lostCurrentTarget || _scanTimer >= SCAN_INTERVAL)
-        {
-            _scanTimer = Fix64.Zero;
-
-            // 找敌人：遍历 EntityRegistry，按配置仇恨值选择目标
-            IEntityContext bestTarget = null;
-            Fix64 normalScanRange = useAttackRangeOnlyForThisUnit
-                ? effectiveAttackRange
-                : Fix64.Max(m_AggroRange, effectiveAttackRange);
-            Fix64 scanRange = targetLockedByAttack && !isBuilding
-                ? Fix64.Max(normalScanRange, additionalPursuitRange)
-                : normalScanRange;
-            Fix64 bestDistance = scanRange;
-            Fix64 bestThreat = -Fix64.FromRaw(long.MaxValue);
-            IEntityContext bestLockedTarget = null;
-            Fix64 bestLockedDistance = scanRange;
-            Fix64 bestLockedThreat = -Fix64.FromRaw(long.MaxValue);
-            Fix64 bestLockedPursuitThreat = -Fix64.FromRaw(long.MaxValue);
-            Fix64 threatPerLevel = TargetThreatUtility.ReadThreatPerLevel();
-            Fix64 buildingExtraThreat = TargetThreatUtility.ReadBuildingExtraThreat();
-            if (CurrentTarget != null)
-            {
-                currentTargetPursuitThreat = TargetThreatUtility.CalculatePursuitThreat(
-                    _ctx,
-                    CurrentTarget,
-                    threatPerLevel,
-                    buildingExtraThreat);
-            }
-            IEntityContext interruptTarget = null;
-            Fix64 interruptDistance = Fix64.Zero;
-            Fix64 interruptThreat = -Fix64.FromRaw(long.MaxValue);
-            Fix64 interruptPursuitThreat = Fix64.Zero;
-
-            var all = EntityRegistry.AllEntities;
-            for (int i = 0; i < all.Count; i++)
-            {
-                var other = all[i];
-                if (other == _ctx) continue;
-                if (!other.IsAttackTargetable()) continue;
-                if (!EntityCombatTeamHelper.IsEnemy(_ctx, other)) continue;
-                if (IsNavigationRejected(other)) continue;
-
-                Fix64 dist = _ctx.LogicFrameDistanceToTargetSurfaceFixed(other);
-                if (dist > scanRange) continue;
-
-                Fix64 pursuitThreat = TargetThreatUtility.CalculatePursuitThreat(
-                    _ctx,
-                    other,
-                    threatPerLevel,
-                    buildingExtraThreat);
-                Fix64 threat = TargetThreatUtility.CalculateSelectionThreat(
-                    _ctx,
-                    other,
-                    dist,
-                    threatPerLevel,
-                    buildingExtraThreat);
-                if (TargetThreatUtility.HasHigherPriority(threat, other, bestThreat, bestTarget))
-                {
-                    bestThreat = threat;
-                    bestDistance = dist;
-                    bestTarget = other;
-                }
-                Fix64 lockedCandidateRange = GetAttackLockedCandidateRange(
-                    pursuitThreat,
-                    attackLockPursuitFloor,
-                    effectiveAttackRange,
-                    additionalPursuitRange);
-                if (targetLockedByAttack
-                    && !isBuilding
-                    && dist <= lockedCandidateRange
-                    && TargetThreatUtility.HasHigherPriority(
-                        threat,
-                        other,
-                        bestLockedThreat,
-                        bestLockedTarget))
-                {
-                    bestLockedThreat = threat;
-                    bestLockedPursuitThreat = pursuitThreat;
-                    bestLockedDistance = dist;
-                    bestLockedTarget = other;
-                }
-
-                // Attack lock is interrupted only by a higher taunt-equivalent pursuit score.
-                if (!isBuilding
-                    && targetLockedByAttack
-                    && pursuitThreat > currentTargetPursuitThreat
-                    && dist <= lockedCandidateRange
-                    && TargetThreatUtility.HasHigherPriority(threat, other, interruptThreat, interruptTarget))
-                {
-                    interruptPursuitThreat = pursuitThreat;
-                    interruptThreat = threat;
-                    interruptDistance = dist;
-                    interruptTarget = other;
-                }
-            }
-
-            if (CurrentTarget == null)
-            {
-                IEntityContext acquiredTarget = targetLockedByAttack && !isBuilding
-                    ? bestLockedTarget
-                    : bestTarget;
-                Fix64 acquiredDistance = targetLockedByAttack && !isBuilding
-                    ? bestLockedDistance
-                    : bestDistance;
-                Fix64 acquiredThreat = targetLockedByAttack && !isBuilding
-                    ? bestLockedThreat
-                    : bestThreat;
-                if (acquiredTarget != null)
-                {
-                    GameDebugSettings.Log(DebugCategory.Targeting,
-                        $"{_ctx} 锁定敌人 {acquiredTarget} | dist={acquiredDistance:F1} threat={acquiredThreat} scanRange={scanRange:F1} attackLocked={targetLockedByAttack}");
-                    CurrentTarget = acquiredTarget;
-                    if (targetLockedByAttack && !isBuilding)
-                    {
-                        _hasAttackedCurrentTarget = true;
-                        _attackLockPursuitFloor = attackLockPursuitFloor;
-                    }
-                    // 走正常索敌了，受击仇恨记忆作废（即使 nearest 就是 _lastAttacker 本人，也清掉，让后续切换走正常规则）
-                    if (_lastAttacker != null) ClearAggro();
-                }
-                else if (!targetLockedByAttack
-                         && !useAttackRangeOnlyForThisUnit
-                         && EnableAggroFallback
-                         && IsLastAttackerStillValid())
-                {
-                    // 视线外仇恨 fallback：scan 范围空，回去打打过自己的人
-                    CurrentTarget = _lastAttacker;
-                    GameDebugSettings.Log(DebugCategory.Targeting,
-                        $"{_ctx} fallback 到受击 attacker {_lastAttacker} | dist={_ctx.LogicFrameDistanceToTargetSurface(_lastAttacker):F1}");
-                }
-            }
-            else
-            {
-                IEntityContext switchTarget = null;
-                Fix64 switchDist = Fix64.Zero;
-                Fix64 switchThreat = Fix64.Zero;
-                Fix64 switchPursuitThreat = Fix64.Zero;
-                string switchReason = null;
-
-                if (isBuilding && bestTarget != null && bestTarget != CurrentTarget)
-                {
-                    Fix64 currentThreat = TargetThreatUtility.CalculateSelectionThreat(
-                        _ctx,
-                        CurrentTarget,
-                        currentTargetDist,
-                        threatPerLevel,
-                        buildingExtraThreat);
-                    if (TargetThreatUtility.HasHigherPriority(
-                            bestThreat,
-                            bestTarget,
-                            currentThreat,
-                            CurrentTarget))
-                    {
-                        switchTarget = bestTarget;
-                        switchDist = bestDistance;
-                        switchThreat = bestThreat;
-                        switchPursuitThreat = TargetThreatUtility.CalculatePursuitThreat(
-                            _ctx,
-                            bestTarget,
-                            threatPerLevel,
-                            buildingExtraThreat);
-                        switchReason = "attack_range_only_higher_threat";
-                    }
-                }
-                else if (targetLockedByAttack && interruptTarget != null)
-                {
-                    switchTarget = interruptTarget;
-                    switchDist = interruptDistance;
-                    switchThreat = interruptThreat;
-                    switchPursuitThreat = interruptPursuitThreat;
-                    switchReason = "attacking_higher_pursuit_threat_in_pursuit_range";
-                }
-                else if (targetLockedByAttack
-                         && !isBuilding
-                         && currentTargetDist > effectiveAttackRange
-                         && bestLockedTarget != null
-                         && !ReferenceEquals(CurrentTarget, bestLockedTarget))
-                {
-                    switchTarget = bestLockedTarget;
-                    switchDist = bestLockedDistance;
-                    switchThreat = bestLockedThreat;
-                    switchPursuitThreat = bestLockedPursuitThreat;
-                    switchReason = "pursuing_best_attack_locked_candidate";
-                }
-                else if (!targetLockedByAttack && bestTarget != null && bestTarget != CurrentTarget)
-                {
-                    Fix64 currentThreat = TargetThreatUtility.CalculateSelectionThreat(
-                        _ctx,
-                        CurrentTarget,
-                        currentTargetDist,
-                        threatPerLevel,
-                        buildingExtraThreat);
-                    if (TargetThreatUtility.HasHigherPriority(
-                            bestThreat,
-                            bestTarget,
-                            currentThreat,
-                            CurrentTarget))
-                    {
-                        switchTarget = bestTarget;
-                        switchDist = bestDistance;
-                        switchThreat = bestThreat;
-                        switchPursuitThreat = TargetThreatUtility.CalculatePursuitThreat(
-                            _ctx,
-                            bestTarget,
-                            threatPerLevel,
-                            buildingExtraThreat);
-                        switchReason = "searching_higher_threat";
-                    }
-                }
-
-                if (switchTarget != null)
-                {
-                    bool continueAttackLock = targetLockedByAttack && !isBuilding;
-                    GameDebugSettings.Log(DebugCategory.Targeting,
-                        $"{_ctx} 切换敌人 {CurrentTarget} -> {switchTarget} | currentDist={currentTargetDist:F1} newDist={switchDist:F1} currentPursuitThreat={currentTargetPursuitThreat} newPursuitThreat={switchPursuitThreat} newThreat={switchThreat} attackLocked={targetLockedByAttack} reason={switchReason}");
-                    CurrentTarget = switchTarget;
-                    if (continueAttackLock)
-                    {
-                        _hasAttackedCurrentTarget = true;
-                        _attackLockPursuitFloor = attackLockPursuitFloor;
-                    }
-                    // 已切到正常扫描的目标 → 清掉受击仇恨记忆（即使切到的就是 _lastAttacker 本人也清，让后续完全走正常规则）
-                    if (_lastAttacker != null) ClearAggro();
-                }
-            }
-
-            // 找跟随目标：同阵营的领袖/玩家
-            if (FollowTarget == null)
-            {
-                var player = EntityRegistry.Player;
-                if (player != null && player.Alive && player.Side == _ctx.Side)
-                {
-                    Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(player);
-                    if (dist <= m_FollowSearchRange)
-                    {
-                        GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 锁定跟随目标 {player} | dist={dist:F1} followRange={m_FollowSearchRange}");
-                        FollowTarget = player;
-                    }
-                }
-            }
-
-            // scan tick 末尾：自己有目标 → 广播给周围友军
-            if (CurrentTarget != null)
-            {
-                BroadcastEnemyToAllies(CurrentTarget);
-            }
-        }
-    }
-
     public void ShutDown()
     {
-        CurrentTarget = null;
+        _currentTarget = null;
+        ClearLostTarget();
         FollowTarget = null;
-        _lastAttacker = null;
-        _hasAttackedCurrentTarget = false;
-        _attackLockPursuitFloor = Fix64.Zero;
-        _defendFallbackTarget = null;
-        _targetingMode = TargetingMode.Default;
+        _alerts.Clear();
+        _candidateBuffer.Clear();
         ClearNavigationRejections();
     }
+
     public void Resume() { }
-
-    private void UpdateDefendEnemyTargeting(Fix64 deltaTime)
-    {
-        Fix64 effectiveAttackRange = GetEffectiveAttackRange();
-        Fix64 additionalPursuitRange = effectiveAttackRange
-                                       + TargetThreatUtility.ReadAdditionalPursuitDistanceWorld();
-        Fix64 threatPerLevel = TargetThreatUtility.ReadThreatPerLevel();
-        Fix64 buildingExtraThreat = TargetThreatUtility.ReadBuildingExtraThreat();
-
-        if (CurrentTarget != null && _ctx.AtkComp != null && _ctx.AtkComp.IsAttacking)
-        {
-            if (!_hasAttackedCurrentTarget)
-            {
-                Fix64 lockTargetPursuitThreat = TargetThreatUtility.CalculatePursuitThreat(
-                    _ctx,
-                    CurrentTarget,
-                    threatPerLevel,
-                    buildingExtraThreat);
-                _attackLockPursuitFloor = Fix64.Min(lockTargetPursuitThreat, Fix64.Zero);
-            }
-            _hasAttackedCurrentTarget = true;
-        }
-        bool targetLockedByAttack = _hasAttackedCurrentTarget
-                                    || (_ctx.AtkComp != null && _ctx.AtkComp.IsAttacking);
-        Fix64 attackLockPursuitFloor = _attackLockPursuitFloor;
-        Fix64 normalScanRange = Fix64.Max(m_AggroRange, effectiveAttackRange);
-        Fix64 scanRange = targetLockedByAttack
-            ? Fix64.Max(normalScanRange, additionalPursuitRange)
-            : normalScanRange;
-
-        _scanTimer += deltaTime;
-        if (_scanTimer < SCAN_INTERVAL)
-            return;
-
-        _scanTimer = Fix64.Zero;
-
-        if (CurrentTarget != null
-            && !IsCurrentDefendTargetStillValid(
-                CurrentTarget,
-                normalScanRange,
-                targetLockedByAttack,
-                attackLockPursuitFloor,
-                effectiveAttackRange,
-                additionalPursuitRange,
-                threatPerLevel,
-                buildingExtraThreat))
-        {
-            CurrentTarget = null;
-        }
-
-        Fix64 currentPursuitThreat = CurrentTarget != null
-            ? TargetThreatUtility.CalculatePursuitThreat(
-                _ctx,
-                CurrentTarget,
-                threatPerLevel,
-                buildingExtraThreat)
-            : -Fix64.FromRaw(long.MaxValue);
-        Fix64 currentDistance = CurrentTarget != null
-            ? _ctx.LogicFrameDistanceToTargetSurfaceFixed(CurrentTarget)
-            : Fix64.FromRaw(long.MaxValue);
-
-        IEntityContext bestTarget = null;
-        Fix64 bestDistance = scanRange;
-        Fix64 bestThreat = -Fix64.FromRaw(long.MaxValue);
-        IEntityContext bestLockedTarget = null;
-        Fix64 bestLockedDistance = scanRange;
-        Fix64 bestLockedThreat = -Fix64.FromRaw(long.MaxValue);
-        Fix64 bestLockedPursuitThreat = -Fix64.FromRaw(long.MaxValue);
-        IEntityContext interruptTarget = null;
-        Fix64 interruptThreat = -Fix64.FromRaw(long.MaxValue);
-
-        var all = EntityRegistry.AllEntities;
-        for (int i = 0; i < all.Count; i++)
-        {
-            var other = all[i];
-            if (other == null || ReferenceEquals(other, _ctx))
-                continue;
-            if (!other.IsAttackTargetable())
-                continue;
-            if (!EntityCombatTeamHelper.IsEnemy(_ctx, other))
-                continue;
-            if (IsNavigationRejected(other))
-                continue;
-
-            Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(other);
-            if (distance > scanRange)
-                continue;
-
-            Fix64 pursuitThreat = TargetThreatUtility.CalculatePursuitThreat(
-                _ctx,
-                other,
-                threatPerLevel,
-                buildingExtraThreat);
-            Fix64 threat = TargetThreatUtility.CalculateSelectionThreat(
-                _ctx,
-                other,
-                distance,
-                threatPerLevel,
-                buildingExtraThreat);
-            if (TargetThreatUtility.HasHigherPriority(threat, other, bestThreat, bestTarget))
-            {
-                bestDistance = distance;
-                bestThreat = threat;
-                bestTarget = other;
-            }
-            Fix64 lockedCandidateRange = GetAttackLockedCandidateRange(
-                pursuitThreat,
-                attackLockPursuitFloor,
-                effectiveAttackRange,
-                additionalPursuitRange);
-            if (targetLockedByAttack
-                && distance <= lockedCandidateRange
-                && TargetThreatUtility.HasHigherPriority(
-                    threat,
-                    other,
-                    bestLockedThreat,
-                    bestLockedTarget))
-            {
-                bestLockedDistance = distance;
-                bestLockedThreat = threat;
-                bestLockedPursuitThreat = pursuitThreat;
-                bestLockedTarget = other;
-            }
-            // Attack lock is interrupted only by a higher taunt-equivalent pursuit score.
-            if (targetLockedByAttack
-                && pursuitThreat > currentPursuitThreat
-                && distance <= lockedCandidateRange
-                && TargetThreatUtility.HasHigherPriority(threat, other, interruptThreat, interruptTarget))
-            {
-                interruptThreat = threat;
-                interruptTarget = other;
-            }
-        }
-
-        if (CurrentTarget == null)
-        {
-            IEntityContext acquiredTarget = targetLockedByAttack
-                ? bestLockedTarget
-                : bestTarget ?? (IsDefendFallbackTargetValid() ? _defendFallbackTarget : null);
-            CurrentTarget = acquiredTarget;
-            if (targetLockedByAttack && acquiredTarget != null)
-            {
-                _hasAttackedCurrentTarget = true;
-                _attackLockPursuitFloor = attackLockPursuitFloor;
-            }
-            return;
-        }
-
-        if (targetLockedByAttack)
-        {
-            if (interruptTarget != null && !ReferenceEquals(interruptTarget, CurrentTarget))
-            {
-                GameDebugSettings.Log(DebugCategory.Targeting,
-                    $"{_ctx} 防守索敌切换 {CurrentTarget} -> {interruptTarget} | currentDist={currentDistance:F1} newPursuitThreat={TargetThreatUtility.CalculatePursuitThreat(_ctx, interruptTarget, threatPerLevel, buildingExtraThreat)} reason=attacking_higher_pursuit_threat_in_pursuit_range");
-                CurrentTarget = interruptTarget;
-                _hasAttackedCurrentTarget = true;
-                _attackLockPursuitFloor = attackLockPursuitFloor;
-            }
-            else if (currentDistance > effectiveAttackRange
-                     && bestLockedTarget != null
-                     && !ReferenceEquals(CurrentTarget, bestLockedTarget))
-            {
-                GameDebugSettings.Log(DebugCategory.Targeting,
-                    $"{_ctx} 防守索敌切换 {CurrentTarget} -> {bestLockedTarget} | currentDist={currentDistance:F1} newDist={bestLockedDistance:F1} currentPursuitThreat={currentPursuitThreat} newPursuitThreat={bestLockedPursuitThreat} newThreat={bestLockedThreat} reason=pursuing_best_attack_locked_candidate");
-                CurrentTarget = bestLockedTarget;
-                _hasAttackedCurrentTarget = true;
-                _attackLockPursuitFloor = attackLockPursuitFloor;
-            }
-            return;
-        }
-
-        IEntityContext desiredTarget = bestTarget ?? (IsDefendFallbackTargetValid() ? _defendFallbackTarget : null);
-        if (desiredTarget == null || ReferenceEquals(CurrentTarget, desiredTarget))
-            return;
-
-        Fix64 currentThreat = TargetThreatUtility.CalculateSelectionThreat(
-            _ctx,
-            CurrentTarget,
-            currentDistance,
-            threatPerLevel,
-            buildingExtraThreat);
-        if (TargetThreatUtility.HasHigherPriority(bestThreat, desiredTarget, currentThreat, CurrentTarget))
-            CurrentTarget = desiredTarget;
-    }
-
-    private bool IsCurrentDefendTargetStillValid(
-        IEntityContext target,
-        Fix64 normalScanRange,
-        bool targetLockedByAttack,
-        Fix64 attackLockPursuitFloor,
-        Fix64 attackRange,
-        Fix64 additionalPursuitRange,
-        Fix64 threatPerLevel,
-        Fix64 buildingExtraThreat)
-    {
-        if (target == null
-            || !target.IsAttackTargetable()
-            || !EntityCombatTeamHelper.IsEnemy(_ctx, target)
-            || IsNavigationRejected(target))
-            return false;
-
-        Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(target);
-        if (targetLockedByAttack)
-        {
-            Fix64 pursuitThreat = TargetThreatUtility.CalculatePursuitThreat(
-                _ctx,
-                target,
-                threatPerLevel,
-                buildingExtraThreat);
-            return distance <= GetAttackLockedCandidateRange(
-                pursuitThreat,
-                attackLockPursuitFloor,
-                attackRange,
-                additionalPursuitRange);
-        }
-
-        if (ReferenceEquals(target, _defendFallbackTarget))
-            return IsDefendFallbackTargetValid();
-
-        Fix64 retentionRange = Fix64.Max(m_ForgetRange, normalScanRange);
-        return distance <= retentionRange;
-    }
-
-    private bool IsDefendFallbackTargetValid()
-    {
-        if (_defendFallbackTarget == null)
-            return false;
-
-        if (!_defendFallbackTarget.IsAttackTargetable())
-            return false;
-
-        if (IsNavigationRejected(_defendFallbackTarget))
-            return false;
-
-        return EntityCombatTeamHelper.IsEnemy(_ctx, _defendFallbackTarget);
-    }
-
-    private Fix64 GetEffectiveAttackRange()
-    {
-        Fix64 weaponRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : Fix64.FromRaw(6144);
-        return weaponRange;
-    }
-
-    private static Fix64 GetAttackLockedCandidateRange(
-        Fix64 pursuitThreat,
-        Fix64 attackLockPursuitFloor,
-        Fix64 attackRange,
-        Fix64 additionalPursuitRange)
-    {
-        return pursuitThreat > attackLockPursuitFloor ? additionalPursuitRange : attackRange;
-    }
-
-    private static int GetTauntLevel(IEntityContext entity)
-    {
-        return entity?.TauntLevel ?? 0;
-    }
-
-    private static bool ShouldUseAttackRangeOnly(IEntityContext entity)
-    {
-        return entity.IsLogicBuilding() || IsHeroUnit(entity);
-    }
-
-    private static bool IsHeroUnit(IEntityContext entity)
-    {
-        if (entity?.CharacterData?.UnitTags != null)
-        {
-            var tags = entity.CharacterData.UnitTags;
-            for (int i = 0; i < tags.Length; i++)
-            {
-                if (tags[i] == UnitTag.Hero)
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool HasLowerLogicId(IEntityContext candidate, IEntityContext current)
-    {
-        return current == null || candidate.LogicEntityId < current.LogicEntityId;
-    }
 
     public void WriteDeterministicState(LogicStateHasher hasher)
     {
-        if (hasher == null)
-            throw new System.ArgumentNullException(nameof(hasher));
-        hasher.Add((int)_targetingMode);
+        if (hasher == null) throw new ArgumentNullException(nameof(hasher));
         hasher.Add(_scanTimer.RawValue);
+        hasher.Add(GetLogicId(_currentTarget));
+        hasher.Add(GetLogicId(_lostTarget));
+        hasher.Add(_lastSeenPosition.x.RawValue);
+        hasher.Add(_lastSeenPosition.y.RawValue);
+        hasher.Add(_lastSeenPursuitDestination.x.RawValue);
+        hasher.Add(_lastSeenPursuitDestination.y.RawValue);
         hasher.Add(GetLogicId(FollowTarget));
-        hasher.Add(GetLogicId(_lastAttacker));
-        hasher.Add(GetLogicId(_defendFallbackTarget));
-        hasher.Add(_hasAttackedCurrentTarget);
-        hasher.Add(_attackLockPursuitFloor.RawValue);
-        hasher.Add(EnableAggroFallback);
         hasher.Add(m_AggroRange.RawValue);
         hasher.Add(m_ForgetRange.RawValue);
         hasher.Add(m_FollowSearchRange.RawValue);
         hasher.Add(m_AlertRadius.RawValue);
-        hasher.Add(_hasNavigationRejectionEpoch);
-        if (_hasNavigationRejectionEpoch)
+        hasher.Add(_defendMode);
+        hasher.Add(GetLogicId(_defendFallbackTarget));
+        hasher.Add(_alerts.Count);
+        for (int i = 0; i < _alerts.Count; i++)
         {
-            hasher.Add(_navigationRejectionSelfPosition.x.RawValue);
-            hasher.Add(_navigationRejectionSelfPosition.y.RawValue);
-            hasher.Add(_navigationRejectionTopologyVersion);
-        }
-        hasher.Add(_navigationRejectedTargets.Count);
-        for (int i = 0; i < _navigationRejectedTargets.Count; i++)
-        {
-            NavigationRejectedTarget rejected = _navigationRejectedTargets[i];
-            hasher.Add(rejected.TargetId);
-            hasher.Add(rejected.TargetPosition.x.RawValue);
-            hasher.Add(rejected.TargetPosition.y.RawValue);
+            hasher.Add(GetLogicId(_alerts[i].Target));
+            hasher.Add(_alerts[i].Remaining.RawValue);
         }
     }
 
-    private static int GetLogicId(IEntityContext entity)
-    {
-        return entity != null && entity.LogicEntityId.IsValid ? entity.LogicEntityId.Value : 0;
-    }
-
+    private static int GetLogicId(IEntityContext entity) =>
+        entity != null && entity.LogicEntityId.IsValid ? entity.LogicEntityId.Value : 0;
 }
 
 public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILogicDeterministicStateContributor
 {
-    private static readonly Fix64 ScanInterval = Fix64.FromRaw(820);
-
-    private IEntityContext _ctx;
-    private IEntityContext _currentTarget;
-    private readonly List<IEntityContext> _currentTargets = new List<IEntityContext>();
-    private readonly List<HealCandidate> _inAttackRangeCandidates = new List<HealCandidate>();
-    private readonly List<HealCandidate> _outsideAttackRangeCandidates = new List<HealCandidate>();
-    private Fix64 _scanTimer;
-
-    public IEntityContext CurrentTarget
+    private readonly struct HealCandidate
     {
-        get => _currentTarget;
-        set => _currentTarget = value;
+        public HealCandidate(IEntityContext target, Fix64 hpRatio, Fix64 distance)
+        {
+            Target = target;
+            HpRatio = hpRatio;
+            Distance = distance;
+        }
+        public IEntityContext Target { get; }
+        public Fix64 HpRatio { get; }
+        public Fix64 Distance { get; }
     }
 
+    private static readonly Fix64 ScanInterval = Fix64.FromRaw(820);
+    private IEntityContext _ctx;
+    private readonly List<IEntityContext> _currentTargets = new List<IEntityContext>();
+    private readonly List<HealCandidate> _inRange = new List<HealCandidate>();
+    private readonly List<HealCandidate> _outOfRange = new List<HealCandidate>();
+    private Fix64 _scanTimer;
+    public IEntityContext CurrentTarget { get; set; }
+    public IEntityContext AggroTarget => null;
     public IEntityContext FollowTarget { get; private set; }
     public IReadOnlyList<IEntityContext> CurrentTargets => _currentTargets;
     private Fix64 m_AggroRange = (Fix64)6;
@@ -1041,7 +601,7 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
 
     public void Init(IEntityContext ctx)
     {
-        _ctx = ctx;
+        _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         CurrentTarget = null;
         FollowTarget = null;
         _scanTimer = Fix64.Zero;
@@ -1049,203 +609,84 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
 
     public void UpdateTargeting(Fix64 deltaTime)
     {
-        if (_ctx == null)
-            return;
-
-        MaintainCurrentTarget();
-        MaintainCurrentTargets();
-        MaintainFollowTarget();
-
-        _scanTimer += deltaTime;
-        if (_scanTimer < ScanInterval)
-            return;
-
-        _scanTimer = Fix64.Zero;
-
-        RebuildHealTargetsByRangePriority();
-
-        if (FollowTarget == null)
-            TryAcquireFollowTarget();
-    }
-
-    private void MaintainCurrentTarget()
-    {
-        if (CurrentTarget == null)
-            return;
-
-        if (!WeaponTargetRules.IsValidHealTarget(_ctx, CurrentTarget, requireDamaged: true))
-            CurrentTarget = null;
-    }
-
-    private void MaintainCurrentTargets()
-    {
+        if (_ctx == null) throw new InvalidOperationException("HealTargetingComp.UpdateTargeting called before Init.");
+        if (CurrentTarget != null && !WeaponTargetRules.IsValidHealTarget(_ctx, CurrentTarget, true)) CurrentTarget = null;
         for (int i = _currentTargets.Count - 1; i >= 0; i--)
         {
-            if (!WeaponTargetRules.IsValidHealTarget(_ctx, _currentTargets[i], requireDamaged: true))
+            if (!WeaponTargetRules.IsValidHealTarget(_ctx, _currentTargets[i], true))
                 _currentTargets.RemoveAt(i);
         }
+        _scanTimer += deltaTime;
+        if (_scanTimer < ScanInterval) return;
+        _scanTimer = Fix64.Zero;
+        RebuildTargets();
+        MaintainFollowTarget();
     }
 
-    private void MaintainFollowTarget()
+    private void RebuildTargets()
     {
-        if (FollowTarget == null)
-            return;
-
-        if (!FollowTarget.IsRegisteredInLogicWorld() || !FollowTarget.Alive)
-        {
-            FollowTarget = null;
-            return;
-        }
-
-        Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(FollowTarget);
-        if (dist > m_FollowSearchRange)
-            FollowTarget = null;
-    }
-
-    private void RebuildHealTargetsByRangePriority()
-    {
-        var all = EntityRegistry.AllEntities;
-        if (all == null)
-            throw new System.InvalidOperationException("HealTargetingComp.FindHealTargetByRangePriority failed: EntityRegistry.AllEntities is null.");
-
-        Fix64 attackRange = GetEffectiveAttackRange();
+        Fix64 attackRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : Fix64.FromRaw(6144);
         Fix64 scanRange = Fix64.Max(m_AggroRange, attackRange);
-        int targetCount = ResolveTargetCount();
-        _inAttackRangeCandidates.Clear();
-        _outsideAttackRangeCandidates.Clear();
-
+        int count = Mathf.Max(1, (int)(_ctx.WeaponComp?.Data?.ProjectileCount ?? Fix64.One));
+        _inRange.Clear();
+        _outOfRange.Clear();
+        IList<IEntityContext> all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
             IEntityContext candidate = all[i];
-            if (candidate == null)
-                continue;
-            if (!WeaponTargetRules.IsValidHealTarget(_ctx, candidate, requireDamaged: true))
-                continue;
+            if (candidate == null || !WeaponTargetRules.IsValidHealTarget(_ctx, candidate, true)) continue;
             Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(candidate);
-            if (distance > scanRange)
-                continue;
-
-            Fix64 hpRatio = candidate.HealthRatioFixed();
-            if (distance <= attackRange)
-            {
-                InsertHealCandidate(_inAttackRangeCandidates, new HealCandidate(candidate, hpRatio, distance), targetCount);
-            }
-            else
-            {
-                InsertHealCandidate(_outsideAttackRangeCandidates, new HealCandidate(candidate, hpRatio, distance), targetCount);
-            }
+            if (distance > scanRange) continue;
+            Insert(distance <= attackRange ? _inRange : _outOfRange, new HealCandidate(candidate, candidate.HealthRatioFixed(), distance), count);
         }
-
-        List<HealCandidate> selected = _inAttackRangeCandidates.Count > 0
-            ? _inAttackRangeCandidates
-            : _outsideAttackRangeCandidates;
+        List<HealCandidate> selected = _inRange.Count > 0 ? _inRange : _outOfRange;
         _currentTargets.Clear();
-        for (int i = 0; i < selected.Count; i++)
-            _currentTargets.Add(selected[i].Target);
-
+        for (int i = 0; i < selected.Count; i++) _currentTargets.Add(selected[i].Target);
         CurrentTarget = _currentTargets.Count > 0 ? _currentTargets[0] : null;
     }
 
-    private static void InsertHealCandidate(List<HealCandidate> list, HealCandidate candidate, int maxCount)
+    private static void Insert(List<HealCandidate> list, HealCandidate candidate, int count)
     {
         int index = 0;
-        while (index < list.Count && !IsBetterHealTarget(candidate, list[index]))
-            index++;
-
-        if (index >= maxCount)
-            return;
-
+        while (index < list.Count && !IsBetter(candidate, list[index])) index++;
+        if (index >= count) return;
         list.Insert(index, candidate);
-        if (list.Count > maxCount)
-            list.RemoveAt(list.Count - 1);
+        if (list.Count > count) list.RemoveAt(list.Count - 1);
     }
 
-    private static bool IsBetterHealTarget(HealCandidate candidate, HealCandidate current)
-    {
-        return candidate.HpRatio < current.HpRatio
-               || (candidate.HpRatio == current.HpRatio
-                   && (candidate.Distance < current.Distance
-                       || (candidate.Distance == current.Distance
-                           && candidate.Target.LogicEntityId < current.Target.LogicEntityId)));
-    }
+    private static bool IsBetter(HealCandidate candidate, HealCandidate current) =>
+        candidate.HpRatio < current.HpRatio
+        || (candidate.HpRatio == current.HpRatio
+            && (candidate.Distance < current.Distance
+                || (candidate.Distance == current.Distance && candidate.Target.LogicEntityId < current.Target.LogicEntityId)));
 
-    private int ResolveTargetCount()
+    private void MaintainFollowTarget()
     {
-        Fix64 count = _ctx?.WeaponComp?.Data != null ? _ctx.WeaponComp.Data.ProjectileCount : Fix64.One;
-        int result = (int)count;
-        return Mathf.Max(1, result);
-    }
-
-    private void TryAcquireFollowTarget()
-    {
-        var player = EntityRegistry.Player;
-        if (player == null || !player.Alive || player.Side != _ctx.Side)
-            return;
-
-        Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(player);
-        if (dist <= m_FollowSearchRange)
+        if (FollowTarget != null
+            && (!FollowTarget.IsRegisteredInLogicWorld()
+                || !FollowTarget.Alive
+                || FollowTarget.Side != _ctx.Side
+                || _ctx.LogicFrameCenterDistanceFixed(FollowTarget) > m_FollowSearchRange))
+            FollowTarget = null;
+        IEntityContext player = EntityRegistry.Player;
+        if (FollowTarget == null && player != null && player.Alive && player.Side == _ctx.Side && _ctx.LogicFrameCenterDistanceFixed(player) <= m_FollowSearchRange)
             FollowTarget = player;
     }
 
-    private Fix64 GetEffectiveAttackRange()
-    {
-        Fix64 weaponRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : Fix64.FromRaw(6144);
-        return weaponRange;
-    }
-
-    public void NotifyDamageTaken(IEntityContext attacker)
-    {
-    }
-
-    public void NotifyAllyFoundEnemy(IEntityContext enemy)
-    {
-    }
-
-    public void ClearAggro()
-    {
-    }
-
-    public void ShutDown()
-    {
-        CurrentTarget = null;
-        _currentTargets.Clear();
-        FollowTarget = null;
-    }
-
-    public void Resume()
-    {
-    }
-
+    public void NotifyDamageTaken(IEntityContext attacker) { }
+    public void NotifyAllyFoundEnemy(IEntityContext enemy) { }
+    public void ClearAggro() { }
+    public void ShutDown() { CurrentTarget = null; FollowTarget = null; _currentTargets.Clear(); }
+    public void Resume() { }
     public void WriteDeterministicState(LogicStateHasher hasher)
     {
-        if (hasher == null)
-            throw new System.ArgumentNullException(nameof(hasher));
+        if (hasher == null) throw new ArgumentNullException(nameof(hasher));
         hasher.Add(_scanTimer.RawValue);
         hasher.Add(FollowTarget != null && FollowTarget.LogicEntityId.IsValid ? FollowTarget.LogicEntityId.Value : 0);
         hasher.Add(m_AggroRange.RawValue);
         hasher.Add(m_ForgetRange.RawValue);
         hasher.Add(m_FollowSearchRange.RawValue);
         hasher.Add(_currentTargets.Count);
-        for (int i = 0; i < _currentTargets.Count; i++)
-        {
-            IEntityContext target = _currentTargets[i];
-            if (target == null || !target.LogicEntityId.IsValid)
-                throw new System.InvalidOperationException($"HealTargetingComp contains an invalid target at index {i}.");
-            hasher.Add(target.LogicEntityId.Value);
-        }
-    }
-
-    private readonly struct HealCandidate
-    {
-        public readonly IEntityContext Target;
-        public readonly Fix64 HpRatio;
-        public readonly Fix64 Distance;
-
-        public HealCandidate(IEntityContext target, Fix64 hpRatio, Fix64 distance)
-        {
-            Target = target;
-            HpRatio = hpRatio;
-            Distance = distance;
-        }
+        for (int i = 0; i < _currentTargets.Count; i++) hasher.Add(_currentTargets[i].LogicEntityId.Value);
     }
 }

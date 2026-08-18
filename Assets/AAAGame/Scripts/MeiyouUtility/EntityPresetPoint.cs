@@ -24,7 +24,11 @@ public class EntityPresetPoint : MonoBehaviour
     public EntityPresetPointType PointType;
     public bool IsGameEndConditionBuilding;
     public int UnitSpawnCount; // 仅对 Unit 类型有效，表示在战斗阶段开始时以此预设点为中心生成多少个单位
-    public int DefendSpawnWeight = 1; // 仅对 DefendSpawn 类型有效，表示该点在防御阶段的出怪权重
+    [Tooltip("仅对 Teleportation 类型有效：关卡内唯一且稳定、从 0 开始的传送点 ID")]
+    public int TeleportationId;
+    [SerializeField, Tooltip("仅对 Teleportation 类型有效：Q12 定点数原始值；玩家初始据点为 0")]
+    private long defendSpawnWeightRaw;
+    public Fix64 DefendSpawnWeight => Fix64.FromRaw(defendSpawnWeightRaw);
     [Tooltip("仅对 Destination 类型有效：关卡内唯一目标点 ID")]
     public int DestinationId;
     [Tooltip("仅对 Destination 类型有效：以游戏距离为单位的目标范围半径")]
@@ -50,9 +54,16 @@ public class EntityPresetPoint : MonoBehaviour
         coinReserves = Mathf.Max(0, CustomCoinReserves);
         return UseCustomCoinReserves;
     }
+
+    public void SetDefendSpawnWeight(Fix64 weight)
+    {
+        if (weight < Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(weight), "Defend spawn weight cannot be negative.");
+        defendSpawnWeightRaw = weight.RawValue;
+    }
 }
 
-public enum EntityPresetPointType { Unit, Hero, Building, DefendSpawn, Destination, Teleportation } //Spawn, Respawn, Patrol, Device
+public enum EntityPresetPointType { Unit = 0, Hero = 1, Building = 2, DefendSpawn = 3, Destination = 4, Teleportation = 5 } // DefendSpawn 值仅保留旧序列化兼容
 
 #if UNITY_EDITOR
 static class EntityPresetPointEditorPreview
@@ -540,7 +551,6 @@ static class EntityPresetPointEditorPreview
 
             case EntityPresetPointType.Unit:
             case EntityPresetPointType.Hero:
-            case EntityPresetPointType.DefendSpawn:
                 return TryGetUnitPrefabAssetPath(point.Identifier, out prefabAssetPath);
 
             case EntityPresetPointType.Destination:

@@ -723,7 +723,6 @@ public partial class InGameDataModel : DataModelBase
         for (int i = 0; i < entities.Count; i++)
         {
             if (!(entities[i] is IBuildingLogicContext building)
-                || !building.Alive
                 || building.OwnerFactionId != ownerFactionId)
             {
                 continue;

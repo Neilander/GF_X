@@ -43,6 +43,12 @@ public class FriendlyAIBrain : IControlBrain, ITickBrain, ILogicDeterministicSta
             return;
         }
 
+        if (self.TargetComp is ILastSeenTargetingComp lastSeen && lastSeen.HasLastSeenPursuit)
+        {
+            self.MoveComp.MoveToFixed(lastSeen.LastSeenPursuitDestinationFixed);
+            return;
+        }
+
         // 2. 延迟跟随决策
         if (followTarget != null)
         {

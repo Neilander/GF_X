@@ -648,6 +648,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         bool profile = MainThreadFrameProfiler.LoggingEnabled;
         long commandsStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         LogicTimeControlService.BeginFrame(frame);
+        LogicFactionVisionService.Advance(LogicFrameRuntime.FixedDeltaTime);
         inputFrame = logicInputManager.SealLogicInputFrame(frame, cutoffRealtime);
         LogicInGameValueCommandService.ApplyFrame(frame);
         LogicTeleportCommandService.ApplyFrame(frame);

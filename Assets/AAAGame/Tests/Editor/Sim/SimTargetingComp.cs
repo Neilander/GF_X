@@ -11,6 +11,7 @@ public class SimTargetingComp : ITargetingComp
     private List<IEntityContext> _allEntities;
 
     public IEntityContext CurrentTarget { get; set; }
+    public IEntityContext AggroTarget => CurrentTarget;
     public IEntityContext FollowTarget { get; private set; }
 
     public Fix64 AggroRangeFixed { get; set; } = (Fix64)6;

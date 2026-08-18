@@ -372,8 +372,7 @@ public sealed class LogicMovementRegionConstraintServiceTests
             Array.Empty<LogicCombatShape>(),
             Fix64.One,
             Fix64.One,
-            Fix64.One,
-            (Fix64)1000);
+            Fix64.One);
         SimEntityContext player = CreateEntity(SideType.PlayerSide);
         player.PositionFixed = CellCenter(0);
         EntityRegistry.RegisterAsPlayer(player);

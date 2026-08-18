@@ -34,6 +34,7 @@ namespace AAAGame.MiniMap.FOG3
         private const string HeroVisionRadiusConfigKey = "HeroVisionRadius";
         private const string UnitVisionRadiusConfigKey = "UnitVisionRadius";
         private const string BuildingVisionRadiusConfigKey = "BuildingVisionRadius";
+        private const string VisionFadeSpeedConfigKey = "VisionFadeSpeed";
 
         [Header("地形检测")]
         [Tooltip("地形检测和可行走区域配置。")]
@@ -869,8 +870,22 @@ namespace AAAGame.MiniMap.FOG3
 
             currentOverlayHeight = ResolveOverlayHeight(terrainInfo);
             currentOverlayWorldOffset = ResolveOverlayWorldOffset(terrainInfo, currentOverlayHeight);
-            overlayView.Build(terrainInfo, viewSettings, currentOverlayHeight, ResolveHeightSampleMask(), currentOverlayWorldOffset);
+            overlayView.Build(
+                terrainInfo,
+                viewSettings,
+                currentOverlayHeight,
+                ResolveHeightSampleMask(),
+                currentOverlayWorldOffset,
+                ResolveVisibilityFadeSpeed());
             overlayView.Render(controller.MapData, logPerformanceDiagnostics);
+        }
+
+        private static float ResolveVisibilityFadeSpeed()
+        {
+            float speed = (float)DistanceUnitConverter.ReadRequiredPositiveFixedConfig(VisionFadeSpeedConfigKey);
+            if (speed <= 0f || float.IsNaN(speed) || float.IsInfinity(speed))
+                throw new InvalidOperationException($"FOG3 visibility fade speed must be finite and positive. value={speed}.");
+            return speed;
         }
 
         private LayerMask ResolveHeightSampleMask()
@@ -1132,7 +1147,13 @@ namespace AAAGame.MiniMap.FOG3
 
             currentOverlayHeight = nextOverlayHeight;
             currentOverlayWorldOffset = nextOverlayWorldOffset;
-            overlayView.Build(currentTerrainInfo, viewSettings, currentOverlayHeight, ResolveHeightSampleMask(), currentOverlayWorldOffset);
+            overlayView.Build(
+                currentTerrainInfo,
+                viewSettings,
+                currentOverlayHeight,
+                ResolveHeightSampleMask(),
+                currentOverlayWorldOffset,
+                ResolveVisibilityFadeSpeed());
             overlayView.Render(controller.MapData, logPerformanceDiagnostics);
 
             if (isCloudLayer)

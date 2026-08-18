@@ -14,6 +14,60 @@ public sealed class Fog3StageCheckpointTests
     }
 
     [Test]
+    public void WorldOverlay_ChangesLogicalVisibilityImmediatelyAndFadesAlphaTowardTargets()
+    {
+        GameObject viewObject = new GameObject("Fog3VisibilityFadeTestView");
+        try
+        {
+            var terrain = new Fog3TerrainInfo(
+                1,
+                1,
+                1f,
+                Vector3.zero,
+                new[] { true },
+                "VisibilityFadeTest");
+            var settings = new Fog3ViewSettings
+            {
+                SurfaceMode = Fog3OverlaySurfaceMode.FlatWorldPlane,
+                OutsideMaskPadding = 0f,
+                HiddenColor = new Color(0f, 0f, 0f, 1f),
+                ExploredColor = new Color(0f, 0f, 0f, 0.55f),
+                VisibleColor = new Color(0f, 0f, 0f, 0f),
+                OverlayAlwaysOnTopShader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop"),
+            };
+            Fog3WorldOverlayView view = viewObject.AddComponent<Fog3WorldOverlayView>();
+            view.Build(terrain, settings, 0f, Physics.DefaultRaycastLayers, Vector3.zero, 0.5f);
+            var map = new Fog3MapData(terrain);
+            view.Render(map, false);
+
+            map.MarkExplored(0, 0);
+            map.MarkVisible(0, 0);
+            view.Render(map, false);
+            Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
+            Assert.AreEqual(1f, view.FogTexture.GetPixel(0, 0).a, 1f / 255f);
+
+            Assert.IsTrue(view.AdvanceVisibilityFade(0.5f));
+            Assert.AreEqual(0.75f, view.FogTexture.GetPixel(0, 0).a, 1f / 255f);
+            Assert.IsTrue(view.AdvanceVisibilityFade(1.5f));
+            Assert.AreEqual(0f, view.FogTexture.GetPixel(0, 0).a, 1f / 255f);
+
+            map.ClearCurrentVisibility();
+            view.Render(map, false);
+            Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(0, 0));
+            Assert.AreEqual(0f, view.FogTexture.GetPixel(0, 0).a, 1f / 255f);
+
+            Assert.IsTrue(view.AdvanceVisibilityFade(0.5f));
+            Assert.AreEqual(0.25f, view.FogTexture.GetPixel(0, 0).a, 1f / 255f);
+            Assert.IsTrue(view.AdvanceVisibilityFade(0.6f));
+            Assert.AreEqual(0.55f, view.FogTexture.GetPixel(0, 0).a, 1f / 255f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(viewObject);
+        }
+    }
+
+    [Test]
     public void TerrainConformingMesh_SeparatesHighAndLowCellTopsAndDepthTestsTheCliffWall()
     {
         GameObject lowGround = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -304,7 +358,7 @@ public sealed class Fog3StageCheckpointTests
                 OverlayAlwaysOnTopShader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop"),
             };
             Fog3WorldOverlayView view = viewObject.AddComponent<Fog3WorldOverlayView>();
-            view.Build(terrain, settings, 5f, Physics.DefaultRaycastLayers, Vector3.zero);
+            view.Build(terrain, settings, 5f, Physics.DefaultRaycastLayers, Vector3.zero, 1f);
 
             Mesh mesh = viewObject.transform.Find("FOG3_WorldOverlay").GetComponent<MeshFilter>().sharedMesh;
             Vector3[] vertices = mesh.vertices;
@@ -560,8 +614,7 @@ public sealed class Fog3StageCheckpointTests
                 System.Array.Empty<LogicCombatShape>(),
                 (Fix64)0.49f,
                 (Fix64)0.49f,
-                (Fix64)0.49f,
-                (Fix64)1000);
+                (Fix64)0.49f);
             LogicTimeControlService.BeginFrame(1);
             LogicCardPlacementAuthority.ApplyFrame(1);
 
@@ -864,7 +917,7 @@ public sealed class Fog3StageCheckpointTests
             OverlayAlwaysOnTopShader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop"),
         };
         Fog3WorldOverlayView view = viewObject.AddComponent<Fog3WorldOverlayView>();
-        view.Build(terrain, settings, 5f, Physics.DefaultRaycastLayers, Vector3.zero);
+        view.Build(terrain, settings, 5f, Physics.DefaultRaycastLayers, Vector3.zero, 1f);
         return view;
     }
 

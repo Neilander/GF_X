@@ -6,8 +6,9 @@ public interface ITargetingComp:ICapability
     void Init(IEntityContext ctx);
     void UpdateTargeting(Fix64 deltaTime);
 
-    // 供外部（如 AI Brain 或 UI）读取的当前目标
+    // CurrentTarget 仅表示当前可见并可供攻击的目标；AggroTarget 还包含最后目击追踪中的目标。
     IEntityContext CurrentTarget { get; set; }
+    IEntityContext AggroTarget { get; }
     IEntityContext FollowTarget { get; }
 
     Fix64 AggroRangeFixed { get; set; }

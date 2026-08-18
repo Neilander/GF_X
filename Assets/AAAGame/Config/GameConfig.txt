@@ -43,11 +43,19 @@
 	OffsetBadgeSilverThreshold	关卡偏移率银角标阈值	18
 	OffsetBadgeGoldThreshold	关卡偏移率金角标阈值	24
 	OffsetBadgeDiamondThreshold	关卡偏移率钻角标阈值	28
-	TauntAdditionalPursuitDistance	嘲讽额外追击距离	300
-	TauntThreatPerLevel	嘲讽每级仇恨值	10000
-	BuildingExtraThreat	建筑额外仇恨值	-5000
+	AggroOuterRange	仇恨外圈距离（码数）	1800
+	DamageAlertVisionDuration	受击警报临时视野持续秒数	2
+	DamageAlertVisionRadius	受击警报临时视野半径（码数）	200
+	DamageAlertAllyRadius	受击警报友军接收半径（码数）	700
+	DamageAlertTargetDuration	受击警报目标持续秒数	2
+	MinimumAggroCandidateRange	最小仇恨候选距离（码数）	700
+	DefendPursuitDistance	驻守单位最大追击距离（码数）	1800
+	DefendReturnHealthRegenPercentPerSecond	驻守单位返航每秒最大生命恢复百分比	20
+	DefendReturnDamageReductionPercent	驻守单位返航减伤百分比	0
 	DemolishedProdRevenueLossRate	生产建筑损毁当天损失收入百分比	50
 	DemolishEnemyProdReward	敌方生产建筑损毁提供奖励	2
 	CombatTeleportationWindUp	战斗阶段传送前摇	1
-	VisionExpandSpeed	视野内缩/外扩速度	10000
-	BuildingInteractionRadius	建筑面板交互半径（码数）	90
+	VisionFadeSpeed	视野透明度渐变速度（每秒Alpha值）	3.5
+	BuildingInteractionRadius	建筑面板交互半径（码数）	80
+	DefendReturnMoveSpeedBonus	驻守单位返航固定移速加成	250
+	PlayerOutOfCombatMoveSpeedBonus	我方单位脱战固定移速加成	500

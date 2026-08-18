@@ -701,14 +701,16 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         if (IsPlayerEntity && IsHeroEntity && LogicTeleportCommandService.IsActive)
             LogicTeleportCommandService.InterruptCombatTeleport(EntityId);
 
-        ModifyHealth(-damage);
+        Fix64 appliedHealthDelta = ModifyHealth(-damage);
+        if (appliedHealthDelta >= Fix64.Zero)
+            throw new InvalidOperationException($"LogicEntityState damage did not reduce health. entity={EntityId.Value}, delta={appliedHealthDelta}.");
         if (IsBuildingEntity)
             LogicProductionConditionState.RecordBuildingDamaged(this);
         m_OutOfCombatStart = m_CombatClock;
         m_LastDamageCombatClock = m_CombatClock;
         m_HasDamageAtCombatClock = true;
         IsOutOfCombat = false;
-        m_TargetingComp?.NotifyDamageTaken(attacker);
+        LogicFactionVisionService.HandleSuccessfulDamage(this, attacker);
         if (HealthValue <= Fix64.Zero)
         {
             if (IsBuildingEntity)
@@ -960,8 +962,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     private void RefreshOutOfCombat()
     {
         bool outOfCombat = Alive
-                           && !(m_TargetingComp?.CurrentTarget?.IsAttackTargetable() ?? false)
-                           && !(m_AtkComp?.IsAttacking ?? false)
+                           && !(m_TargetingComp?.AggroTarget?.IsAttackTargetable() ?? false)
                            && !(m_HasDamageAtCombatClock && m_LastDamageCombatClock == m_CombatClock);
         if (outOfCombat != IsOutOfCombat)
             m_OutOfCombatStart = m_CombatClock;

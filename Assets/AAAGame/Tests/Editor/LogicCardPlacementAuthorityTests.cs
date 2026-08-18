@@ -143,10 +143,10 @@ public sealed class LogicCardPlacementAuthorityTests
     }
 
     [Test]
-    public void VisibilityAcquisition_ExpandsOutwardFromTheRevealer()
+    public void VisibilityAcquisition_IsImmediateAcrossTheTargetRadius()
     {
         Fog3MapData map = CreateMap(4, 1);
-        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)3, (Fix64)32);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)3);
         var player = new SimEntityContext
         {
             PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f),
@@ -158,60 +158,15 @@ public sealed class LogicCardPlacementAuthorityTests
         LogicCardPlacementAuthority.ApplyFrame(1);
         Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
         Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(1, 0));
-        Assert.AreEqual(Fog3CellState.Hidden, map.GetCellState(2, 0));
-        Assert.IsFalse(map.IsExplored(2, 0));
-
-        LogicTimeControlService.BeginFrame(2);
-        LogicCardPlacementAuthority.ApplyFrame(2);
         Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(2, 0));
-        Assert.AreEqual(Fog3CellState.Hidden, map.GetCellState(3, 0));
-
-        LogicTimeControlService.BeginFrame(3);
-        LogicCardPlacementAuthority.ApplyFrame(3);
         Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(3, 0));
     }
 
     [Test]
-    public void VisibilityLoss_ContractsFromTheOuterEdgeTowardTheFormerRevealer()
+    public void VisibilityLoss_IsImmediateAcrossTheFormerRadius()
     {
         Fog3MapData map = CreateMap(4, 1);
-        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)3, (Fix64)32);
-        var player = new SimEntityContext
-        {
-            PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f),
-            Side = SideType.PlayerSide,
-        };
-        EntityRegistry.Register(player);
-
-        for (ulong frame = 1; frame <= 3; frame++)
-        {
-            LogicTimeControlService.BeginFrame(frame);
-            LogicCardPlacementAuthority.ApplyFrame(frame);
-        }
-        player.PositionFixed = new FixVector2((Fix64)10.5f, (Fix64)0.5f);
-
-        LogicTimeControlService.BeginFrame(4);
-        LogicCardPlacementAuthority.ApplyFrame(4);
-        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
-        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(1, 0));
-        Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(2, 0));
-        Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(3, 0));
-
-        LogicTimeControlService.BeginFrame(5);
-        LogicCardPlacementAuthority.ApplyFrame(5);
-        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
-        Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(1, 0));
-
-        LogicTimeControlService.BeginFrame(6);
-        LogicCardPlacementAuthority.ApplyFrame(6);
-        Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(0, 0));
-    }
-
-    [Test]
-    public void VisibilityReacquisition_CancelsAnActiveContraction()
-    {
-        Fog3MapData map = CreateMap(3, 1);
-        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)2, (Fix64)32);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)3);
         var player = new SimEntityContext
         {
             PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f),
@@ -221,18 +176,40 @@ public sealed class LogicCardPlacementAuthorityTests
 
         LogicTimeControlService.BeginFrame(1);
         LogicCardPlacementAuthority.ApplyFrame(1);
-        LogicTimeControlService.BeginFrame(2);
-        LogicCardPlacementAuthority.ApplyFrame(2);
         player.PositionFixed = new FixVector2((Fix64)10.5f, (Fix64)0.5f);
 
-        LogicTimeControlService.BeginFrame(3);
-        LogicCardPlacementAuthority.ApplyFrame(3);
-        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
+        LogicTimeControlService.BeginFrame(2);
+        LogicCardPlacementAuthority.ApplyFrame(2);
+        Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(0, 0));
+        Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(1, 0));
+        Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(2, 0));
+        Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(3, 0));
+    }
+
+    [Test]
+    public void VisibilityReacquisition_IsImmediateAfterLoss()
+    {
+        Fog3MapData map = CreateMap(3, 1);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)2);
+        var player = new SimEntityContext
+        {
+            PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            Side = SideType.PlayerSide,
+        };
+        EntityRegistry.Register(player);
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicCardPlacementAuthority.ApplyFrame(1);
+        player.PositionFixed = new FixVector2((Fix64)10.5f, (Fix64)0.5f);
+
+        LogicTimeControlService.BeginFrame(2);
+        LogicCardPlacementAuthority.ApplyFrame(2);
+        Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(0, 0));
         Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(1, 0));
         player.PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f);
 
-        LogicTimeControlService.BeginFrame(4);
-        LogicCardPlacementAuthority.ApplyFrame(4);
+        LogicTimeControlService.BeginFrame(3);
+        LogicCardPlacementAuthority.ApplyFrame(3);
         Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
         Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(1, 0));
     }
@@ -460,6 +437,91 @@ public sealed class LogicCardPlacementAuthorityTests
     }
 
     [Test]
+    public void GhostHeroAndAlliedUnit_IlluminateExploredCellsWithoutExploringHiddenCells()
+    {
+        Fog3MapData map = CreateMap(5, 1);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)4);
+        LogicEntityState hero = CreateUnit(
+            1,
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            SideType.PlayerSide,
+            true);
+        LogicEntityState ally = CreateUnit(
+            2,
+            new FixVector2((Fix64)1.5f, (Fix64)0.5f),
+            SideType.PlayerSide,
+            false);
+        FieldInfo ghostStateField = typeof(LogicEntityState).GetField(
+            "<IsGhostState>k__BackingField",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(ghostStateField);
+        ghostStateField.SetValue(hero, true);
+        EntityRegistry.RegisterAsPlayer(hero);
+        EntityRegistry.Register(ally);
+        map.MarkExplored(0, 0);
+        map.MarkExplored(1, 0);
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicCardPlacementAuthority.ApplyFrame(1);
+
+        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(1, 0));
+        Assert.AreEqual(Fog3CellState.Hidden, map.GetCellState(2, 0));
+        Assert.IsFalse(map.IsExplored(2, 0));
+    }
+
+    [Test]
+    public void StealthedEnemy_IsNotVisibleWithoutSeparateDetectionEffect()
+    {
+        Fog3MapData map = CreateMap(5, 1);
+        MarkAllExplored(map);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)4);
+        LogicEntityState revealer = CreateUnit(
+            1,
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            SideType.PlayerSide,
+            false);
+        LogicEntityState enemy = CreateBuilding(
+            2,
+            1,
+            EntitySideHelper.EnemyFactionId,
+            LogicCombatShape.AxisAlignedBox(
+                new FixVector2((Fix64)2.5f, (Fix64)0.5f),
+                new FixVector2((Fix64)0.25f, (Fix64)0.25f)));
+        EntityRegistry.Register(revealer);
+        EntityRegistry.Register(enemy);
+        ((IBuildingLogicContext)enemy).SetPermanentStealthByBuff(true);
+        LogicFactionVisionService.AddDamageReveal(SideType.PlayerSide, enemy.PositionFixed);
+
+        Assert.IsFalse(LogicFactionVisionService.IsEntityVisibleToSide(SideType.PlayerSide, enemy),
+            "Ordinary vision and damage-alert ground vision must not act as stealth detection.");
+
+        ((IBuildingLogicContext)enemy).SetPermanentStealthByBuff(false);
+
+        Assert.IsTrue(LogicFactionVisionService.IsEntityVisibleToSide(SideType.PlayerSide, enemy));
+    }
+
+    [Test]
+    public void DamageAlertVisibility_SkipsCellsWithoutGroundSupport()
+    {
+        Fog3MapData map = CreateHeightMap(
+            3,
+            1,
+            new[] { 0, -1, 0 },
+            new[] { false, false, false });
+        Bind(map, Array.Empty<LogicCombatShape>(), Fix64.One);
+        LogicFactionVisionService.AddDamageReveal(
+            SideType.PlayerSide,
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f));
+        LogicTimeControlService.BeginFrame(1);
+
+        Assert.DoesNotThrow(() => LogicCardPlacementAuthority.ApplyFrame(1));
+
+        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
+        Assert.AreEqual(Fog3CellState.Hidden, map.GetCellState(1, 0));
+        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(2, 0));
+    }
+
+    [Test]
     public void BuildPhaseExploration_DoesNotDependOnCardSystemInitialization()
     {
         var controller = new Fog3Controller();
@@ -672,46 +734,6 @@ public sealed class LogicCardPlacementAuthorityTests
     }
 
     [Test]
-    public void DeterministicState_ChangesWhenVisibilityTransitionChanges()
-    {
-        Fix64 speed = (Fix64)4;
-        var first = new SimEntityContext
-        {
-            PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f),
-            Side = SideType.PlayerSide,
-        };
-        EntityRegistry.Register(first);
-        Fog3MapData firstMap = CreateMap(2, 1);
-        Bind(firstMap, Array.Empty<LogicCombatShape>(), (Fix64)0.49f, speed);
-        LogicTimeControlService.BeginFrame(1);
-        LogicCardPlacementAuthority.ApplyFrame(1);
-        first.PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f);
-        LogicTimeControlService.BeginFrame(2);
-        LogicCardPlacementAuthority.ApplyFrame(2);
-        var firstState = new LogicStateHasher();
-        LogicCardPlacementAuthority.WriteDeterministicState(firstState);
-
-        LogicCardPlacementAuthority.UnbindWorld();
-        EntityRegistry.Clear();
-        var second = new SimEntityContext
-        {
-            PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f),
-            Side = SideType.PlayerSide,
-        };
-        EntityRegistry.Register(second);
-        Fog3MapData secondMap = CreateMap(2, 1);
-        secondMap.MarkExplored(0, 0);
-        Bind(secondMap, Array.Empty<LogicCombatShape>(), (Fix64)0.49f, speed);
-        var secondState = new LogicStateHasher();
-        LogicCardPlacementAuthority.WriteDeterministicState(secondState);
-
-        Assert.AreEqual(firstMap.ExplorationXorDigest, secondMap.ExplorationXorDigest);
-        Assert.AreEqual(firstMap.ExplorationSumDigest, secondMap.ExplorationSumDigest);
-        Assert.AreEqual(LogicCardPlacementAuthority.LastAppliedFrame, 2UL);
-        Assert.AreNotEqual(firstState.Hash, secondState.Hash);
-    }
-
-    [Test]
     public void RevealCircle_BlocksHiddenPropagationBeyondEnemyStronghold()
     {
         Fog3MapData map = CreateMap(5, 1);
@@ -731,7 +753,6 @@ public sealed class LogicCardPlacementAuthorityTests
             (Fix64)5,
             (Fix64)5,
             (Fix64)5,
-            (Fix64)1000,
             true);
 
         LogicCardPlacementAuthority.RevealCircleForTests(
@@ -765,7 +786,6 @@ public sealed class LogicCardPlacementAuthorityTests
             (Fix64)5,
             (Fix64)5,
             (Fix64)5,
-            (Fix64)1000,
             false);
 
         LogicCardPlacementAuthority.RevealCircleForTests(
@@ -829,22 +849,12 @@ public sealed class LogicCardPlacementAuthorityTests
         IReadOnlyList<LogicCombatShape> staticForbiddenShapes,
         Fix64 visionRadius)
     {
-        Bind(map, staticForbiddenShapes, visionRadius, (Fix64)1000);
-    }
-
-    private static void Bind(
-        Fog3MapData map,
-        IReadOnlyList<LogicCombatShape> staticForbiddenShapes,
-        Fix64 visionRadius,
-        Fix64 visionExpandSpeed)
-    {
         LogicCardPlacementAuthority.BindWorldForTests(
             map,
             staticForbiddenShapes,
             visionRadius,
             visionRadius,
-            visionRadius,
-            visionExpandSpeed);
+            visionRadius);
     }
 
     private static Fog3MapData CreateMap(int width, int height)

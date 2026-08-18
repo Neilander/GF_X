@@ -16,9 +16,13 @@ public class CharacterTargetingFactory : TargetingCompFactory
 
     public override ITargetingComp CreateTargetingComp(IEntityContext gmo)
     {
-        ITargetingComp comp = WeaponTargetRules.IsHealingWeapon(gmo?.WeaponComp?.Data?.Type ?? WeaponType.None)
-            ? new HealTargetingComp()
-            : new CharacterTargetingComp();
+        ITargetingComp comp;
+        if (WeaponTargetRules.IsHealingWeapon(gmo?.WeaponComp?.Data?.Type ?? WeaponType.None))
+            comp = new HealTargetingComp();
+        else if (gmo is IHeroLogicContext hero && hero.IsHeroEntity)
+            comp = new HeroTargetingComp();
+        else
+            comp = new CharacterTargetingComp();
 
         comp.Init(gmo);
 

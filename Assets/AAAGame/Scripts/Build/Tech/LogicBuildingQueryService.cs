@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 public static class LogicBuildingQueryService
 {
-    public static bool TryGetNearestByInstanceIds(
+    public static bool TryGetNearestAliveByInstanceIds(
         HashSet<string> buildingInstanceIds,
         FixVector2 origin,
         out IBuildingLogicContext building)
@@ -50,7 +50,6 @@ public static class LogicBuildingQueryService
         for (int i = 0; i < entities.Count; i++)
         {
             if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
-                || !building.Alive
                 || !string.Equals(building.BuildingInstanceId, buildingInstanceId, StringComparison.Ordinal))
             {
                 continue;
@@ -59,14 +58,14 @@ public static class LogicBuildingQueryService
             if (result != null)
             {
                 throw new InvalidOperationException(
-                    $"LogicBuildingQueryService found duplicate active building instance id '{buildingInstanceId}'.");
+                    $"LogicBuildingQueryService found duplicate registered building instance id '{buildingInstanceId}'.");
             }
 
             result = building;
         }
 
         return result ?? throw new InvalidOperationException(
-            $"LogicBuildingQueryService cannot find active building instance id '{buildingInstanceId}'.");
+            $"LogicBuildingQueryService cannot find registered building instance id '{buildingInstanceId}'.");
     }
 
     public static bool HasBuildingArchetype(
@@ -91,7 +90,6 @@ public static class LogicBuildingQueryService
         for (int i = 0; i < entities.Count; i++)
         {
             if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
-                || !building.Alive
                 || building.OwnerFactionId != ownerFactionId
                 || !string.Equals(building.StrongholdId, strongholdId, StringComparison.Ordinal))
             {
@@ -154,7 +152,6 @@ public static class LogicBuildingQueryService
         {
             if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 || building.LogicEntityId == source.LogicEntityId
-                || !building.Alive
                 || building.OwnerFactionId != source.OwnerFactionId
                 || !string.Equals(building.StrongholdId, source.StrongholdId, StringComparison.Ordinal))
             {

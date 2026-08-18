@@ -129,28 +129,37 @@ public sealed class RampedPercentMoveSpeedBonusBuff : BuffCallback, ILogicDeterm
     }
 }
 
-public sealed class HeroOutOfCombatMoveSpeedBuff : BuffCallback, ILogicDeterministicStateContributor
+public sealed class PlayerOutOfCombatMoveSpeedBuff : BuffCallback, ILogicDeterministicStateContributor
 {
+    public const string MoveSpeedBonusConfigKey = "PlayerOutOfCombatMoveSpeedBonus";
     private static readonly Fix64 Delay = (Fix64)2;
     private static readonly Fix64 RampDuration = (Fix64)1;
-    private static readonly Fix64 TargetPercent = Fix64.One;
+    private readonly Fix64 m_TargetBonus;
     private bool m_InitialGrace = true;
-    private Fix64 m_CurrentPercent;
+    private Fix64 m_CurrentBonus;
     private IPropertyModifier m_Modifier;
-    private ValueProperty m_MulBuffProperty;
+    private ValueProperty m_ValueBuffProperty;
+
+    public PlayerOutOfCombatMoveSpeedBuff(Fix64 targetBonus)
+    {
+        if (targetBonus <= Fix64.Zero)
+            throw new System.ArgumentOutOfRangeException(nameof(targetBonus), targetBonus, "Out-of-combat move speed bonus must be positive.");
+        m_TargetBonus = targetBonus;
+    }
 
     public override void OnAdd()
     {
         CreaturePropertyManager properties = hostEntity?.CreatureProperties
-            ?? throw new System.InvalidOperationException("HeroOutOfCombatMoveSpeedBuff requires creature properties.");
+            ?? throw new System.InvalidOperationException("PlayerOutOfCombatMoveSpeedBuff requires creature properties.");
         string propertyId = PropertyHelper.ModName(
             CreatureMainProperty.Speed.ToString(),
-            nameof(NormalComputeTp.Mul),
+            nameof(NormalComputeTp.Value),
             nameof(NormalBaseValueTp.Buff));
-        m_MulBuffProperty = properties.propertyManager.GetValueProperty(propertyId);
-        m_CurrentPercent = TargetPercent;
-        m_Modifier = PropertyDirectAdditiveModifier.Create(() => m_CurrentPercent);
-        properties.ModifyMainPropertyMul(CreatureMainProperty.Speed, NormalBaseValueTp.Buff, m_Modifier, true);
+        m_ValueBuffProperty = properties.propertyManager.GetValueProperty(propertyId)
+            ?? throw new System.InvalidOperationException($"Missing speed value-buff property '{propertyId}'.");
+        m_CurrentBonus = m_TargetBonus;
+        m_Modifier = PropertyDirectAdditiveModifier.Create(() => m_CurrentBonus);
+        properties.ModifyMainPropertyValueBuff(CreatureMainProperty.Speed, m_Modifier, true);
     }
 
     public override void OnUpdate(Fix64 deltaTime)
@@ -158,45 +167,45 @@ public sealed class HeroOutOfCombatMoveSpeedBuff : BuffCallback, ILogicDetermini
         if (!hostEntity.Alive || !hostEntity.IsOutOfCombat)
         {
             m_InitialGrace = false;
-            SetPercent(Fix64.Zero);
+            SetBonus(Fix64.Zero);
             return;
         }
         if (m_InitialGrace)
         {
-            SetPercent(TargetPercent);
+            SetBonus(m_TargetBonus);
             return;
         }
 
         Fix64 elapsed = hostEntity.OutOfCombatElapsedLogicTime;
         Fix64 ramp = Fix64.Clamp((elapsed - Delay) / RampDuration, Fix64.Zero, Fix64.One);
-        SetPercent(TargetPercent * ramp);
+        SetBonus(m_TargetBonus * ramp);
     }
 
     public override void OnRemove()
     {
         if (m_Modifier != null && hostEntity?.CreatureProperties != null)
         {
-            hostEntity.CreatureProperties.ModifyMainPropertyMul(
+            hostEntity.CreatureProperties.ModifyMainPropertyValueBuff(
                 CreatureMainProperty.Speed,
-                NormalBaseValueTp.Buff,
                 m_Modifier,
                 false);
         }
         m_Modifier = null;
-        m_MulBuffProperty = null;
+        m_ValueBuffProperty = null;
     }
 
-    private void SetPercent(Fix64 value)
+    private void SetBonus(Fix64 value)
     {
-        if (m_CurrentPercent == value)
+        if (m_CurrentBonus == value)
             return;
-        m_CurrentPercent = value;
-        m_MulBuffProperty.MakeDirty();
+        m_CurrentBonus = value;
+        m_ValueBuffProperty.MakeDirty();
     }
 
     public void WriteDeterministicState(LogicStateHasher hasher)
     {
         hasher.Add(m_InitialGrace);
-        hasher.Add(m_CurrentPercent.RawValue);
+        hasher.Add(m_TargetBonus.RawValue);
+        hasher.Add(m_CurrentBonus.RawValue);
     }
 }

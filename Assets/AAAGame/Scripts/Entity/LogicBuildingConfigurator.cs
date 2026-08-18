@@ -138,7 +138,7 @@ public static class LogicBuildingConfigurator
             state.BuffComp.AddBuff(combatBuffs[i], state);
     }
 
-    private static ITargetingComp CreateTargetingComp(LogicEntityState state, BuildingData buildingData)
+    internal static ITargetingComp CreateTargetingComp(LogicEntityState state, BuildingData buildingData)
     {
         ITargetingComp result;
         if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.Pharmacy))
@@ -146,7 +146,7 @@ public static class LogicBuildingConfigurator
         else if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.MeatRack))
             result = new MeatRackTargetingComp();
         else
-            result = new CharacterTargetingComp { EnableAggroFallback = false };
+            result = new BuildingTargetingComp();
 
         result.AggroRangeFixed = (Fix64)6;
         result.ForgetRangeFixed = (Fix64)8;

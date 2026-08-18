@@ -1,95 +1,77 @@
-﻿public static class TargetThreatUtility
+using System;
+
+public readonly struct TargetPriority : IComparable<TargetPriority>
 {
-    public const string TauntThreatPerLevelConfigKey = "TauntThreatPerLevel";
-    public const string TauntAdditionalPursuitDistanceConfigKey = "TauntAdditionalPursuitDistance";
-    public const string BuildingExtraThreatConfigKey = "BuildingExtraThreat";
-
-    public static Fix64 ReadThreatPerLevel()
+    public TargetPriority(int taunt, bool inRange, int special, bool currentAttack, bool alert, Fix64 distance, int id)
     {
-        return DistanceUnitConverter.ReadRequiredPositiveFixedConfig(TauntThreatPerLevelConfigKey);
+        DoubledTauntLevel = taunt;
+        InsideAttackRange = inRange;
+        SpecialTargetingPriority = special;
+        CurrentAttackTarget = currentAttack;
+        AlertTarget = alert;
+        Distance = distance;
+        TargetId = id;
     }
 
-    public static Fix64 ReadAdditionalPursuitDistanceWorld()
+    public int DoubledTauntLevel { get; }
+    public bool InsideAttackRange { get; }
+    public int SpecialTargetingPriority { get; }
+    public bool CurrentAttackTarget { get; }
+    public bool AlertTarget { get; }
+    public Fix64 Distance { get; }
+    public int TargetId { get; }
+
+    public int CompareTo(TargetPriority other)
     {
-        Fix64 gameDistance = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(
-            TauntAdditionalPursuitDistanceConfigKey);
-        return DistanceUnitConverter.ConvertToWorld(gameDistance);
+        int result = DoubledTauntLevel.CompareTo(other.DoubledTauntLevel);
+        if (result != 0) return result;
+        result = InsideAttackRange.CompareTo(other.InsideAttackRange);
+        if (result != 0) return result;
+        result = SpecialTargetingPriority.CompareTo(other.SpecialTargetingPriority);
+        if (result != 0) return result;
+        result = CurrentAttackTarget.CompareTo(other.CurrentAttackTarget);
+        if (result != 0) return result;
+        result = AlertTarget.CompareTo(other.AlertTarget);
+        if (result != 0) return result;
+        result = other.Distance.CompareTo(Distance);
+        return result != 0 ? result : other.TargetId.CompareTo(TargetId);
     }
+}
 
-    public static Fix64 ReadBuildingExtraThreat()
-    {
-        return DistanceUnitConverter.ReadRequiredFixedConfig(BuildingExtraThreatConfigKey);
-    }
-
-    public static int GetTauntEquivalentLevel(IEntityContext attacker, IEntityContext target)
-    {
-        if (attacker == null)
-            throw new System.ArgumentNullException(nameof(attacker));
-        if (target == null)
-            throw new System.ArgumentNullException(nameof(target));
-
-        int threatLevel = target.TauntLevel;
-        if (attacker.TryGetLogicBuilding(out IBuildingLogicContext building)
-            && BuildingAbilityIds.IsBuilding(
-                building.BuildingData,
-                BuildingAbilityIds.ComplaintsDepartment)
-            && BuildingTechRuntimeEffect.HasTag(target.CharacterData?.UnitTags, UnitTag.Ranged))
-        {
-            Fix64[] values = building.BuildingData.UniqueValues;
-            if (values == null || values.Length == 0 || values[0] <= Fix64.Zero)
-            {
-                throw new System.InvalidOperationException(
-                    $"Complaints department ranged taunt bonus is missing. building={building.BuildingData.Identifier}.");
-            }
-
-            threatLevel = checked(threatLevel + (int)values[0]);
-        }
-
-        return threatLevel;
-    }
-
-    public static Fix64 CalculateSelectionThreat(
+public static class TargetPriorityUtility
+{
+    public static TargetPriority Create(
         IEntityContext attacker,
         IEntityContext target,
-        Fix64 worldSurfaceDistance,
-        Fix64 threatPerLevel,
-        Fix64 buildingExtraThreat)
+        Fix64 distance,
+        Fix64 attackRange,
+        IEntityContext currentTarget,
+        bool alertTarget)
     {
-        if (worldSurfaceDistance < Fix64.Zero)
-            throw new System.ArgumentOutOfRangeException(nameof(worldSurfaceDistance));
-        if (threatPerLevel <= Fix64.Zero)
-            throw new System.ArgumentOutOfRangeException(nameof(threatPerLevel));
-
-        // Distance and future non-taunt targeting modifiers belong only in this selection score.
-        Fix64 gameDistance = DistanceUnitConverter.ConvertFromWorld(worldSurfaceDistance);
-        return CalculatePursuitThreat(attacker, target, threatPerLevel, buildingExtraThreat) - gameDistance;
+        if (attacker == null) throw new ArgumentNullException(nameof(attacker));
+        if (target == null) throw new ArgumentNullException(nameof(target));
+        bool inRange = distance <= attackRange;
+        int doubledTaunt = checked(target.TauntLevel * 2 - (target.IsLogicBuilding() ? 1 : 0));
+        return new TargetPriority(
+            doubledTaunt,
+            inRange,
+            GetSpecialTargetingPriority(attacker, target),
+            inRange && ReferenceEquals(target, currentTarget),
+            alertTarget,
+            distance,
+            target.LogicEntityId.Value);
     }
 
-    // Only taunt-equivalent sources belong here because this score unlocks additional pursuit.
-    public static Fix64 CalculatePursuitThreat(
-        IEntityContext attacker,
-        IEntityContext target,
-        Fix64 threatPerLevel,
-        Fix64 buildingExtraThreat)
+    private static int GetSpecialTargetingPriority(IEntityContext attacker, IEntityContext target)
     {
-        if (threatPerLevel <= Fix64.Zero)
-            throw new System.ArgumentOutOfRangeException(nameof(threatPerLevel));
+        if (!attacker.TryGetLogicBuilding(out IBuildingLogicContext building)
+            || !BuildingAbilityIds.IsBuilding(building.BuildingData, BuildingAbilityIds.ComplaintsDepartment)
+            || !BuildingTechRuntimeEffect.HasTag(target.CharacterData?.UnitTags, UnitTag.Ranged))
+            return 0;
 
-        Fix64 buildingTauntEquivalentThreat = target.IsLogicBuilding() ? buildingExtraThreat : Fix64.Zero;
-        return threatPerLevel * GetTauntEquivalentLevel(attacker, target) + buildingTauntEquivalentThreat;
-    }
-
-    public static bool HasHigherPriority(
-        Fix64 candidateThreat,
-        IEntityContext candidate,
-        Fix64 currentThreat,
-        IEntityContext current)
-    {
-        if (candidate == null)
-            throw new System.ArgumentNullException(nameof(candidate));
-
-        return current == null
-               || candidateThreat > currentThreat
-               || (candidateThreat == currentThreat && candidate.LogicEntityId < current.LogicEntityId);
+        Fix64[] values = building.BuildingData.UniqueValues;
+        if (values == null || values.Length == 0 || values[0] <= Fix64.Zero || values[0] != Fix64.Floor(values[0]))
+            throw new InvalidOperationException($"Complaints department ranged targeting priority is invalid. building={building.BuildingData.Identifier}.");
+        return checked((int)values[0]);
     }
 }

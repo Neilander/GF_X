@@ -1269,7 +1269,6 @@ public static class BuildingCostModifierService
         for (int i = 0; i < entities.Count; i++)
         {
             if (!(entities[i] is IBuildingLogicContext building)
-                || !building.Alive
                 || building.BuildingData == null
                 || building.OwnerFactionId != ownerFactionId
                 || !string.Equals(building.StrongholdId, strongholdId, StringComparison.Ordinal))

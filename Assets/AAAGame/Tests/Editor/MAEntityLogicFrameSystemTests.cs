@@ -25,8 +25,7 @@ public class MAEntityLogicFrameSystemTests
             System.Array.Empty<LogicCombatShape>(),
             (Fix64)worldSize,
             (Fix64)worldSize,
-            (Fix64)worldSize,
-            (Fix64)1000);
+            (Fix64)worldSize);
         fogMap.MarkVisible(0, 0);
     }
 
@@ -523,6 +522,9 @@ public class MAEntityLogicFrameSystemTests
                 null,
                 out _,
                 out _);
+            targeting = new FixedTargetingComp();
+            host.SetTargetingComp(targeting);
+            targeting.Init(host);
 
             const string timedBuffId = "real_logic_combat_gated_spawn_buff";
             Assert.IsTrue(host.BuffComp.AddBuff(
@@ -1584,8 +1586,7 @@ public class MAEntityLogicFrameSystemTests
             new LogicCombatShape[0],
             Fix64.One,
             Fix64.One,
-            Fix64.One,
-            (Fix64)1000);
+            Fix64.One);
         var start = new FixVector2((Fix64)0.5f, (Fix64)0.5f);
         var entity = new RegionConstraintProbeEntity
         {
@@ -2027,6 +2028,7 @@ public class MAEntityLogicFrameSystemTests
     private sealed class FixedTargetingComp : ITargetingComp
     {
         public IEntityContext CurrentTarget { get; set; }
+        public IEntityContext AggroTarget => CurrentTarget;
         public IEntityContext FollowTarget => null;
         public Fix64 AggroRangeFixed { get; set; }
         public Fix64 ForgetRangeFixed { get; set; }

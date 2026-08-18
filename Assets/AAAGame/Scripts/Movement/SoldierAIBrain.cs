@@ -18,6 +18,10 @@ using UnityEngine;
 /// </summary>
 public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler, ILogicDeterministicStateContributor
 {
+    public const string DefendPursuitDistanceConfigKey = "DefendPursuitDistance";
+    public const string DefendReturnMoveSpeedBonusConfigKey = "DefendReturnMoveSpeedBonus";
+    public const string DefendReturnHealthRegenPercentPerSecondConfigKey = "DefendReturnHealthRegenPercentPerSecond";
+    public const string DefendReturnDamageReductionPercentConfigKey = "DefendReturnDamageReductionPercent";
     private static readonly FixVector2[] StableDeadZoneDirections =
     {
         new FixVector2(Fix64.One, Fix64.Zero),
@@ -58,8 +62,9 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     // --- 脱战返航参数（仅敌方有效，调参先在这里改）---
     public Fix64 ChaseRange = (Fix64)23;                  // 距出生点超过此值就进入 Returning
     public Fix64 HomeArrivedRadius = Fix64.FromRaw(6144);         // 距出生点 < 此值视为到家
-    public Fix64 ReturnSpeedBonusPercent = Fix64.FromRaw(2048);        // 返航移速加成（50%）
+    public Fix64 ReturnSpeedBonus = (Fix64)250;                  // 返航固定移速加成
     public Fix64 ReturnHpRegenPercentPerSec = Fix64.FromRaw(820);     // 返航回血（每秒最大血量的 20%）
+    public Fix64 ReturnDamageReductionPercent = Fix64.Zero;
     private const string ReturningBuffId = "soldier_returning";
 
     // --- 状态 ---
@@ -103,6 +108,22 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     public void SetBirthPositionFixed(FixVector2 worldPos)
     {
         _birthPosition = worldPos;
+    }
+
+    public void ConfigureReturnFromGameConfig()
+    {
+        ChaseRange = LogicFactionVisionService.ReadWorldDistance(DefendPursuitDistanceConfigKey);
+        ReturnSpeedBonus = LogicFactionVisionService.ReadPositiveConfig(
+            DefendReturnMoveSpeedBonusConfigKey);
+        ReturnHpRegenPercentPerSec = LogicFactionVisionService.ReadPositiveConfig(
+            DefendReturnHealthRegenPercentPerSecondConfigKey) / (Fix64)100;
+        ReturnDamageReductionPercent = DistanceUnitConverter.ReadRequiredFixedConfig(
+            DefendReturnDamageReductionPercentConfigKey);
+        if (ReturnDamageReductionPercent < Fix64.Zero || ReturnDamageReductionPercent > (Fix64)100)
+        {
+            throw new System.InvalidOperationException(
+                $"Game config '{DefendReturnDamageReductionPercentConfigKey}' must be in [0, 100].");
+        }
     }
 
     public void SetReturnToBirthEnabled(bool enabled)
@@ -255,7 +276,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         {
             case SoldierState.Idle:
                 // 有敌人 → 直接进 Combat
-                if (IsValidAttackTarget(self, self.TargetComp?.CurrentTarget))
+                if (HasCombatPursuit(self))
                 {
                     State = SoldierState.Combat;
                 }
@@ -267,7 +288,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 break;
 
             case SoldierState.Follow:
-                if (IsValidAttackTarget(self, self.TargetComp?.CurrentTarget))
+                if (HasCombatPursuit(self))
                 {
                     State = SoldierState.Combat;
                 }
@@ -286,9 +307,14 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 break;
 
             case SoldierState.Combat:
-                // 敌人死亡、不可被攻击或丢失后，离家的敌兵进入强制返航，其余单位回 Idle。
+                // 目标失效后先等待 Targeting 尝试替换；确认脱战后敌兵返航，友军重新跟随领袖。
                 var enemy = self.TargetComp?.CurrentTarget;
                 if (IsValidAttackTarget(self, enemy))
+                {
+                    _awaitingTargetReplacement = false;
+                    break;
+                }
+                if (self.TargetComp is ILastSeenTargetingComp lastSeen && lastSeen.HasLastSeenPursuit)
                 {
                     _awaitingTargetReplacement = false;
                     break;
@@ -296,7 +322,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
                 // Brain 先于 Targeting 执行。仍引用着失效目标时，先让紧随其后的
                 // Targeting 阶段完成一次事件驱动重扫，再决定是否真的失去目标。
-                if (_birthPosition.HasValue && !_awaitingTargetReplacement && enemy != null)
+                if (!_awaitingTargetReplacement && enemy != null)
                 {
                     _awaitingTargetReplacement = true;
                     self.MoveComp.StopMove();
@@ -326,6 +352,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 }
                 if (shouldReturnHome)
                     EnterReturning(self);
+                else if (IsValidFollowLeader(self, _leader))
+                    State = SoldierState.Follow;
                 else
                     State = SoldierState.Idle;
                 break;
@@ -343,8 +371,9 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
         var modules = new List<BuffCallback>
         {
-            new PercentMoveSpeedBonusBuff(ReturnSpeedBonusPercent),
-            new HealOverTimeBuff(ReturnHpRegenPercentPerSec)
+            new RevertibleMoveSpeedBonusBuff(ReturnSpeedBonus),
+            new HealOverTimeBuff(ReturnHpRegenPercentPerSec),
+            new PercentIncomingDamageReductionBuff(ReturnDamageReductionPercent)
         };
         var buff = BuffData.Create(ReturningBuffId, Fix64.Zero, true, 1, modules);
         if (!buffComp.AddBuff(buff, self))
@@ -408,6 +437,12 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     private static bool IsValidAttackTarget(IEntityContext self, IEntityContext target)
     {
         return WeaponTargetRules.IsValidTargetForCurrentWeapon(self, target);
+    }
+
+    private static bool HasCombatPursuit(IEntityContext self)
+    {
+        return IsValidAttackTarget(self, self.TargetComp?.CurrentTarget)
+               || self.TargetComp is ILastSeenTargetingComp lastSeen && lastSeen.HasLastSeenPursuit;
     }
 
     private static bool IsValidFollowLeader(IEntityContext self, IEntityContext leader)
@@ -596,7 +631,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         var enemy = self.TargetComp?.CurrentTarget;
         if (!IsValidAttackTarget(self, enemy))
         {
-            self.MoveComp.StopMove();
+            if (self.TargetComp is ILastSeenTargetingComp lastSeen && lastSeen.HasLastSeenPursuit)
+                self.MoveComp.MoveToFixed(lastSeen.LastSeenPursuitDestinationFixed);
+            else
+                self.MoveComp.StopMove();
             return;
         }
 
@@ -625,6 +663,34 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
                 if (failureKind == FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.Unreachable)
                 {
+                    if (FlowFieldCrowdMovementSystem.TryResolveReachableAttackAreaPointFixed(
+                            self,
+                            enemy,
+                            effectiveRange,
+                            out reachableApproachPoint,
+                            out string attackAreaFailure,
+                            out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind attackAreaFailureKind))
+                    {
+                        self.MoveComp.MoveToFixed(reachableApproachPoint);
+                        return;
+                    }
+                    if (attackAreaFailureKind == FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.PendingRuntimeUpdate)
+                    {
+                        self.MoveComp.StopMove();
+                        return;
+                    }
+                    if (attackAreaFailureKind == FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.Unavailable)
+                    {
+                        throw new System.InvalidOperationException(
+                            $"[{self.CharacterKey}] Combat attack-area query unavailable enemy={enemy.CharacterKey} " +
+                            $"enemyPos={enemy.LogicFramePosition()} selfPos={self.LogicFramePosition()} reason={attackAreaFailure}");
+                    }
+                    if (attackAreaFailureKind != FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.Unreachable)
+                    {
+                        throw new System.InvalidOperationException(
+                            $"[{self.CharacterKey}] Combat attack-area query failed without a handled reason enemy={enemy.CharacterKey} " +
+                            $"kind={attackAreaFailureKind} reason={attackAreaFailure}");
+                    }
                     if (!(self.TargetComp is INavigationReachabilityTargetingComp reachabilityTargeting))
                     {
                         throw new System.InvalidOperationException(
@@ -634,7 +700,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                     GameDebugSettings.Log(
                         DebugCategory.Brain,
                         $"[{self.CharacterKey}] Reject navigation-unreachable target enemy={enemy.CharacterKey} enemyPos={enemy.LogicFramePosition()} " +
-                        $"selfPos={self.LogicFramePosition()} dist={distToEnemy:F2} range={effectiveRange:F2} reason={reachFailure}");
+                        $"selfPos={self.LogicFramePosition()} dist={distToEnemy:F2} range={effectiveRange:F2} " +
+                        $"slotReason={reachFailure} attackAreaReason={attackAreaFailure}");
                     reachabilityTargeting.RejectNavigationUnreachableTarget(enemy);
                     self.MoveComp.StopMove();
                     _combatApproachPoint = FixVector2.Zero;

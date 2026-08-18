@@ -6792,6 +6792,7 @@ public class FlowFieldCrowdMovementSystemTests
 
         SimEntityContext chaser = CreateEntity(new Vector3(2.5f, 0f, 3.5f), false, 0, 0.18f);
         chaser.Side = SideType.EnemySide;
+        chaser.WeaponComp = CreateTestWeaponComp(Fix64.One);
         SimEntityContext unreachable = CreateEntity(new Vector3(9.5f, 0f, 3.5f), false, 0, 0.18f);
         unreachable.Side = SideType.PlayerSide;
         SimEntityContext reachable = CreateEntity(new Vector3(4.5f, 0f, 3.5f), false, 0, 0.18f);
@@ -6822,6 +6823,19 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
         Assert.DoesNotThrow(() => brain.Tick(chaser, (Fix64)0.1f));
         Assert.IsNull(targeting.CurrentTarget, "无接敌位目标应由索敌组件记录为导航拒绝，而不是留给 Soldier 重复报错。");
+        Assert.IsTrue(
+            LogicFactionVisionService.IsEntityVisibleToSide(chaser.Side, reachable),
+            "测试前置：附近可达目标必须处于追击者视野内。");
+        bool reachableArea = FlowFieldCrowdMovementSystem.TryResolveReachableAttackAreaPointFixed(
+            chaser,
+            reachable,
+            chaser.WeaponComp.AttackRange,
+            out FixVector2 reachablePoint,
+            out string reachableReason,
+            out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind reachableFailureKind);
+        Assert.IsTrue(
+            reachableArea,
+            $"测试前置：附近候选的攻击区域必须可达。kind={reachableFailureKind}, reason={reachableReason}, point={reachablePoint}");
 
         targeting.UpdateTargeting((Fix64)0.2f);
         Assert.AreSame(reachable, targeting.CurrentTarget, "同次重扫必须跳过未移动且导航世界未变化的不可达目标，并选择附近可达目标。");
@@ -6832,8 +6846,17 @@ public class FlowFieldCrowdMovementSystemTests
     [Test]
     public void CharacterTargeting导航拒绝在目标移动后失效并允许重新锁定()
     {
+        const int width = 12;
+        const int height = 7;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
         SimEntityContext chaser = CreateEntity(new Vector3(2.5f, 0f, 2.5f), false, 0, 0.18f);
         chaser.Side = SideType.EnemySide;
+        chaser.WeaponComp = CreateTestWeaponComp(Fix64.One);
         SimEntityContext target = CreateEntity(new Vector3(5.5f, 0f, 2.5f), false, 0, 0.18f);
         target.Side = SideType.PlayerSide;
         CharacterTargetingComp targeting = new CharacterTargetingComp
@@ -6861,7 +6884,7 @@ public class FlowFieldCrowdMovementSystemTests
             "导航拒绝会影响后续目标选择，必须进入索敌组件 deterministic state。");
 
         target.PositionFixed += new FixVector2((Fix64)0.25f, Fix64.Zero);
-        targeting.UpdateTargeting(Fix64.Zero);
+        targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(target, targeting.CurrentTarget, "目标逻辑位置变化后，旧接敌失败结论必须失效并允许重新计算。");
     }

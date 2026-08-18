@@ -8,6 +8,9 @@ namespace AAAGame.MiniMap.FOG3
         private const string FogOverlayShaderAssetPath = "Assets/AAAGame/Scripts/MiniMap/FOG3/View/Fog3OverlayAlwaysOnTop.shader";
         private Texture2D fogTexture;
         private Color32[] pixels;
+        private Color32[] targetPixels;
+        private float[] currentAlphas;
+        private float[] targetAlphas;
         private Material fogMaterial;
         private Material outsideMaterial;
         private Fog3ViewSettings settings;
@@ -17,6 +20,8 @@ namespace AAAGame.MiniMap.FOG3
         private MeshFilter fogMeshFilter;
         private Bounds fogMeshBounds;
         private bool fogMeshUsesCameraProjectionGrid;
+        private float visibilityFadeSpeed;
+        private bool visibilityFadeActive;
         private readonly RaycastHit[] projectionHeightHits = new RaycastHit[32];
         private readonly System.Collections.Generic.List<OutsideMaskQuad> outsideMaskQuads = new System.Collections.Generic.List<OutsideMaskQuad>();
 
@@ -33,22 +38,41 @@ namespace AAAGame.MiniMap.FOG3
         public Bounds FogMeshBounds => fogMeshBounds;
         public int OutsideMaskQuadCount => outsideMaskQuads.Count;
         public bool FogMeshUsesCameraProjectionGrid => fogMeshUsesCameraProjectionGrid;
+        public float VisibilityFadeSpeed => visibilityFadeSpeed;
 
-        public void Build(Fog3TerrainInfo terrainInfo, Fog3ViewSettings viewSettings, float resolvedOverlayHeight, LayerMask resolvedHeightSampleMask, Vector3 worldOffset)
+        public void Build(
+            Fog3TerrainInfo terrainInfo,
+            Fog3ViewSettings viewSettings,
+            float resolvedOverlayHeight,
+            LayerMask resolvedHeightSampleMask,
+            Vector3 worldOffset,
+            float resolvedVisibilityFadeSpeed)
         {
+            if (terrainInfo == null)
+                throw new System.ArgumentNullException(nameof(terrainInfo));
+            if (resolvedVisibilityFadeSpeed <= 0f || float.IsNaN(resolvedVisibilityFadeSpeed) || float.IsInfinity(resolvedVisibilityFadeSpeed))
+                throw new System.ArgumentOutOfRangeException(nameof(resolvedVisibilityFadeSpeed), "FOG3 visibility fade speed must be finite and positive.");
+
             this.terrainInfo = terrainInfo;
             settings = viewSettings ?? new Fog3ViewSettings();
             heightSampleMask = resolvedHeightSampleMask;
             overlayHeight = Mathf.Max(0f, resolvedOverlayHeight);
+            visibilityFadeSpeed = resolvedVisibilityFadeSpeed;
             SetWorldOffset(terrainInfo, worldOffset);
             transform.rotation = Quaternion.identity;
             transform.localScale = Vector3.one;
 
             ClearChildren();
             ReleaseRuntimeResources();
-            CreateTexture(terrainInfo.Width, terrainInfo.Height);
+            CreateTexture(terrainInfo);
             CreateFogPlane(terrainInfo);
             CreateOutsideMask(terrainInfo);
+        }
+
+        private void Update()
+        {
+            if (visibilityFadeActive)
+                AdvanceVisibilityFade(Time.deltaTime);
         }
 
         public void SetWorldOffset(Fog3TerrainInfo terrainInfo, Vector3 worldOffset)
@@ -90,26 +114,51 @@ namespace AAAGame.MiniMap.FOG3
 
         public void Render(Fog3MapData mapData, bool logPerformanceDiagnostics)
         {
-            if (mapData == null || fogTexture == null || pixels == null)
-                return;
+            if (mapData == null)
+                throw new System.ArgumentNullException(nameof(mapData));
+            if (fogTexture == null || pixels == null || targetPixels == null || currentAlphas == null || targetAlphas == null)
+                throw new System.InvalidOperationException("FOG3 overlay must be built before rendering visibility.");
+            if (mapData.Width != fogTexture.width || mapData.Height != fogTexture.height)
+            {
+                throw new System.InvalidOperationException(
+                    $"FOG3 overlay size mismatch. texture={fogTexture.width}x{fogTexture.height}, map={mapData.Width}x{mapData.Height}.");
+            }
 
             long renderStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             long fillStartTicks = renderStartTicks;
+            bool pixelsChanged = false;
+            visibilityFadeActive = false;
             for (int y = 0; y < mapData.Height; y++)
             {
                 for (int x = 0; x < mapData.Width; x++)
                 {
                     int index = x + y * mapData.Width;
-                    pixels[index] = GetPixelColor(mapData, x, y);
+                    Color targetColor = GetTargetPixelColor(mapData, x, y);
+                    Color32 targetPixel = targetColor;
+                    targetPixels[index] = targetPixel;
+                    targetAlphas[index] = targetColor.a;
+                    visibilityFadeActive |= currentAlphas[index] != targetAlphas[index];
+
+                    Color32 pixel = pixels[index];
+                    if (pixel.r == targetPixel.r && pixel.g == targetPixel.g && pixel.b == targetPixel.b)
+                        continue;
+
+                    pixel.r = targetPixel.r;
+                    pixel.g = targetPixel.g;
+                    pixel.b = targetPixel.b;
+                    pixels[index] = pixel;
+                    pixelsChanged = true;
                 }
             }
 
             long fillTicks = System.Diagnostics.Stopwatch.GetTimestamp() - fillStartTicks;
             long setStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            fogTexture.SetPixels32(pixels);
+            if (pixelsChanged)
+                fogTexture.SetPixels32(pixels);
             long setTicks = System.Diagnostics.Stopwatch.GetTimestamp() - setStartTicks;
             long applyStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            fogTexture.Apply(false);
+            if (pixelsChanged)
+                fogTexture.Apply(false);
             long applyTicks = System.Diagnostics.Stopwatch.GetTimestamp() - applyStartTicks;
             long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - renderStartTicks;
             double elapsedMs = elapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
@@ -127,6 +176,43 @@ namespace AAAGame.MiniMap.FOG3
                     setTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
                     applyTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
             }
+        }
+
+        public bool AdvanceVisibilityFade(float deltaTime)
+        {
+            if (deltaTime < 0f || float.IsNaN(deltaTime) || float.IsInfinity(deltaTime))
+                throw new System.ArgumentOutOfRangeException(nameof(deltaTime), "FOG3 visibility fade delta time must be finite and non-negative.");
+            if (!visibilityFadeActive || deltaTime <= 0f)
+                return false;
+            if (fogTexture == null || pixels == null || targetPixels == null || currentAlphas == null || targetAlphas == null)
+                throw new System.InvalidOperationException("FOG3 overlay must be built before advancing visibility fade.");
+
+            float maxDelta = visibilityFadeSpeed * deltaTime;
+            bool pixelsChanged = false;
+            bool remainsActive = false;
+            for (int i = 0; i < currentAlphas.Length; i++)
+            {
+                float current = currentAlphas[i];
+                float target = targetAlphas[i];
+                if (current == target)
+                    continue;
+
+                float next = Mathf.MoveTowards(current, target, maxDelta);
+                currentAlphas[i] = next;
+                Color32 pixel = targetPixels[i];
+                pixel.a = (byte)Mathf.RoundToInt(next * byte.MaxValue);
+                pixels[i] = pixel;
+                pixelsChanged = true;
+                remainsActive |= next != target;
+            }
+
+            visibilityFadeActive = remainsActive;
+            if (!pixelsChanged)
+                return false;
+
+            fogTexture.SetPixels32(pixels);
+            fogTexture.Apply(false);
+            return true;
         }
 
         public void GetTextureDiagnostics(
@@ -188,13 +274,13 @@ namespace AAAGame.MiniMap.FOG3
             averageA = sumA / divisor;
         }
 
-        private Color32 GetPixelColor(Fog3MapData mapData, int x, int y)
+        private Color GetTargetPixelColor(Fog3MapData mapData, int x, int y)
         {
             Fog3CellState state = mapData.GetCellState(x, y);
             switch (state)
             {
                 case Fog3CellState.Visible:
-                    return Color.Lerp(settings.ExploredColor, settings.VisibleColor, mapData.GetVisibility(x, y));
+                    return settings.VisibleColor;
                 case Fog3CellState.Explored:
                     return settings.ExploredColor;
                 case Fog3CellState.Outside:
@@ -204,14 +290,36 @@ namespace AAAGame.MiniMap.FOG3
             }
         }
 
-        private void CreateTexture(int width, int height)
+        private void CreateTexture(Fog3TerrainInfo terrainInfo)
         {
+            int width = terrainInfo.Width;
+            int height = terrainInfo.Height;
             fogTexture = new Texture2D(width, height, TextureFormat.RGBA32, false, true)
             {
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = settings.TextureFilterMode
             };
-            pixels = new Color32[width * height];
+            int cellCount = checked(width * height);
+            pixels = new Color32[cellCount];
+            targetPixels = new Color32[cellCount];
+            currentAlphas = new float[cellCount];
+            targetAlphas = new float[cellCount];
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int index = x + y * width;
+                    Color initialColor = terrainInfo.IsWalkable(x, y) ? settings.HiddenColor : settings.OutsideColor;
+                    pixels[index] = initialColor;
+                    targetPixels[index] = initialColor;
+                    currentAlphas[index] = initialColor.a;
+                    targetAlphas[index] = initialColor.a;
+                }
+            }
+
+            fogTexture.SetPixels32(pixels);
+            fogTexture.Apply(false);
+            visibilityFadeActive = false;
         }
 
         private void CreateFogPlane(Fog3TerrainInfo terrainInfo)
@@ -1005,6 +1113,12 @@ namespace AAAGame.MiniMap.FOG3
 
         private void ReleaseRuntimeResources()
         {
+            pixels = null;
+            targetPixels = null;
+            currentAlphas = null;
+            targetAlphas = null;
+            visibilityFadeActive = false;
+
             if (fogTexture != null)
             {
                 DestroyUnityObjectSafe(fogTexture);

@@ -17,6 +17,7 @@ public class SteeringMovementTests
     public void SetUp()
     {
         EntityRegistry.Clear();
+        LogicFactionVisionService.UnbindMap();
         FlowFieldCrowdMovementSystem.ResetAll();
         FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
         bool[] walkable = new bool[64 * 64];
@@ -46,6 +47,7 @@ public class SteeringMovementTests
     public void TearDown()
     {
         EntityRegistry.Clear();
+        LogicFactionVisionService.UnbindMap();
         if (LogicPhaseCommandService.IsActive)
             LogicPhaseCommandService.EndTimeline();
         if (LogicTimeControlService.IsActive)
@@ -134,7 +136,7 @@ public class SteeringMovementTests
         AssertRaw(40960, soldier.DetectEnemyRange, nameof(soldier.DetectEnemyRange));
         AssertRaw(94208, soldier.ChaseRange, nameof(soldier.ChaseRange));
         AssertRaw(6144, soldier.HomeArrivedRadius, nameof(soldier.HomeArrivedRadius));
-        AssertRaw(2048, soldier.ReturnSpeedBonusPercent, nameof(soldier.ReturnSpeedBonusPercent));
+        AssertRaw(1024000, soldier.ReturnSpeedBonus, nameof(soldier.ReturnSpeedBonus));
         AssertRaw(820, soldier.ReturnHpRegenPercentPerSec, nameof(soldier.ReturnHpRegenPercentPerSec));
         Assert.IsNull(typeof(SoldierAIBrain).GetField("WeaponRange"));
         Assert.IsNull(typeof(SoldierAIBrain).GetField("SoftReturnRatio"));
@@ -456,7 +458,7 @@ public class SteeringMovementTests
     }
 
     [Test]
-    public void Targeting_SelectsHighestConfiguredThreatAcrossAggroRange()
+    public void Targeting_SelectsHigherTauntBeforeDistance()
     {
         var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
         var closeTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
@@ -472,43 +474,31 @@ public class SteeringMovementTests
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(distantTauntingTarget, targeting.CurrentTarget,
-            "Initial targeting must maximize tauntLevel * configuredThreat - gameDistance.");
+            "Taunt level is compared before distance.");
     }
 
     [Test]
-    public void Targeting_UsesCombinedThreatInsteadOfLexicographicTauntPriority()
+    public void Targeting_UsesLexicographicTauntPriorityWithoutThreatConfig()
     {
-        const string configKey = "TauntThreatPerLevel";
-        Assert.IsTrue(
-            DistanceUnitConverter.TryGetEditorTestPositiveFixedConfig(configKey, out Fix64 previousValue),
-            "Test setup requires a configured taunt threat value.");
-        DistanceUnitConverter.SetEditorTestPositiveFixedConfig(configKey, (Fix64)20);
-        try
-        {
-            var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
-            var closeTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
-            var distantHigherTauntTarget = MakeSoldier(new Vector3(3f, 0f, 0f), SideType.EnemySide);
-            closeTarget.TauntLevel = 1;
-            distantHigherTauntTarget.TauntLevel = 2;
-            EntityRegistry.Register(self);
-            EntityRegistry.Register(closeTarget);
-            EntityRegistry.Register(distantHigherTauntTarget);
+        var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        var closeTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        var distantHigherTauntTarget = MakeSoldier(new Vector3(3f, 0f, 0f), SideType.EnemySide);
+        closeTarget.TauntLevel = 1;
+        distantHigherTauntTarget.TauntLevel = 2;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(closeTarget);
+        EntityRegistry.Register(distantHigherTauntTarget);
 
-            var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)5 };
-            targeting.Init(self);
-            targeting.UpdateTargeting((Fix64)0.2f);
+        var targeting = new CharacterTargetingComp();
+        targeting.Init(self);
+        targeting.UpdateTargeting((Fix64)0.2f);
 
-            Assert.AreSame(closeTarget, targeting.CurrentTarget,
-                "A higher taunt level must lose when its level bonus is smaller than its extra game distance.");
-        }
-        finally
-        {
-            DistanceUnitConverter.SetEditorTestPositiveFixedConfig(configKey, previousValue);
-        }
+        Assert.AreSame(distantHigherTauntTarget, targeting.CurrentTarget,
+            "Taunt is the first comparison tier and cannot be offset by distance.");
     }
 
     [Test]
-    public void Attacking_SwitchesToHigherThreatLevelInsideAdditionalPursuitDistance()
+    public void CurrentAttackTarget_SwitchesToHigherTauntInsideR()
     {
         var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
         var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
@@ -526,11 +516,11 @@ public class SteeringMovementTests
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(tauntingTarget, targeting.CurrentTarget,
-            "A higher threat level inside attackRange + configured pursuit distance must interrupt target lock.");
+            "A higher taunt level inside r must outrank the current in-range target.");
     }
 
     [Test]
-    public void Attacking_DoesNotSwitchBeyondAdditionalPursuitDistance()
+    public void RemovedAdditionalPursuitDistance_DoesNotLimitCandidateInsideR()
     {
         var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
         var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
@@ -547,12 +537,12 @@ public class SteeringMovementTests
         SetAttacking(self, true);
         targeting.UpdateTargeting((Fix64)0.2f);
 
-        Assert.AreSame(currentTarget, targeting.CurrentTarget,
-            "Target lock must remain when the higher threat level is beyond attackRange + configured pursuit distance.");
+        Assert.AreSame(distantTauntingTarget, targeting.CurrentTarget,
+            "The removed x+z rule must not block a higher-taunt candidate inside the global minimum candidate range.");
     }
 
     [Test]
-    public void Attacking_DoesNotSwitchToCloserTargetAtSameThreatLevel()
+    public void CurrentAttackTarget_DoesNotSwitchToCloserSameTauntTarget()
     {
         var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
         var currentTarget = MakeSoldier(new Vector3(1.4f, 0f, 0f), SideType.EnemySide);
@@ -570,7 +560,7 @@ public class SteeringMovementTests
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(currentTarget, targeting.CurrentTarget,
-            "An active attack remains locked unless another target has a higher threat level.");
+            "The in-range current aggro target outranks a closer peer at the same preceding tiers.");
     }
 
     [Test]
@@ -617,21 +607,12 @@ public class SteeringMovementTests
         SetAttacking(self, true);
         targeting.UpdateTargeting((Fix64)0.2f);
 
-        Fix64 threatPerLevel = TargetThreatUtility.ReadThreatPerLevel();
-        Fix64 buildingExtraThreat = TargetThreatUtility.ReadBuildingExtraThreat();
-        Assert.IsNull(targeting.CurrentTarget,
-            $"A non-positive-taunt target outside attack range must not remain in the attack-locked candidate set. " +
-            $"isCurrent={ReferenceEquals(targeting.CurrentTarget, currentTarget)} " +
-            $"isOther={ReferenceEquals(targeting.CurrentTarget, otherOutOfRangeTarget)} " +
-            $"currentDist={self.LogicFrameDistanceToTargetSurface(currentTarget):F3} " +
-            $"otherDist={self.LogicFrameDistanceToTargetSurface(otherOutOfRangeTarget):F3} " +
-            $"attackRange={(float)self.WeaponComp.AttackRange:F3} " +
-            $"currentPursuit={TargetThreatUtility.CalculatePursuitThreat(self, currentTarget, threatPerLevel, buildingExtraThreat)} " +
-            $"otherPursuit={TargetThreatUtility.CalculatePursuitThreat(self, otherOutOfRangeTarget, threatPerLevel, buildingExtraThreat)}.");
+        Assert.AreSame(currentTarget, targeting.CurrentTarget,
+            "Outside attack range, the current target remains eligible and wins the distance tie-break over a farther peer.");
     }
 
     [Test]
-    public void Pursuing_ContinuouslySwitchesToClosestTargetAtSamePursuitThreat()
+    public void Pursuing_ContinuouslySwitchesToClosestTargetAtSamePriority()
     {
         var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
         var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
@@ -659,7 +640,7 @@ public class SteeringMovementTests
             (float)self.WeaponComp.AttackRange,
             "Test setup requires the first replacement to remain in pursuit range rather than attack range.");
         Assert.AreSame(closerTarget, targeting.CurrentTarget,
-            "Pursuit must switch to the closest target in the current taunt-equivalent tier.");
+            "Pursuit must switch to the closest target when all preceding priority tiers tie.");
 
         EntityRegistry.Register(laterClosestTarget);
         targeting.UpdateTargeting((Fix64)0.2f);
@@ -695,7 +676,7 @@ public class SteeringMovementTests
     }
 
     [Test]
-    public void PositivePursuitTarget_RemainsCandidateOutsideLegacyForgetRange()
+    public void HigherTauntTarget_RemainsCandidateOutsideLegacyForgetRange()
     {
         var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
         var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
@@ -718,11 +699,11 @@ public class SteeringMovementTests
         targeting.UpdateTargeting(Fix64.One / (Fix64)60);
 
         Assert.AreSame(tauntingTarget, targeting.CurrentTarget,
-            "A positive-taunt target inside attackRange + pursuit distance must remain a candidate on every scan.");
+            "A higher-taunt target inside r must remain a candidate on every scan.");
     }
 
     [Test]
-    public void HigherPursuitThreatCurrentTarget_DoesNotSwitchToLowerPursuitThreatInsideAttackRange()
+    public void HigherTauntCurrentTarget_DoesNotSwitchToLowerTauntInsideAttackRange()
     {
         var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
         var currentTarget = MakeSoldier(new Vector3(3f, 0f, 0f), SideType.EnemySide);
@@ -748,11 +729,11 @@ public class SteeringMovementTests
             (float)self.WeaponComp.AttackRange,
             "Test setup requires the lower-pursuit target inside attack range.");
         Assert.AreSame(currentTarget, targeting.CurrentTarget,
-            "A higher taunt-equivalent pursuit source must remain pursued regardless of how that target was acquired.");
+            "Taunt is compared before attack-range membership, so the higher-taunt target remains selected.");
     }
 
     [Test]
-    public void PositivePursuitTarget_SameThreatCloserReplacementRemainsCandidate()
+    public void SameTauntPursuit_SwitchesToCloserCandidateWithinR()
     {
         var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
         var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
@@ -776,7 +757,7 @@ public class SteeringMovementTests
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(additionalPursuitTarget, targeting.CurrentTarget,
-            "The higher pursuit-threat target must first interrupt the active attack.");
+            "The higher-taunt target must first interrupt the current attack target.");
 
         SetAttacking(self, false);
         EntityRegistry.Register(closerPursuitPeer);
@@ -787,16 +768,16 @@ public class SteeringMovementTests
             (float)targeting.ForgetRangeFixed,
             "Test setup requires the closer peer outside the legacy forget range.");
         Assert.AreSame(closerPursuitPeer, targeting.CurrentTarget,
-            "Positive-taunt pursuit must switch to the closer target in the same pursuit-threat tier.");
+            "Pursuit must switch to the closer target when all earlier tiers tie.");
 
         targeting.UpdateTargeting(Fix64.One / (Fix64)60);
 
         Assert.AreSame(closerPursuitPeer, targeting.CurrentTarget,
-            "The replacement must remain eligible because its own positive pursuit threat grants x + z range.");
+            "The replacement remains eligible because it is inside r.");
     }
 
     [Test]
-    public void PositivePursuitTarget_OutsideAdditionalRangeIsNotRetained()
+    public void CurrentAggroTarget_RemainsEligibleOutsideRButInsideB()
     {
         var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
         var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
@@ -814,12 +795,12 @@ public class SteeringMovementTests
         currentTarget.Position = new Vector3(18f, 0f, 0f);
         targeting.UpdateTargeting((Fix64)0.2f);
 
-        Assert.IsNull(targeting.CurrentTarget,
-            "Positive taunt must grant candidate range x + z on each scan, not sticky retention beyond that range.");
+        Assert.AreSame(currentTarget, targeting.CurrentTarget,
+            "The current aggro target remains a candidate outside r until it leaves the outer range or becomes invalid.");
     }
 
     [Test]
-    public void DefendEnemyTargeting_AttackLockUsesAdditionalPursuitDistance()
+    public void DefendEnemyTargeting_UsesSameLexicographicPriority()
     {
         var self = MakeSoldier(Vector3.zero, SideType.EnemySide);
         var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.PlayerSide);
@@ -838,7 +819,7 @@ public class SteeringMovementTests
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(tauntingTarget, targeting.CurrentTarget,
-            "Defend-wave units must use the same taunt pursuit interruption rule.");
+            "Defend-wave units must use the same lexicographic taunt rule.");
     }
 
     [Test]
@@ -863,7 +844,7 @@ public class SteeringMovementTests
     }
 
     [Test]
-    public void DefendEnemyTargeting_PursuitSwitchesToCloserSamePursuitThreatOutsideAttackRange()
+    public void DefendEnemyTargeting_PursuitSwitchesToCloserSamePriorityOutsideAttackRange()
     {
         var self = MakeSoldier(Vector3.zero, SideType.EnemySide);
         var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.PlayerSide);
@@ -890,13 +871,13 @@ public class SteeringMovementTests
             (float)self.WeaponComp.AttackRange,
             "Test setup requires the replacement to remain outside attack range.");
         Assert.AreSame(closerTarget, targeting.CurrentTarget,
-            "Defend-wave pursuit must continuously select the closest target in the same pursuit-threat tier.");
+            "Defend-wave pursuit must continuously select the closest target when preceding tiers tie.");
     }
 
     [Test]
-    public void BuildingTargeting_ChoosesHighestThreatOnlyInsideAttackRange()
+    public void BuildingTargeting_ChoosesHighestPriorityOnlyInsideAttackRange()
     {
-        var tower = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimBuildingContext tower = MakeBuilding(Vector3.zero, SideType.PlayerSide);
         tower.WeaponComp = CreateTestWeaponComp((Fix64)1.5f);
         var inRangeTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
         var outOfRangeTauntingTarget = MakeSoldier(new Vector3(10f, 0f, 0f), SideType.EnemySide);
@@ -906,12 +887,522 @@ public class SteeringMovementTests
         EntityRegistry.Register(inRangeTarget);
         EntityRegistry.Register(outOfRangeTauntingTarget);
 
-        var targeting = new MeatRackTargetingComp();
+        var targeting = new BuildingTargetingComp();
         targeting.Init(tower);
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(inRangeTarget, targeting.CurrentTarget,
-            "Building targeting must not use the additional taunt pursuit distance.");
+            "Buildings must only select candidates inside attack range and never pursue.");
+    }
+
+    [Test]
+    public void BuildingTargeting_IgnoresAlertInsideAttackRange()
+    {
+        SimBuildingContext tower = MakeBuilding(Vector3.zero, SideType.PlayerSide);
+        tower.WeaponComp = CreateTestWeaponComp((Fix64)5);
+        SimEntityContext closerTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext alertTarget = MakeSoldier(new Vector3(3f, 0f, 0f), SideType.EnemySide);
+        EntityRegistry.Register(tower);
+        EntityRegistry.Register(closerTarget);
+        EntityRegistry.Register(alertTarget);
+
+        var targeting = new BuildingTargetingComp();
+        targeting.Init(tower);
+        targeting.NotifyAllyFoundEnemy(alertTarget);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(closerTarget, targeting.CurrentTarget,
+            "Buildings have no alert aggro; distance remains the tie-break inside attack range.");
+    }
+
+    [Test]
+    public void FactionVision_IsComputedIndependentlyForEachSide()
+    {
+        SimHeroContext playerHero = MakeHero(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext enemy = MakeSoldier(new Vector3(55f, 0f, 0f), SideType.EnemySide);
+        EntityRegistry.Register(playerHero);
+        EntityRegistry.Register(enemy);
+
+        Assert.IsTrue(LogicFactionVisionService.IsEntityVisibleToSide(SideType.PlayerSide, enemy));
+        Assert.IsFalse(LogicFactionVisionService.IsEntityVisibleToSide(SideType.EnemySide, playerHero));
+    }
+
+    [Test]
+    public void HeroAggro_UsesAttackRangeOnlyAndClearsPursuitWhenTargetLeavesRange()
+    {
+        SimHeroContext hero = MakeHero(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext enemy = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext alertedEnemy = MakeSoldier(new Vector3(1.4f, 0f, 0f), SideType.EnemySide);
+        var targeting = new HeroTargetingComp();
+        targeting.Init(hero);
+        hero.TargetComp = targeting;
+        EntityRegistry.Register(hero);
+        EntityRegistry.Register(enemy);
+        EntityRegistry.Register(alertedEnemy);
+
+        targeting.NotifyAllyFoundEnemy(alertedEnemy);
+        targeting.UpdateTargeting((Fix64)0.2f);
+        hero.TickOutOfCombatState(0f);
+
+        Assert.AreSame(enemy, targeting.AggroTarget);
+        Assert.IsFalse(hero.IsOutOfCombat);
+
+        enemy.Position = new Vector3(10f, 0f, 0f);
+        alertedEnemy.Position = new Vector3(10f, 0f, 0f);
+        targeting.NotifyAllyFoundEnemy(enemy);
+        targeting.UpdateTargeting((Fix64)0.2f);
+        hero.TickOutOfCombatState(0f);
+
+        Assert.IsNull(targeting.CurrentTarget);
+        Assert.IsNull(targeting.AggroTarget,
+            "Hero aggro must not retain, alert-pursue, or last-seen-pursue an attackable enemy outside attack range.");
+        Assert.IsTrue(hero.IsOutOfCombat);
+    }
+
+    [Test]
+    public void CharacterTargetingFactory_SelectsDedicatedUnitAndHeroComponents()
+    {
+        SimEntityContext unit = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimHeroContext hero = MakeHero(Vector3.zero, SideType.PlayerSide);
+        CharacterTargetingFactory factory = ScriptableObject.CreateInstance<CharacterTargetingFactory>();
+        try
+        {
+            ITargetingComp unitTargeting = factory.CreateTargetingComp(unit);
+            ITargetingComp heroTargeting = factory.CreateTargetingComp(hero);
+
+            Assert.IsInstanceOf<CharacterTargetingComp>(unitTargeting);
+            Assert.IsInstanceOf<HeroTargetingComp>(heroTargeting);
+            Assert.AreSame(unitTargeting, unit.TargetComp);
+            Assert.AreSame(heroTargeting, hero.TargetComp);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(factory);
+        }
+    }
+
+    [Test]
+    public void DamageAlert_RevealsFixedSourceAreaAndAllowsAlertCandidateBeyondR()
+    {
+        ConfigureOpenNavigationGrid(160, 16, new Vector3(-80f, 0f, -8f));
+        SimEntityContext victim = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext ally = MakeSoldier(new Vector3(10f, 0f, 0f), SideType.PlayerSide);
+        SimEntityContext attacker = MakeSoldier(new Vector3(50f, 0f, 0f), SideType.EnemySide);
+        var victimTargeting = new CharacterTargetingComp();
+        victimTargeting.Init(victim);
+        victim.TargetComp = victimTargeting;
+        var allyTargeting = new CharacterTargetingComp();
+        allyTargeting.Init(ally);
+        ally.TargetComp = allyTargeting;
+        EntityRegistry.Register(victim);
+        EntityRegistry.Register(ally);
+        EntityRegistry.Register(attacker);
+
+        LogicFactionVisionService.HandleSuccessfulDamage(victim, attacker);
+        allyTargeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(attacker, allyTargeting.CurrentTarget,
+            "The alert target is outside r but inside b and must be eligible while the fixed reveal sees it.");
+
+        attacker.Position = new Vector3(70f, 0f, 0f);
+        allyTargeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.IsNull(allyTargeting.CurrentTarget,
+            "The temporary reveal is fixed at the damage source position and must not follow the attacker.");
+        Assert.IsTrue(allyTargeting.HasLastSeenPursuit);
+    }
+
+    [Test]
+    public void DamageAlert_StationaryRevealExpiresAfterConfiguredDuration()
+    {
+        SimEntityContext observer = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext enemy = MakeSoldier(new Vector3(50f, 0f, 0f), SideType.EnemySide);
+        EntityRegistry.Register(observer);
+        EntityRegistry.Register(enemy);
+
+        LogicFactionVisionService.AddDamageReveal(SideType.PlayerSide, enemy.PositionFixed);
+        Assert.IsTrue(LogicFactionVisionService.IsEntityVisibleToSide(SideType.PlayerSide, enemy));
+
+        LogicFactionVisionService.Advance((Fix64)2.1f);
+
+        Assert.IsFalse(LogicFactionVisionService.IsEntityVisibleToSide(SideType.PlayerSide, enemy));
+    }
+
+    [Test]
+    public void InvisibleCurrentTarget_UsesLastSeenPositionAndCanBeReacquired()
+    {
+        ConfigureOpenNavigationGrid(240, 16, new Vector3(-120f, 0f, -8f));
+        SimEntityContext self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext enemy = MakeSoldier(new Vector3(40f, 0f, 0f), SideType.EnemySide);
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(enemy);
+        var targeting = new CharacterTargetingComp();
+        targeting.Init(self);
+        self.TargetComp = targeting;
+        targeting.CurrentTarget = enemy;
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        enemy.Position = new Vector3(100f, 0f, 0f);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.IsNull(targeting.CurrentTarget);
+        Assert.IsTrue(targeting.HasLastSeenPursuit);
+        Assert.AreSame(enemy, targeting.AggroTarget,
+            "The last-seen target remains the aggro target while no visible attack target exists.");
+        Assert.AreEqual(new FixVector2((Fix64)40, Fix64.Zero), targeting.LastSeenPositionFixed);
+
+        enemy.Position = new Vector3(40f, 0f, 0f);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(enemy, targeting.CurrentTarget);
+        Assert.AreSame(enemy, targeting.AggroTarget);
+        Assert.IsFalse(targeting.HasLastSeenPursuit);
+    }
+
+    [Test]
+    public void InvisibleTarget_RevealedOutsideOuterRange_ClearsLastSeenPursuit()
+    {
+        ConfigureOpenNavigationGrid(240, 16, new Vector3(-120f, 0f, -8f));
+        SimEntityContext self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext enemy = MakeSoldier(new Vector3(40f, 0f, 0f), SideType.EnemySide);
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(enemy);
+        var targeting = new CharacterTargetingComp();
+        targeting.Init(self);
+        self.TargetComp = targeting;
+        targeting.CurrentTarget = enemy;
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        enemy.Position = new Vector3(100f, 0f, 0f);
+        targeting.UpdateTargeting((Fix64)0.01f);
+        Assert.IsTrue(targeting.HasLastSeenPursuit);
+
+        SimEntityContext revealer = MakeSoldier(new Vector3(100f, 0f, 0f), SideType.PlayerSide);
+        EntityRegistry.Register(revealer);
+        targeting.UpdateTargeting((Fix64)0.01f);
+
+        Assert.IsFalse(targeting.HasLastSeenPursuit,
+            "A target revealed beyond b is no longer a valid pursuit target and must not leave a stale last-seen pursuit.");
+        Assert.IsNull(targeting.CurrentTarget);
+    }
+
+    [Test]
+    public void InvincibleEnemy_IsNeverSelectedAsAggroTarget()
+    {
+        SimEntityContext self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext invincibleEnemy = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext validEnemy = MakeSoldier(new Vector3(2f, 0f, 0f), SideType.EnemySide);
+        invincibleEnemy.BuffComp.AddBuff(
+            BuffData.Create(
+                InvincibleStateBuff.BuffId,
+                Fix64.Zero,
+                true,
+                1,
+                new List<BuffCallback> { new InvincibleStateBuff() }),
+            invincibleEnemy);
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(invincibleEnemy);
+        EntityRegistry.Register(validEnemy);
+        var targeting = new CharacterTargetingComp();
+        targeting.Init(self);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(validEnemy, targeting.CurrentTarget);
+    }
+
+    [Test]
+    public void AggroCandidate_WhoseAttackAreaIsUnreachable_IsExcludedBeforeRanking()
+    {
+        ConfigureSplitNavigationGrid(12, 7, 6);
+        SimEntityContext self = MakeSoldier(new Vector3(2.5f, 0f, 3.5f), SideType.PlayerSide);
+        SimEntityContext reachableTarget = MakeSoldier(new Vector3(4.5f, 0f, 3.5f), SideType.EnemySide);
+        SimEntityContext unreachableHigherTaunt = MakeSoldier(new Vector3(9.5f, 0f, 3.5f), SideType.EnemySide);
+        reachableTarget.TauntLevel = 1;
+        unreachableHigherTaunt.TauntLevel = 2;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(reachableTarget);
+        EntityRegistry.Register(unreachableHigherTaunt);
+        var targeting = new CharacterTargetingComp();
+        targeting.Init(self);
+
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(reachableTarget, targeting.CurrentTarget,
+            "A higher-ranked target must not enter aggro ranking when its entire attack area is on another navigation island.");
+    }
+
+    [Test]
+    public void AggroCandidate_UnreachableCenterWithReachableAttackArea_RemainsSelectable()
+    {
+        ConfigureSplitNavigationGrid(12, 7, 6);
+        SimEntityContext self = MakeSoldier(new Vector3(2.5f, 0f, 3.5f), SideType.PlayerSide);
+        self.WeaponComp = CreateTestWeaponComp((Fix64)2);
+        SimEntityContext reachableLowerTaunt = MakeSoldier(new Vector3(4.5f, 0f, 3.5f), SideType.EnemySide);
+        SimEntityContext centerAcrossWall = MakeSoldier(new Vector3(7.5f, 0f, 3.5f), SideType.EnemySide);
+        reachableLowerTaunt.TauntLevel = 1;
+        centerAcrossWall.TauntLevel = 2;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(reachableLowerTaunt);
+        EntityRegistry.Register(centerAcrossWall);
+        var targeting = new CharacterTargetingComp();
+        targeting.Init(self);
+
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(centerAcrossWall, targeting.CurrentTarget,
+            "The target center may be unreachable when a reachable point still exists inside the attack area.");
+    }
+
+    [Test]
+    public void LastSeenPursuit_UsesClosestReachablePointInsideAttackRange()
+    {
+        ConfigureSplitNavigationGrid(60, 7, 50);
+        SimEntityContext self = MakeSoldier(new Vector3(2.5f, 0f, 3.5f), SideType.PlayerSide);
+        self.WeaponComp = CreateTestWeaponComp((Fix64)4);
+        SimEntityContext target = MakeSoldier(new Vector3(52.5f, 0f, 3.5f), SideType.EnemySide);
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(target);
+        var targeting = new CharacterTargetingComp();
+        targeting.Init(self);
+        self.TargetComp = targeting;
+        LogicFactionVisionService.AddDamageReveal(SideType.PlayerSide, target.PositionFixed);
+        targeting.NotifyAllyFoundEnemy(target);
+        targeting.UpdateTargeting((Fix64)0.2f);
+        Assert.AreSame(target, targeting.CurrentTarget, "The fixed reveal must establish the initial sighting.");
+
+        LogicFactionVisionService.Advance((Fix64)2.1f);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.IsNull(targeting.CurrentTarget);
+        Assert.IsTrue(targeting.HasLastSeenPursuit);
+        Assert.AreEqual(target.PositionFixed, targeting.LastSeenPositionFixed,
+            "The observed position remains the source of truth and must not be replaced by the navigation destination.");
+        Assert.IsTrue(targeting.LastSeenPursuitDestinationFixed.x < (Fix64)50,
+            "The pursuit destination must remain on the pursuer's navigation island.");
+        Assert.IsTrue(
+            FixVector2.Distance(targeting.LastSeenPursuitDestinationFixed, targeting.LastSeenPositionFixed)
+            <= self.WeaponComp.AttackRange,
+            "The reachable pursuit destination must be inside the last-seen attack area.");
+    }
+
+    [Test]
+    public void DefendReturnConfig_ConvertsDistanceAndKeepsFixedSpeedBonus()
+    {
+        var brain = new SoldierAIBrain();
+
+        brain.ConfigureReturnFromGameConfig();
+
+        Assert.AreEqual((Fix64)90, brain.ChaseRange);
+        Assert.AreEqual((Fix64)250, brain.ReturnSpeedBonus);
+        Assert.AreEqual((Fix64)20 / (Fix64)100, brain.ReturnHpRegenPercentPerSec);
+        Assert.AreEqual(Fix64.Zero, brain.ReturnDamageReductionPercent);
+    }
+
+    [Test]
+    public void TargetingPerformance_120Units_ReportScanCostAndAllocations()
+    {
+        const int unitCount = 120;
+        const int warmupPasses = 3;
+        const int measuredPasses = 10;
+        var targetings = new List<CharacterTargetingComp>(unitCount);
+        for (int i = 0; i < unitCount; i++)
+        {
+            int column = i % 15;
+            int row = i / 15;
+            SideType side = (i & 1) == 0 ? SideType.PlayerSide : SideType.EnemySide;
+            SimEntityContext entity = MakeSoldier(
+                new Vector3(-10.5f + column * 1.5f, 0f, -5.25f + row * 1.5f),
+                side);
+            var targeting = new CharacterTargetingComp();
+            targeting.Init(entity);
+            entity.TargetComp = targeting;
+            EntityRegistry.Register(entity);
+            targetings.Add(targeting);
+        }
+
+        for (int pass = 0; pass < warmupPasses; pass++)
+            RunTargetingPhase(targetings);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        for (int pass = 0; pass < measuredPasses; pass++)
+            RunTargetingPhase(targetings);
+        stopwatch.Stop();
+        long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        for (int i = 0; i < targetings.Count; i++)
+        {
+            IEntityContext owner = EntityRegistry.AllEntities[i];
+            Assert.NotNull(targetings[i].CurrentTarget, $"Unit {i} did not acquire an enemy.");
+            Assert.IsTrue(EntityCombatTeamHelper.IsEnemy(owner, targetings[i].CurrentTarget));
+        }
+        double scanCount = unitCount * measuredPasses;
+        TestContext.Out.WriteLine(
+            $"Aggro benchmark: units={unitCount}, passes={measuredPasses}, totalMs={stopwatch.Elapsed.TotalMilliseconds:F3}, " +
+            $"msPerFullPass={stopwatch.Elapsed.TotalMilliseconds / measuredPasses:F3}, " +
+            $"usPerUnitScan={stopwatch.Elapsed.TotalMilliseconds * 1000.0 / scanCount:F3}, " +
+            $"allocatedBytes={allocatedBytes}, bytesPerUnitScan={allocatedBytes / scanCount:F3}");
+    }
+
+    private static void RunTargetingPhase(IReadOnlyList<CharacterTargetingComp> targetings)
+    {
+        LogicFactionVisionService.BeginTargetingPhase();
+        try
+        {
+            for (int i = 0; i < targetings.Count; i++)
+                targetings[i].UpdateTargeting((Fix64)0.2f);
+        }
+        finally
+        {
+            LogicFactionVisionService.EndTargetingPhase();
+        }
+    }
+
+    private static void ConfigureSplitNavigationGrid(int width, int height, int wallX)
+    {
+        if (width <= 2 || height <= 2 || wallX <= 0 || wallX >= width - 1)
+            throw new ArgumentOutOfRangeException(nameof(wallX));
+        FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
+        bool[] walkable = new bool[width * height];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+                walkable[y * width + x] = x != wallX;
+        }
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            width,
+            height,
+            1f,
+            Vector3.zero,
+            walkable);
+        FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
+        for (int i = 0;
+             i < 2048 && (!FlowFieldCrowdMovementSystem.HasEditorTestWorld()
+                          || FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+             i++)
+        {
+            FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+        }
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestWorld());
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+    }
+
+    private static void ConfigureOpenNavigationGrid(int width, int height, Vector3 origin)
+    {
+        if (width <= 0 || height <= 0)
+            throw new ArgumentOutOfRangeException(nameof(width));
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, origin, walkable);
+        FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
+        for (int i = 0;
+             i < 2048 && (!FlowFieldCrowdMovementSystem.HasEditorTestWorld()
+                          || FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+             i++)
+        {
+            FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+        }
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestWorld());
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+    }
+
+    private SimHeroContext MakeHero(Vector3 position, SideType side)
+    {
+        var hero = new SimHeroContext { Position = position, Side = side, Alive = true };
+        hero.SetProperty(CreatureMainProperty.Speed, (Fix64)5);
+        hero.WeaponComp = CreateTestWeaponComp((Fix64)1.5f);
+        hero.MoveExecutor = new SimMoveExecutor { Position = position };
+        var move = new SimMoveComp();
+        move.Init(hero);
+        hero.MoveComp = move;
+        var attack = new SimAtkComp();
+        attack.Init(hero);
+        hero.AtkComp = attack;
+        var targeting = new NoTargetingComp();
+        targeting.Init(hero);
+        hero.TargetComp = targeting;
+        var buffs = new AAAGame.Scripts.BuffSystem.CharacterBuffComp();
+        buffs.Init(hero);
+        hero.BuffComp = buffs;
+        return hero;
+    }
+
+    private SimBuildingContext MakeBuilding(Vector3 position, SideType side)
+    {
+        var building = new SimBuildingContext { Position = position, Side = side, Alive = true };
+        building.SetProperty(CreatureMainProperty.Speed, (Fix64)5);
+        building.WeaponComp = CreateTestWeaponComp((Fix64)1.5f);
+        building.MoveExecutor = new SimMoveExecutor { Position = position };
+        var move = new SimMoveComp();
+        move.Init(building);
+        building.MoveComp = move;
+        var attack = new SimAtkComp();
+        attack.Init(building);
+        building.AtkComp = attack;
+        var targeting = new NoTargetingComp();
+        targeting.Init(building);
+        building.TargetComp = targeting;
+        var buffs = new AAAGame.Scripts.BuffSystem.CharacterBuffComp();
+        buffs.Init(building);
+        building.BuffComp = buffs;
+        return building;
+    }
+
+    private sealed class SimHeroContext : SimEntityContext, IHeroLogicContext
+    {
+        public bool IsHeroEntity => true;
+        public bool IsGhostState { get; private set; }
+        public void SetGhostStateByBuff(bool enabled) => IsGhostState = enabled;
+        public void RestoreFromGhostState() => IsGhostState = false;
+    }
+
+    private sealed class SimBuildingContext : SimEntityContext, IBuildingLogicContext
+    {
+        public BuildingData BuildingData => null;
+        public BuildingExtraProps ProductionProps => null;
+        public string BuildingInstanceId => "test-building";
+        public string StrongholdId => "test-stronghold";
+        public int OwnerFactionId { get; private set; } = EntitySideHelper.PlayerFactionId;
+        public int GetArmyForce() => 0;
+        public int GetArmyForceWithoutRuntimeRules() => 0;
+        public int GetArmySupplyPerUnit() => 0;
+        public int GetArmyOccupiedSupply() => 0;
+        public void SetArmyForceBase(int value) { }
+        public void SetArmySupplyPerUnitBase(int value) { }
+        public void ModifyArmyForce(IPropertyModifier modifier, bool ifAdd = true) { }
+        public void ModifyArmySupplyPerUnit(IPropertyModifier modifier, bool ifAdd = true) { }
+        public IReadOnlyList<LogicInteractionOptionDescriptor> InteractionOptions => Array.Empty<LogicInteractionOptionDescriptor>();
+        public bool IsDisabled => false;
+        public bool IsPhaseProtected => false;
+        public bool IsPermanentlyInvincible { get; private set; }
+        public bool IsStealthed { get; private set; }
+        public bool HasPermanentNoAttackCapability => false;
+        public bool BlocksLogicMovement { get; private set; }
+        public IReadOnlyList<LogicCombatShape> LogicObstacleShapes => Array.Empty<LogicCombatShape>();
+        public bool IsGameEndConditionBuilding { get; private set; }
+        public bool IsNavigationStaticBaked => false;
+        public event Action<int, int> OwnerFactionChanged;
+
+        public void SetOwnerFaction(int ownerFactionId)
+        {
+            int previous = OwnerFactionId;
+            OwnerFactionId = ownerFactionId;
+            OwnerFactionChanged?.Invoke(previous, ownerFactionId);
+        }
+
+        public void SetGameEndConditionBuilding(bool enabled) => IsGameEndConditionBuilding = enabled;
+        public void RestoreBuildingToFullHealth() { }
+        public void SetCollisionBlockingByBuff(bool blocksMovement) => BlocksLogicMovement = blocksMovement;
+        public void SetPermanentStealthByBuff(bool enabled) => IsStealthed = enabled;
+        public void SetPermanentInvincibilityByBuff(bool enabled) => IsPermanentlyInvincible = enabled;
+        public void SetPhaseProtectionByBuff(bool enabled) { }
     }
 
     private static void SetAttacking(SimEntityContext entity, bool isAttacking)
@@ -1212,8 +1703,8 @@ public class SteeringMovementTests
     public void Combat状态_敌人死后回到Follow()
     {
         var player = MakeSoldier(new Vector3(0, 0, 0));
-        var soldier = MakeSoldier(new Vector3(2, 0, 0));
-        var enemy = MakeSoldier(new Vector3(3, 0, 0), SideType.EnemySide);
+        var soldier = MakeSoldier(new Vector3(10, 0, 0));
+        var enemy = MakeSoldier(new Vector3(14, 0, 0), SideType.EnemySide);
 
         EntityRegistry.RegisterAsPlayer(player);
         EntityRegistry.Register(soldier);
@@ -1232,14 +1723,18 @@ public class SteeringMovementTests
         // Idle → Follow → Combat
         brain.Tick(soldier, Fix64.One / (Fix64)60);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State);
+        Assert.AreNotEqual(FixVector2.Zero, ((SimMoveComp)soldier.MoveComp).NavDirectionFixed,
+            "我方单位应追击攻击范围外的仇恨目标");
 
         // 杀死敌人
         enemy.Alive = false;
         brain.Tick(soldier, Fix64.One / (Fix64)60);
-        Assert.AreEqual(SoldierAIBrain.SoldierState.Idle, brain.State, "敌人失效当帧应先清掉 Combat 和旧目标");
-        Assert.IsNull(targeting.CurrentTarget, "Brain 在 Targeting 阶段之前就必须清掉已失效目标，不能把退场实体带入寻路");
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State,
+            "Brain 应先等待紧随其后的 Targeting 阶段尝试替换失效目标");
+        targeting.UpdateTargeting((Fix64)0.2f);
+        Assert.IsNull(targeting.CurrentTarget);
         brain.Tick(soldier, Fix64.One / (Fix64)60);
-        Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State, "敌人死后回到 Follow");
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State, "确认脱战后应立即重新跟随英雄");
     }
 
     [Test]

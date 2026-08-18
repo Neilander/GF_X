@@ -6,6 +6,7 @@ using UnityGameFramework.Runtime;
 public static class LogicUnitConfigurator
 {
     public const string DefendSpeedBuffId = "defend_phase_speed_override";
+    public const string PlayerOutOfCombatMoveSpeedBuffId = "player_out_of_combat_move_speed";
     public static void Configure(LogicEntityState state, EntityParams entityParams)
     {
         if (state == null)
@@ -91,7 +92,10 @@ public static class LogicUnitConfigurator
                                         && entityParams.BrainType != BrainType.DefendEnemyAI;
             soldierBrain.SetReturnToBirthEnabled(returnToBirthEnabled);
             if (returnToBirthEnabled)
+            {
+                soldierBrain.ConfigureReturnFromGameConfig();
                 soldierBrain.SetBirthPositionFixed(state.Position);
+            }
         }
 
         if (entityParams.LogicSkillFactoryKind != LogicSkillFactoryKind.None)
@@ -107,17 +111,7 @@ public static class LogicUnitConfigurator
         }
 
         stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        if (state.IsHeroEntity)
-        {
-            state.BuffComp.AddBuff(
-                BuffData.Create(
-                    "hero_out_of_combat_speed_x2",
-                    Fix64.Zero,
-                    true,
-                    1,
-                    new List<BuffCallback> { new HeroOutOfCombatMoveSpeedBuff() }),
-                state);
-        }
+        ConfigurePlayerOutOfCombatMoveSpeed(state);
 
         if (entityParams.StartBuffs != null)
         {
@@ -129,6 +123,31 @@ public static class LogicUnitConfigurator
             }
         }
         RecordPerf(MainThreadPerfScope.UnitConfigBuffs, stageStartTicks);
+    }
+
+    public static void ConfigurePlayerOutOfCombatMoveSpeed(LogicEntityState state)
+    {
+        if (state == null)
+            throw new ArgumentNullException(nameof(state));
+        if (state.Side != SideType.PlayerSide)
+            return;
+        if (state.BuffComp == null)
+            throw new InvalidOperationException($"Player out-of-combat speed requires a buff component. entity={state.EntityId.Value}.");
+
+        Fix64 moveSpeedBonus = LogicFactionVisionService.ReadPositiveConfig(
+            PlayerOutOfCombatMoveSpeedBuff.MoveSpeedBonusConfigKey);
+        if (!state.BuffComp.AddBuff(
+                BuffData.Create(
+                    PlayerOutOfCombatMoveSpeedBuffId,
+                    Fix64.Zero,
+                    true,
+                    1,
+                    new List<BuffCallback> { new PlayerOutOfCombatMoveSpeedBuff(moveSpeedBonus) }),
+                state))
+        {
+            throw new InvalidOperationException(
+                $"LogicUnitConfigurator failed to add player out-of-combat speed buff. entity={state.EntityId.Value}.");
+        }
     }
 
     private static void RecordPerf(MainThreadPerfScope scope, long startTicks)

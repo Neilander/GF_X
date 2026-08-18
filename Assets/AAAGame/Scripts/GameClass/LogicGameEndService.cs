@@ -160,7 +160,10 @@ public static class LogicGameEndService
     public static bool TryGetNearestPlayerInitialConditionBuilding(FixVector2 origin, out IBuildingLogicContext building)
     {
         EnsureInitialized();
-        return LogicBuildingQueryService.TryGetNearestByInstanceIds(s_PlayerTargetBuildingInstanceIds, origin, out building);
+        return LogicBuildingQueryService.TryGetNearestAliveByInstanceIds(
+            s_PlayerTargetBuildingInstanceIds,
+            origin,
+            out building);
     }
 
     public static bool IsPlayerTargetBuilding(string buildingInstanceId)

@@ -67,6 +67,7 @@ public static class MAEntityLogicFrameSystem
             throw new InvalidOperationException("MAEntityLogicFrameSystem.BeginTimeline failed: frame snapshot service is not active.");
 
         ClearFrameState();
+        LogicFactionVisionService.UnbindMap();
         LogicAgentCollisionShadowService.Clear();
         LogicDamageEventService.BeginTimeline();
         LogicProjectileService.BeginTimeline();
@@ -80,6 +81,7 @@ public static class MAEntityLogicFrameSystem
         if (LogicFrameRuntime.IsExecutingFrame)
             throw new InvalidOperationException("MAEntityLogicFrameSystem.ResetForWorldTransition failed: a logic frame is running.");
         ClearFrameState();
+        LogicFactionVisionService.UnbindMap();
         LogicAgentCollisionShadowService.Clear();
         LogicDamageEventService.ResetForWorldTransition();
         LogicProjectileService.ResetForWorldTransition();
@@ -93,6 +95,7 @@ public static class MAEntityLogicFrameSystem
 
         LogicFrameRuntime.Unregister(s_Listener);
         ClearFrameState();
+        LogicFactionVisionService.UnbindMap();
         LogicAgentCollisionShadowService.Clear();
         LogicProjectileService.EndTimeline();
         LogicDamageEventService.EndTimeline();
@@ -128,10 +131,21 @@ public static class MAEntityLogicFrameSystem
         {
             MAEntityLogicFramePhase phase = (MAEntityLogicFramePhase)phaseValue;
             long phaseStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
-            for (int entityIndex = 0; entityIndex < s_FrameEntities.Count; entityIndex++)
+            bool targetingPhase = phase == MAEntityLogicFramePhase.Targeting;
+            if (targetingPhase)
+                LogicFactionVisionService.BeginTargetingPhase();
+            try
             {
-                s_FrameEntities[entityIndex].ExecuteLogicFramePhase(phase, deltaTime);
-                phaseExecutionCount++;
+                for (int entityIndex = 0; entityIndex < s_FrameEntities.Count; entityIndex++)
+                {
+                    s_FrameEntities[entityIndex].ExecuteLogicFramePhase(phase, deltaTime);
+                    phaseExecutionCount++;
+                }
+            }
+            finally
+            {
+                if (targetingPhase)
+                    LogicFactionVisionService.EndTargetingPhase();
             }
             if (phase == MAEntityLogicFramePhase.Projectile)
                 LogicProjectileService.AdvanceFrame(frame, deltaTime);

@@ -9476,6 +9476,181 @@ public static partial class FlowFieldCrowdMovementSystem
         return true;
     }
 
+    public static bool TryResolveReachableAttackAreaPointFixed(
+        IEntityContext self,
+        IEntityContext target,
+        Fix64 attackRange,
+        out FixVector2 reachablePoint,
+        out string failureReason,
+        out NavigationQueryFailureKind failureKind)
+    {
+        if (target == null)
+            throw new ArgumentNullException(nameof(target));
+        LogicCombatShape targetShape = LogicFrameRuntime.IsTicking
+            ? LogicEntityFrameSnapshotService.GetRequiredCurrent(target).CombatShape
+            : target.CombatShape;
+        return TryResolveReachableAttackAreaPointFixed(
+            self,
+            targetShape,
+            attackRange,
+            true,
+            out reachablePoint,
+            out failureReason,
+            out failureKind);
+    }
+
+    public static bool TryResolveReachablePointAreaFixed(
+        IEntityContext self,
+        FixVector2 point,
+        Fix64 range,
+        out FixVector2 reachablePoint,
+        out string failureReason,
+        out NavigationQueryFailureKind failureKind)
+    {
+        return TryResolveReachableAttackAreaPointFixed(
+            self,
+            LogicCombatShape.Circle(point, Fix64.Zero),
+            range,
+            false,
+            out reachablePoint,
+            out failureReason,
+            out failureKind);
+    }
+
+    private static bool TryResolveReachableAttackAreaPointFixed(
+        IEntityContext self,
+        LogicCombatShape targetShape,
+        Fix64 attackRange,
+        bool keepAgentClearOfTargetSurface,
+        out FixVector2 reachablePoint,
+        out string failureReason,
+        out NavigationQueryFailureKind failureKind)
+    {
+        reachablePoint = targetShape.Center;
+        failureReason = string.Empty;
+        failureKind = NavigationQueryFailureKind.None;
+        if (self == null)
+            throw new ArgumentNullException(nameof(self));
+        if (attackRange < Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(attackRange));
+
+        int selfId = ResolveAgentId(self);
+        if (!Agents.TryGetValue(selfId, out AgentRuntimeData agent))
+        {
+            RegisterSyntheticAgent(self);
+            agent = Agents[selfId];
+        }
+        else
+        {
+            agent.PositionFixed = self.LogicFramePositionFixed();
+            agent.Position = ToWorldVector3(agent.PositionFixed);
+            agent.RadiusFixed = ResolveCollisionRadiusFixed(self);
+            agent.Radius = (float)agent.RadiusFixed;
+            agent.AgentTypeId = self is ILogicFrameEntity logicEntity ? logicEntity.NavigationAgentTypeId : agent.AgentTypeId;
+        }
+
+        if (!TryEnsureWorldBuilt(agent.AgentTypeId))
+        {
+            failureKind = NavigationQueryFailureKind.Unavailable;
+            failureReason = $"world unavailable agentType={agent.AgentTypeId}";
+            return false;
+        }
+        if (HasPendingRuntimeDirty(_activeWorldState))
+        {
+            failureKind = NavigationQueryFailureKind.PendingRuntimeUpdate;
+            failureReason = $"runtime dirty pending agentType={agent.AgentTypeId}";
+            return false;
+        }
+        if (!TryResolveStartCellForReachabilityFixed(self, out int startX, out int startY, out int startIsland))
+        {
+            failureKind = NavigationQueryFailureKind.Unreachable;
+            failureReason = $"start reachability failed {BuildReachabilityStartDiagnostics(self)}";
+            return false;
+        }
+        if (!_world.WorldToGridFixed(targetShape.Center, out int targetX, out int targetY))
+        {
+            failureKind = NavigationQueryFailureKind.Unreachable;
+            failureReason = $"attack area center outside grid center={targetShape.Center}";
+            return false;
+        }
+
+        Fix64 extentX;
+        Fix64 extentY;
+        switch (targetShape.Kind)
+        {
+            case LogicCombatShapeKind.Circle:
+                extentX = targetShape.Radius;
+                extentY = targetShape.Radius;
+                break;
+            case LogicCombatShapeKind.AxisAlignedBox:
+                extentX = targetShape.HalfExtents.x;
+                extentY = targetShape.HalfExtents.y;
+                break;
+            default:
+                throw new InvalidOperationException($"Unknown combat shape kind {(int)targetShape.Kind}.");
+        }
+
+        int radiusX = Math.Max(
+            1,
+            NavigationGridFixedMath.DivideCeilingByCellSize(extentX + attackRange, _world.CellSizeGridRaw) + 1);
+        int radiusY = Math.Max(
+            1,
+            NavigationGridFixedMath.DivideCeilingByCellSize(extentY + attackRange, _world.CellSizeGridRaw) + 1);
+        Fix64 navigationClearance = ResolveNavigationQueryClearanceFixed(_world, agent.RadiusFixed);
+        Fix64 minimumSurfaceDistance = keepAgentClearOfTargetSurface
+            ? agent.RadiusFixed + Fix64.FromRaw(205)
+            : Fix64.Zero;
+        FixVector2 selfPosition = self.LogicFramePositionFixed();
+        Fix64 bestSurfaceDistance = Fix64.FromRaw(long.MaxValue);
+        Fix64 bestSelfDistanceSquared = Fix64.FromRaw(long.MaxValue);
+        int bestCellIndex = int.MaxValue;
+        bool found = false;
+        for (int y = Math.Max(0, targetY - radiusY); y <= Math.Min(_world.Height - 1, targetY + radiusY); y++)
+        {
+            for (int x = Math.Max(0, targetX - radiusX); x <= Math.Min(_world.Width - 1, targetX + radiusX); x++)
+            {
+                if (!_world.IsWalkable(x, y) || ResolveIslandIdForDiagnostics(_world, x, y) != startIsland)
+                    continue;
+                FixVector2 candidate = _world.GridToWorldCenterFixed(x, y);
+                Fix64 surfaceDistance = targetShape.DistanceToSurface(candidate);
+                if (surfaceDistance > attackRange || surfaceDistance < minimumSurfaceDistance)
+                    continue;
+                if (!IsNavigationPointClearFixed(
+                        _world,
+                        candidate,
+                        navigationClearance,
+                        includeRuntimeObstacleOverlay: true))
+                    continue;
+
+                Fix64 selfDistanceSquared = FixVector2.SqrMagnitude(candidate - selfPosition);
+                int cellIndex = _world.GetIndex(x, y);
+                if (found
+                    && (surfaceDistance > bestSurfaceDistance
+                        || (surfaceDistance == bestSurfaceDistance
+                            && (selfDistanceSquared > bestSelfDistanceSquared
+                                || (selfDistanceSquared == bestSelfDistanceSquared && cellIndex >= bestCellIndex)))))
+                {
+                    continue;
+                }
+
+                found = true;
+                reachablePoint = candidate;
+                bestSurfaceDistance = surfaceDistance;
+                bestSelfDistanceSquared = selfDistanceSquared;
+                bestCellIndex = cellIndex;
+            }
+        }
+
+        if (found)
+            return true;
+
+        failureKind = NavigationQueryFailureKind.Unreachable;
+        failureReason =
+            $"no reachable attack-area point self=({startX},{startY}) island={startIsland} " +
+            $"target=({targetX},{targetY}) range={attackRange} minimumSurface={minimumSurfaceDistance}";
+        return false;
+    }
+
     public static bool TryResolveNearestReachableGoal(
         IEntityContext self,
         Vector3 desiredGoal,

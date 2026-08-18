@@ -537,11 +537,20 @@ public static class DefendPhaseRuntime
         EntityPresetPoint[] points = levelEntity.GetComponentsInChildren<EntityPresetPoint>(true);
         int defendPointCount = 0;
         double diagnosticsMs = 0.0;
+        var teleportationIds = new HashSet<int>();
+        var teleportationStrongholdIds = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < points.Length; i++)
         {
             EntityPresetPoint point = points[i];
-            if (point == null || point.PointType != EntityPresetPointType.DefendSpawn)
+            if (point == null || point.PointType != EntityPresetPointType.Teleportation)
                 continue;
+
+            if (point.TeleportationId < 0)
+                throw new InvalidOperationException($"Teleportation point has an invalid ID. point={point.name}, id={point.TeleportationId}.");
+            if (!teleportationIds.Add(point.TeleportationId))
+                throw new InvalidOperationException($"Duplicate Teleportation ID {point.TeleportationId} in level '{levelEntity.name}'.");
+            if (point.DefendSpawnWeight < Fix64.Zero)
+                throw new InvalidOperationException($"Teleportation {point.TeleportationId} has a negative defend spawn weight.");
 
             defendPointCount++;
             if (GameDebugSettings.IsEnabled(DebugCategory.Move))
@@ -559,12 +568,14 @@ public static class DefendPhaseRuntime
                     $"DefendPhaseRuntime spawn point is outside the logic stronghold map. point={point.name} " +
                     $"raw=({pointPositionFixed.x.RawValue},{pointPositionFixed.y.RawValue}).");
             }
+            if (!teleportationStrongholdIds.Add(strongholdId))
+                throw new InvalidOperationException($"Stronghold '{strongholdId}' has multiple Teleportation points.");
 
             s_DefendSpawnPoints.Add(new DefendSpawnPointRuntime
             {
                 Position = pointPositionFixed,
-                Weight = Math.Max(0, point.DefendSpawnWeight),
-                Identifier = ResolvePreviewSpawnPointIdentifier(point),
+                Weight = point.DefendSpawnWeight,
+                Identifier = point.TeleportationId.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 Name = string.IsNullOrWhiteSpace(point.name) ? "<unnamed>" : point.name,
                 StrongholdId = strongholdId,
             });
@@ -1002,7 +1013,7 @@ public static class DefendPhaseRuntime
         }
 
         var eligiblePoints = new List<DefendSpawnPointRuntime>();
-        int totalWeightAllSides = 0;
+        Fix64 totalWeightAllSides = Fix64.Zero;
 
         for (int i = 0; i < s_DefendSpawnPoints.Count; i++)
         {
@@ -1020,15 +1031,15 @@ public static class DefendPhaseRuntime
             if (!archMatched)
                 continue;
 
-            int weight = runtimePoint.Weight;
-            if (weight <= 0)
+            Fix64 weight = runtimePoint.Weight;
+            if (weight <= Fix64.Zero)
                 continue;
 
             eligiblePoints.Add(runtimePoint);
             totalWeightAllSides += weight;
         }
 
-        if (eligiblePoints.Count == 0 || totalWeightAllSides <= 0)
+        if (eligiblePoints.Count == 0 || totalWeightAllSides <= Fix64.Zero)
         {
             Log.Info(
                 "[DefendPhase] no eligible enemy stronghold for unit archetype; no spawn will be scheduled. unit={0} archetype={1}.",
@@ -1047,8 +1058,8 @@ public static class DefendPhaseRuntime
                 continue;
             }
 
-            int weight = runtimePoint.Weight;
-            int count = RoundPositiveRatioToInt((long)weight * totalCount, totalWeightAllSides);
+            Fix64 weight = runtimePoint.Weight;
+            int count = RoundPositiveRatioToInt(checked(weight.RawValue * totalCount), totalWeightAllSides.RawValue);
             if (count <= 0)
                 continue;
 
@@ -1101,7 +1112,7 @@ public static class DefendPhaseRuntime
         return result;
     }
 
-    private static int RoundPositiveRatioToInt(long numerator, int denominator)
+    private static int RoundPositiveRatioToInt(long numerator, long denominator)
     {
         if (numerator < 0)
             throw new ArgumentOutOfRangeException(nameof(numerator));
@@ -1208,12 +1219,17 @@ public static class DefendPhaseRuntime
     {
         return SecondsToTicksCeiling(duration);
     }
+
+    public static int GetEditorTestWeightedSpawnCount(Fix64 weight, Fix64 totalWeight, int totalCount)
+    {
+        return RoundPositiveRatioToInt(checked(weight.RawValue * totalCount), totalWeight.RawValue);
+    }
 #endif
 
     private sealed class DefendSpawnPointRuntime
     {
         public FixVector2 Position;
-        public int Weight;
+        public Fix64 Weight;
         public string Identifier;
         public string Name;
         public string StrongholdId;

@@ -77,9 +77,10 @@ public sealed class BuffLogicTimeTests
             Brain = new ScriptedBrain { Attack = true },
         };
         context.Health.Init((Fix64)100);
-        var attack = new SimAtkComp();
-        attack.Init(context);
-        context.AtkComp = attack;
+        var enemy = new SimEntityContext { Alive = true, Side = SideType.EnemySide };
+        var targeting = new SimTargetingComp(context, new List<IEntityContext> { context, enemy });
+        targeting.Init(context);
+        context.TargetComp = targeting;
         var callback = new HealthDrainOverTimeBuff((Fix64)5);
         callback.Initialize(null, context);
 
@@ -88,13 +89,13 @@ public sealed class BuffLogicTimeTests
             callback.OnUpdate(LogicFrameRuntime.FixedDeltaTime);
         Assert.AreEqual(initialHealth.RawValue, context.HealthValue.RawValue);
 
-        attack.Attack(Fix64.Zero);
+        targeting.CurrentTarget = enemy;
         context.TickOutOfCombatState(0f);
         for (int i = 0; i < 31; i++)
             callback.OnUpdate(LogicFrameRuntime.FixedDeltaTime);
         Assert.AreEqual((initialHealth - (Fix64)5).RawValue, context.HealthValue.RawValue);
 
-        attack.InterruptAttack();
+        targeting.CurrentTarget = null;
         context.TickOutOfCombatState(0f);
         for (int i = 0; i < 31; i++)
             callback.OnUpdate(LogicFrameRuntime.FixedDeltaTime);
@@ -273,17 +274,17 @@ public sealed class BuffLogicTimeTests
     }
 
     [Test]
-    public void HeroOutOfCombatSpeed_UsesLogicElapsedTimeForDelayAndRamp()
+    public void PlayerOutOfCombatSpeed_UsesAggroTargetAndFixedBonusForDelayAndRamp()
     {
         var context = new SimEntityContext
         {
             CreatureProperties = new CreaturePropertyManager(property =>
                 property == CreatureMainProperty.Speed ? (Fix64)10 : (Fix64)100),
-            Brain = new ScriptedBrain { Attack = true },
         };
-        var attack = new SimAtkComp();
-        attack.Init(context);
-        context.AtkComp = attack;
+        var enemy = new SimEntityContext { Alive = true, Side = SideType.EnemySide };
+        var targeting = new SimTargetingComp(context, new List<IEntityContext> { context, enemy });
+        targeting.Init(context);
+        context.TargetComp = targeting;
         var component = new CharacterBuffComp();
         context.BuffComp = component;
         component.Init(context);
@@ -292,16 +293,16 @@ public sealed class BuffLogicTimeTests
             Fix64.Zero,
             true,
             1,
-            new List<BuffCallback> { new HeroOutOfCombatMoveSpeedBuff() });
+            new List<BuffCallback> { new PlayerOutOfCombatMoveSpeedBuff((Fix64)10) });
         Assert.IsTrue(component.AddBuff(buff, context));
         Assert.AreEqual((Fix64)20, context.CreatureProperties.GetProperty(CreatureMainProperty.Speed));
 
-        attack.Attack(Fix64.Zero);
+        targeting.CurrentTarget = enemy;
         context.TickOutOfCombatState(0f);
         component.UpdateBuff(LogicFrameRuntime.FixedDeltaTime);
         Assert.AreEqual((Fix64)10, context.CreatureProperties.GetProperty(CreatureMainProperty.Speed));
 
-        attack.InterruptAttack();
+        targeting.CurrentTarget = null;
         context.TickOutOfCombatState(0f);
         context.TickOutOfCombatState(2.5f);
         component.UpdateBuff(LogicFrameRuntime.FixedDeltaTime);

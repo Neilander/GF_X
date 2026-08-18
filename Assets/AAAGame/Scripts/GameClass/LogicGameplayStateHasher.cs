@@ -58,6 +58,7 @@ public static class LogicGameplayStateHasher
         LogicInteractionCommandService.WriteDeterministicState(hasher);
         LogicCardCommandService.WriteDeterministicState(hasher);
         LogicCardPlacementAuthority.WriteDeterministicState(hasher);
+        LogicFactionVisionService.WriteDeterministicState(hasher);
         LogicMovementRegionConstraintService.WriteDeterministicState(hasher);
         LogicGameEndService.WriteDeterministicState(hasher);
         TutorialManager.WriteDeterministicState(hasher);

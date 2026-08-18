@@ -4,6 +4,7 @@ public class NoTargetingComp : ITargetingComp
 {
     // 永远没有目标
     public IEntityContext CurrentTarget { get; set; }
+    public IEntityContext AggroTarget => null;
     public IEntityContext FollowTarget => null;
 
     // 范围属性给 0 即可

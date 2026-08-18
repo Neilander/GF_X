@@ -156,8 +156,8 @@ public class SimEntityContext : IEntityContext, ITargetable
             return;
         }
 
-        IEntityContext currentTarget = TargetComp?.CurrentTarget;
-        if ((currentTarget != null && currentTarget.IsAttackTargetable()) || AtkComp?.IsAttacking == true)
+        IEntityContext aggroTarget = TargetComp?.AggroTarget;
+        if (aggroTarget?.Alive == true)
             ExitOutOfCombat();
         else
             EnterOutOfCombat();

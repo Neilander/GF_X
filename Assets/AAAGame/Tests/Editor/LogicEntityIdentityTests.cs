@@ -56,6 +56,8 @@ public class LogicEntityIdentityTests
         LogicTimeControlService.EndTimeline();
         TeleportationPointService.ClearPhaseBlocks();
         LevelTagRuntime.ClearActiveTags();
+        FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
     }
 
     [Test]
@@ -531,11 +533,28 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
-    public void DefendEnemyTargeting_AppliesConfiguredBuildingExtraThreat()
+    public void PlayerOutOfCombatMoveSpeed_AppliesFixedBonusToOrdinaryFriendlyUnit()
     {
+        LogicEntityState state = CreateConfiguredStateForSide(
+            "Unit_PlayerOutOfCombatSpeed",
+            SideType.PlayerSide);
+        Assert.IsFalse(state.IsHeroEntity);
+        Assert.AreEqual(Fix64.Zero, state.GetProperty(CreatureMainProperty.Speed));
+
+        LogicUnitConfigurator.ConfigurePlayerOutOfCombatMoveSpeed(state);
+
+        Assert.IsTrue(state.BuffComp.HasBuff(LogicUnitConfigurator.PlayerOutOfCombatMoveSpeedBuffId));
+        Assert.AreEqual((Fix64)500, state.GetProperty(CreatureMainProperty.Speed));
+    }
+
+    [Test]
+    public void DefendEnemyTargeting_BuildingHasNegativeHalfTauntLevel()
+    {
+        ConfigureOpenTargetingNavigationGrid();
         LogicEntityState attacker = CreateConfiguredStateForSide(
             "Unit_DefendThreatAttacker",
             SideType.EnemySide);
+        ConfigureTargetingCollisionRadius(attacker);
         LogicEntityState closerBuilding = CreateBuildingQueryState(
             "building-defend-threat",
             new FixVector2(Fix64.One, Fix64.Zero));
@@ -553,15 +572,17 @@ public class LogicEntityIdentityTests
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(fartherUnit, targeting.CurrentTarget,
-            "BuildingExtraThreat=-5000 must make a same-taunt unit outrank a closer building through the shared threat formula.");
+            "A unit must outrank a closer building at the same integer taunt level because buildings carry negative half a level.");
     }
 
     [Test]
-    public void DefendEnemyTargeting_BuildingTauntEquivalentThreatTriggersAdditionalPursuit()
+    public void DefendEnemyTargeting_SameLevelUnitCanReplaceCurrentBuildingWithinR()
     {
+        ConfigureOpenTargetingNavigationGrid();
         LogicEntityState attacker = CreateConfiguredStateForSide(
             "Unit_DefendBuildingPursuitAttacker",
             SideType.EnemySide);
+        ConfigureTargetingCollisionRadius(attacker);
         LogicEntityState currentBuilding = CreateBuildingQueryState(
             "building-defend-current-target",
             new FixVector2(Fix64.One, Fix64.Zero));
@@ -583,7 +604,7 @@ public class LogicEntityIdentityTests
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(pursuitUnit, targeting.CurrentTarget,
-            "Configured building taunt-equivalent threat must use the attackRange + pursuitDistance interruption rule.");
+            "Within r, a same-level unit must replace the current building because the building has negative half a taunt level.");
     }
 
     [Test]
@@ -604,15 +625,17 @@ public class LogicEntityIdentityTests
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(ordinaryBuilding, targeting.CurrentTarget,
-            "Building type must not decide whether a nearby attack-targetable building participates in threat selection.");
+            "Building type must not decide whether a nearby attack-targetable building participates in targeting.");
     }
 
     [Test]
-    public void DefendEnemyTargeting_DefenseBuildingTypeDoesNotAddThreat()
+    public void DefendEnemyTargeting_DefenseBuildingTypeDoesNotAffectPriority()
     {
+        ConfigureOpenTargetingNavigationGrid();
         LogicEntityState attacker = CreateConfiguredStateForSide(
             "Unit_DefendBuildingTypeThreatAttacker",
             SideType.EnemySide);
+        ConfigureTargetingCollisionRadius(attacker);
         LogicEntityState closerProductionBuilding = CreateBuildingQueryState(
             "building-defend-closer-production",
             new FixVector2((Fix64)2, Fix64.Zero),
@@ -629,15 +652,17 @@ public class LogicEntityIdentityTests
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(closerProductionBuilding, targeting.CurrentTarget,
-            "Defense-building type must not add threat over another building with the same configured building threat.");
+            "Defense-building type must not affect priority between otherwise equal buildings.");
     }
 
     [Test]
-    public void DefendEnemyTargeting_FallbackDesignationDoesNotAddThreat()
+    public void DefendEnemyTargeting_FallbackDesignationDoesNotAffectPriority()
     {
+        ConfigureOpenTargetingNavigationGrid();
         LogicEntityState attacker = CreateConfiguredStateForSide(
             "Unit_DefendFallbackThreatAttacker",
             SideType.EnemySide);
+        ConfigureTargetingCollisionRadius(attacker);
         LogicEntityState closerOrdinaryBuilding = CreateBuildingQueryState(
             "building-defend-closer-ordinary",
             new FixVector2(Fix64.One, Fix64.Zero),
@@ -654,7 +679,7 @@ public class LogicEntityIdentityTests
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(closerOrdinaryBuilding, targeting.CurrentTarget,
-            "Fallback-target designation must remain a navigation fallback and must not affect threat selection.");
+            "Fallback-target designation must remain a navigation fallback and must not affect target ordering.");
     }
 
     [Test]
@@ -688,7 +713,7 @@ public class LogicEntityIdentityTests
             attacker.LogicFrameDistanceToTargetSurfaceFixed(inRangeUnit) <= Fix64.FromRaw(6144),
             "Test setup must keep the unit inside the attacker's default attack range.");
         Assert.AreSame(inRangeUnit, targeting.CurrentTarget,
-            "An attack-locked building target must be replaced when a higher-threat unit enters attack range.");
+            "A current building target must be replaced when the same-level unit's half-level advantage enters attack range.");
     }
 
     [Test]
@@ -1682,6 +1707,11 @@ public class LogicEntityIdentityTests
         Assert.IsFalse(coding.HasBoundView);
         Assert.IsFalse(medical.HasBoundView);
 
+        coding.TakeDamage((Fix64)1000, HealthModifyType.reduce);
+        medical.TakeDamage((Fix64)1000, HealthModifyType.reduce);
+        Assert.IsTrue(coding.IsDisabled);
+        Assert.IsTrue(medical.IsDisabled);
+
         BuildingCostModifierService.Clear();
         try
         {
@@ -1775,6 +1805,9 @@ public class LogicEntityIdentityTests
             false);
         ActivateRequestedState(source.EntityId, 1);
 
+        source.TakeDamage((Fix64)1000, HealthModifyType.reduce);
+        peer.TakeDamage((Fix64)1000, HealthModifyType.reduce);
+
         Assert.AreSame(source, LogicBuildingQueryService.GetRequiredByInstanceId(source.BuildingInstanceId));
         Assert.IsTrue(LogicBuildingQueryService.HasBuildingArchetype(source, Archetype.Gardening));
         Assert.IsTrue(LogicBuildingQueryService.HasDifferentArmyArchetype(source));
@@ -1784,6 +1817,51 @@ public class LogicEntityIdentityTests
             Archetype.Gardening));
         Assert.IsFalse(source.HasBoundView);
         Assert.IsFalse(peer.HasBoundView);
+        Assert.IsTrue(source.IsDisabled);
+        Assert.IsTrue(peer.IsDisabled);
+    }
+
+    [Test]
+    public void FactionTechOwnership_PersistsWhenOwnerBuildingIsDisabled()
+    {
+        const string techId = "Tech_Disabled_Building_Owner";
+        LogicEntityState owner = CreateConfiguredState("Building_Disabled_Tech_Owner", false);
+        owner.ConfigureBuilding(
+            CreateCostBuildingData("Building_Disabled_Tech_Owner", Archetype.Coding, 100),
+            "building-disabled-tech-owner",
+            "stronghold-disabled-tech-owner",
+            EntitySideHelper.PlayerFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        ActivateRequestedState(owner.EntityId, 1);
+
+        Assert.IsFalse(LogicTechEffectCommandService.IsActive);
+        LogicTechEffectCommandService.BeginTimeline();
+        try
+        {
+            ulong effectiveFrame = checked(LogicTimeControlService.CurrentFrame + 1);
+            Assert.IsTrue(InGameDataModel.UnlockTech(
+                techId,
+                false,
+                owner.BuildingInstanceId,
+                owner.OwnerFactionId));
+            LogicTimeControlService.BeginFrame(effectiveFrame);
+            LogicTechEffectCommandService.ApplyFrameForTests(
+                effectiveFrame,
+                InGameDataModel.ApplyScheduledTechUnlock);
+
+            owner.TakeDamage((Fix64)1000, HealthModifyType.reduce);
+
+            Assert.IsTrue(owner.IsDisabled);
+            Assert.IsTrue(InGameDataModel.HasUnlockedTech(techId, owner.OwnerFactionId));
+        }
+        finally
+        {
+            InGameDataModel.ReduceTechStack(techId, owner.BuildingInstanceId);
+            LogicTechEffectCommandService.EndTimeline();
+        }
     }
 
     [Test]
@@ -1810,7 +1888,7 @@ public class LogicEntityIdentityTests
             tieLowerId.BuildingInstanceId,
         };
 
-        Assert.IsTrue(LogicBuildingQueryService.TryGetNearestByInstanceIds(
+        Assert.IsTrue(LogicBuildingQueryService.TryGetNearestAliveByInstanceIds(
             candidateIds,
             FixVector2.Zero,
             out IBuildingLogicContext nearest));
@@ -1851,6 +1929,39 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void ArmyCardValues_ResolveAfterSourceBuildingIsDisabledInCombat()
+    {
+        LogicEntityState building = CreateConfiguredState("Building_Disabled_ArmyCard", false);
+        building.ConfigureBuilding(
+            CreateArmyBuildingData("Building_Disabled_ArmyCard", 7),
+            "building-disabled-army-card",
+            "stronghold-disabled-army-card",
+            EntitySideHelper.PlayerFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false,
+            3);
+        ActivateRequestedState(building.EntityId, 1);
+        building.ProductionProps.ArmyForce = (Fix64)2;
+
+        var card = new CardModel(
+            1,
+            new TestCardDataProvider(),
+            building.BuildingInstanceId);
+
+        building.TakeDamage((Fix64)1000, HealthModifyType.reduce);
+
+        Assert.IsFalse(building.Alive);
+        Assert.IsTrue(building.IsDisabled);
+        Assert.AreSame(
+            building,
+            LogicBuildingQueryService.GetRequiredByInstanceId(building.BuildingInstanceId));
+        Assert.AreEqual(9, card.GetTroopCount());
+        Assert.AreEqual(27, card.GetOccupiedSupply());
+    }
+
+    [Test]
     public void SharedBuildingInterface_DoesNotClassifyNormalLogicUnitAsBuilding()
     {
         LogicEntityState unit = CreateConfiguredState("Unit_SharedInterfaceClassification", false);
@@ -1860,6 +1971,26 @@ public class LogicEntityIdentityTests
         Assert.AreEqual(
             EntitySideHelper.PlayerFactionId,
             EntityCombatTeamHelper.ResolveTeamId(unit));
+    }
+
+    [Test]
+    public void BuildingConfigurator_SelectsDedicatedBuildingTargetingComponent()
+    {
+        LogicEntityState building = CreateConfiguredState("Building_DedicatedTargeting", false);
+        BuildingData buildingData = CreateTestBuildingData("Building_DedicatedTargeting");
+        building.ConfigureBuilding(
+            buildingData,
+            "building-dedicated-targeting",
+            "stronghold-dedicated-targeting",
+            EntitySideHelper.PlayerFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+
+        ITargetingComp targeting = LogicBuildingConfigurator.CreateTargetingComp(building, buildingData);
+
+        Assert.AreEqual(typeof(BuildingTargetingComp), targeting.GetType());
     }
 
     [Test]
@@ -2607,7 +2738,7 @@ public class LogicEntityIdentityTests
                 Fix64.Zero,
                 true,
                 1,
-                new List<BuffCallback> { new HeroOutOfCombatMoveSpeedBuff() }),
+                new List<BuffCallback> { new PlayerOutOfCombatMoveSpeedBuff((Fix64)10) }),
             state);
         Assert.AreEqual((Fix64)20, state.GetProperty(CreatureMainProperty.Speed));
 
@@ -2617,6 +2748,43 @@ public class LogicEntityIdentityTests
         state.BuffComp.UpdateBuff(LogicFrameRuntime.FixedDeltaTime);
 
         Assert.AreEqual((Fix64)10, state.GetProperty(CreatureMainProperty.Speed));
+    }
+
+    [Test]
+    public void HeroTargetLeavesAttackRange_RealLogicStateRestoresOutOfCombatSpeed()
+    {
+        LogicEntityState hero = CreateConfiguredState(
+            "Hero_AttackRangeOutOfCombat",
+            true,
+            (Fix64)400);
+        LogicEntityState enemy = CreateConfiguredStateForSide(
+            "Unit_AttackRangeOutOfCombatTarget",
+            SideType.EnemySide,
+            new FixVector2((Fix64)10, Fix64.Zero));
+        ConfigureTestTargetingWeapon(hero);
+        var targeting = new HeroTargetingComp();
+        hero.SetTargetingComp(targeting);
+        targeting.Init(hero);
+        LogicUnitConfigurator.ConfigurePlayerOutOfCombatMoveSpeed(hero);
+        ActivateRequestedState(hero.EntityId, 1);
+
+        Assert.AreEqual((Fix64)900, hero.GetProperty(CreatureMainProperty.Speed));
+
+        targeting.CurrentTarget = enemy;
+        InvokeRefreshOutOfCombat(hero);
+        hero.BuffComp.UpdateBuff(LogicFrameRuntime.FixedDeltaTime);
+
+        Assert.IsFalse(hero.IsOutOfCombat);
+        Assert.AreEqual((Fix64)400, hero.GetProperty(CreatureMainProperty.Speed));
+
+        targeting.UpdateTargeting((Fix64)0.2f);
+        InvokeRefreshOutOfCombat(hero);
+        SetPrivateField(hero, "m_CombatClock", (Fix64)3);
+        hero.BuffComp.UpdateBuff(LogicFrameRuntime.FixedDeltaTime);
+
+        Assert.IsNull(targeting.AggroTarget);
+        Assert.IsTrue(hero.IsOutOfCombat);
+        Assert.AreEqual((Fix64)900, hero.GetProperty(CreatureMainProperty.Speed));
     }
 
     [Test]
@@ -2895,6 +3063,8 @@ public class LogicEntityIdentityTests
 
     private static CharacterTargetingComp CreateCharacterTargeting(LogicEntityState state)
     {
+        ConfigureTestTargetingWeapon(state);
+
         var targeting = new CharacterTargetingComp
         {
             AggroRangeFixed = (Fix64)10,
@@ -2904,6 +3074,82 @@ public class LogicEntityIdentityTests
         };
         targeting.Init(state);
         return targeting;
+    }
+
+    private static void ConfigureTestTargetingWeapon(LogicEntityState state)
+    {
+        if (state.WeaponComp != null)
+            return;
+        var weaponData = new WeaponData(
+            WeaponType.Melee,
+            Fix64.One,
+            Fix64.One,
+            DistanceUnitConverter.ConvertFromWorld(Fix64.FromRaw(6144)),
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.One,
+            Fix64.Zero,
+            Array.Empty<Fix64>());
+        state.SetWeaponComp(new WeaponComp(weaponData.ToWeapon(
+            "LogicEntityIdentityTests_TargetingWeapon",
+            state.CreatureProperties.propertyManager)));
+    }
+
+    private static void InvokeRefreshOutOfCombat(LogicEntityState state)
+    {
+        System.Reflection.MethodInfo method = typeof(LogicEntityState).GetMethod(
+            "RefreshOutOfCombat",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        method.Invoke(state, null);
+    }
+
+    private static void SetPrivateField<T>(LogicEntityState state, string fieldName, T value)
+    {
+        System.Reflection.FieldInfo field = typeof(LogicEntityState).GetField(
+            fieldName,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        field.SetValue(state, value);
+    }
+
+    private static void ConfigureTargetingCollisionRadius(LogicEntityState state)
+    {
+        state.CreatureProperties.ModifyMainPropertyValueBuff(
+            CreatureMainProperty.CollisionRadius,
+            PropertyDirectAdditiveModifier.Create((Fix64)12),
+            true);
+    }
+
+    private static void ConfigureOpenTargetingNavigationGrid()
+    {
+        const int width = 32;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            width,
+            height,
+            1f,
+            new Vector3(-4f, 0f, -4f),
+            walkable);
+        FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
+        for (int i = 0;
+             i < 2048 && (!FlowFieldCrowdMovementSystem.HasEditorTestWorld()
+                          || FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+             i++)
+        {
+            FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+        }
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestWorld());
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
     }
 
     private static ulong ComputeTargetingHash(CharacterTargetingComp targeting)
