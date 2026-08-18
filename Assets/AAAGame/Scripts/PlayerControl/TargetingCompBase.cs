@@ -26,10 +26,4 @@ public abstract class TargetingCompBase
         return owner.WeaponComp.AttackRange;
     }
 
-    protected static void ReportSuccessfulDamage(IEntityContext owner, IEntityContext attacker)
-    {
-        if (owner == null)
-            throw new ArgumentNullException(nameof(owner));
-        LogicFactionVisionService.HandleSuccessfulDamage(owner, attacker);
-    }
 }

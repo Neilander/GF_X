@@ -582,7 +582,7 @@ public partial class LevelEntity : EntityBase
         bool hasOrdinaryBuilding = false;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (entities[i] is not IBuildingLogicContext building
+            if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 || !string.Equals(building.StrongholdId, disabledBuilding.StrongholdId, StringComparison.Ordinal)
                 || building.OwnerFactionId != EntitySideHelper.PlayerFactionId
                 || building.BuildingData == null
@@ -677,7 +677,7 @@ public partial class LevelEntity : EntityBase
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (!(entities[i] is IBuildingLogicContext building)
+            if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 || !string.Equals(building.StrongholdId, strongholdId, StringComparison.Ordinal)
                 || building.BuildingData == null
                 || building.BuildingData.Lv == 0
@@ -728,7 +728,7 @@ public partial class LevelEntity : EntityBase
 
         for (int i = 0; i < entities.Count; i++)
         {
-            if (!(entities[i] is IBuildingLogicContext building)
+            if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 || !string.Equals(building.StrongholdId, strongholdId, StringComparison.Ordinal))
             {
                 continue;
@@ -775,7 +775,7 @@ public partial class LevelEntity : EntityBase
         bool resolvedConditionBuilding = false;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (entities[i] is not IBuildingLogicContext building
+            if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 || !building.IsGameEndConditionBuilding
                 || !string.Equals(building.StrongholdId, strongholdId, StringComparison.Ordinal))
             {
@@ -834,7 +834,7 @@ public partial class LevelEntity : EntityBase
 
             for (int i = 0; i < entities.Count; i++)
             {
-                if (entities[i] is not IBuildingLogicContext building
+                if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                     || !string.Equals(building.StrongholdId, capture.StrongholdId, StringComparison.Ordinal)
                     || !LogicEntityLifecycleService.TryGetBoundView(building.LogicEntityId, out MAEntity buildingView))
                 {

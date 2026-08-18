@@ -477,10 +477,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         CollisionBlockingChanged?.Invoke(blocksMovement);
     }
 
-    public void SetPermanentStealthByBuff(bool enabled)
+    public void SetStealthByBuff(bool enabled)
     {
-        if (!IsBuildingEntity)
-            throw new InvalidOperationException($"LogicEntityState.SetPermanentStealthByBuff failed: entity {EntityId.Value} is not a building.");
         if (IsPermanentStealth == enabled)
             return;
         IsPermanentStealth = enabled;

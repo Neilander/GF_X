@@ -173,7 +173,8 @@ public sealed class LogicMoveExecutorTests
         StringAssert.Contains("LogicMovementRegionConstraintFailure.NotVisible", regionAuthority);
         StringAssert.Contains("RebuildVisibilityFromCurrentEntities", fogAuthority);
         StringAssert.Contains("s_MapData.MarkVisible", fogAuthority);
-        StringAssert.Contains("hero.IsHeroEntity", fogAuthority);
+        StringAssert.Contains("entity.IsHeroEntity", fogAuthority);
+        StringAssert.DoesNotContain("entity is IHeroLogicContext", fogAuthority);
         StringAssert.DoesNotContain("entity is HeroEntity", fogAuthority);
         StringAssert.Contains("PublishAuthoritativeVisibility", fogControllerView);
         StringAssert.DoesNotContain("MapData.ClearCurrentVisibility", fogControllerView);

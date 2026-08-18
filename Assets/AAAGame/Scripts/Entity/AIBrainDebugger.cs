@@ -11,7 +11,6 @@ public class AIBrainDebugger : MonoBehaviour
     [Header("调试参数")]
     public float debugAggroRange = 6f;
     public float debugForgetRange = 8f;
-    public float debugAttackRange = 1.6f;
 
     void Awake()
     {
@@ -26,17 +25,11 @@ public class AIBrainDebugger : MonoBehaviour
         // 只要组件加载出来了，就强行塞值
         if (_entity.targetComp != null)
         {
-            _entity.targetComp.AggroRangeFixed = (Fix64)debugAggroRange;
-            _entity.targetComp.ForgetRangeFixed = (Fix64)debugForgetRange;
-        }
-
-        if (_entity.Brain is EnemyAIBrain enemyAI)
-        {
-            enemyAI.AttackRange = (Fix64)debugAttackRange;
-        }
-        else if (_entity.Brain is FriendlyAIBrain friendlyAI)
-        {
-            friendlyAI.AttackRange = (Fix64)debugAttackRange;
+            if (_entity.targetComp is ITargetSearchRangeComp rangeTargeting)
+            {
+                rangeTargeting.AggroRangeFixed = (Fix64)debugAggroRange;
+                rangeTargeting.ForgetRangeFixed = (Fix64)debugForgetRange;
+            }
         }
     }
 

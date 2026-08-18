@@ -452,7 +452,7 @@ public class RewardManager : GameFrameworkComponent
 		IList<IEntityContext> entities = EntityRegistry.AllEntities;
 		for (int i = 0; i < entities.Count; i++)
 		{
-			if (!(entities[i] is IBuildingLogicContext building)
+			if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
 				|| !building.Alive
 				|| building.IsDisabled
 				|| building.OwnerFactionId != EntitySideHelper.PlayerFactionId

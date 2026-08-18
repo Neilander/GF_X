@@ -455,7 +455,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
 
     private bool IsBuildingTarget()
     {
-        return _ctx is IBuildingLogicContext building && building.BuildingData != null;
+        return _ctx != null && _ctx.IsBuildingEntity;
     }
 
     private void RequireInitialized()

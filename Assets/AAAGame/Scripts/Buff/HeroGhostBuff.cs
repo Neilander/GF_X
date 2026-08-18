@@ -13,20 +13,18 @@ public class HeroGhostBuff : BuffCallback, ILogicDeterministicStateContributor
             ? "hero_ghost_state::source"
             : $"{buffData.id}::source";
 
-        if (hostEntity is IHeroLogicContext soldier)
-        {
-            soldier.RegisterInvincibleSource(_invincibleSourceId);
-            soldier.SetGhostStateByBuff(true);
-        }
+        if (!hostEntity.TryGetLogicHero(out IHeroLogicContext hero))
+            throw new System.InvalidOperationException("HeroGhostBuff requires a hero logic context.");
+        hero.RegisterInvincibleSource(_invincibleSourceId);
+        hero.SetGhostStateByBuff(true);
     }
 
     public override void OnRemove()
     {
-        if (hostEntity is IHeroLogicContext soldier)
-        {
-            soldier.UnregisterInvincibleSource(_invincibleSourceId);
-            soldier.RestoreFromGhostState();
-        }
+        if (!hostEntity.TryGetLogicHero(out IHeroLogicContext hero))
+            throw new System.InvalidOperationException("HeroGhostBuff requires a hero logic context.");
+        hero.UnregisterInvincibleSource(_invincibleSourceId);
+        hero.RestoreFromGhostState();
     }
 
     public void WriteDeterministicState(LogicStateHasher hasher)

@@ -59,7 +59,9 @@ public sealed class SourceBuildingTechUnitBuffProvider : BuffCallback, ISourceBu
 
     private IBuildingLogicContext GetHostBuilding()
     {
-        return hostEntity as IBuildingLogicContext;
+        if (!hostEntity.TryGetLogicBuilding(out IBuildingLogicContext building))
+            throw new InvalidOperationException("BuildingScopedTechBuff requires a building logic context.");
+        return building;
     }
 }
 

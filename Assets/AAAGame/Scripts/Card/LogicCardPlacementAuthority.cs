@@ -516,12 +516,12 @@ namespace AAAGame.Card
 
         private static bool IsLogicHero(IEntityContext entity)
         {
-            return entity is IHeroLogicContext hero && hero.IsHeroEntity;
+            return entity != null && entity.IsHeroEntity;
         }
 
         private static bool IsGhostHero(IEntityContext entity)
         {
-            return IsLogicHero(entity) && entity is IHeroLogicContext hero && hero.IsGhostState;
+            return entity.TryGetLogicHero(out IHeroLogicContext hero) && hero.IsGhostState;
         }
 
         private static int CompareShapes(LogicCombatShape left, LogicCombatShape right)

@@ -116,9 +116,8 @@ public static class LogicFactionVisionService
                 continue;
             if (FixVector2.SqrMagnitude(ally.LogicFramePositionFixed() - victim.LogicFramePositionFixed()) > allyRadiusSquared)
                 continue;
-            ITargetingComp targeting = ally.TargetComp;
-            if (targeting != null)
-                targeting.NotifyAllyFoundEnemy(attacker);
+            if (ally.TargetComp is IAlertTargetingComp alertTargeting)
+                alertTargeting.NotifyAllyFoundEnemy(attacker);
         }
     }
 
@@ -167,8 +166,7 @@ public static class LogicFactionVisionService
         if (target.Side == viewerSide)
             return true;
 
-        bool targetStealthed = target.TryGetLogicBuilding(out IBuildingLogicContext building) && building.IsStealthed;
-        if (targetStealthed)
+        if (target.IsStealthed)
             return false;
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         bool targetInHiddenFog = IsPositionInHiddenPlayerFog(viewerSide, target.PositionFixed);
@@ -241,7 +239,7 @@ public static class LogicFactionVisionService
             return false;
         string key = entity.IsLogicBuilding()
             ? BuildingVisionRadiusConfigKey
-            : entity is IHeroLogicContext hero && hero.IsHeroEntity
+            : entity.IsHeroEntity
                 ? HeroVisionRadiusConfigKey
                 : UnitVisionRadiusConfigKey;
         radius = ReadWorldDistance(key);
@@ -254,7 +252,10 @@ public static class LogicFactionVisionService
         {
             IEntityContext entity = entities[i]
                 ?? throw new InvalidOperationException($"LogicFactionVisionService found a null registry entity at index {i}.");
-            if (entity.Alive && entity.Side == side && entity is IHeroLogicContext hero && hero.IsHeroEntity && hero.IsGhostState)
+            if (entity.Alive
+                && entity.Side == side
+                && entity.TryGetLogicHero(out IHeroLogicContext hero)
+                && hero.IsGhostState)
                 return true;
         }
         return false;
@@ -262,8 +263,8 @@ public static class LogicFactionVisionService
 
     private static bool CanExploreHiddenFog(IEntityContext revealer, bool hasGhostHero)
     {
-        bool isHero = revealer is IHeroLogicContext hero && hero.IsHeroEntity;
-        bool isGhostHero = isHero && revealer is IHeroLogicContext ghost && ghost.IsGhostState;
+        bool isHero = revealer.IsHeroEntity;
+        bool isGhostHero = revealer.TryGetLogicHero(out IHeroLogicContext hero) && hero.IsGhostState;
         return !isGhostHero && !(hasGhostHero && !isHero && !revealer.IsLogicBuilding());
     }
 

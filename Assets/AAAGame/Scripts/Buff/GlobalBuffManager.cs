@@ -783,7 +783,7 @@ public class GlobalBuffManager : GameFrameworkComponent
             int ownerFactionId = m_PendingArmyCardPresentationFactions[factionIndex];
             for (int entityIndex = 0; entityIndex < entities.Count; entityIndex++)
             {
-                if (entities[entityIndex] is not IBuildingLogicContext building
+                if (!entities[entityIndex].TryGetLogicBuilding(out IBuildingLogicContext building)
                     || building.OwnerFactionId != ownerFactionId
                     || building.BuildingData?.Type != BuilType.Army
                     || !LogicEntityLifecycleService.TryGetBoundView(building.LogicEntityId, out MAEntity view))
@@ -843,7 +843,7 @@ public class GlobalBuffManager : GameFrameworkComponent
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (entities[i] is IBuildingLogicContext building
+            if (entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 && building.OwnerFactionId == ownerFactionId)
             {
                 ApplyPersistentBuildingEntityBuffs(building);

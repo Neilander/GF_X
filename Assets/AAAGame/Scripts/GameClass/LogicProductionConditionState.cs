@@ -44,7 +44,7 @@ public static class LogicProductionConditionState
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (!(entities[i] is IBuildingLogicContext building)
+            if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 || !building.Alive
                 || building.IsDisabled
                 || !string.Equals(building.StrongholdId, strongholdId, StringComparison.Ordinal)
@@ -69,7 +69,7 @@ public static class LogicProductionConditionState
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (entities[i] is IBuildingLogicContext building
+            if (entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 && building.Alive
                 && !building.IsDisabled
                 && string.Equals(building.StrongholdId, strongholdId, StringComparison.Ordinal))

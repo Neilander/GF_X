@@ -44,7 +44,7 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     public bool IsPermanentlyInvincible => LogicState != null
         ? LogicState.IsPermanentlyInvincible
         : throw new System.InvalidOperationException("BuildingEntity.IsPermanentlyInvincible requires a bound logic state.");
-    public bool IsStealthed => LogicState != null
+    public override bool IsStealthed => LogicState != null
         ? LogicState.IsStealthed
         : throw new System.InvalidOperationException("BuildingEntity.IsStealthed requires a bound logic state.");
     public bool IsHealthBarSuppressedByBuff => _healthBarSuppressedByBuff || _stealthHealthBarSuppressed;
@@ -177,27 +177,6 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
             AudioManager.Instance.Play("buildDeath");
     }
 
-    /// <summary>调试：在场景里画建筑的告警广播范围（AlertRadius），便于核对召唤友军距离。</summary>
-    private void OnDrawGizmos()
-    {
-        if (targetComp == null) return; // 未播放或未初始化：跳过
-        float r = (float)targetComp.AlertRadiusFixed;
-        if (r <= 0f) return;
-
-        Gizmos.color = new Color(1f, 0.85f, 0.2f, 0.6f); // 半透明黄
-        Vector3 center = transform.position;
-        const int segments = 36;
-        float step = 2f * Mathf.PI / segments;
-        Vector3 prev = center + new Vector3(r, 0f, 0f);
-        for (int i = 1; i <= segments; i++)
-        {
-            float a = step * i;
-            Vector3 next = center + new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r);
-            Gizmos.DrawLine(prev, next);
-            prev = next;
-        }
-    }
-
     /// <summary>
     /// 把所有子 Renderer 注册到 BuildingOutlineFeature 全局列表，让屏幕空间描边 Pass 拾取。
     /// 配套 UnregisterOutlineRenderers 在 OnHide 调用，避免对象池复用时残留死引用。
@@ -299,11 +278,6 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
             _collisionBlockingColliderStates.Clear();
         }
 
-    }
-
-    void IBuildingLogicContext.SetPermanentStealthByBuff(bool enabled)
-    {
-        throw ViewLogicMutationException(nameof(IBuildingLogicContext.SetPermanentStealthByBuff));
     }
 
     void IBuildingLogicContext.SetPermanentInvincibilityByBuff(bool enabled)

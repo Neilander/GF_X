@@ -21,7 +21,9 @@ public class BuildingAIBrain : IControlBrain, ITickBrain
         if (self == null || !self.Alive)
             return;
 
-        if (self is IBuildingLogicContext building && (building.HasPermanentNoAttackCapability || building.IsPhaseProtected))
+        if (!self.TryGetLogicBuilding(out IBuildingLogicContext building))
+            throw new System.InvalidOperationException("BuildingAIBrain requires a building logic context.");
+        if (building.HasPermanentNoAttackCapability || building.IsPhaseProtected)
             return;
 
         if (self.WeaponComp == null || self.WeaponComp.Data == null || self.WeaponComp.Data.Atk <= Fix64.Zero)

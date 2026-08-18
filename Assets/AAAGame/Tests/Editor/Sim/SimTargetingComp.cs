@@ -5,7 +5,7 @@ using UnityEngine;
 /// <summary>
 /// 纯逻辑目标组件：从已知列表中按距离查找目标，不依赖 Physics。
 /// </summary>
-public class SimTargetingComp : ITargetingComp
+public class SimTargetingComp : ITargetingComp, ITargetSearchRangeComp, IFollowTargetingComp
 {
     private IEntityContext _self;
     private List<IEntityContext> _allEntities;
@@ -17,7 +17,6 @@ public class SimTargetingComp : ITargetingComp
     public Fix64 AggroRangeFixed { get; set; } = (Fix64)6;
     public Fix64 ForgetRangeFixed { get; set; } = (Fix64)8;
     public Fix64 FollowSearchRangeFixed { get; set; } = (Fix64)30;
-    public Fix64 AlertRadiusFixed { get; set; }
 
     private Fix64 _scanTimer = Fix64.Zero;
     private static readonly Fix64 SCAN_INTERVAL = (Fix64)0.2f;
@@ -97,10 +96,6 @@ public class SimTargetingComp : ITargetingComp
     }
 
     public void Resume() { }
-
-    public void NotifyDamageTaken(IEntityContext attacker) { }
-
-    public void NotifyAllyFoundEnemy(IEntityContext enemy) { }
 
     public void ClearAggro() { }
 }

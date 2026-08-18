@@ -35,6 +35,17 @@ public sealed class LogicMigrationAuthorityBoundaryTests
         StringAssert.Contains("unsupported BrainType", exception.Message);
     }
 
+    [TestCase(BrainType.EnemyAI)]
+    [TestCase(BrainType.FriendlyAI)]
+    public void BrainFactory_RejectsLegacySideSpecificBrainTypes(BrainType brainType)
+    {
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => BrainFactory.Create(brainType, null, null));
+
+        StringAssert.Contains("legacy BrainType", exception.Message);
+        StringAssert.Contains("use SoldierAI", exception.Message);
+    }
+
     [Test]
     public void InputManager_DoesNotExposeMissingModelAsEmptyLogicInput()
     {

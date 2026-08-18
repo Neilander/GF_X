@@ -599,7 +599,7 @@ public static class DefendPhaseRuntime
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (!(entities[i] is IBuildingLogicContext building)
+            if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 || !building.Alive
                 || building.OwnerFactionId != EntitySideHelper.PlayerFactionId
                 || building.BuildingData == null

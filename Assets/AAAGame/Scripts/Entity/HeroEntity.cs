@@ -554,7 +554,7 @@ public class HeroEntity : SoldierEntity, ICastRangePresenter
                                                 $"HeroEntity.SyncGhostUnitCollisionIgnores found a null logic entity at index {i}.");
                 if (otherLogic.LogicEntityId == LogicEntityId)
                     continue;
-                if (otherLogic is IBuildingLogicContext building && building.BuildingData != null)
+                if (otherLogic.IsBuildingEntity)
                     continue;
                 if (!LogicEntityLifecycleService.TryGetBoundView(otherLogic.LogicEntityId, out MAEntity other))
                     continue;

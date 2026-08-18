@@ -439,7 +439,7 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (entities[i] is not IBuildingLogicContext building
+            if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 || !building.Alive
                 || building.OwnerFactionId != EntitySideHelper.EnemyFactionId
                 || building.BuildingData == null

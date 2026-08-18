@@ -274,8 +274,6 @@ public class LogicEntityIdentityTests
     {
         Type[] brainTypes =
         {
-            typeof(EnemyAIBrain),
-            typeof(FriendlyAIBrain),
             typeof(SoldierAIBrain),
         };
         const System.Reflection.BindingFlags declaredFields =
@@ -1163,7 +1161,7 @@ public class LogicEntityIdentityTests
             StringAssert.Contains("LogicEntityState", Assert.Throws<InvalidOperationException>(() => view.SetOwnerFaction(2)).Message);
             StringAssert.Contains("LogicEntityState", Assert.Throws<InvalidOperationException>(() => view.RestoreBuildingToFullHealth()).Message);
             StringAssert.Contains("LogicEntityState", Assert.Throws<InvalidOperationException>(() => view.SetCollisionBlockingByBuff(false)).Message);
-            StringAssert.Contains("LogicEntityState", Assert.Throws<InvalidOperationException>(() => view.SetPermanentStealthByBuff(true)).Message);
+            StringAssert.Contains("cannot mutate", Assert.Throws<InvalidOperationException>(() => view.SetStealthByBuff(true)).Message);
             StringAssert.Contains("LogicEntityState", Assert.Throws<InvalidOperationException>(() => view.SetPhaseProtectionByBuff(true)).Message);
         }
         finally
@@ -1962,15 +1960,30 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
-    public void SharedBuildingInterface_DoesNotClassifyNormalLogicUnitAsBuilding()
+    public void AuthoritativeIdentity_DoesNotClassifyNormalLogicUnitAsBuildingOrHero()
     {
         LogicEntityState unit = CreateConfiguredState("Unit_SharedInterfaceClassification", false);
 
-        Assert.IsInstanceOf<IBuildingLogicContext>(unit);
+        Assert.IsFalse(unit.IsBuildingEntity);
+        Assert.IsFalse(unit.IsHeroEntity);
         Assert.IsFalse(unit.IsLogicBuilding());
+        Assert.IsFalse(unit.TryGetLogicBuilding(out _));
+        Assert.IsFalse(unit.TryGetLogicHero(out _));
         Assert.AreEqual(
             EntitySideHelper.PlayerFactionId,
             EntityCombatTeamHelper.ResolveTeamId(unit));
+    }
+
+    [Test]
+    public void EntityIdentityMismatch_ThrowsInsteadOfSilentlyFallingBack()
+    {
+        var buildingMismatch = new DeclaredBuildingWithoutContext();
+        var heroMismatch = new DeclaredHeroWithoutContext();
+
+        StringAssert.Contains("without IBuildingLogicContext", Assert.Throws<InvalidOperationException>(
+            () => buildingMismatch.TryGetLogicBuilding(out _)).Message);
+        StringAssert.Contains("without IHeroLogicContext", Assert.Throws<InvalidOperationException>(
+            () => heroMismatch.TryGetLogicHero(out _)).Message);
     }
 
     [Test]
@@ -1991,6 +2004,25 @@ public class LogicEntityIdentityTests
         ITargetingComp targeting = LogicBuildingConfigurator.CreateTargetingComp(building, buildingData);
 
         Assert.AreEqual(typeof(BuildingTargetingComp), targeting.GetType());
+    }
+
+    [Test]
+    public void BuildingConfigurator_SelectsDedicatedPharmacyHealingTargetingComponent()
+    {
+        LogicEntityState building = CreateConfiguredState("Buil_Pharmacy_Lv1", false);
+        BuildingData buildingData = CreateTestBuildingData("Buil_Pharmacy_Lv1");
+        building.ConfigureBuilding(
+            buildingData,
+            "building-pharmacy-targeting",
+            "stronghold-pharmacy-targeting",
+            EntitySideHelper.PlayerFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+
+        Assert.IsInstanceOf<BuildingHealTargetingComp>(
+            LogicBuildingConfigurator.CreateTargetingComp(building, buildingData));
     }
 
     [Test]
@@ -2371,7 +2403,7 @@ public class LogicEntityIdentityTests
 
         Assert.IsTrue(trap.IsPermanentlyInvincible);
         Assert.IsTrue(trap.IsPermanentStealth);
-        trap.SetPermanentStealthByBuff(false);
+        trap.SetStealthByBuff(false);
         Assert.IsFalse(trap.IsPermanentStealth, "The test trap must be revealed before checking its health bar.");
 
         const int healthBarEntityId = 193847;
@@ -3070,7 +3102,6 @@ public class LogicEntityIdentityTests
             AggroRangeFixed = (Fix64)10,
             ForgetRangeFixed = (Fix64)20,
             FollowSearchRangeFixed = (Fix64)30,
-            AlertRadiusFixed = (Fix64)5,
         };
         targeting.Init(state);
         return targeting;
@@ -3194,6 +3225,16 @@ public class LogicEntityIdentityTests
             null,
             0,
             Array.Empty<string>());
+    }
+
+    private sealed class DeclaredBuildingWithoutContext : SimEntityContext
+    {
+        public override bool IsBuildingEntity => true;
+    }
+
+    private sealed class DeclaredHeroWithoutContext : SimEntityContext
+    {
+        public override bool IsHeroEntity => true;
     }
 
     private sealed class SideChangeRecordingBrain : IControlBrain, IBrainSideChangeHandler

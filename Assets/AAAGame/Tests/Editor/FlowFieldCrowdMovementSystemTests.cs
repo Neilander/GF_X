@@ -6801,8 +6801,7 @@ public class FlowFieldCrowdMovementSystemTests
         {
             AggroRangeFixed = (Fix64)20f,
             ForgetRangeFixed = (Fix64)20f,
-            FollowSearchRangeFixed = Fix64.Zero,
-            AlertRadiusFixed = Fix64.Zero
+            FollowSearchRangeFixed = Fix64.Zero
         };
         targeting.Init(chaser);
         targeting.CurrentTarget = unreachable;
@@ -6863,8 +6862,7 @@ public class FlowFieldCrowdMovementSystemTests
         {
             AggroRangeFixed = (Fix64)20f,
             ForgetRangeFixed = (Fix64)20f,
-            FollowSearchRangeFixed = Fix64.Zero,
-            AlertRadiusFixed = Fix64.Zero
+            FollowSearchRangeFixed = Fix64.Zero
         };
         targeting.Init(chaser);
         targeting.CurrentTarget = target;

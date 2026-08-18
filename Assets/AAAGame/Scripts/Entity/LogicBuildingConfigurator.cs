@@ -90,12 +90,6 @@ public static class LogicBuildingConfigurator
         if (buildingData.Type == BuilType.Prod)
             LogicBuildingProductionService.Configure(state);
 
-        Fix64 aggroRange = Fix64.Max(
-            DistanceUnitConverter.ConvertToWorld(weaponData.Range) + Fix64.FromRaw(6144),
-            (Fix64)4);
-        targetingComp.AggroRangeFixed = aggroRange;
-        targetingComp.ForgetRangeFixed = aggroRange + (Fix64)2;
-        targetingComp.FollowSearchRangeFixed = Fix64.Zero;
         BuildingConfigured?.Invoke(state);
     }
 
@@ -142,16 +136,12 @@ public static class LogicBuildingConfigurator
     {
         ITargetingComp result;
         if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.Pharmacy))
-            result = new HealTargetingComp();
+            result = new BuildingHealTargetingComp();
         else if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.MeatRack))
             result = new MeatRackTargetingComp();
         else
             result = new BuildingTargetingComp();
 
-        result.AggroRangeFixed = (Fix64)6;
-        result.ForgetRangeFixed = (Fix64)8;
-        result.FollowSearchRangeFixed = Fix64.Zero;
-        result.AlertRadiusFixed = (Fix64)12;
         return result;
     }
 

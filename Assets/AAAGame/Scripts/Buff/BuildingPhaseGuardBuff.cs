@@ -22,7 +22,7 @@ public class BuildingPhaseGuardBuff : BuffCallback, ILogicDeterministicStateCont
     {
         UnsubscribeEvents();
 
-        if (hostEntity is IBuildingLogicContext building)
+        if (hostEntity.TryGetLogicBuilding(out IBuildingLogicContext building))
         {
             building.SetPhaseProtectionByBuff(false);
             building.UnregisterInvincibleSource(_invincibleSourceId);
@@ -35,7 +35,7 @@ public class BuildingPhaseGuardBuff : BuffCallback, ILogicDeterministicStateCont
             return;
 
         LogicPhaseCommandService.PhaseApplied += OnPhaseChanged;
-        if (hostEntity is not IBuildingLogicContext building)
+        if (!hostEntity.TryGetLogicBuilding(out IBuildingLogicContext building))
             throw new System.InvalidOperationException("BuildingPhaseGuardBuff requires a building logic context.");
         building.OwnerFactionChanged += OnOwnerFactionChanged;
         _subscribed = true;
@@ -47,7 +47,7 @@ public class BuildingPhaseGuardBuff : BuffCallback, ILogicDeterministicStateCont
             return;
 
         LogicPhaseCommandService.PhaseApplied -= OnPhaseChanged;
-        if (hostEntity is not IBuildingLogicContext building)
+        if (!hostEntity.TryGetLogicBuilding(out IBuildingLogicContext building))
             throw new System.InvalidOperationException("BuildingPhaseGuardBuff requires a building logic context.");
         building.OwnerFactionChanged -= OnOwnerFactionChanged;
         _subscribed = false;
@@ -65,7 +65,7 @@ public class BuildingPhaseGuardBuff : BuffCallback, ILogicDeterministicStateCont
 
     private void RefreshProtectionState()
     {
-        if (hostEntity is not IBuildingLogicContext building)
+        if (!hostEntity.TryGetLogicBuilding(out IBuildingLogicContext building))
             throw new System.InvalidOperationException("BuildingPhaseGuardBuff requires a building logic context.");
 
         GamePhase phase = LogicPhaseCommandService.GetRequiredCurrentPhase();

@@ -46,7 +46,7 @@ public sealed class BuildingInvincibleSourceBuff : BuffCallback
 
     public override void OnAdd()
     {
-        if (hostEntity is not IBuildingLogicContext building)
+        if (!hostEntity.TryGetLogicBuilding(out IBuildingLogicContext building))
             throw new InvalidOperationException("BuildingInvincibleSourceBuff.OnAdd failed: host is not a building logic context.");
 
         building.SetPermanentInvincibilityByBuff(true);
@@ -55,7 +55,7 @@ public sealed class BuildingInvincibleSourceBuff : BuffCallback
 
     public override void OnRemove()
     {
-        if (hostEntity is not IBuildingLogicContext building)
+        if (!hostEntity.TryGetLogicBuilding(out IBuildingLogicContext building))
             throw new InvalidOperationException("BuildingInvincibleSourceBuff.OnRemove failed: host is not a building logic context.");
 
         building.UnregisterInvincibleSource(_sourceId);
@@ -69,7 +69,7 @@ public sealed class BuildingCollisionBlockingBuff : BuffCallback, ILogicDetermin
 
     public override void OnAdd()
     {
-        if (!(hostEntity is IBuildingLogicContext building))
+        if (!hostEntity.TryGetLogicBuilding(out IBuildingLogicContext building))
             throw new InvalidOperationException($"BuildingCollisionBlockingBuff.OnAdd failed: host is not a building logic context. host={hostEntity?.CharacterKey}.");
 
         if (_applied)
@@ -85,7 +85,7 @@ public sealed class BuildingCollisionBlockingBuff : BuffCallback, ILogicDetermin
             return;
 
         _applied = false;
-        if (hostEntity is IBuildingLogicContext building)
+        if (hostEntity.TryGetLogicBuilding(out IBuildingLogicContext building))
             building.SetCollisionBlockingByBuff(true);
     }
 
@@ -99,16 +99,16 @@ public sealed class BuildingPermanentStealthBuff : BuffCallback
 {
     public override void OnAdd()
     {
-        if (!(hostEntity is IBuildingLogicContext building))
+        if (!hostEntity.TryGetLogicBuilding(out IBuildingLogicContext building))
             throw new InvalidOperationException($"BuildingPermanentStealthBuff.OnAdd failed: host is not a building logic context. host={hostEntity?.CharacterKey}.");
 
-        building.SetPermanentStealthByBuff(true);
+        building.SetStealthByBuff(true);
     }
 
     public override void OnRemove()
     {
-        if (hostEntity is IBuildingLogicContext building)
-            building.SetPermanentStealthByBuff(false);
+        if (hostEntity.TryGetLogicBuilding(out IBuildingLogicContext building))
+            building.SetStealthByBuff(false);
     }
 }
 
@@ -118,10 +118,10 @@ public sealed class TrapRevealOnFirstTriggerBuff : BuffCallback
     {
         if (target == null)
             throw new ArgumentNullException(nameof(target));
-        if (hostEntity is not IBuildingLogicContext building)
+        if (!hostEntity.TryGetLogicBuilding(out IBuildingLogicContext building))
             throw new InvalidOperationException("TrapRevealOnFirstTriggerBuff.OnAttackImpact failed: host is not a building logic context.");
 
-        building.SetPermanentStealthByBuff(false);
+        building.SetStealthByBuff(false);
     }
 }
 

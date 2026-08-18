@@ -22,7 +22,6 @@ public sealed class FactoryHelperPreloadTests
         targetingFactory.defaultAggroRange = 13f;
         targetingFactory.defaultForgetRange = 17f;
         targetingFactory.defaultFollowRange = 23f;
-        targetingFactory.defaultAlertRadius = 7f;
 
         const string MovePath = "Tests/MoveFactory";
         const string AttackPath = "Tests/AttackFactory";
@@ -44,10 +43,14 @@ public sealed class FactoryHelperPreloadTests
             Assert.AreSame(move, entity.MoveComp);
             Assert.AreSame(attack, entity.AtkComp);
             Assert.AreSame(targeting, entity.TargetComp);
-            Assert.AreEqual((Fix64)13, targeting.AggroRangeFixed);
-            Assert.AreEqual((Fix64)17, targeting.ForgetRangeFixed);
-            Assert.AreEqual((Fix64)23, targeting.FollowSearchRangeFixed);
-            Assert.AreEqual((Fix64)7, targeting.AlertRadiusFixed);
+            Assert.IsInstanceOf<ITargetSearchRangeComp>(targeting);
+            Assert.IsInstanceOf<IFollowTargetingComp>(targeting);
+            Assert.IsInstanceOf<IAlertTargetingComp>(targeting);
+            var searchRange = (ITargetSearchRangeComp)targeting;
+            var followTargeting = (IFollowTargetingComp)targeting;
+            Assert.AreEqual((Fix64)13, searchRange.AggroRangeFixed);
+            Assert.AreEqual((Fix64)17, searchRange.ForgetRangeFixed);
+            Assert.AreEqual((Fix64)23, followTargeting.FollowSearchRangeFixed);
         }
         finally
         {

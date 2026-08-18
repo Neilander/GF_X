@@ -138,7 +138,7 @@ namespace AAAGame.MiniMap.FOG3
                                                  $"Fog3Manager enemy visibility diagnostics found a null logic entity at index {i}.");
                 if (!logicEntity.Alive || logicEntity.Side != SideType.EnemySide)
                     continue;
-                if (logicEntity is IBuildingLogicContext building && building.BuildingData != null)
+                if (logicEntity.TryGetLogicBuilding(out IBuildingLogicContext building))
                     continue;
 
                 aliveLogicCount++;
@@ -1622,7 +1622,7 @@ namespace AAAGame.MiniMap.FOG3
 
             for (int i = 0; i < allEntities.Count; i++)
             {
-                if (allEntities[i] is IHeroLogicContext hero
+                if (allEntities[i].TryGetLogicHero(out IHeroLogicContext hero)
                     && hero.Side == SideType.PlayerSide
                     && hero.IsGhostState)
                 {

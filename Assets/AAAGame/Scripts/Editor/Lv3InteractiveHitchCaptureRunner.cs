@@ -816,9 +816,11 @@ internal static class Lv3InteractiveHitchCaptureRunner
             _lastHeroPosition = hero.PositionFixed;
             _lastSoldierPosition = soldier.PositionFixed;
             _detectEnemyRange = ((SoldierAIBrain)soldier.Brain).DetectEnemyRange;
-            _aggroRange = soldier.TargetComp?.AggroRangeFixed
-                          ?? throw new InvalidOperationException($"Lv3 chase probe soldier {_soldierId.Value} has no TargetComp.");
-            _forgetRange = soldier.TargetComp.ForgetRangeFixed;
+            ITargetSearchRangeComp searchRange = soldier.TargetComp as ITargetSearchRangeComp
+                                                   ?? throw new InvalidOperationException(
+                                                       $"Lv3 chase probe soldier {_soldierId.Value} has no target search range capability.");
+            _aggroRange = searchRange.AggroRangeFixed;
+            _forgetRange = searchRange.ForgetRangeFixed;
             _lastSpeed = DistanceUnitConverter.ConvertToWorld(soldier.GetProperty(CreatureMainProperty.Speed));
             _sourceStrongholdId = (soldier as LogicEntityState)?.SourceStrongholdId
                                   ?? throw new InvalidOperationException($"Lv3 chase probe soldier {_soldierId.Value} has no source stronghold.");
@@ -870,9 +872,11 @@ internal static class Lv3InteractiveHitchCaptureRunner
             _lastHeroPosition = _hero.PositionFixed;
             _lastSoldierPosition = soldier.PositionFixed;
             _detectEnemyRange = brain.DetectEnemyRange;
-            _aggroRange = soldier.TargetComp?.AggroRangeFixed
-                          ?? throw new InvalidOperationException($"Lv3 chase probe soldier {_soldierId.Value} lost TargetComp.");
-            _forgetRange = soldier.TargetComp.ForgetRangeFixed;
+            ITargetSearchRangeComp searchRange = soldier.TargetComp as ITargetSearchRangeComp
+                                                   ?? throw new InvalidOperationException(
+                                                       $"Lv3 chase probe soldier {_soldierId.Value} lost target search range capability.");
+            _aggroRange = searchRange.AggroRangeFixed;
+            _forgetRange = searchRange.ForgetRangeFixed;
             if (heroDistance < MinimumHeroDistance)
                 MinimumHeroDistance = heroDistance;
             if (ProximityFrame == 0 && heroDistance < _aggroRange)
@@ -2115,7 +2119,7 @@ internal static class Lv3InteractiveHitchCaptureRunner
             || !EntityRegistry.TryGet(new LogicEntityId(strongholdTargetId), out IEntityContext target)
             || target == null
             || !target.Alive
-            || target is not IBuildingLogicContext)
+            || !target.IsBuildingEntity)
         {
             throw new InvalidOperationException(
                 $"Lv3 interactive hitch capture lost its live stronghold building target {strongholdTargetId}.");
@@ -2680,8 +2684,7 @@ internal static class Lv3InteractiveHitchCaptureRunner
                                     ?? throw new InvalidOperationException($"Lv3 interactive hitch capture found a null entity at index {i}.");
             if (!entity.Alive
                 || entity.Side != SideType.EnemySide
-                || entity is not IBuildingLogicContext building
-                || building.BuildingData == null
+                || !entity.TryGetLogicBuilding(out IBuildingLogicContext building)
                 || building.BuildingData.Lv <= 0
                 || !string.Equals(entity.CharacterKey, PreferredTargetCharacterKey, StringComparison.Ordinal))
                 continue;

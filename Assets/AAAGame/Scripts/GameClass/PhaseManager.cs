@@ -232,7 +232,7 @@ public class PhaseManager : GameFrameworkComponent
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (entities[i] is IBuildingLogicContext building
+            if (entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 && building.OwnerFactionId == EntitySideHelper.PlayerFactionId)
             {
                 building.RestoreBuildingToFullHealth();
@@ -326,7 +326,7 @@ public class PhaseManager : GameFrameworkComponent
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (!(entities[i] is IBuildingLogicContext building)
+            if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 || !building.Alive
                 || building.IsDisabled
                 || building.BuildingData == null
@@ -427,7 +427,7 @@ public class PhaseManager : GameFrameworkComponent
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (entities[i] is not IBuildingLogicContext building)
+            if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building))
                 continue;
             scanBuildingCount++;
             if (!building.Alive

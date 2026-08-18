@@ -292,7 +292,7 @@ public static class LogicMovementRegionConstraintService
 
     private static bool IsNonVisibleBlocked(IEntityContext entity, FixVector2 position)
     {
-        if (entity is not IHeroLogicContext hero || !hero.IsGhostState)
+        if (!entity.TryGetLogicHero(out IHeroLogicContext hero) || !hero.IsGhostState)
             return false;
 
         if (LogicCardPlacementAuthority.IsActive && LogicCardPlacementAuthority.IsWorldBound)

@@ -68,6 +68,9 @@ public class SimEntityContext : IEntityContext, ITargetable
     public HealthContainer Health { get; private set; } = new HealthContainer();
     public Fix64 HealthValue => Health.currentHealth;
     public int TauntLevel { get; set; }
+    public virtual bool IsBuildingEntity => false;
+    public virtual bool IsHeroEntity => false;
+    public virtual bool IsStealthed { get; protected set; }
 
     public IControlBrain Brain { get; set; }
 
@@ -202,6 +205,11 @@ public class SimEntityContext : IEntityContext, ITargetable
         if (string.IsNullOrEmpty(sourceId))
             throw new System.ArgumentException("Invincible source id is empty.", nameof(sourceId));
         return _invincibleSources.Remove(sourceId);
+    }
+
+    public void SetStealthByBuff(bool enabled)
+    {
+        IsStealthed = enabled;
     }
 
     public bool CanRun(ICapability cap)

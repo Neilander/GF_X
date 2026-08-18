@@ -2029,15 +2029,8 @@ public class MAEntityLogicFrameSystemTests
     {
         public IEntityContext CurrentTarget { get; set; }
         public IEntityContext AggroTarget => CurrentTarget;
-        public IEntityContext FollowTarget => null;
-        public Fix64 AggroRangeFixed { get; set; }
-        public Fix64 ForgetRangeFixed { get; set; }
-        public Fix64 FollowSearchRangeFixed { get; set; }
-        public Fix64 AlertRadiusFixed { get; set; }
         public void Init(IEntityContext ctx) { }
         public void UpdateTargeting(Fix64 deltaTime) { }
-        public void NotifyDamageTaken(IEntityContext attacker) { }
-        public void NotifyAllyFoundEnemy(IEntityContext enemy) { }
         public void ClearAggro() { }
         public void ShutDown() { }
         public void Resume() { }
@@ -2120,7 +2113,7 @@ public class MAEntityLogicFrameSystemTests
         public bool NavigationConstraintEnabled { get; set; }
         public bool PreserveSpeedOnStaticSlide { get; set; }
         public int NavigationAgentTypeIdOverride { get; set; }
-        public bool IsHeroEntity => true;
+        public override bool IsHeroEntity => true;
         public bool IsGhostState { get; set; }
 
         public void SetGhostStateByBuff(bool enabled)

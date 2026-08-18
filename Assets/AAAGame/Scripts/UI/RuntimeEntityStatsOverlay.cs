@@ -144,13 +144,7 @@ public sealed class RuntimeEntityStatsOverlay : MonoBehaviour
 
     private void AppendEntityDetails(IEntityContext entity, StringBuilder sb)
     {
-        bool isBuilding = entity is LogicEntityState logicState
-            ? logicState.IsBuildingEntity
-            : entity is BuildingEntity
-              || entity is IBuildingLogicContext { BuildingData: not null };
-        IBuildingLogicContext building = isBuilding ? entity as IBuildingLogicContext : null;
-        if (isBuilding && (building == null || building.BuildingData == null))
-            throw new InvalidOperationException("RuntimeEntityStatsOverlay received an invalid building logic context.");
+        bool isBuilding = entity.TryGetLogicBuilding(out IBuildingLogicContext building);
         bool hasBoundView = LogicEntityLifecycleService.TryGetBoundView(entity.LogicEntityId, out MAEntity boundView);
 
         AppendLine(sb, "Common");
@@ -243,8 +237,10 @@ public sealed class RuntimeEntityStatsOverlay : MonoBehaviour
         AppendValue(sb, "CurrentTarget", DescribeShort(target));
         if (target != null)
             AppendValue(sb, "TargetDistance", FormatFix(FixVector2.Distance(entity.PositionFixed, target.PositionFixed)));
-        AppendValue(sb, "Aggro/Forget", $"{(float)targetComp.AggroRangeFixed:0.###} / {(float)targetComp.ForgetRangeFixed:0.###}");
-        AppendValue(sb, "Alert", ((float)targetComp.AlertRadiusFixed).ToString("0.###"));
+        if (targetComp is ITargetSearchRangeComp rangeTargeting)
+        {
+            AppendValue(sb, "Aggro/Forget", $"{(float)rangeTargeting.AggroRangeFixed:0.###} / {(float)rangeTargeting.ForgetRangeFixed:0.###}");
+        }
 
         if (targetComp is IMultiTargetingComp multi)
         {
@@ -406,7 +402,7 @@ public sealed class RuntimeEntityStatsOverlay : MonoBehaviour
         if (entity == null)
             return "<none>";
 
-        string kind = entity is IBuildingLogicContext ? "B" : "U";
+        string kind = entity.IsBuildingEntity ? "B" : entity.IsHeroEntity ? "H" : "U";
         return $"{kind}#{entity.LogicEntityId.Value} {entity.CharacterKey} {entity.Side}";
     }
 

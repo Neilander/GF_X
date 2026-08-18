@@ -6,11 +6,16 @@ public static class EntityContextExtensions
         this IEntityContext context,
         out IBuildingLogicContext building)
     {
-        building = context as IBuildingLogicContext;
-        if (building == null || building.BuildingData == null)
-        {
-            building = null;
+        building = null;
+        if (context == null || !context.IsBuildingEntity)
             return false;
+        building = context as IBuildingLogicContext
+            ?? throw new System.InvalidOperationException(
+                $"Entity {context.LogicEntityId.Value} declares building identity without IBuildingLogicContext.");
+        if (building.BuildingData == null)
+        {
+            throw new System.InvalidOperationException(
+                $"Building entity {context.LogicEntityId.Value} has no BuildingData.");
         }
         return true;
     }
@@ -18,6 +23,19 @@ public static class EntityContextExtensions
     public static bool IsLogicBuilding(this IEntityContext context)
     {
         return context.TryGetLogicBuilding(out _);
+    }
+
+    public static bool TryGetLogicHero(
+        this IEntityContext context,
+        out IHeroLogicContext hero)
+    {
+        hero = null;
+        if (context == null || !context.IsHeroEntity)
+            return false;
+        hero = context as IHeroLogicContext
+            ?? throw new System.InvalidOperationException(
+                $"Entity {context.LogicEntityId.Value} declares hero identity without IHeroLogicContext.");
+        return true;
     }
 
     public static bool IsDestroyed(this IEntityContext ctx)
@@ -56,7 +74,7 @@ public static class EntityContextExtensions
             return false;
 
         // 幽灵态（玩家死亡进入的复活等待状态）：Alive=true 但不可被攻击，避免敌人一直锁着它打
-        if (ctx is IHeroLogicContext se && se.IsGhostState)
+        if (ctx.TryGetLogicHero(out IHeroLogicContext hero) && hero.IsGhostState)
             return false;
 
         // 检查是否处于战斗阶段（进攻阶段）
@@ -72,7 +90,7 @@ public static class EntityContextExtensions
         if (ctx.IsDestroyed() || !ctx.Alive)
             return false;
 
-        if (ctx is IHeroLogicContext se && se.IsGhostState)
+        if (ctx.TryGetLogicHero(out IHeroLogicContext hero) && hero.IsGhostState)
             return false;
 
         GamePhase currentPhase = LogicPhaseCommandService.GetRequiredCurrentPhase();

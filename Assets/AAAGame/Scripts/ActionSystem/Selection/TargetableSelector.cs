@@ -154,7 +154,7 @@ public static class LogicTargetSelectionQuery
                 continue;
             if (!target.CanBeSelected())
                 continue;
-            if (target is IBuildingLogicContext building && building.IsDisabled)
+            if (entity.TryGetLogicBuilding(out IBuildingLogicContext building) && building.IsDisabled)
                 continue;
             if (entity.HasInvincibleBuff())
                 continue;

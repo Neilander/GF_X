@@ -11,13 +11,10 @@ public static class BrainFactory
             case BrainType.Player:
                 return new PlayerBrain();
 
-            //注意：这个现在没有使用！应使用SoliderAi
             case BrainType.EnemyAI:
-                return new EnemyAIBrain();
-
-            //注意：这个现在没有使用！应使用SoliderAi
             case BrainType.FriendlyAI:
-                return new FriendlyAIBrain();
+                throw new System.InvalidOperationException(
+                    $"BrainFactory.Create failed: legacy BrainType {tp} is unsupported; use SoldierAI.");
 
             case BrainType.SoldierAI:
             case BrainType.DefendEnemyAI:

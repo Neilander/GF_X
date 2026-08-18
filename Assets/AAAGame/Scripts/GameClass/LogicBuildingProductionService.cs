@@ -51,7 +51,7 @@ public static class LogicBuildingProductionService
         var buildings = new List<IBuildingLogicContext>();
         for (int i = 0; i < entities.Count; i++)
         {
-            if (entities[i] is IBuildingLogicContext building
+            if (entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 && building.Alive
                 && building.BuildingData != null
                 && building.BuildingData.Type == BuilType.Prod)
@@ -79,7 +79,7 @@ public static class LogicBuildingProductionService
         IList<IEntityContext> active = EntityRegistry.AllEntities;
         for (int i = 0; i < active.Count; i++)
         {
-            if (active[i] is IBuildingLogicContext building
+            if (active[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 && string.Equals(building.BuildingInstanceId, buildingInstanceId, StringComparison.Ordinal)
                 && building.BuildingData?.Type == BuilType.Prod)
             {
@@ -271,7 +271,7 @@ public static class LogicBuildingProductionService
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (!(entities[i] is IBuildingLogicContext other)
+            if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext other)
                 || !other.Alive
                 || other.IsDisabled
                 || !string.Equals(other.StrongholdId, building.StrongholdId, StringComparison.Ordinal)

@@ -715,7 +715,7 @@ public class BuildManager : GameFrameworkComponent
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (!(entities[i] is IBuildingLogicContext building) || building.BuildingData == null)
+            if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building))
                 continue;
 
             if (building.BuildingData.Type != BuilType.Base)

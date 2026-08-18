@@ -777,7 +777,7 @@ public static class EditorLogicRuntimeStressGate
         for (int i = 0; i < entities.Count; i++)
         {
             IEntityContext entity = entities[i];
-            if (entity is not IBuildingLogicContext building
+            if (!entity.TryGetLogicBuilding(out IBuildingLogicContext building)
                 || building.OwnerFactionId != EntitySideHelper.PlayerFactionId)
             {
                 continue;

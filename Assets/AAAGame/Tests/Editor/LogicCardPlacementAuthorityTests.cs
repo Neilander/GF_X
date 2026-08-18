@@ -489,13 +489,42 @@ public sealed class LogicCardPlacementAuthorityTests
                 new FixVector2((Fix64)0.25f, (Fix64)0.25f)));
         EntityRegistry.Register(revealer);
         EntityRegistry.Register(enemy);
-        ((IBuildingLogicContext)enemy).SetPermanentStealthByBuff(true);
+        enemy.SetStealthByBuff(true);
         LogicFactionVisionService.AddDamageReveal(SideType.PlayerSide, enemy.PositionFixed);
 
         Assert.IsFalse(LogicFactionVisionService.IsEntityVisibleToSide(SideType.PlayerSide, enemy),
             "Ordinary vision and damage-alert ground vision must not act as stealth detection.");
 
-        ((IBuildingLogicContext)enemy).SetPermanentStealthByBuff(false);
+        enemy.SetStealthByBuff(false);
+
+        Assert.IsTrue(LogicFactionVisionService.IsEntityVisibleToSide(SideType.PlayerSide, enemy));
+    }
+
+    [Test]
+    public void StealthedUnit_IsNotVisibleToOrdinaryOrDamageAlertVision()
+    {
+        Fog3MapData map = CreateMap(5, 1);
+        MarkAllExplored(map);
+        Bind(map, Array.Empty<LogicCombatShape>(), (Fix64)4);
+        LogicEntityState revealer = CreateUnit(
+            1,
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            SideType.PlayerSide,
+            false);
+        LogicEntityState enemy = CreateUnit(
+            2,
+            new FixVector2((Fix64)2.5f, (Fix64)0.5f),
+            SideType.EnemySide,
+            false);
+        EntityRegistry.Register(revealer);
+        EntityRegistry.Register(enemy);
+        enemy.SetStealthByBuff(true);
+        LogicFactionVisionService.AddDamageReveal(SideType.PlayerSide, enemy.PositionFixed);
+
+        Assert.IsTrue(enemy.IsStealthed);
+        Assert.IsFalse(LogicFactionVisionService.IsEntityVisibleToSide(SideType.PlayerSide, enemy));
+
+        enemy.SetStealthByBuff(false);
 
         Assert.IsTrue(LogicFactionVisionService.IsEntityVisibleToSide(SideType.PlayerSide, enemy));
     }
@@ -698,8 +727,8 @@ public sealed class LogicCardPlacementAuthorityTests
             LogicCardPlacementAuthority.Evaluate(placementPosition, (Fix64)0.5f, GamePhase.Invade));
         Assert.IsTrue(LogicCardPlacementAuthority.GeneratesEnemyBuildingForbiddenZone(enemy));
 
-        ((IBuildingLogicContext)enemy).SetPermanentStealthByBuff(true);
-        Assert.IsTrue(((IBuildingLogicContext)enemy).IsStealthed);
+        enemy.SetStealthByBuff(true);
+        Assert.IsTrue(enemy.IsStealthed);
         Assert.IsFalse(LogicCardPlacementAuthority.GeneratesEnemyBuildingForbiddenZone(enemy));
         Assert.AreEqual(
             LogicCardPlacementInvalidReason.None,
@@ -707,7 +736,7 @@ public sealed class LogicCardPlacementAuthorityTests
         Assert.IsTrue(LogicCardPlacementAuthority.IsInsideStealthedBuildingCollision(
             new FixVector2((Fix64)7, (Fix64)7)));
 
-        ((IBuildingLogicContext)enemy).SetPermanentStealthByBuff(false);
+        enemy.SetStealthByBuff(false);
         Assert.IsTrue(LogicCardPlacementAuthority.GeneratesEnemyBuildingForbiddenZone(enemy));
         Assert.AreEqual(
             LogicCardPlacementInvalidReason.EnemyBuildingForbiddenArea,

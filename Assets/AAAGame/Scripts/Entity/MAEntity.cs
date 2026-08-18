@@ -159,6 +159,9 @@ public class MAEntity : CompCreature, IEntityContext
     WeaponComp IEntityContext.WeaponComp => weaponComp;
     IDurationMoveEffectComp IEntityContext.DurationMoveEffectComp => durationMoveEffectComp;
     public CreaturePropertyManager CreatureProperties => CreaturePropertyManager;
+    public bool IsBuildingEntity => RequireLogicState().IsBuildingEntity;
+    public bool IsHeroEntity => RequireLogicState().IsHeroEntity;
+    public virtual bool IsStealthed => RequireLogicState().IsStealthed;
     public bool IsOutOfCombat => RequireLogicState().IsOutOfCombat;
     public Fix64 OutOfCombatElapsedLogicTime => RequireLogicState().OutOfCombatElapsedLogicTime;
     public float OutOfCombatElapsedSeconds => RequireLogicState().OutOfCombatElapsedSeconds;
@@ -176,6 +179,11 @@ public class MAEntity : CompCreature, IEntityContext
     public Fix64 GetProperty(CreatureMainProperty prop)
     {
         return CreaturePropertyManager.GetProperty(prop);
+    }
+
+    public void SetStealthByBuff(bool enabled)
+    {
+        throw new InvalidOperationException("MAEntity view cannot mutate logic stealth state.");
     }
 
     #endregion

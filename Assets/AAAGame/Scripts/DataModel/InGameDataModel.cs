@@ -722,7 +722,7 @@ public partial class InGameDataModel : DataModelBase
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (!(entities[i] is IBuildingLogicContext building)
+            if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
                 || building.OwnerFactionId != ownerFactionId)
             {
                 continue;

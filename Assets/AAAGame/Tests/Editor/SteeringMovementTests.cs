@@ -107,8 +107,6 @@ public class SteeringMovementTests
         string scriptsRoot = System.IO.Path.Combine(Application.dataPath, "AAAGame", "Scripts");
         string[] brainFiles =
         {
-            System.IO.Path.Combine(scriptsRoot, "Entity", "EnemyAIBrain.cs"),
-            System.IO.Path.Combine(scriptsRoot, "Entity", "FriendlyAIBrain.cs"),
             System.IO.Path.Combine(scriptsRoot, "Movement", "SoldierAIBrain.cs"),
         };
         var floatToFixedPattern = new System.Text.RegularExpressions.Regex(
@@ -122,15 +120,6 @@ public class SteeringMovementTests
                 Is.Zero,
                 $"Brain authority source still converts float literals to Fix64: {brainFiles[i]}.");
         }
-
-        var enemy = new EnemyAIBrain();
-        AssertRaw(6554, enemy.AttackRange, nameof(enemy.AttackRange));
-        AssertRaw(6144, enemy.SeparationRadius, nameof(enemy.SeparationRadius));
-        AssertRaw(4916, enemy.SeparationWeight, nameof(enemy.SeparationWeight));
-
-        var friendly = new FriendlyAIBrain();
-        AssertRaw(6554, friendly.AttackRange, nameof(friendly.AttackRange));
-        AssertRaw(1229, friendly.FollowUpdateInterval, nameof(friendly.FollowUpdateInterval));
 
         var soldier = new SoldierAIBrain();
         AssertRaw(40960, soldier.DetectEnemyRange, nameof(soldier.DetectEnemyRange));
@@ -392,10 +381,10 @@ public class SteeringMovementTests
         return ctx;
     }
 
-    private static WeaponComp CreateTestWeaponComp(Fix64 worldRange)
+    private static WeaponComp CreateTestWeaponComp(Fix64 worldRange, WeaponType weaponType = WeaponType.Melee)
     {
         var data = new WeaponData(
-            WeaponType.Melee,
+            weaponType,
             Fix64.One,
             Fix64.One,
             DistanceUnitConverter.ConvertFromWorld(worldRange),
@@ -409,6 +398,26 @@ public class SteeringMovementTests
             Fix64.Zero,
             Array.Empty<Fix64>());
         return new WeaponComp(data.ToWeapon("SteeringMovementTests"));
+    }
+
+    private static BuildingData CreateTestBuildingData(string identifier)
+    {
+        return new BuildingData(
+            identifier,
+            BuilType.Def,
+            Archetype.None,
+            "Tests/Building",
+            identifier,
+            identifier,
+            1,
+            0,
+            (Fix64)100,
+            null,
+            Fix64.Zero,
+            Array.Empty<Fix64>(),
+            null,
+            0,
+            Array.Empty<string>());
     }
 
     [Test]
@@ -896,7 +905,7 @@ public class SteeringMovementTests
     }
 
     [Test]
-    public void BuildingTargeting_IgnoresAlertInsideAttackRange()
+    public void BuildingTargeting_DoesNotExposeAlertCapability()
     {
         SimBuildingContext tower = MakeBuilding(Vector3.zero, SideType.PlayerSide);
         tower.WeaponComp = CreateTestWeaponComp((Fix64)5);
@@ -908,9 +917,9 @@ public class SteeringMovementTests
 
         var targeting = new BuildingTargetingComp();
         targeting.Init(tower);
-        targeting.NotifyAllyFoundEnemy(alertTarget);
         targeting.UpdateTargeting((Fix64)0.2f);
 
+        Assert.IsFalse(typeof(IAlertTargetingComp).IsAssignableFrom(targeting.GetType()));
         Assert.AreSame(closerTarget, targeting.CurrentTarget,
             "Buildings have no alert aggro; distance remains the tie-break inside attack range.");
     }
@@ -940,7 +949,7 @@ public class SteeringMovementTests
         EntityRegistry.Register(enemy);
         EntityRegistry.Register(alertedEnemy);
 
-        targeting.NotifyAllyFoundEnemy(alertedEnemy);
+        Assert.IsFalse(typeof(IAlertTargetingComp).IsAssignableFrom(targeting.GetType()));
         targeting.UpdateTargeting((Fix64)0.2f);
         hero.TickOutOfCombatState(0f);
 
@@ -949,7 +958,6 @@ public class SteeringMovementTests
 
         enemy.Position = new Vector3(10f, 0f, 0f);
         alertedEnemy.Position = new Vector3(10f, 0f, 0f);
-        targeting.NotifyAllyFoundEnemy(enemy);
         targeting.UpdateTargeting((Fix64)0.2f);
         hero.TickOutOfCombatState(0f);
 
@@ -979,6 +987,89 @@ public class SteeringMovementTests
         {
             UnityEngine.Object.DestroyImmediate(factory);
         }
+    }
+
+    [Test]
+    public void DedicatedTargetingComponents_RejectWrongOwnerKinds()
+    {
+        SimEntityContext unit = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimHeroContext hero = MakeHero(Vector3.zero, SideType.PlayerSide);
+        SimBuildingContext building = MakeBuilding(Vector3.zero, SideType.PlayerSide);
+
+        StringAssert.Contains("non-hero unit", Assert.Throws<InvalidOperationException>(
+            () => new CharacterTargetingComp().Init(hero)).Message);
+        StringAssert.Contains("hero", Assert.Throws<InvalidOperationException>(
+            () => new HeroTargetingComp().Init(unit)).Message);
+        StringAssert.Contains("building", Assert.Throws<InvalidOperationException>(
+            () => new BuildingTargetingComp().Init(unit)).Message);
+        StringAssert.Contains("non-hero unit", Assert.Throws<InvalidOperationException>(
+            () => new CharacterTargetingComp().Init(building)).Message);
+    }
+
+    [Test]
+    public void CharacterTargetingFactory_SelectsDedicatedHealingComponents()
+    {
+        SimEntityContext unit = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimHeroContext hero = MakeHero(Vector3.zero, SideType.PlayerSide);
+        unit.WeaponComp = CreateTestWeaponComp((Fix64)1.5f, WeaponType.HealMelee);
+        hero.WeaponComp = CreateTestWeaponComp((Fix64)1.5f, WeaponType.HealMelee);
+        CharacterTargetingFactory factory = ScriptableObject.CreateInstance<CharacterTargetingFactory>();
+        try
+        {
+            Assert.IsInstanceOf<UnitHealTargetingComp>(factory.CreateTargetingComp(unit));
+            Assert.IsInstanceOf<HeroHealTargetingComp>(factory.CreateTargetingComp(hero));
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(factory);
+        }
+    }
+
+    [Test]
+    public void HealingTargeting_UnitUsesSearchRangeWhileHeroAndBuildingUseAttackRange()
+    {
+        SimEntityContext unit = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimHeroContext hero = MakeHero(new Vector3(20f, 0f, 0f), SideType.PlayerSide);
+        SimBuildingContext building = MakeBuilding(new Vector3(40f, 0f, 0f), SideType.PlayerSide);
+        unit.WeaponComp = CreateTestWeaponComp((Fix64)1.5f, WeaponType.HealMelee);
+        hero.WeaponComp = CreateTestWeaponComp((Fix64)1.5f, WeaponType.HealMelee);
+        building.WeaponComp = CreateTestWeaponComp((Fix64)1.5f, WeaponType.HealMelee);
+        SimEntityContext unitAlly = MakeDamagedAlly(new Vector3(3f, 0f, 0f));
+        SimEntityContext heroAlly = MakeDamagedAlly(new Vector3(23f, 0f, 0f));
+        SimEntityContext buildingAlly = MakeDamagedAlly(new Vector3(43f, 0f, 0f));
+        EntityRegistry.Register(unit);
+        EntityRegistry.Register(hero);
+        EntityRegistry.Register(building);
+        EntityRegistry.Register(unitAlly);
+        EntityRegistry.Register(heroAlly);
+        EntityRegistry.Register(buildingAlly);
+
+        var unitTargeting = new UnitHealTargetingComp { AggroRangeFixed = (Fix64)6 };
+        var heroTargeting = new HeroHealTargetingComp();
+        var buildingTargeting = new BuildingHealTargetingComp();
+        unitTargeting.Init(unit);
+        heroTargeting.Init(hero);
+        buildingTargeting.Init(building);
+        unitTargeting.UpdateTargeting((Fix64)0.2f);
+        heroTargeting.UpdateTargeting((Fix64)0.2f);
+        buildingTargeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(unitAlly, unitTargeting.CurrentTarget);
+        Assert.IsNull(heroTargeting.CurrentTarget);
+        Assert.IsNull(buildingTargeting.CurrentTarget);
+        unitAlly.CreatureProperties.Dispose();
+        heroAlly.CreatureProperties.Dispose();
+        buildingAlly.CreatureProperties.Dispose();
+    }
+
+    private SimEntityContext MakeDamagedAlly(Vector3 position)
+    {
+        SimEntityContext ally = MakeSoldier(position, SideType.PlayerSide);
+        ally.CreatureProperties = new CreaturePropertyManager(
+            property => property == CreatureMainProperty.Health ? (Fix64)100 : Fix64.Zero);
+        ally.Health.Init((Fix64)100);
+        ally.TakeDamage((Fix64)50, HealthModifyType.reduce);
+        return ally;
     }
 
     [Test]
@@ -1357,7 +1448,7 @@ public class SteeringMovementTests
 
     private sealed class SimHeroContext : SimEntityContext, IHeroLogicContext
     {
-        public bool IsHeroEntity => true;
+        public override bool IsHeroEntity => true;
         public bool IsGhostState { get; private set; }
         public void SetGhostStateByBuff(bool enabled) => IsGhostState = enabled;
         public void RestoreFromGhostState() => IsGhostState = false;
@@ -1365,7 +1456,9 @@ public class SteeringMovementTests
 
     private sealed class SimBuildingContext : SimEntityContext, IBuildingLogicContext
     {
-        public BuildingData BuildingData => null;
+        private readonly BuildingData m_BuildingData = CreateTestBuildingData("Buil_Test_Lv1");
+        public override bool IsBuildingEntity => true;
+        public BuildingData BuildingData => m_BuildingData;
         public BuildingExtraProps ProductionProps => null;
         public string BuildingInstanceId => "test-building";
         public string StrongholdId => "test-stronghold";
@@ -1382,7 +1475,6 @@ public class SteeringMovementTests
         public bool IsDisabled => false;
         public bool IsPhaseProtected => false;
         public bool IsPermanentlyInvincible { get; private set; }
-        public bool IsStealthed { get; private set; }
         public bool HasPermanentNoAttackCapability => false;
         public bool BlocksLogicMovement { get; private set; }
         public IReadOnlyList<LogicCombatShape> LogicObstacleShapes => Array.Empty<LogicCombatShape>();
@@ -1400,7 +1492,6 @@ public class SteeringMovementTests
         public void SetGameEndConditionBuilding(bool enabled) => IsGameEndConditionBuilding = enabled;
         public void RestoreBuildingToFullHealth() { }
         public void SetCollisionBlockingByBuff(bool blocksMovement) => BlocksLogicMovement = blocksMovement;
-        public void SetPermanentStealthByBuff(bool enabled) => IsStealthed = enabled;
         public void SetPermanentInvincibilityByBuff(bool enabled) => IsPermanentlyInvincible = enabled;
         public void SetPhaseProtectionByBuff(bool enabled) { }
     }

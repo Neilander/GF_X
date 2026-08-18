@@ -6,18 +6,8 @@ public abstract class AttackRangeTargetingCompBase : TargetingCompBase, ITargeti
     private static readonly Fix64 ScanInterval = Fix64.FromRaw(820);
     private IEntityContext m_Context;
     private Fix64 m_ScanTimer;
-    private Fix64 m_AggroRange = (Fix64)6;
-    private Fix64 m_ForgetRange = (Fix64)8;
-    private Fix64 m_FollowSearchRange;
-    private Fix64 m_AlertRadius = (Fix64)5;
-
     public IEntityContext CurrentTarget { get; set; }
     public IEntityContext AggroTarget => CurrentTarget;
-    public IEntityContext FollowTarget => null;
-    public Fix64 AggroRangeFixed { get => m_AggroRange; set => m_AggroRange = LogicTargetingRange.Require(value, nameof(AggroRangeFixed)); }
-    public Fix64 ForgetRangeFixed { get => m_ForgetRange; set => m_ForgetRange = LogicTargetingRange.Require(value, nameof(ForgetRangeFixed)); }
-    public Fix64 FollowSearchRangeFixed { get => m_FollowSearchRange; set => m_FollowSearchRange = LogicTargetingRange.Require(value, nameof(FollowSearchRangeFixed)); }
-    public Fix64 AlertRadiusFixed { get => m_AlertRadius; set => m_AlertRadius = LogicTargetingRange.Require(value, nameof(AlertRadiusFixed)); }
 
     protected abstract bool SupportsOwner(IEntityContext owner);
     protected abstract string OwnerKind { get; }
@@ -98,14 +88,6 @@ public abstract class AttackRangeTargetingCompBase : TargetingCompBase, ITargeti
                && m_Context.LogicFrameDistanceToTargetSurfaceFixed(candidate) <= attackRange;
     }
 
-    public void NotifyDamageTaken(IEntityContext attacker)
-    {
-        if (m_Context == null)
-            throw new InvalidOperationException($"{GetType().Name}.NotifyDamageTaken called before Init.");
-        ReportSuccessfulDamage(m_Context, attacker);
-    }
-
-    public void NotifyAllyFoundEnemy(IEntityContext enemy) { }
     public void ClearAggro() { CurrentTarget = null; }
     public void ShutDown() { CurrentTarget = null; }
     public void Resume() { }
@@ -118,9 +100,5 @@ public abstract class AttackRangeTargetingCompBase : TargetingCompBase, ITargeti
         hasher.Add(CurrentTarget != null && CurrentTarget.LogicEntityId.IsValid
             ? CurrentTarget.LogicEntityId.Value
             : 0);
-        hasher.Add(m_AggroRange.RawValue);
-        hasher.Add(m_ForgetRange.RawValue);
-        hasher.Add(m_FollowSearchRange.RawValue);
-        hasher.Add(m_AlertRadius.RawValue);
     }
 }

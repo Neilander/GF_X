@@ -11,26 +11,29 @@ public class CharacterTargetingFactory : TargetingCompFactory
     public float defaultAggroRange = 6f;
     public float defaultForgetRange = 8f;
     public float defaultFollowRange = 30f;
-    [Tooltip("自己扫描到敌人时，把敌人广播给此半径内的同阵营友军。0 = 关掉广播。")]
-    public float defaultAlertRadius = 5f;
-
     public override ITargetingComp CreateTargetingComp(IEntityContext gmo)
     {
+        if (gmo == null)
+            throw new System.ArgumentNullException(nameof(gmo));
+
         ITargetingComp comp;
-        if (WeaponTargetRules.IsHealingWeapon(gmo?.WeaponComp?.Data?.Type ?? WeaponType.None))
-            comp = new HealTargetingComp();
-        else if (gmo is IHeroLogicContext hero && hero.IsHeroEntity)
-            comp = new HeroTargetingComp();
+        bool healingWeapon = WeaponTargetRules.IsHealingWeapon(gmo.WeaponComp?.Data?.Type ?? WeaponType.None);
+        if (gmo.IsHeroEntity)
+            comp = healingWeapon ? new HeroHealTargetingComp() : new HeroTargetingComp();
+        else if (healingWeapon)
+            comp = new UnitHealTargetingComp();
         else
             comp = new CharacterTargetingComp();
 
         comp.Init(gmo);
 
-        // 赋予初始面板值
-        comp.AggroRangeFixed = (Fix64)defaultAggroRange;
-        comp.ForgetRangeFixed = (Fix64)defaultForgetRange;
-        comp.FollowSearchRangeFixed = (Fix64)defaultFollowRange;
-        comp.AlertRadiusFixed = (Fix64)defaultAlertRadius;
+        if (comp is ITargetSearchRangeComp searchRange)
+        {
+            searchRange.AggroRangeFixed = (Fix64)defaultAggroRange;
+            searchRange.ForgetRangeFixed = (Fix64)defaultForgetRange;
+        }
+        if (comp is IFollowTargetingComp followTargeting)
+            followTargeting.FollowSearchRangeFixed = (Fix64)defaultFollowRange;
 
         gmo.SetTargetingComp(comp);
         return comp;

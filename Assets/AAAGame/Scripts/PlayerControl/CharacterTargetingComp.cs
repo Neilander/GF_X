@@ -9,7 +9,7 @@ public interface ILastSeenTargetingComp
     FixVector2 LastSeenPursuitDestinationFixed { get; }
 }
 
-public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, INavigationReachabilityTargetingComp, ILastSeenTargetingComp, ILogicDeterministicStateContributor
+public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITargetSearchRangeComp, IFollowTargetingComp, IAlertTargetingComp, IDefendTargetingModeComp, INavigationReachabilityTargetingComp, ILastSeenTargetingComp, ILogicDeterministicStateContributor
 {
     private readonly struct AlertRecord
     {
@@ -86,15 +86,18 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, INaviga
     private Fix64 m_AggroRange = (Fix64)6;
     private Fix64 m_ForgetRange = (Fix64)8;
     private Fix64 m_FollowSearchRange = (Fix64)30;
-    private Fix64 m_AlertRadius = (Fix64)5;
     public Fix64 AggroRangeFixed { get => m_AggroRange; set => m_AggroRange = LogicTargetingRange.Require(value, nameof(AggroRangeFixed)); }
     public Fix64 ForgetRangeFixed { get => m_ForgetRange; set => m_ForgetRange = LogicTargetingRange.Require(value, nameof(ForgetRangeFixed)); }
     public Fix64 FollowSearchRangeFixed { get => m_FollowSearchRange; set => m_FollowSearchRange = LogicTargetingRange.Require(value, nameof(FollowSearchRangeFixed)); }
-    public Fix64 AlertRadiusFixed { get => m_AlertRadius; set => m_AlertRadius = LogicTargetingRange.Require(value, nameof(AlertRadiusFixed)); }
 
     public void Init(IEntityContext ctx)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
+        if (_ctx.IsBuildingEntity || _ctx.IsHeroEntity)
+        {
+            throw new InvalidOperationException(
+                $"CharacterTargetingComp requires a non-hero unit owner. entity={_ctx.LogicEntityId.Value}.");
+        }
         _currentTarget = null;
         _lostTarget = null;
         FollowTarget = null;
@@ -305,7 +308,7 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, INaviga
         out bool waitForNavigation)
     {
         waitForNavigation = false;
-        if (_ctx.IsLogicBuilding() || distance <= attackRange)
+        if (distance <= attackRange)
             return true;
         if (FlowFieldCrowdMovementSystem.TryResolveReachableAttackAreaPointFixed(
                 _ctx,
@@ -341,11 +344,6 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, INaviga
     private bool TryResolveLastSeenPursuitDestination(Fix64 attackRange, out bool waitForNavigation)
     {
         waitForNavigation = false;
-        if (_ctx.IsLogicBuilding())
-        {
-            _lastSeenPursuitDestination = _lastSeenPosition;
-            return true;
-        }
         if (FlowFieldCrowdMovementSystem.TryResolveReachablePointAreaFixed(
                 _ctx,
                 _lastSeenPosition,
@@ -396,11 +394,6 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, INaviga
         {
             FollowTarget = player;
         }
-    }
-
-    public void NotifyDamageTaken(IEntityContext attacker)
-    {
-        ReportSuccessfulDamage(_ctx, attacker);
     }
 
     public void NotifyAllyFoundEnemy(IEntityContext enemy)
@@ -550,7 +543,6 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, INaviga
         hasher.Add(m_AggroRange.RawValue);
         hasher.Add(m_ForgetRange.RawValue);
         hasher.Add(m_FollowSearchRange.RawValue);
-        hasher.Add(m_AlertRadius.RawValue);
         hasher.Add(_defendMode);
         hasher.Add(GetLogicId(_defendFallbackTarget));
         hasher.Add(_alerts.Count);
@@ -563,130 +555,4 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, INaviga
 
     private static int GetLogicId(IEntityContext entity) =>
         entity != null && entity.LogicEntityId.IsValid ? entity.LogicEntityId.Value : 0;
-}
-
-public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILogicDeterministicStateContributor
-{
-    private readonly struct HealCandidate
-    {
-        public HealCandidate(IEntityContext target, Fix64 hpRatio, Fix64 distance)
-        {
-            Target = target;
-            HpRatio = hpRatio;
-            Distance = distance;
-        }
-        public IEntityContext Target { get; }
-        public Fix64 HpRatio { get; }
-        public Fix64 Distance { get; }
-    }
-
-    private static readonly Fix64 ScanInterval = Fix64.FromRaw(820);
-    private IEntityContext _ctx;
-    private readonly List<IEntityContext> _currentTargets = new List<IEntityContext>();
-    private readonly List<HealCandidate> _inRange = new List<HealCandidate>();
-    private readonly List<HealCandidate> _outOfRange = new List<HealCandidate>();
-    private Fix64 _scanTimer;
-    public IEntityContext CurrentTarget { get; set; }
-    public IEntityContext AggroTarget => null;
-    public IEntityContext FollowTarget { get; private set; }
-    public IReadOnlyList<IEntityContext> CurrentTargets => _currentTargets;
-    private Fix64 m_AggroRange = (Fix64)6;
-    private Fix64 m_ForgetRange = (Fix64)8;
-    private Fix64 m_FollowSearchRange = (Fix64)30;
-    private Fix64 m_AlertRadius = (Fix64)5;
-    public Fix64 AggroRangeFixed { get => m_AggroRange; set => m_AggroRange = LogicTargetingRange.Require(value, nameof(AggroRangeFixed)); }
-    public Fix64 ForgetRangeFixed { get => m_ForgetRange; set => m_ForgetRange = LogicTargetingRange.Require(value, nameof(ForgetRangeFixed)); }
-    public Fix64 FollowSearchRangeFixed { get => m_FollowSearchRange; set => m_FollowSearchRange = LogicTargetingRange.Require(value, nameof(FollowSearchRangeFixed)); }
-    public Fix64 AlertRadiusFixed { get => m_AlertRadius; set => m_AlertRadius = LogicTargetingRange.Require(value, nameof(AlertRadiusFixed)); }
-
-    public void Init(IEntityContext ctx)
-    {
-        _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
-        CurrentTarget = null;
-        FollowTarget = null;
-        _scanTimer = Fix64.Zero;
-    }
-
-    public void UpdateTargeting(Fix64 deltaTime)
-    {
-        if (_ctx == null) throw new InvalidOperationException("HealTargetingComp.UpdateTargeting called before Init.");
-        if (CurrentTarget != null && !WeaponTargetRules.IsValidHealTarget(_ctx, CurrentTarget, true)) CurrentTarget = null;
-        for (int i = _currentTargets.Count - 1; i >= 0; i--)
-        {
-            if (!WeaponTargetRules.IsValidHealTarget(_ctx, _currentTargets[i], true))
-                _currentTargets.RemoveAt(i);
-        }
-        _scanTimer += deltaTime;
-        if (_scanTimer < ScanInterval) return;
-        _scanTimer = Fix64.Zero;
-        RebuildTargets();
-        MaintainFollowTarget();
-    }
-
-    private void RebuildTargets()
-    {
-        Fix64 attackRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : Fix64.FromRaw(6144);
-        Fix64 scanRange = Fix64.Max(m_AggroRange, attackRange);
-        int count = Mathf.Max(1, (int)(_ctx.WeaponComp?.Data?.ProjectileCount ?? Fix64.One));
-        _inRange.Clear();
-        _outOfRange.Clear();
-        IList<IEntityContext> all = EntityRegistry.AllEntities;
-        for (int i = 0; i < all.Count; i++)
-        {
-            IEntityContext candidate = all[i];
-            if (candidate == null || !WeaponTargetRules.IsValidHealTarget(_ctx, candidate, true)) continue;
-            Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(candidate);
-            if (distance > scanRange) continue;
-            Insert(distance <= attackRange ? _inRange : _outOfRange, new HealCandidate(candidate, candidate.HealthRatioFixed(), distance), count);
-        }
-        List<HealCandidate> selected = _inRange.Count > 0 ? _inRange : _outOfRange;
-        _currentTargets.Clear();
-        for (int i = 0; i < selected.Count; i++) _currentTargets.Add(selected[i].Target);
-        CurrentTarget = _currentTargets.Count > 0 ? _currentTargets[0] : null;
-    }
-
-    private static void Insert(List<HealCandidate> list, HealCandidate candidate, int count)
-    {
-        int index = 0;
-        while (index < list.Count && !IsBetter(candidate, list[index])) index++;
-        if (index >= count) return;
-        list.Insert(index, candidate);
-        if (list.Count > count) list.RemoveAt(list.Count - 1);
-    }
-
-    private static bool IsBetter(HealCandidate candidate, HealCandidate current) =>
-        candidate.HpRatio < current.HpRatio
-        || (candidate.HpRatio == current.HpRatio
-            && (candidate.Distance < current.Distance
-                || (candidate.Distance == current.Distance && candidate.Target.LogicEntityId < current.Target.LogicEntityId)));
-
-    private void MaintainFollowTarget()
-    {
-        if (FollowTarget != null
-            && (!FollowTarget.IsRegisteredInLogicWorld()
-                || !FollowTarget.Alive
-                || FollowTarget.Side != _ctx.Side
-                || _ctx.LogicFrameCenterDistanceFixed(FollowTarget) > m_FollowSearchRange))
-            FollowTarget = null;
-        IEntityContext player = EntityRegistry.Player;
-        if (FollowTarget == null && player != null && player.Alive && player.Side == _ctx.Side && _ctx.LogicFrameCenterDistanceFixed(player) <= m_FollowSearchRange)
-            FollowTarget = player;
-    }
-
-    public void NotifyDamageTaken(IEntityContext attacker) { }
-    public void NotifyAllyFoundEnemy(IEntityContext enemy) { }
-    public void ClearAggro() { }
-    public void ShutDown() { CurrentTarget = null; FollowTarget = null; _currentTargets.Clear(); }
-    public void Resume() { }
-    public void WriteDeterministicState(LogicStateHasher hasher)
-    {
-        if (hasher == null) throw new ArgumentNullException(nameof(hasher));
-        hasher.Add(_scanTimer.RawValue);
-        hasher.Add(FollowTarget != null && FollowTarget.LogicEntityId.IsValid ? FollowTarget.LogicEntityId.Value : 0);
-        hasher.Add(m_AggroRange.RawValue);
-        hasher.Add(m_ForgetRange.RawValue);
-        hasher.Add(m_FollowSearchRange.RawValue);
-        hasher.Add(_currentTargets.Count);
-        for (int i = 0; i < _currentTargets.Count; i++) hasher.Add(_currentTargets[i].LogicEntityId.Value);
-    }
 }

@@ -462,7 +462,7 @@ public static class WeaponTargetRules
         {
             if (target.IsDestroyed() || !target.Alive)
                 return false;
-            if (target is IHeroLogicContext se && se.IsGhostState)
+            if (target.TryGetLogicHero(out IHeroLogicContext hero) && hero.IsGhostState)
                 return false;
         }
 

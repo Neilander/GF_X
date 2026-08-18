@@ -232,7 +232,7 @@ public static class LogicUnitConfigurator
         {
             if (defendFallbackTarget != null)
                 throw new InvalidOperationException("LogicUnitConfigurator.ConfigureTargetingModeForSpawn failed: non-defend unit received a defend fallback target.");
-            if (targetingComp is CharacterTargetingComp defaultTargeting)
+            if (targetingComp is IDefendTargetingModeComp defaultTargeting)
                 defaultTargeting.UseDefaultMode();
             return;
         }
@@ -242,10 +242,10 @@ public static class LogicUnitConfigurator
             throw new InvalidOperationException(
                 $"LogicUnitConfigurator.ConfigureTargetingModeForSpawn failed: DefendEnemyAI must use EnemySide. entity={state.EntityId.Value}, paramsSide={entityParams.Side}, stateSide={state.Side}.");
         }
-        if (targetingComp is not CharacterTargetingComp defendTargeting)
+        if (targetingComp is not IDefendTargetingModeComp defendTargeting)
         {
             throw new InvalidOperationException(
-                $"LogicUnitConfigurator.ConfigureTargetingModeForSpawn failed: DefendEnemyAI requires CharacterTargetingComp. entity={state.EntityId.Value}, actual={targetingComp.GetType().FullName}.");
+                $"LogicUnitConfigurator.ConfigureTargetingModeForSpawn failed: DefendEnemyAI requires defend targeting capability. entity={state.EntityId.Value}, actual={targetingComp.GetType().FullName}.");
         }
         if (defendFallbackTarget != null)
         {

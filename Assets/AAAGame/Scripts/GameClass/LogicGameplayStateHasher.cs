@@ -141,7 +141,7 @@ public static class LogicGameplayStateHasher
             hasher.Add(entity.TauntLevel);
             hasher.Add(entity.IsOutOfCombat);
             hasher.Add(entity.OutOfCombatElapsedLogicTime.RawValue);
-            if (entity is IHeroLogicContext hero)
+            if (entity.TryGetLogicHero(out IHeroLogicContext hero))
                 hasher.Add(hero.IsGhostState);
             else
                 hasher.Add(false);

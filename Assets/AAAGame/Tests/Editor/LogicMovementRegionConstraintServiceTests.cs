@@ -576,7 +576,7 @@ public sealed class LogicMovementRegionConstraintServiceTests
 
     private sealed class SimHeroEntityContext : SimEntityContext, IHeroLogicContext
     {
-        public bool IsHeroEntity => true;
+        public override bool IsHeroEntity => true;
         public bool IsGhostState { get; set; }
 
         public void SetGhostStateByBuff(bool enabled)

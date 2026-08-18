@@ -22,6 +22,9 @@ public interface IEntityContext : ITargetable
     CreaturePropertyManager CreatureProperties { get; }
     new Fix64 HealthValue { get; }
     int TauntLevel { get; set; }
+    bool IsBuildingEntity { get; }
+    bool IsHeroEntity { get; }
+    bool IsStealthed { get; }
 
     IControlBrain Brain { get; }
     IMoveExecutor MoveExecutor { get; }
@@ -51,6 +54,7 @@ public interface IEntityContext : ITargetable
     void Heal(Fix64 amount);
     bool RegisterInvincibleSource(string sourceId);
     bool UnregisterInvincibleSource(string sourceId);
+    void SetStealthByBuff(bool enabled);
 
     // 组件锁定
     bool CanRun(ICapability cap);
@@ -77,7 +81,6 @@ public interface IBuildingLogicContext : IEntityContext
     bool IsDisabled { get; }
     bool IsPhaseProtected { get; }
     bool IsPermanentlyInvincible { get; }
-    bool IsStealthed { get; }
     bool HasPermanentNoAttackCapability { get; }
     bool BlocksLogicMovement { get; }
     IReadOnlyList<LogicCombatShape> LogicObstacleShapes { get; }
@@ -88,14 +91,12 @@ public interface IBuildingLogicContext : IEntityContext
     void SetGameEndConditionBuilding(bool enabled);
     void RestoreBuildingToFullHealth();
     void SetCollisionBlockingByBuff(bool blocksMovement);
-    void SetPermanentStealthByBuff(bool enabled);
     void SetPermanentInvincibilityByBuff(bool enabled);
     void SetPhaseProtectionByBuff(bool enabled);
 }
 
 public interface IHeroLogicContext : IEntityContext
 {
-    bool IsHeroEntity { get; }
     bool IsGhostState { get; }
     void SetGhostStateByBuff(bool enabled);
     void RestoreFromGhostState();
