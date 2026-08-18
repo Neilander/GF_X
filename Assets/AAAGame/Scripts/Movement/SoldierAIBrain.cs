@@ -623,6 +623,27 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                     return;
                 }
 
+                if (failureKind == FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.Unreachable)
+                {
+                    if (!(self.TargetComp is INavigationReachabilityTargetingComp reachabilityTargeting))
+                    {
+                        throw new System.InvalidOperationException(
+                            $"[{self.CharacterKey}] Targeting component cannot reject navigation-unreachable targets. component={self.TargetComp?.GetType().FullName ?? "null"}.");
+                    }
+
+                    GameDebugSettings.Log(
+                        DebugCategory.Brain,
+                        $"[{self.CharacterKey}] Reject navigation-unreachable target enemy={enemy.CharacterKey} enemyPos={enemy.LogicFramePosition()} " +
+                        $"selfPos={self.LogicFramePosition()} dist={distToEnemy:F2} range={effectiveRange:F2} reason={reachFailure}");
+                    reachabilityTargeting.RejectNavigationUnreachableTarget(enemy);
+                    self.MoveComp.StopMove();
+                    _combatApproachPoint = FixVector2.Zero;
+                    _combatApproachTargetPoint = FixVector2.Zero;
+                    _combatApproachTargetId = int.MinValue;
+                    _combatApproachRefreshFrame = -1;
+                    return;
+                }
+
                 throw new System.InvalidOperationException(
                     $"[{self.CharacterKey}] Combat approach point unreachable enemy={enemy.CharacterKey} enemyPos={enemy.LogicFramePosition()} " +
                     $"selfPos={self.LogicFramePosition()} dist={distToEnemy:F2} range={effectiveRange:F2} reason={reachFailure}");

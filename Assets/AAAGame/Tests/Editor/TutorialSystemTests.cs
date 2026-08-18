@@ -206,8 +206,8 @@ public sealed class TutorialSystemTests
         Assert.IsNotNull(destination);
         Assert.AreEqual(0, destination.DestinationId);
         Assert.AreEqual(250f, destination.DestinationRadius);
-        Assert.AreEqual(39.2f, destination.transform.localPosition.x, 0.001f);
-        Assert.AreEqual(37.8f, destination.transform.localPosition.z, 0.001f);
+        Assert.AreEqual(28f, destination.transform.localPosition.x, 0.001f);
+        Assert.AreEqual(27f, destination.transform.localPosition.z, 0.001f);
     }
 
     [Test]

@@ -5917,6 +5917,72 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void LvTest真实零点八米建筑边界通道允许中型单位横穿()
+    {
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>(
+            "Assets/AAAGame/Tilemap/LvTest_FlowNavigationGrid_Medium.asset");
+        Assert.NotNull(grid);
+        FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
+        Assert.NotNull(derivedData);
+        Assert.IsTrue(derivedData.IsValid);
+
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = derivedData.ConfigSectorSizeInCells;
+        config.PortalNarrowWidthCells = derivedData.ConfigPortalNarrowWidthCells;
+        config.PortalMaxWindowWidthCells = derivedData.ConfigPortalMaxWindowWidthCells;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSource(
+            grid.AgentTypeId,
+            grid.Width,
+            grid.Height,
+            grid.CellSize,
+            grid.Origin,
+            grid.GetWalkableMaskRuntimeReadOnlyReference(),
+            grid.GetCellAnchorsRuntimeReadOnlyReference(),
+            grid.GetCostFieldRuntimeReadOnlyReference(),
+            grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
+            derivedData,
+            useRuntimeReadOnlyReferences: true);
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            82005,
+            new FixVector2((Fix64)60f, (Fix64)40f),
+            new FixVector2((Fix64)1.5f, (Fix64)1.5f));
+        ProcessWorldBuildQueueUntilReady();
+
+        Vector3 start = grid.GetCellCenter(430, 301);
+        Vector3 goal = grid.GetCellCenter(486, 301);
+        const float mediumRadius = 0.396240234375f;
+        SimEntityContext ctx = CreateEntity(start, false, grid.AgentTypeId, mediumRadius);
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryPrepareNavigationRequestFixed(ctx, new FixVector2((Fix64)goal.x, (Fix64)goal.z), out string prepareFailure),
+            prepareFailure);
+
+        Fix64 dt = (Fix64)0.05f;
+        for (int frame = 1; frame <= 1200 && ctx.Position.x < goal.x - 0.2f; frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.05f);
+            Assert.IsTrue(
+                FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(
+                    ctx,
+                    new FixVector2((Fix64)goal.x, (Fix64)goal.z),
+                    (Fix64)3f,
+                    out FixVector2 velocity));
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+            Assert.IsTrue(LogicStaticCollisionShadowService.TrySolveFixed(
+                grid.AgentTypeId,
+                ctx.PositionFixed,
+                velocity * dt,
+                (Fix64)mediumRadius,
+                out LogicStaticCollisionShadowResult collision));
+            Assert.IsTrue(collision.SolveResult.Success, collision.SolveResult.Failure.ToString());
+            ctx.PositionFixed += collision.SolveResult.ResolvedDisplacement;
+            FlowFieldCrowdMovementSystem.UpdateAgentForEditorTest(ctx, mediumRadius, grid.AgentTypeId);
+        }
+
+        Assert.Greater(ctx.Position.x, goal.x - 0.2f, $"中型单位必须实际穿过箭坊与边界之间的 0.8m 通道。pos={ctx.Position} goal={goal}");
+    }
+
+    [Test]
     public void IslandField会为单IslandSector记录UniformIslandId()
     {
         FlowFieldNavigationConfig config = CreateConfig();
@@ -6263,6 +6329,50 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.AreNotEqual(requested.x.RawValue, result.SolveResult.ResolvedDisplacement.x.RawValue);
         Assert.Less((float)(start.x + result.SolveResult.ResolvedDisplacement.x), 4f);
     }
+
+    [Test]
+    public void StaticCollisionShadow_运行时建筑使用完整单位半径而不是网格剩余半径()
+    {
+        const int agentTypeId = 91002;
+        const int width = 100;
+        const int height = 20;
+        const float cellSize = 0.108f;
+        Fix64 radius = Fix64.FromRaw(1623);
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadiusFixed(agentTypeId, radius);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            agentTypeId,
+            width,
+            height,
+            cellSize,
+            Vector3.zero,
+            walkable);
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            9100201,
+            new FixVector2((Fix64)5f, (Fix64)1f),
+            new FixVector2((Fix64)1.5f, (Fix64)0.5f));
+        ProcessWorldBuildQueueUntilReady();
+
+        FixVector2 start = new FixVector2((Fix64)1f, (Fix64)1f);
+        Assert.IsTrue(LogicStaticCollisionShadowService.TrySolveFixed(
+            agentTypeId,
+            start,
+            new FixVector2((Fix64)5f, Fix64.Zero),
+            radius,
+            out LogicStaticCollisionShadowResult result));
+        Assert.IsTrue(result.SolveResult.Success, result.SolveResult.Failure.ToString());
+
+        Fix64 resolvedCenterX = start.x + result.SolveResult.ResolvedDisplacement.x;
+        Fix64 buildingMinimumX = (Fix64)3.5f;
+        Assert.LessOrEqual(
+            resolvedCenterX.RawValue,
+            (buildingMinimumX - radius).RawValue,
+            $"运行时建筑是原始几何，必须使用完整单位半径截断。resolved={resolvedCenterX} expectedMax={buildingMinimumX - radius}");
+    }
+
     [Test]
     public void AuthoredPointZeroNineGrid_首次构建障碍必须封住Q32格心()
     {
@@ -6667,6 +6777,96 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void Soldier当前目标无接敌位时拒绝该目标并立即改选可达目标()
+    {
+        const int width = 12;
+        const int height = 7;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        for (int y = 0; y < height; y++)
+            walkable[6 + y * width] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext chaser = CreateEntity(new Vector3(2.5f, 0f, 3.5f), false, 0, 0.18f);
+        chaser.Side = SideType.EnemySide;
+        SimEntityContext unreachable = CreateEntity(new Vector3(9.5f, 0f, 3.5f), false, 0, 0.18f);
+        unreachable.Side = SideType.PlayerSide;
+        SimEntityContext reachable = CreateEntity(new Vector3(4.5f, 0f, 3.5f), false, 0, 0.18f);
+        reachable.Side = SideType.PlayerSide;
+        CharacterTargetingComp targeting = new CharacterTargetingComp
+        {
+            AggroRangeFixed = (Fix64)20f,
+            ForgetRangeFixed = (Fix64)20f,
+            FollowSearchRangeFixed = Fix64.Zero,
+            AlertRadiusFixed = Fix64.Zero
+        };
+        targeting.Init(chaser);
+        targeting.CurrentTarget = unreachable;
+        chaser.TargetComp = targeting;
+        CharacterMoveComp moveComp = new CharacterMoveComp();
+        moveComp.Init(chaser, 0);
+        chaser.MoveComp = moveComp;
+        SoldierAIBrain brain = new SoldierAIBrain
+        {
+            DetectEnemyRange = (Fix64)20f,
+            ChaseRange = (Fix64)40f
+        };
+        chaser.Brain = brain;
+        EntityRegistry.Register(chaser);
+        EntityRegistry.Register(unreachable);
+        EntityRegistry.Register(reachable);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.DoesNotThrow(() => brain.Tick(chaser, (Fix64)0.1f));
+        Assert.IsNull(targeting.CurrentTarget, "无接敌位目标应由索敌组件记录为导航拒绝，而不是留给 Soldier 重复报错。");
+
+        targeting.UpdateTargeting((Fix64)0.2f);
+        Assert.AreSame(reachable, targeting.CurrentTarget, "同次重扫必须跳过未移动且导航世界未变化的不可达目标，并选择附近可达目标。");
+        Assert.DoesNotThrow(() => brain.Tick(chaser, (Fix64)0.1f));
+        Assert.IsTrue(moveComp.TryGetNavigationTargetFixed(out _), "改选可达目标后 Soldier 应恢复正式接敌移动。");
+    }
+
+    [Test]
+    public void CharacterTargeting导航拒绝在目标移动后失效并允许重新锁定()
+    {
+        SimEntityContext chaser = CreateEntity(new Vector3(2.5f, 0f, 2.5f), false, 0, 0.18f);
+        chaser.Side = SideType.EnemySide;
+        SimEntityContext target = CreateEntity(new Vector3(5.5f, 0f, 2.5f), false, 0, 0.18f);
+        target.Side = SideType.PlayerSide;
+        CharacterTargetingComp targeting = new CharacterTargetingComp
+        {
+            AggroRangeFixed = (Fix64)20f,
+            ForgetRangeFixed = (Fix64)20f,
+            FollowSearchRangeFixed = Fix64.Zero,
+            AlertRadiusFixed = Fix64.Zero
+        };
+        targeting.Init(chaser);
+        targeting.CurrentTarget = target;
+        chaser.TargetComp = targeting;
+        EntityRegistry.Register(chaser);
+        EntityRegistry.Register(target);
+
+        var beforeRejectHasher = new LogicStateHasher();
+        targeting.WriteDeterministicState(beforeRejectHasher);
+        ((INavigationReachabilityTargetingComp)targeting).RejectNavigationUnreachableTarget(target);
+        Assert.IsNull(targeting.CurrentTarget);
+        var afterRejectHasher = new LogicStateHasher();
+        targeting.WriteDeterministicState(afterRejectHasher);
+        Assert.AreNotEqual(
+            beforeRejectHasher.Hash,
+            afterRejectHasher.Hash,
+            "导航拒绝会影响后续目标选择，必须进入索敌组件 deterministic state。");
+
+        target.PositionFixed += new FixVector2((Fix64)0.25f, Fix64.Zero);
+        targeting.UpdateTargeting(Fix64.Zero);
+
+        Assert.AreSame(target, targeting.CurrentTarget, "目标逻辑位置变化后，旧接敌失败结论必须失效并允许重新计算。");
+    }
+
+    [Test]
     public void 战斗接近点CacheKey保留完整定点目标而不按FloatBand混用()
     {
         const int width = 9;
@@ -6933,21 +7133,21 @@ public class FlowFieldCrowdMovementSystemTests
             useRuntimeReadOnlyReferences: true);
         ProcessWorldBuildQueueUntilReady();
 
-        Vector3 targetPosition = new Vector3(41.64f, 0.10f, 49.90f);
+        Vector3 targetPosition = new Vector3(29.7429f, 0.10f, 35.6429f);
         SimEntityContext target = CreateEntity(targetPosition, true, grid.AgentTypeId, 0.18f);
         Vector3[] starts =
         {
-            new Vector3(25.61f, 0.09f, 37.15f),
-            new Vector3(25.62f, 0.09f, 36.17f),
-            new Vector3(26.57f, 0.09f, 36.85f),
-            new Vector3(26.41f, 0.09f, 34.49f),
-            new Vector3(26.82f, 0.09f, 33.72f),
-            new Vector3(24.97f, 0.09f, 34.90f),
-            new Vector3(26.59f, 0.09f, 32.99f),
-            new Vector3(22.81f, 0.09f, 38.47f),
-            new Vector3(24.31f, 0.09f, 38.30f),
-            new Vector3(23.08f, 0.09f, 36.74f),
-            new Vector3(22.11f, 0.09f, 36.97f)
+            new Vector3(18.2929f, 0.09f, 26.5357f),
+            new Vector3(18.3000f, 0.09f, 25.8357f),
+            new Vector3(18.9786f, 0.09f, 26.3214f),
+            new Vector3(18.8643f, 0.09f, 24.6357f),
+            new Vector3(19.1571f, 0.09f, 24.0857f),
+            new Vector3(17.8357f, 0.09f, 24.9286f),
+            new Vector3(18.9929f, 0.09f, 23.5643f),
+            new Vector3(16.2929f, 0.09f, 27.4786f),
+            new Vector3(17.2260f, 0.09f, 26.9460f),
+            new Vector3(16.4857f, 0.09f, 26.2429f),
+            new Vector3(15.7929f, 0.09f, 26.4071f)
         };
 
         const float targetRadius = 0.18f;
@@ -8851,7 +9051,7 @@ public class FlowFieldCrowdMovementSystemTests
         bool[] walkableMask = grid.GetWalkableMaskRuntimeReadOnlyReference();
 
         const float agentRadius = 0.182f;
-        Vector3 loggedPosition = new Vector3(24.53f, 1.5f, 41.74f);
+        Vector3 loggedPosition = grid.GetCellAnchor(151, 153);
         Vector3 legalDisplacement = new Vector3(3.94f, 0f, 0f) * 0.05f;
         Assert.IsTrue(grid.WorldToCell(loggedPosition, out int startX, out int startY));
         Assert.IsTrue(grid.WorldToCell(loggedPosition + legalDisplacement, out int endX, out int endY));
@@ -10716,15 +10916,15 @@ public class FlowFieldCrowdMovementSystemTests
         var scenario = new Lv3CrowdRouteScenario
         {
             Name = "CC实机日志-研发中心对侧亚格位置追击",
-            HeroStart = new Vector3(84.41f, 0f, 16.84f),
+            HeroStart = new Vector3(60.2929f, 0f, 12.0286f),
             HeroNodes = new[]
             {
-                new Lv3HeroPathNode(new Vector3(84.41f, 0f, 16.84f), 180),
+                new Lv3HeroPathNode(new Vector3(60.2929f, 0f, 12.0286f), 180),
             },
             ExactChaserStarts = new[]
             {
-                new Vector3(78.43f, 0f, 17.93f),
-                new Vector3(78.45f, 0f, 18.65f),
+                new Vector3(56.0214f, 0f, 12.8071f),
+                new Vector3(56.0357f, 0f, 13.3214f),
             },
             ChaserCount = 2,
             Frames = 240,
@@ -10755,24 +10955,24 @@ public class FlowFieldCrowdMovementSystemTests
             HeroStart = preset.HeroStart,
             HeroNodes = new[]
             {
-                new Lv3HeroPathNode(new Vector3(researchBounds.xMin - 8.0f, 0f, researchBounds.center.y), 0),
-                new Lv3HeroPathNode(new Vector3(researchBounds.center.x, 0f, researchBounds.yMin - 1.2f), 0),
+                new Lv3HeroPathNode(new Vector3(researchBounds.xMin - 5.7143f, 0f, researchBounds.center.y), 0),
+                new Lv3HeroPathNode(new Vector3(researchBounds.center.x, 0f, researchBounds.yMax + 0.8571f), 0),
                 new Lv3HeroPathNode(new Vector3(strongholdBounds.xMax, 0f, strongholdBounds.yMin), 42),
-                new Lv3HeroPathNode(new Vector3(researchBounds.xMin - 5.2f, 0f, researchBounds.yMin - 1.35f), 0),
+                new Lv3HeroPathNode(new Vector3(researchBounds.xMin - 3.7143f, 0f, researchBounds.yMax + 0.9643f), 0),
             },
             ChaserCenters = preset.UnitSpawnCenters,
             ChaserCenterCounts = preset.UnitSpawnCounts,
             ChaserCount = preset.TotalUnitSpawnCount,
             Frames = 760,
-            ExpectLowerRoute = true,
+            ExpectLowerRoute = false,
             UseNaturalTargetAcquisition = true,
         };
 
         RunLv3CharacterControllerCombatScenario(grid, spawnGrid, derivedData, preset, scenario, 991000);
     }
 
-    [TestCase(1937, 2861)]
-    [TestCase(2334, 2863)]
+    [TestCase(668, 897)]
+    [TestCase(823, 898)]
     public void Lv3占领SH13后同主岛Follow应能构建Sector路径(int startSectorId, int goalSectorId)
     {
         FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Small.asset");

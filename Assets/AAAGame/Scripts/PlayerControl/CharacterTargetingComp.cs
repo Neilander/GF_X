@@ -1,8 +1,22 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 
-public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateContributor
+public class CharacterTargetingComp : ITargetingComp, INavigationReachabilityTargetingComp, ILogicDeterministicStateContributor
 {
+    private readonly struct NavigationRejectedTarget
+    {
+        public NavigationRejectedTarget(IEntityContext target, int targetId, FixVector2 targetPosition)
+        {
+            Target = target;
+            TargetId = targetId;
+            TargetPosition = targetPosition;
+        }
+
+        public IEntityContext Target { get; }
+        public int TargetId { get; }
+        public FixVector2 TargetPosition { get; }
+    }
+
     private enum TargetingMode
     {
         Default = 0,
@@ -15,6 +29,10 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
     private Fix64 _attackLockPursuitFloor;
     private TargetingMode _targetingMode;
     private IEntityContext _defendFallbackTarget;
+    private readonly List<NavigationRejectedTarget> _navigationRejectedTargets = new List<NavigationRejectedTarget>();
+    private bool _hasNavigationRejectionEpoch;
+    private FixVector2 _navigationRejectionSelfPosition;
+    private int _navigationRejectionTopologyVersion;
     public IEntityContext CurrentTarget
     {
         get => _currentTarget;
@@ -78,6 +96,69 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         _scanTimer = Fix64.Zero;
         _targetingMode = TargetingMode.Default;
         _defendFallbackTarget = null;
+        ClearNavigationRejections();
+    }
+
+    public void RejectNavigationUnreachableTarget(IEntityContext target)
+    {
+        if (_ctx == null)
+            throw new System.InvalidOperationException("Cannot reject a navigation target before CharacterTargetingComp.Init.");
+        if (target == null)
+            throw new System.ArgumentNullException(nameof(target));
+        if (!ReferenceEquals(CurrentTarget, target))
+        {
+            throw new System.InvalidOperationException(
+                $"Navigation rejection target is not current. owner={GetLogicId(_ctx)} current={GetLogicId(CurrentTarget)} rejected={GetLogicId(target)}.");
+        }
+        if (!target.LogicEntityId.IsValid)
+            throw new System.InvalidOperationException("Cannot reject a navigation target without a valid logic entity id.");
+
+        PruneNavigationRejections();
+        FixVector2 selfPosition = _ctx.LogicFramePositionFixed();
+        int topologyVersion = FlowFieldCrowdMovementSystem.NavigationTopologyVersion;
+        if (_navigationRejectedTargets.Count == 0)
+        {
+            _hasNavigationRejectionEpoch = true;
+            _navigationRejectionSelfPosition = selfPosition;
+            _navigationRejectionTopologyVersion = topologyVersion;
+        }
+        else if (!_hasNavigationRejectionEpoch
+                 || _navigationRejectionSelfPosition != selfPosition
+                 || _navigationRejectionTopologyVersion != topologyVersion)
+        {
+            throw new System.InvalidOperationException("Navigation rejection epoch changed after pruning.");
+        }
+
+        int targetId = target.LogicEntityId.Value;
+        FixVector2 targetPosition = target.LogicFramePositionFixed();
+        int insertIndex = 0;
+        while (insertIndex < _navigationRejectedTargets.Count
+               && _navigationRejectedTargets[insertIndex].TargetId < targetId)
+        {
+            insertIndex++;
+        }
+
+        var rejected = new NavigationRejectedTarget(target, targetId, targetPosition);
+        if (insertIndex < _navigationRejectedTargets.Count
+            && _navigationRejectedTargets[insertIndex].TargetId == targetId)
+        {
+            if (!ReferenceEquals(_navigationRejectedTargets[insertIndex].Target, target))
+            {
+                throw new System.InvalidOperationException(
+                    $"Navigation rejection found duplicate logic entity id {targetId}.");
+            }
+            _navigationRejectedTargets[insertIndex] = rejected;
+        }
+        else
+        {
+            _navigationRejectedTargets.Insert(insertIndex, rejected);
+        }
+
+        GameDebugSettings.Log(
+            DebugCategory.Targeting,
+            $"{_ctx} 导航拒绝目标 {target} | selfPos={selfPosition} targetPos={targetPosition} topology={topologyVersion}");
+        CurrentTarget = null;
+        _scanTimer = SCAN_INTERVAL;
     }
 
     public void NotifyDamageTaken(IEntityContext attacker)
@@ -136,6 +217,84 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         }
     }
 
+    private void PruneNavigationRejections()
+    {
+        if (_navigationRejectedTargets.Count == 0)
+        {
+            if (_hasNavigationRejectionEpoch)
+                ClearNavigationRejections();
+            return;
+        }
+        if (!_hasNavigationRejectionEpoch)
+            throw new System.InvalidOperationException("Navigation rejection entries exist without an epoch.");
+        if (_ctx == null)
+            throw new System.InvalidOperationException("Navigation rejection entries exist without an owner context.");
+
+        if (_navigationRejectionSelfPosition != _ctx.LogicFramePositionFixed()
+            || _navigationRejectionTopologyVersion != FlowFieldCrowdMovementSystem.NavigationTopologyVersion)
+        {
+            ClearNavigationRejections();
+            return;
+        }
+
+        for (int i = _navigationRejectedTargets.Count - 1; i >= 0; i--)
+        {
+            NavigationRejectedTarget rejected = _navigationRejectedTargets[i];
+            if (rejected.Target == null)
+                throw new System.InvalidOperationException($"Navigation rejection entry {rejected.TargetId} has no target.");
+            if (!rejected.Target.LogicEntityId.IsValid || rejected.Target.LogicEntityId.Value != rejected.TargetId)
+            {
+                throw new System.InvalidOperationException(
+                    $"Navigation rejection target id changed. expected={rejected.TargetId} actual={GetLogicId(rejected.Target)}.");
+            }
+
+            if (!rejected.Target.IsRegisteredInLogicWorld()
+                || !rejected.Target.IsAttackTargetable()
+                || !EntityCombatTeamHelper.IsEnemy(_ctx, rejected.Target)
+                || rejected.Target.LogicFramePositionFixed() != rejected.TargetPosition)
+            {
+                _navigationRejectedTargets.RemoveAt(i);
+            }
+        }
+
+        if (_navigationRejectedTargets.Count == 0)
+            ClearNavigationRejections();
+    }
+
+    private bool IsNavigationRejected(IEntityContext target)
+    {
+        if (target == null)
+            return false;
+        PruneNavigationRejections();
+        if (!target.LogicEntityId.IsValid)
+            return false;
+
+        int targetId = target.LogicEntityId.Value;
+        for (int i = 0; i < _navigationRejectedTargets.Count; i++)
+        {
+            NavigationRejectedTarget rejected = _navigationRejectedTargets[i];
+            if (rejected.TargetId > targetId)
+                return false;
+            if (rejected.TargetId != targetId)
+                continue;
+            if (!ReferenceEquals(rejected.Target, target))
+            {
+                throw new System.InvalidOperationException(
+                    $"Navigation rejection lookup found duplicate logic entity id {targetId}.");
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private void ClearNavigationRejections()
+    {
+        _navigationRejectedTargets.Clear();
+        _hasNavigationRejectionEpoch = false;
+        _navigationRejectionSelfPosition = FixVector2.Zero;
+        _navigationRejectionTopologyVersion = 0;
+    }
+
     private bool IsLastAttackerStillValid()
     {
         if (_lastAttacker == null) return false;
@@ -144,12 +303,15 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
             _lastAttacker = null;
             return false;
         }
+        if (IsNavigationRejected(_lastAttacker))
+            return false;
         return true;
     }
 
     public void UpdateTargeting(Fix64 deltaTime)
     {
         if (_ctx == null) return;
+        PruneNavigationRejections();
         if (_targetingMode == TargetingMode.DefendEnemy)
         {
             UpdateDefendEnemyTargeting(deltaTime);
@@ -189,12 +351,14 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         // 1. 维护当前敌人目标
         if (CurrentTarget != null)
         {
-            if (!CurrentTarget.IsRegisteredInLogicWorld()
+            bool navigationRejected = IsNavigationRejected(CurrentTarget);
+            if (navigationRejected
+                || !CurrentTarget.IsRegisteredInLogicWorld()
                 || !CurrentTarget.IsAttackTargetable()
                 || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget))
             {
                 GameDebugSettings.Log(DebugCategory.Targeting,
-                    $"{_ctx} 丢失敌人目标 {CurrentTarget} | active={CurrentTarget.IsRegisteredInLogicWorld()} alive={CurrentTarget.Alive}");
+                    $"{_ctx} 丢失敌人目标 {CurrentTarget} | active={CurrentTarget.IsRegisteredInLogicWorld()} alive={CurrentTarget.Alive} navigationRejected={navigationRejected}");
                 CurrentTarget = null;
                 lostCurrentTarget = true;
                 currentTargetDist = Fix64.FromRaw(long.MaxValue);
@@ -304,6 +468,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
                 if (other == _ctx) continue;
                 if (!other.IsAttackTargetable()) continue;
                 if (!EntityCombatTeamHelper.IsEnemy(_ctx, other)) continue;
+                if (IsNavigationRejected(other)) continue;
 
                 Fix64 dist = _ctx.LogicFrameDistanceToTargetSurfaceFixed(other);
                 if (dist > scanRange) continue;
@@ -521,6 +686,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         _attackLockPursuitFloor = Fix64.Zero;
         _defendFallbackTarget = null;
         _targetingMode = TargetingMode.Default;
+        ClearNavigationRejections();
     }
     public void Resume() { }
 
@@ -603,6 +769,8 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
             if (!other.IsAttackTargetable())
                 continue;
             if (!EntityCombatTeamHelper.IsEnemy(_ctx, other))
+                continue;
+            if (IsNavigationRejected(other))
                 continue;
 
             Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(other);
@@ -716,7 +884,10 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         Fix64 threatPerLevel,
         Fix64 buildingExtraThreat)
     {
-        if (target == null || !target.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(_ctx, target))
+        if (target == null
+            || !target.IsAttackTargetable()
+            || !EntityCombatTeamHelper.IsEnemy(_ctx, target)
+            || IsNavigationRejected(target))
             return false;
 
         Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(target);
@@ -747,6 +918,9 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
             return false;
 
         if (!_defendFallbackTarget.IsAttackTargetable())
+            return false;
+
+        if (IsNavigationRejected(_defendFallbackTarget))
             return false;
 
         return EntityCombatTeamHelper.IsEnemy(_ctx, _defendFallbackTarget);
@@ -813,6 +987,21 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         hasher.Add(m_ForgetRange.RawValue);
         hasher.Add(m_FollowSearchRange.RawValue);
         hasher.Add(m_AlertRadius.RawValue);
+        hasher.Add(_hasNavigationRejectionEpoch);
+        if (_hasNavigationRejectionEpoch)
+        {
+            hasher.Add(_navigationRejectionSelfPosition.x.RawValue);
+            hasher.Add(_navigationRejectionSelfPosition.y.RawValue);
+            hasher.Add(_navigationRejectionTopologyVersion);
+        }
+        hasher.Add(_navigationRejectedTargets.Count);
+        for (int i = 0; i < _navigationRejectedTargets.Count; i++)
+        {
+            NavigationRejectedTarget rejected = _navigationRejectedTargets[i];
+            hasher.Add(rejected.TargetId);
+            hasher.Add(rejected.TargetPosition.x.RawValue);
+            hasher.Add(rejected.TargetPosition.y.RawValue);
+        }
     }
 
     private static int GetLogicId(IEntityContext entity)

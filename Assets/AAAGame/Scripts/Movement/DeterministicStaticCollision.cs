@@ -467,6 +467,27 @@ public static class DeterministicStaticCollisionSolver
             desiredDisplacement,
             radius,
             radius,
+            radius,
+            runtimeObstacles,
+            slideMode);
+    }
+
+    internal static LogicStaticCollisionSolveResult SolveCircle(
+        LogicStaticCollisionWorld world,
+        FixVector2 start,
+        FixVector2 desiredDisplacement,
+        Fix64 radius,
+        Fix64 fullRadius,
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
+        LogicStaticCollisionSlideMode slideMode = LogicStaticCollisionSlideMode.PreserveTangentialComponent)
+    {
+        return SolveCircle(
+            world,
+            start,
+            desiredDisplacement,
+            radius,
+            fullRadius,
+            fullRadius,
             runtimeObstacles,
             slideMode);
     }
@@ -477,6 +498,7 @@ public static class DeterministicStaticCollisionSolver
         FixVector2 desiredDisplacement,
         Fix64 radius,
         Fix64 topologyEdgeRadius,
+        Fix64 runtimeObstacleRadius,
         IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
         LogicStaticCollisionSlideMode slideMode)
     {
@@ -491,6 +513,7 @@ public static class DeterministicStaticCollisionSolver
         }
         if (radius < Fix64.Zero
             || topologyEdgeRadius < Fix64.Zero
+            || runtimeObstacleRadius < Fix64.Zero
             || radius * (Fix64)2 > world.MaxWorldX - world.Origin.x
             || radius * (Fix64)2 > world.MaxWorldY - world.Origin.y)
         {
@@ -505,7 +528,14 @@ public static class DeterministicStaticCollisionSolver
 
         FixVector2 position = start;
         bool startedOverlapping = false;
-        if (!RecoverStart(world, runtimeObstacles, ref position, radius, topologyEdgeRadius, ref startedOverlapping))
+        if (!RecoverStart(
+                world,
+                runtimeObstacles,
+                ref position,
+                radius,
+                topologyEdgeRadius,
+                runtimeObstacleRadius,
+                ref startedOverlapping))
         {
             return FailureResult(
                 LogicStaticCollisionFailure.StartOverlapUnresolved,
@@ -526,7 +556,15 @@ public static class DeterministicStaticCollisionSolver
             if (remaining == FixVector2.Zero)
                 break;
 
-            if (!TryFindEarliestHit(world, runtimeObstacles, position, remaining, radius, topologyEdgeRadius, out SweepHit hit))
+            if (!TryFindEarliestHit(
+                    world,
+                    runtimeObstacles,
+                    position,
+                    remaining,
+                    radius,
+                    topologyEdgeRadius,
+                    runtimeObstacleRadius,
+                    out SweepHit hit))
             {
                 position += remaining;
                 remaining = FixVector2.Zero;
@@ -709,12 +747,24 @@ public static class DeterministicStaticCollisionSolver
         Fix64 radius,
         IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles)
     {
+        return IsCircleClear(world, center, radius, radius, runtimeObstacles);
+    }
+
+    private static bool IsCircleClear(
+        LogicStaticCollisionWorld world,
+        FixVector2 center,
+        Fix64 radius,
+        Fix64 runtimeObstacleRadius,
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles)
+    {
         if (world == null)
             throw new ArgumentNullException(nameof(world));
         if (runtimeObstacles == null)
             throw new ArgumentNullException(nameof(runtimeObstacles));
         if (radius < Fix64.Zero)
             throw new ArgumentOutOfRangeException(nameof(radius));
+        if (runtimeObstacleRadius < Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(runtimeObstacleRadius));
 
         Fix64 minX = world.Origin.x + radius;
         Fix64 maxX = world.MaxWorldX - radius;
@@ -734,7 +784,7 @@ public static class DeterministicStaticCollisionSolver
                    world,
                    runtimeObstacles,
                    center,
-                   radius,
+                   runtimeObstacleRadius,
                    out _);
     }
 
@@ -763,6 +813,7 @@ public static class DeterministicStaticCollisionSolver
         ref FixVector2 position,
         Fix64 radius,
         Fix64 topologyEdgeRadius,
+        Fix64 runtimeObstacleRadius,
         ref bool startedOverlapping)
     {
         for (int iteration = 0; iteration < MaxPenetrationIterations; iteration++)
@@ -786,6 +837,7 @@ public static class DeterministicStaticCollisionSolver
                         centerCellX,
                         centerCellY,
                         radius,
+                        runtimeObstacleRadius,
                         out position))
                     return false;
                 continue;
@@ -813,7 +865,7 @@ public static class DeterministicStaticCollisionSolver
                     world,
                     runtimeObstacles,
                     position,
-                    radius,
+                    runtimeObstacleRadius,
                     out Penetration runtimeObstacle))
             {
                 startedOverlapping = true;
@@ -824,7 +876,7 @@ public static class DeterministicStaticCollisionSolver
             return true;
         }
 
-        return IsCircleClear(world, position, radius, runtimeObstacles)
+        return IsCircleClear(world, position, radius, runtimeObstacleRadius, runtimeObstacles)
                && !TryFindTopologyEdgePenetration(
                    world,
                    position,
@@ -839,6 +891,7 @@ public static class DeterministicStaticCollisionSolver
         int centerCellX,
         int centerCellY,
         Fix64 radius,
+        Fix64 runtimeObstacleRadius,
         out FixVector2 recoveredPosition)
     {
         bool found = false;
@@ -847,16 +900,16 @@ public static class DeterministicStaticCollisionSolver
         int bestStableKey = int.MaxValue;
 
         TrySelectBlockedCenterRecovery(
-            world, runtimeObstacles, position, centerCellX, centerCellY, -1, 0, radius, 0,
+            world, runtimeObstacles, position, centerCellX, centerCellY, -1, 0, radius, runtimeObstacleRadius, 0,
             ref found, ref recoveredPosition, ref bestDistanceSquared, ref bestStableKey);
         TrySelectBlockedCenterRecovery(
-            world, runtimeObstacles, position, centerCellX, centerCellY, 1, 0, radius, 1,
+            world, runtimeObstacles, position, centerCellX, centerCellY, 1, 0, radius, runtimeObstacleRadius, 1,
             ref found, ref recoveredPosition, ref bestDistanceSquared, ref bestStableKey);
         TrySelectBlockedCenterRecovery(
-            world, runtimeObstacles, position, centerCellX, centerCellY, 0, -1, radius, 2,
+            world, runtimeObstacles, position, centerCellX, centerCellY, 0, -1, radius, runtimeObstacleRadius, 2,
             ref found, ref recoveredPosition, ref bestDistanceSquared, ref bestStableKey);
         TrySelectBlockedCenterRecovery(
-            world, runtimeObstacles, position, centerCellX, centerCellY, 0, 1, radius, 3,
+            world, runtimeObstacles, position, centerCellX, centerCellY, 0, 1, radius, runtimeObstacleRadius, 3,
             ref found, ref recoveredPosition, ref bestDistanceSquared, ref bestStableKey);
         return found;
     }
@@ -870,6 +923,7 @@ public static class DeterministicStaticCollisionSolver
         int directionX,
         int directionY,
         Fix64 radius,
+        Fix64 runtimeObstacleRadius,
         int stableKey,
         ref bool found,
         ref FixVector2 bestPosition,
@@ -896,7 +950,7 @@ public static class DeterministicStaticCollisionSolver
             else
                 candidate.y = world.GetCellMinY(cellY) + radius + s_Epsilon;
 
-            if (!IsCircleClear(world, candidate, radius, runtimeObstacles))
+            if (!IsCircleClear(world, candidate, radius, runtimeObstacleRadius, runtimeObstacles))
                 continue;
 
             Fix64 distanceSquared = FixVector2.SqrMagnitude(candidate - position);
@@ -1135,6 +1189,7 @@ public static class DeterministicStaticCollisionSolver
         FixVector2 displacement,
         Fix64 radius,
         Fix64 topologyEdgeRadius,
+        Fix64 runtimeObstacleRadius,
         out SweepHit hit)
     {
         bool found = false;
@@ -1190,7 +1245,7 @@ public static class DeterministicStaticCollisionSolver
                 runtimeObstacles,
                 start,
                 displacement,
-                radius,
+                runtimeObstacleRadius,
                 GetRuntimeObstacleStableKeyBase(world),
                 out SweepHit runtimeHit))
         {
@@ -1824,6 +1879,7 @@ public static class LogicStaticCollisionShadowService
             start,
             desiredDisplacement,
             effectiveRadius,
+            radius,
             radius,
             source.RuntimeObstacles,
             slideMode);

@@ -29,6 +29,11 @@ public interface ITargetingComp:ICapability
     void ClearAggro();
 }
 
+public interface INavigationReachabilityTargetingComp
+{
+    void RejectNavigationUnreachableTarget(IEntityContext target);
+}
+
 public static class LogicTargetingRange
 {
     public static Fix64 Require(Fix64 value, string name)
