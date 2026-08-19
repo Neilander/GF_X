@@ -100,9 +100,14 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     private int _combatApproachRefreshFrame = -1;
     private int _combatApproachDiagnosticFrame = -1;
     private FixVector2[] _defendRouteWaypointsFixed;
-    private string[] _defendRouteWaypointStrongholdIds;
+    private string[] _defendRouteWaypointTeleportationIds;
     private int _defendRouteWaypointIndex;
-    private const long DefendRouteBaseArrivalRadiusRaw = 6144;
+    private int _defendSpeedReleaseWaypointIndex = -1;
+    private FixVector2? _defendSpeedReleasePositionFixed;
+    private Fix64 _defendRouteWaypointArrivalRadius;
+    private IEntityContext _defendRouteTarget;
+    private bool _defendTargetRefreshPending;
+    private bool _defendTargetEventSubscribed;
 
     /// <summary>
     /// 领袖通过 EntityRegistry.GetClosestLeader 惰性获取。
@@ -114,16 +119,32 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         _birthPosition = worldPos;
     }
 
-    public void ConfigureDefendRoute(FixVector2[] waypointsFixed, string[] waypointStrongholdIds)
+    public void ConfigureDefendRoute(
+        FixVector2[] waypointsFixed,
+        string[] waypointTeleportationIds,
+        int speedReleaseWaypointIndex,
+        FixVector2? speedReleasePositionFixed,
+        Fix64 waypointArrivalRadius)
     {
-        if (waypointsFixed == null || waypointStrongholdIds == null)
+        if (waypointsFixed == null || waypointTeleportationIds == null)
             throw new System.InvalidOperationException("SoldierAIBrain defend route requires waypoint positions and IDs.");
-        if (waypointsFixed.Length == 0 || waypointsFixed.Length != waypointStrongholdIds.Length)
-            throw new System.InvalidOperationException("SoldierAIBrain defend route waypoint arrays are empty or mismatched.");
+        if (waypointsFixed.Length != waypointTeleportationIds.Length)
+            throw new System.InvalidOperationException("SoldierAIBrain defend route waypoint arrays are mismatched.");
+        if (waypointArrivalRadius <= Fix64.Zero)
+            throw new System.InvalidOperationException("SoldierAIBrain defend route waypoint arrival radius must be positive.");
+        if (speedReleaseWaypointIndex < -1 || speedReleaseWaypointIndex >= waypointsFixed.Length)
+            throw new System.InvalidOperationException("SoldierAIBrain defend speed release waypoint index is outside the route.");
+        if (speedReleaseWaypointIndex >= 0 && speedReleasePositionFixed.HasValue)
+            throw new System.InvalidOperationException("SoldierAIBrain defend speed release cannot use a waypoint and a position together.");
 
         _defendRouteWaypointsFixed = (FixVector2[])waypointsFixed.Clone();
-        _defendRouteWaypointStrongholdIds = (string[])waypointStrongholdIds.Clone();
+        _defendRouteWaypointTeleportationIds = (string[])waypointTeleportationIds.Clone();
         _defendRouteWaypointIndex = 0;
+        _defendSpeedReleaseWaypointIndex = speedReleaseWaypointIndex;
+        _defendSpeedReleasePositionFixed = speedReleasePositionFixed;
+        _defendRouteWaypointArrivalRadius = waypointArrivalRadius;
+        SubscribeDefendTargetEvents();
+        _defendTargetRefreshPending = true;
     }
 
     public void ConfigureReturnFromGameConfig()
@@ -175,8 +196,14 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         _combatApproachRefreshFrame = -1;
         _combatApproachTargetPoint = FixVector2.Zero;
         _defendRouteWaypointsFixed = null;
-        _defendRouteWaypointStrongholdIds = null;
+        _defendRouteWaypointTeleportationIds = null;
         _defendRouteWaypointIndex = 0;
+        _defendSpeedReleaseWaypointIndex = -1;
+        _defendSpeedReleasePositionFixed = null;
+        _defendRouteWaypointArrivalRadius = Fix64.Zero;
+        _defendRouteTarget = null;
+        _defendTargetRefreshPending = false;
+        UnsubscribeDefendTargetEvents();
         State = SoldierState.Idle;
 
         self.BuffComp?.RemoveBuff(ReturningBuffId);
@@ -217,13 +244,16 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         hasher.Add(_combatApproachTargetId);
         hasher.Add(_combatApproachRefreshFrame);
         hasher.Add(_defendRouteWaypointIndex);
+        hasher.Add(_defendSpeedReleaseWaypointIndex);
+        AddOptionalPosition(hasher, _defendSpeedReleasePositionFixed);
+        hasher.Add(_defendRouteWaypointArrivalRadius.RawValue);
         int routeCount = _defendRouteWaypointsFixed?.Length ?? 0;
         hasher.Add(routeCount);
         for (int i = 0; i < routeCount; i++)
         {
             hasher.Add(_defendRouteWaypointsFixed[i].x.RawValue);
             hasher.Add(_defendRouteWaypointsFixed[i].y.RawValue);
-            hasher.Add(_defendRouteWaypointStrongholdIds[i]);
+            hasher.Add(_defendRouteWaypointTeleportationIds[i]);
         }
     }
 
@@ -491,7 +521,14 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             }
             else
             {
-                self.MoveComp.StopMove();
+                if (_defendRouteTarget != null && !_defendRouteTarget.Alive)
+                    _defendTargetRefreshPending = true;
+                if (_defendTargetRefreshPending)
+                    RefreshDefendTarget(self);
+                if (_defendRouteTarget != null)
+                    self.MoveComp.MoveToFixed(_defendRouteTarget.PositionFixed);
+                else
+                    self.MoveComp.StopMove();
             }
             return;
         }
@@ -548,24 +585,73 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
     private void AdvanceDefendRouteWaypoint(IEntityContext self)
     {
+        if (_defendSpeedReleasePositionFixed.HasValue
+            && FixVector2.Distance(
+                self.LogicFramePositionFixed(),
+                _defendSpeedReleasePositionFixed.Value) <= _defendRouteWaypointArrivalRadius)
+        {
+            DefendPhaseRuntime.NotifyDefendEnemyReachedSpeedReleaseTarget(self.LogicEntityId);
+            _defendSpeedReleasePositionFixed = null;
+        }
         while (_defendRouteWaypointIndex < _defendRouteWaypointsFixed.Length)
         {
-            string strongholdId = _defendRouteWaypointStrongholdIds[_defendRouteWaypointIndex];
-            if (string.IsNullOrWhiteSpace(strongholdId))
-            {
-                if (FixVector2.Distance(self.LogicFramePositionFixed(), _defendRouteWaypointsFixed[_defendRouteWaypointIndex])
-                    > Fix64.FromRaw(DefendRouteBaseArrivalRadiusRaw))
-                    return;
-            }
-            else
-            {
-                if (!LogicStrongholdMap.TryResolveStrongholdId(self.LogicFramePositionFixed(), out string currentStrongholdId)
-                    || !string.Equals(currentStrongholdId, strongholdId, System.StringComparison.Ordinal))
-                    return;
-            }
+            if (FixVector2.Distance(
+                    self.LogicFramePositionFixed(),
+                    _defendRouteWaypointsFixed[_defendRouteWaypointIndex]) > _defendRouteWaypointArrivalRadius)
+                return;
 
+            int reachedWaypointIndex = _defendRouteWaypointIndex;
+            if (reachedWaypointIndex == _defendSpeedReleaseWaypointIndex)
+            {
+                DefendPhaseRuntime.NotifyDefendEnemyReachedSpeedReleaseWaypoint(
+                    self.LogicEntityId,
+                    _defendRouteWaypointTeleportationIds[reachedWaypointIndex]);
+                _defendSpeedReleaseWaypointIndex = -1;
+            }
             _defendRouteWaypointIndex++;
         }
+    }
+
+    private void RefreshDefendTarget(IEntityContext self)
+    {
+        if (self.TargetComp is not IDefendTargetingModeComp defendTargeting)
+            throw new System.InvalidOperationException(
+                $"SoldierAIBrain defend route requires defend targeting capability. entity={self.LogicEntityId.Value}.");
+
+        if (!LogicGameEndService.TryGetNearestPlayerConditionBuilding(
+                self.LogicFramePositionFixed(),
+                out IBuildingLogicContext target))
+        {
+            _defendRouteTarget = null;
+            defendTargeting.UseDefendEnemyMode(null);
+            _defendTargetRefreshPending = false;
+            return;
+        }
+
+        _defendRouteTarget = target;
+        defendTargeting.UseDefendEnemyMode(target);
+        _defendTargetRefreshPending = false;
+    }
+
+    private void SubscribeDefendTargetEvents()
+    {
+        if (_defendTargetEventSubscribed)
+            return;
+        LogicGameEndService.PlayerConditionTargetsChanged += HandleDefendTargetChanged;
+        _defendTargetEventSubscribed = true;
+    }
+
+    private void UnsubscribeDefendTargetEvents()
+    {
+        if (!_defendTargetEventSubscribed)
+            return;
+        LogicGameEndService.PlayerConditionTargetsChanged -= HandleDefendTargetChanged;
+        _defendTargetEventSubscribed = false;
+    }
+
+    private void HandleDefendTargetChanged()
+    {
+        _defendTargetRefreshPending = true;
     }
 
     private Fix64 GetSoftReturnRatio()

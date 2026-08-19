@@ -57,7 +57,7 @@ public static class SystemValidationRunner
         EditorApplication.update += Update;
     }
 
-    [MenuItem("Tools/AAAGame/Validation/Run Launch System Validation")]
+    [MenuItem("Tools/Validation/Run Launch System Validation")]
     public static void Run()
     {
         if (SessionState.GetBool(RunningKey, false))

@@ -13,7 +13,7 @@ public static class BuildingCombatShapeBaker
     private const string RuntimePrefabPrefix = "Assets/AAAGame/Prefabs/Entity/";
     private const string OutputPath = "Assets/AAAGame/Resources/BuildingCombatShapeCatalogData.json";
 
-    [MenuItem("Tools/AAAGame/Bake Building Combat Shapes")]
+    [MenuItem("Tools/Buildings/Bake Combat Shapes")]
     public static void Bake()
     {
         string[] guids = AssetDatabase.FindAssets("t:Prefab", new[] { PrefabFolder });

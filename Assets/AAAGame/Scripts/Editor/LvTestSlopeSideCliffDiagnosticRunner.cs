@@ -48,7 +48,7 @@ internal static class LvTestSlopeSideCliffDiagnosticRunner
         EditorApplication.update += Update;
     }
 
-    [MenuItem("Tools/AAAGame/Diagnostics/Run LvTest Slope Side Cliff Diagnostic")]
+    [MenuItem("Tools/Diagnostics/Run LvTest Slope Side Cliff Diagnostic")]
     public static void Run()
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode)

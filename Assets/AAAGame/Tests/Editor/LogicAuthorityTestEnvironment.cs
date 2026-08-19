@@ -55,6 +55,7 @@ public sealed class LogicAuthorityConfigTestScope : System.IDisposable
         "DefendReturnHealthRegenPercentPerSecond",
         "DefendPhaseEnemyArriveInterval",
         "DefendPhaseEnemyMinSpeed",
+        "DefendPhaseEnemyMaxSpeed",
         "DefendPhaseEnemyEndlessGrowthRate",
         "BaseResourceIncomeDailyGrowth",
         "MinimumDamagePerHit"
@@ -63,7 +64,7 @@ public sealed class LogicAuthorityConfigTestScope : System.IDisposable
     private static readonly string[] ConfigValues =
     {
         "0.05", "90", "12", "22", "36", "54", "50", "300", "800", "1200", "500", "2500", "10000", "0.4", "1", "1200",
-        "1200", "900", "900", "1800", "2", "200", "700", "2", "700", "1800", "250", "500", "20", "0.8", "500", "1.2", "0.5", "1"
+        "1200", "900", "900", "1800", "2", "200", "700", "2", "700", "1800", "250", "500", "20", "0.8", "500", "1000", "1.2", "0.5", "1"
     };
 
     private readonly bool[] m_HadPreviousValues = new bool[ConfigKeys.Length];

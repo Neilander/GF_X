@@ -13,7 +13,7 @@ public static class BuildingLogicObstacleShapeBaker
     private const string RuntimePrefabPrefix = "Assets/AAAGame/Prefabs/Entity/";
     private const string OutputPath = "Assets/AAAGame/Resources/BuildingLogicObstacleShapeCatalogData.json";
 
-    [MenuItem("Tools/AAAGame/Bake Building Logic Obstacle Shapes")]
+    [MenuItem("Tools/Buildings/Bake Logic Obstacle Shapes")]
     public static void Bake()
     {
         string[] guids = AssetDatabase.FindAssets("t:Prefab", new[] { PrefabFolder });

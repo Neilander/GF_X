@@ -39,7 +39,7 @@ internal static class CurrentPlayIssueDiagnosticRunner
         EditorApplication.delayCall += Run;
     }
 
-    [MenuItem("Tools/AAAGame/Diagnostics/Capture Current Play Issues")]
+    [MenuItem("Tools/Diagnostics/Capture Current Play Issues")]
     public static void Run()
     {
         var report = new StringBuilder(16384);

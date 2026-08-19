@@ -11,7 +11,7 @@ public static class BuildingFootprintPrefabTools
     private const string BuildingTablePath = "Assets/AAAGame/DataTable/Build/BuildingTable.txt";
     private const string RuntimePrefabPrefix = "Assets/AAAGame/Prefabs/Entity/";
 
-    [MenuItem("Tools/AAAGame/Normalize Building Footprints")]
+    [MenuItem("Tools/Buildings/Normalize Footprints")]
     public static void NormalizeAll()
     {
         Dictionary<string, BuilType> typesByPath = ReadBuildingPrefabTypes();
@@ -31,7 +31,7 @@ public static class BuildingFootprintPrefabTools
         Debug.Log($"[BuildingFootprintPrefabTools] Normalized {changed} building prefabs.");
     }
 
-    [MenuItem("Tools/AAAGame/Validate Building Footprints")]
+    [MenuItem("Tools/Buildings/Validate Footprints")]
     public static void ValidateAll()
     {
         Dictionary<string, BuilType> typesByPath = ReadBuildingPrefabTypes();

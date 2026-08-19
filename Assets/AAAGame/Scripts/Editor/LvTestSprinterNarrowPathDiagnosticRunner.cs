@@ -59,7 +59,7 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
         EditorApplication.update += Update;
     }
 
-    [MenuItem("Tools/AAAGame/Diagnostics/Run LvTest Sprinter Narrow Path Diagnostic")]
+    [MenuItem("Tools/Diagnostics/Run LvTest Sprinter Narrow Path Diagnostic")]
     public static void Run()
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode)

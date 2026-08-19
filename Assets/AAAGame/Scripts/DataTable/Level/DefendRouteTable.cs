@@ -1,4 +1,4 @@
-//------------------------------------------------------------
+﻿//------------------------------------------------------------
 //------------------------------------------------------------
 // 此文件由工具自动生成，请勿直接修改。
 // 生成时间：__DATA_TABLE_CREATE_TIME__
@@ -47,18 +47,18 @@ public class DefendRouteTable : DataRowBase
         }
 
         /// <summary>
-        /// 固定出兵来源据点ID
+        /// 固定出兵来源传送点ID
         /// </summary>
-        public string SourceStrongholdId
+        public string SourceTeleportationId
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 固定途经据点ID，按行军顺序填写，玩家基地隐含为最终目标
+        /// 固定途经传送点ID，按行军顺序填写；最终目标由运行时当前我方GameEnd建筑动态决定
         /// </summary>
-        public string[] WaypointStrongholdIds
+        public string[] WaypointTeleportationIds
         {
             get;
             private set;
@@ -78,8 +78,8 @@ public class DefendRouteTable : DataRowBase
             index++;
             Identifier = columnStrings[index++];
             LevelIdentifier = columnStrings[index++];
-            SourceStrongholdId = columnStrings[index++];
-            WaypointStrongholdIds = DataTableExtension.ParseArray<string>(columnStrings[index++]);
+            SourceTeleportationId = columnStrings[index++];
+            WaypointTeleportationIds = DataTableExtension.ParseArray<string>(columnStrings[index++]);
 
             return true;
         }
@@ -93,8 +93,8 @@ public class DefendRouteTable : DataRowBase
                     m_Id = binaryReader.Read7BitEncodedInt32();
                     Identifier = binaryReader.ReadString();
                     LevelIdentifier = binaryReader.ReadString();
-                    SourceStrongholdId = binaryReader.ReadString();
-                    WaypointStrongholdIds = binaryReader.ReadArray<string>();
+                    SourceTeleportationId = binaryReader.ReadString();
+                    WaypointTeleportationIds = binaryReader.ReadArray<string>();
                 }
             }
 

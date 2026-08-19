@@ -326,96 +326,6 @@ public class LevelTable : DataRowBase
         }
 
         /// <summary>
-        /// 防御阶段1出怪
-        /// </summary>
-        public StringIntPair[] Def1Enemies
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 防御阶段2出怪
-        /// </summary>
-        public StringIntPair[] Def2Enemies
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 防御阶段3出怪
-        /// </summary>
-        public StringIntPair[] Def3Enemies
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 防御阶段4出怪
-        /// </summary>
-        public StringIntPair[] Def4Enemies
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 防御阶段5出怪
-        /// </summary>
-        public StringIntPair[] Def5Enemies
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 防御阶段6出怪
-        /// </summary>
-        public StringIntPair[] Def6Enemies
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 防御阶段7出怪
-        /// </summary>
-        public StringIntPair[] Def7Enemies
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 防御阶段8出怪
-        /// </summary>
-        public StringIntPair[] Def8Enemies
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 防御阶段9出怪
-        /// </summary>
-        public StringIntPair[] Def9Enemies
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 防御阶段10出怪
-        /// </summary>
-        public StringIntPair[] Def10Enemies
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
         /// 首通解锁行业
         /// </summary>
         public Archetype[] UnlockArchetype
@@ -478,16 +388,6 @@ public class LevelTable : DataRowBase
             VariableClearExperience = DataTableExtension.ParseInt(columnStrings[index++]);
             VariableLevelConfigIdentifier = columnStrings[index++];
             VariableRuleIdentifier = columnStrings[index++];
-            Def1Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
-            Def2Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
-            Def3Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
-            Def4Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
-            Def5Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
-            Def6Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
-            Def7Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
-            Def8Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
-            Def9Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
-            Def10Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
             UnlockArchetype = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
             DefaultArchetype = DataTableExtension.ParseEnum<Archetype>(columnStrings[index++]);
 
@@ -534,16 +434,6 @@ public class LevelTable : DataRowBase
                     VariableClearExperience = binaryReader.Read7BitEncodedInt32();
                     VariableLevelConfigIdentifier = binaryReader.ReadString();
                     VariableRuleIdentifier = binaryReader.ReadString();
-                    Def1Enemies = binaryReader.ReadStringIntPairArray();
-                    Def2Enemies = binaryReader.ReadStringIntPairArray();
-                    Def3Enemies = binaryReader.ReadStringIntPairArray();
-                    Def4Enemies = binaryReader.ReadStringIntPairArray();
-                    Def5Enemies = binaryReader.ReadStringIntPairArray();
-                    Def6Enemies = binaryReader.ReadStringIntPairArray();
-                    Def7Enemies = binaryReader.ReadStringIntPairArray();
-                    Def8Enemies = binaryReader.ReadStringIntPairArray();
-                    Def9Enemies = binaryReader.ReadStringIntPairArray();
-                    Def10Enemies = binaryReader.ReadStringIntPairArray();
                     UnlockArchetype = binaryReader.ReadArray<Archetype>();
                     DefaultArchetype = binaryReader.ReadEnum<Archetype>();
                 }

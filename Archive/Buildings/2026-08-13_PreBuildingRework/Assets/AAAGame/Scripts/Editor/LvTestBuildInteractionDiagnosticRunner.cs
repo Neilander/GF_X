@@ -65,7 +65,7 @@ internal static class LvTestBuildInteractionDiagnosticRunner
             EditorApplication.delayCall += Run;
     }
 
-    [MenuItem("Tools/AAAGame/Diagnostics/Run LvTest Build Interaction Diagnostic")]
+    [MenuItem("Tools/Diagnostics/Run LvTest Build Interaction Diagnostic")]
     public static void Run()
     {
         if (SessionState.GetBool(RunningKey, false))

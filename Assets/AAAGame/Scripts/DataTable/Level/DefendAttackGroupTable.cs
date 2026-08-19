@@ -83,9 +83,18 @@ public class DefendAttackGroupTable : DataRowBase
         }
 
         /// <summary>
-        /// [0]前置结束后的额外延迟秒（无前置时为阶段开始延迟）；[1]组内单位出兵间隔秒；[2]预计本组总持续时间秒（含行军与交战）；[3]行军速度覆盖，0表示使用全局防御最低速度
+        /// 前置组固定出兵窗口结束后的延迟秒；无前置时为防御阶段开始延迟
         /// </summary>
-        public Fix64[] UniqueValues
+        public Fix64 StartDelaySeconds
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 从本组计时基准到预计接战时刻的秒数；固定出兵后，关卡内按当前首个玩家中转据点的导航距离反推移速
+        /// </summary>
+        public Fix64 ExpectedEngagementSeconds
         {
             get;
             private set;
@@ -109,7 +118,8 @@ public class DefendAttackGroupTable : DataRowBase
             RouteIdentifier = columnStrings[index++];
             Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
             AfterGroupIdentifier = columnStrings[index++];
-            UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
+            StartDelaySeconds = DataTableExtension.ParseFix64(columnStrings[index++]);
+            ExpectedEngagementSeconds = DataTableExtension.ParseFix64(columnStrings[index++]);
 
             return true;
         }
@@ -127,7 +137,8 @@ public class DefendAttackGroupTable : DataRowBase
                     RouteIdentifier = binaryReader.ReadString();
                     Enemies = binaryReader.ReadStringIntPairArray();
                     AfterGroupIdentifier = binaryReader.ReadString();
-                    UniqueValues = binaryReader.ReadFix64Array();
+                    StartDelaySeconds = binaryReader.ReadFix64();
+                    ExpectedEngagementSeconds = binaryReader.ReadFix64();
                 }
             }
 

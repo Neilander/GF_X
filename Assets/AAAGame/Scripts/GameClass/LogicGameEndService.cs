@@ -38,6 +38,7 @@ public readonly struct LogicGameEndResult
 
 public static class LogicGameEndService
 {
+    public static event System.Action PlayerConditionTargetsChanged;
     private sealed class RuntimeObjective
     {
         public LevelObjectiveDefinition Definition;
@@ -152,18 +153,26 @@ public static class LogicGameEndService
         if (s_PlayerTargetBuildingInstanceIds.Contains(buildingInstanceId) || s_EnemyTargetBuildingInstanceIds.Contains(buildingInstanceId))
             throw new InvalidOperationException($"Duplicate target building instance id '{buildingInstanceId}'.");
         if (initialOwnerFactionId == EntitySideHelper.PlayerFactionId)
+        {
             s_PlayerTargetBuildingInstanceIds.Add(buildingInstanceId);
+            PlayerConditionTargetsChanged?.Invoke();
+        }
         else
             s_EnemyTargetBuildingInstanceIds.Add(buildingInstanceId);
     }
 
-    public static bool TryGetNearestPlayerInitialConditionBuilding(FixVector2 origin, out IBuildingLogicContext building)
+    public static bool TryGetNearestPlayerConditionBuilding(FixVector2 origin, out IBuildingLogicContext building)
     {
         EnsureInitialized();
         return LogicBuildingQueryService.TryGetNearestAliveByInstanceIds(
             s_PlayerTargetBuildingInstanceIds,
             origin,
             out building);
+    }
+
+    public static bool TryGetNearestPlayerInitialConditionBuilding(FixVector2 origin, out IBuildingLogicContext building)
+    {
+        return TryGetNearestPlayerConditionBuilding(origin, out building);
     }
 
     public static bool IsPlayerTargetBuilding(string buildingInstanceId)
@@ -192,6 +201,7 @@ public static class LogicGameEndService
         building.SetGameEndConditionBuilding(true);
         if (!s_PlayerTargetBuildingInstanceIds.Add(building.BuildingInstanceId))
             throw new InvalidOperationException($"Failed to register captured player target '{building.BuildingInstanceId}'.");
+        PlayerConditionTargetsChanged?.Invoke();
     }
 
     public static void ResolveCapturedEnemyTarget(IBuildingLogicContext building)
@@ -623,5 +633,6 @@ public static class LogicGameEndService
         IsGameEnded = false;
         IsWin = false;
         LastAppliedFrame = 0;
+        PlayerConditionTargetsChanged?.Invoke();
     }
 }

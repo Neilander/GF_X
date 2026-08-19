@@ -1,4 +1,16 @@
 #	防御路线表					
-#	ID		Identifier	LevelIdentifier	SourceStrongholdId	WaypointStrongholdIds
+#	ID		Identifier	LevelIdentifier	SourceTeleportationId	WaypointTeleportationIds
 #	int		string	string	string	string[]
-#	行号	备注	代码内标识符	所属关卡标识	固定出兵来源据点ID	固定途经据点ID，按行军顺序填写，玩家基地隐含为最终目标
+#	行号	备注	代码内标识符	所属关卡标识	固定出兵来源传送点ID	固定途经传送点ID，按行军顺序填写；最终目标由运行时当前我方GameEnd建筑动态决定
+	1		Lv_1_Route_East	Lv_1	1	2,0
+	2		Lv_1_Route_North	Lv_1	2	0
+	3		Lv_1_Route_West	Lv_1	3	0
+	4		Lv_2_Route_West	Lv_2	0	1
+	5		Lv_2_Route_SouthWest	Lv_2	3	2,1
+	6		Lv_2_Route_SouthEast	Lv_2	2	1
+	7		Lv_3_Route_North	Lv_3	2	1,0
+	8		Lv_3_Route_East	Lv_3	5	1,0
+	9		Lv_3_Route_SouthEast	Lv_3	4	3,0
+	10		LvTest_Route_SouthWest	LvTest	0	1,2
+	11		LvTest_Route_SouthEast	LvTest	1	2
+	12		LvTest_Route_West	LvTest	3	2

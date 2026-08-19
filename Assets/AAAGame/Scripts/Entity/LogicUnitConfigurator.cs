@@ -5,6 +5,8 @@ using UnityGameFramework.Runtime;
 
 public static class LogicUnitConfigurator
 {
+    public const string DefendRouteWaypointArrivalRadiusConfigKey = "DefendRouteWaypointArrivalRadius";
+
     public const string DefendSpeedBuffId = "defend_phase_speed_override";
     public const string PlayerOutOfCombatMoveSpeedBuffId = "player_out_of_combat_move_speed";
     public static void Configure(LogicEntityState state, EntityParams entityParams)
@@ -91,14 +93,19 @@ public static class LogicUnitConfigurator
             if (entityParams.BrainType == BrainType.DefendEnemyAI)
             {
                 bool hasRoutePositions = entityParams.DefendRouteWaypointsFixed != null;
-                bool hasRouteIds = entityParams.DefendRouteWaypointStrongholdIds != null;
+                bool hasRouteIds = entityParams.DefendRouteWaypointTeleportationIds != null;
                 if (hasRoutePositions != hasRouteIds)
                     throw new InvalidOperationException("Defend route spawn parameters are incomplete.");
                 if (hasRoutePositions)
                 {
                     soldierBrain.ConfigureDefendRoute(
                         entityParams.DefendRouteWaypointsFixed,
-                        entityParams.DefendRouteWaypointStrongholdIds);
+                        entityParams.DefendRouteWaypointTeleportationIds,
+                        entityParams.DefendSpeedReleaseWaypointIndex,
+                        entityParams.DefendSpeedReleasePositionFixed,
+                        DistanceUnitConverter.ConvertToWorld(
+                            DistanceUnitConverter.ReadRequiredPositiveFixedConfig(
+                                DefendRouteWaypointArrivalRadiusConfigKey)));
                 }
             }
 
@@ -282,7 +289,7 @@ public static class LogicUnitConfigurator
         if (entityParams.BrainType != BrainType.DefendEnemyAI)
             return null;
 
-        LogicGameEndService.TryGetNearestPlayerInitialConditionBuilding(
+        LogicGameEndService.TryGetNearestPlayerConditionBuilding(
             state.Position,
             out IBuildingLogicContext fallbackTarget);
         return fallbackTarget;

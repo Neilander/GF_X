@@ -70,7 +70,7 @@ internal static class BratProjectileRuntimeRegressionRunner
         EditorApplication.update += Update;
     }
 
-    [MenuItem("Tools/AAAGame/Diagnostics/Run Brat Projectile Runtime Regression")]
+    [MenuItem("Tools/Diagnostics/Run Brat Projectile Runtime Regression")]
     public static void Run()
     {
         if (SessionState.GetBool(RunningKey, false))

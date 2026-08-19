@@ -25,6 +25,8 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     private readonly List<GroupRecord> _groups = new();
     private readonly List<string> _unitIdentifiers = new();
     private readonly Dictionary<string, StrongholdInfo> _strongholds = new(StringComparer.Ordinal);
+    private readonly List<DefenseTargetPreview> _initialDefenseTargets = new();
+    private readonly Dictionary<string, RoutePreview> _routePreviewCache = new(StringComparer.Ordinal);
     private readonly List<string> _validationMessages = new();
     private Vector2 _scroll;
     private int _levelIndex;
@@ -34,9 +36,16 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     private bool _dirty;
     private EditMode _editMode;
     private GameObject _levelPrefab;
-    private Vector3? _basePosition;
+    private Vector3? _initialDefenseTargetPosition;
+    private string _initialDefenseTargetLabel;
+    private FlowNavigationGridAsset[] _previewNavigationGrids = Array.Empty<FlowNavigationGridAsset>();
+    private FlowNavigationGridAsset _previewNavigationCollisionGrid;
+    private UnitSize _previewUnitSize = UnitSize.Small;
+    private float _waypointArrivalRadiusWorld;
     private float _distanceConversionRate = 0.018f;
+    private float _spawnIntervalSeconds = 0.8f;
     private float _minimumSpeedProperty = 500f;
+    private float _maximumSpeedProperty = 1000f;
 
     private enum EditMode
     {
@@ -44,7 +53,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         Groups
     }
 
-    [MenuItem("Tools/AAAGame/Defense Route Editor")]
+    [MenuItem("Tools/Defense Route Editor")]
     private static void Open()
     {
         GetWindow<DefendRouteEditorWindow>("Defense Routes");
@@ -124,7 +133,19 @@ public sealed class DefendRouteEditorWindow : EditorWindow
                 _levelPrefab == null ? "关卡 Prefab 未找到" : AssetDatabase.GetAssetPath(_levelPrefab),
                 EditorStyles.boldLabel);
             EditorGUILayout.LabelField(
-                $"据点 {_strongholds.Count}  |  传送点 {_strongholds.Values.Count(x => x.TeleportPosition.HasValue)}  |  基地 {(_basePosition.HasValue ? "已识别" : "未识别")}");
+                $"据点 {_strongholds.Count}  |  传送点 {_strongholds.Values.Count(x => x.TeleportPosition.HasValue)}  |  初始防守目标 {(_initialDefenseTargetPosition.HasValue ? _initialDefenseTargetLabel : "无（运行时动态注册）")}");
+            EditorGUI.BeginChangeCheck();
+            UnitSize nextPreviewUnitSize = (UnitSize)EditorGUILayout.EnumPopup("路径预览体型", _previewUnitSize);
+            if (EditorGUI.EndChangeCheck())
+            {
+                _previewUnitSize = nextPreviewUnitSize;
+                _routePreviewCache.Clear();
+                SceneView.RepaintAll();
+            }
+            EditorGUILayout.LabelField("中转抵达半径（Unity单位）", _waypointArrivalRadiusWorld.ToString("F3", CultureInfo.InvariantCulture));
+            EditorGUILayout.LabelField(
+                "全波固定排程",
+                $"最小间隔 {_spawnIntervalSeconds:F2}s  |  窗口估算移速 {_minimumSpeedProperty:F0}-{_maximumSpeedProperty:F0}");
             if (_strongholds.Count > 0)
                 EditorGUILayout.SelectableLabel(string.Join("   ", _strongholds.Keys.OrderBy(x => x, StringComparer.Ordinal)), EditorStyles.textField, GUILayout.Height(20f));
         }
@@ -151,35 +172,36 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             foreach (GroupRecord group in _groups.Where(x => string.Equals(x.RouteIdentifier, previousIdentifier, StringComparison.Ordinal)))
                 group.RouteIdentifier = route.Identifier;
         }
-        route.SourceStrongholdId = DrawStrongholdPopup("来源据点", route.SourceStrongholdId, allowEmpty: false);
+        route.SourceTeleportationId = DrawTeleportationPopup("来源传送点", route.SourceTeleportationId, allowEmpty: false, enemyOnly: true);
         EditorGUILayout.Space(4f);
-        EditorGUILayout.LabelField("固定途经据点", EditorStyles.boldLabel);
-        for (int i = 0; i < route.WaypointStrongholdIds.Count; i++)
+        EditorGUILayout.LabelField("固定途经传送点", EditorStyles.boldLabel);
+        for (int i = 0; i < route.WaypointTeleportationIds.Count; i++)
         {
             using (new EditorGUILayout.HorizontalScope())
             {
-                route.WaypointStrongholdIds[i] = DrawStrongholdPopup(
+                    route.WaypointTeleportationIds[i] = DrawTeleportationPopup(
                     $"{i + 1}",
-                    route.WaypointStrongholdIds[i],
-                    allowEmpty: false);
+                    route.WaypointTeleportationIds[i],
+                    allowEmpty: false,
+                    enemyOnly: false);
                 GUI.enabled = i > 0;
                 if (GUILayout.Button("↑", GUILayout.Width(28f)))
-                    Swap(route.WaypointStrongholdIds, i, i - 1);
-                GUI.enabled = i < route.WaypointStrongholdIds.Count - 1;
+                    Swap(route.WaypointTeleportationIds, i, i - 1);
+                GUI.enabled = i < route.WaypointTeleportationIds.Count - 1;
                 if (GUILayout.Button("↓", GUILayout.Width(28f)))
-                    Swap(route.WaypointStrongholdIds, i, i + 1);
+                    Swap(route.WaypointTeleportationIds, i, i + 1);
                 GUI.enabled = true;
                 if (GUILayout.Button("-", GUILayout.Width(28f)))
                 {
-                    route.WaypointStrongholdIds.RemoveAt(i);
+                    route.WaypointTeleportationIds.RemoveAt(i);
                     i--;
                 }
             }
         }
-        string availableStrongholdId = FirstAvailableWaypointStrongholdId(route);
-        GUI.enabled = !string.IsNullOrEmpty(availableStrongholdId);
-        if (GUILayout.Button("添加途经据点", GUILayout.Width(110f)))
-            route.WaypointStrongholdIds.Add(availableStrongholdId);
+        string availableTeleportationId = FirstAvailableWaypointTeleportationId(route);
+        GUI.enabled = !string.IsNullOrEmpty(availableTeleportationId);
+        if (GUILayout.Button("添加途经传送点", GUILayout.Width(110f)))
+            route.WaypointTeleportationIds.Add(availableTeleportationId);
         GUI.enabled = true;
         if (EditorGUI.EndChangeCheck())
             MarkDirty();
@@ -231,13 +253,13 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             group.Enemies.Add(new EnemyRecord { Identifier = _unitIdentifiers.FirstOrDefault() ?? string.Empty, Count = 1 });
 
         EditorGUILayout.Space(4f);
-        EditorGUILayout.LabelField("独立节奏", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("接战与依赖", EditorStyles.boldLabel);
         group.DelaySeconds = Mathf.Max(0f, EditorGUILayout.FloatField(
             string.IsNullOrWhiteSpace(group.AfterGroupIdentifier) ? "阶段开始延迟（秒）" : "前置组后延迟（秒）",
             group.DelaySeconds));
-        group.SpawnIntervalSeconds = Mathf.Max(0.01f, EditorGUILayout.FloatField("组内出兵间隔（秒）", group.SpawnIntervalSeconds));
-        group.ExpectedDurationSeconds = Mathf.Max(0.01f, EditorGUILayout.FloatField("预计总持续时间（秒）", group.ExpectedDurationSeconds));
-        group.SpeedOverrideProperty = Mathf.Max(0f, EditorGUILayout.FloatField("行军速度覆盖（0=全局）", group.SpeedOverrideProperty));
+        group.ExpectedEngagementSeconds = Mathf.Max(0.01f, EditorGUILayout.FloatField(
+            "预计首次接战（秒）",
+            group.ExpectedEngagementSeconds));
         if (EditorGUI.EndChangeCheck())
             MarkDirty();
 
@@ -270,11 +292,17 @@ public sealed class DefendRouteEditorWindow : EditorWindow
 
     private void DrawRouteMetrics(RouteRecord route)
     {
-        if (!TryBuildRoutePoints(route, out List<Vector3> points))
+        if (!TryBuildNavigationPreview(route, out RoutePreview preview))
+        {
+            EditorGUILayout.HelpBox($"无法生成流场路径预览：{GetRoutePreviewFailure(route)}", MessageType.Warning);
             return;
-        float distance = PolylineDistance(points);
+        }
+        float distance = PolylineDistance(preview.NavigationPoints) / _distanceConversionRate;
+        string targetText = _initialDefenseTargetPosition.HasValue
+            ? $"初始目标: {_initialDefenseTargetLabel}"
+            : "初始目标: 无（运行时动态注册）";
         EditorGUILayout.HelpBox(
-            $"据点数（含来源）: {route.WaypointStrongholdIds.Count + 1}    折线长度: {distance:F1}    最终目标: 玩家基地",
+            $"传送点数（含来源）: {route.WaypointTeleportationIds.Count + 1}    流场路径长度: {distance:F0} 游戏距离    {targetText}",
             MessageType.Info);
     }
 
@@ -288,26 +316,90 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             return;
 
         RouteRecord route = CurrentRoutes().FirstOrDefault(x => string.Equals(x.Identifier, group.RouteIdentifier, StringComparison.Ordinal));
-        if (route == null || !TryBuildRoutePoints(route, out List<Vector3> points))
+        if (route == null || !TryBuildNavigationPreview(route, out RoutePreview preview))
         {
             EditorGUILayout.HelpBox($"计划出兵时间: {start:F1}s", MessageType.Info);
             return;
         }
 
-        float speedProperty = Mathf.Max(_minimumSpeedProperty, group.SpeedOverrideProperty);
-        float worldSpeed = Mathf.Max(0.001f, speedProperty * _distanceConversionRate);
-        float firstLeg = points.Count >= 2 ? Vector3.Distance(points[0], points[1]) : 0f;
-        float totalDistance = PolylineDistance(points);
-        int totalUnits = group.Enemies.Sum(x => Mathf.Max(0, x.Count));
-        float lastSpawn = start + Mathf.Max(0, totalUnits - 1) * group.SpawnIntervalSeconds;
+        if (!TryGetFirstPlayerWaypointDistance(route, preview, out float engagementDistance, out string waypointLabel))
+        {
+            EditorGUILayout.HelpBox(
+                "路线没有初始玩家中转点或初始玩家防守目标，无法预览固定出兵窗口。",
+                MessageType.Warning);
+            return;
+        }
+        if (!TryGetPresetSpawnLeads(group, out float firstLead, out float lastLead, out string failure))
+        {
+            EditorGUILayout.HelpBox($"无法推导固定出兵窗口：{failure}", MessageType.Warning);
+            return;
+        }
+        float engagementTime = start + group.ExpectedEngagementSeconds;
+        float windowStart = engagementTime - firstLead;
+        float windowEnd = engagementTime - lastLead;
+        float engagementDistanceProperty = engagementDistance / _distanceConversionRate;
         EditorGUILayout.HelpBox(
-            $"出兵 {start:F1}s - {lastSpawn:F1}s    首据点预计到达 {start + firstLeg / worldSpeed:F1}s    无阻挡到基地 {start + totalDistance / worldSpeed:F1}s    计划占用至 {start + group.ExpectedDurationSeconds:F1}s",
+            $"该组参与本波次排程的允许窗口 {windowStart:F1}s - {windowEnd:F1}s    预计接战 {engagementTime:F1}s    " +
+            $"预设接战点 {waypointLabel}    当前预览导航距离 {engagementDistanceProperty:F0} 游戏距离    " +
+            $"本波次统一最小出兵间隔 {_spawnIntervalSeconds:F2}s",
             MessageType.Info);
     }
 
-    private string DrawStrongholdPopup(string label, string value, bool allowEmpty)
+    private bool TryGetFirstPlayerWaypointDistance(
+        RouteRecord route,
+        RoutePreview preview,
+        out float distance,
+        out string waypointLabel)
     {
-        List<string> options = _strongholds.Keys.OrderBy(x => x, StringComparer.Ordinal).ToList();
+        for (int i = 0; i < route.WaypointTeleportationIds.Count; i++)
+        {
+            string teleportationId = route.WaypointTeleportationIds[i];
+            StrongholdInfo stronghold = _strongholds.Values.FirstOrDefault(x =>
+                x.TeleportPosition.HasValue
+                && string.Equals(
+                    x.TeleportationId.ToString(CultureInfo.InvariantCulture),
+                    teleportationId,
+                    StringComparison.Ordinal));
+            if (stronghold == null || stronghold.FactionId != EntitySideHelper.PlayerFactionId)
+                continue;
+
+            int topologyIndex = i + 1;
+            if (topologyIndex >= preview.TopologyCumulativeNavigationDistances.Count)
+                throw new InvalidOperationException($"路线 '{route.Identifier}' 的导航预览累计距离不完整。");
+            distance = Mathf.Max(
+                0f,
+                preview.TopologyCumulativeNavigationDistances[topologyIndex] - _waypointArrivalRadiusWorld);
+            waypointLabel = $"TP:{teleportationId}";
+            return true;
+        }
+
+        if (preview.IncludesInitialTarget)
+        {
+            int targetTopologyIndex = preview.TopologyPoints.Count - 1;
+            if (targetTopologyIndex <= 0
+                || targetTopologyIndex >= preview.TopologyCumulativeNavigationDistances.Count)
+            {
+                throw new InvalidOperationException($"路线 '{route.Identifier}' 的最终目标导航预览累计距离不完整。");
+            }
+            distance = Mathf.Max(
+                0f,
+                preview.TopologyCumulativeNavigationDistances[targetTopologyIndex] - _waypointArrivalRadiusWorld);
+            waypointLabel = $"最终目标:{_initialDefenseTargetLabel}";
+            return true;
+        }
+
+        distance = 0f;
+        waypointLabel = string.Empty;
+        return false;
+    }
+
+    private string DrawTeleportationPopup(string label, string value, bool allowEmpty, bool enemyOnly)
+    {
+        List<string> options = _strongholds.Values
+            .Where(x => x.TeleportPosition.HasValue && (!enemyOnly || x.FactionId != EntitySideHelper.PlayerFactionId))
+            .OrderBy(x => x.TeleportationId)
+            .Select(x => x.TeleportationId.ToString(CultureInfo.InvariantCulture))
+            .ToList();
         if (allowEmpty)
             options.Insert(0, string.Empty);
         if (!string.IsNullOrWhiteSpace(value) && !options.Contains(value))
@@ -363,7 +455,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         {
             Identifier = identifier,
             LevelIdentifier = CurrentLevelIdentifier,
-            SourceStrongholdId = FirstStrongholdIdExcept(null)
+            SourceTeleportationId = FirstEnemyTeleportationId()
         });
         _selectedRouteIndex = CurrentRoutes().Count - 1;
         MarkDirty();
@@ -398,8 +490,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             DefendRound = 1,
             RouteIdentifier = CurrentRoutes().FirstOrDefault()?.Identifier ?? string.Empty,
             DelaySeconds = 0f,
-            SpawnIntervalSeconds = 0.5f,
-            ExpectedDurationSeconds = 20f,
+            ExpectedEngagementSeconds = 15f,
             Enemies = new List<EnemyRecord>
             {
                 new() { Identifier = _unitIdentifiers.FirstOrDefault() ?? string.Empty, Count = 1 }
@@ -492,8 +583,19 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             string key = sheet.Cells[row, 2].Text.Trim();
             if (string.Equals(key, "DistanceConversionRate", StringComparison.Ordinal))
                 _distanceConversionRate = ParseFloat(sheet.Cells[row, 4].Text);
+            else if (string.Equals(key, "DefendPhaseEnemyArriveInterval", StringComparison.Ordinal))
+                _spawnIntervalSeconds = ParseFloat(sheet.Cells[row, 4].Text);
             else if (string.Equals(key, "DefendPhaseEnemyMinSpeed", StringComparison.Ordinal))
                 _minimumSpeedProperty = ParseFloat(sheet.Cells[row, 4].Text);
+            else if (string.Equals(key, "DefendPhaseEnemyMaxSpeed", StringComparison.Ordinal))
+                _maximumSpeedProperty = ParseFloat(sheet.Cells[row, 4].Text);
+            else if (string.Equals(key, "DefendRouteWaypointArrivalRadius", StringComparison.Ordinal))
+                _waypointArrivalRadiusWorld = ParseFloat(sheet.Cells[row, 4].Text) * _distanceConversionRate;
+        }
+        if (_distanceConversionRate <= 0f || _spawnIntervalSeconds <= 0f
+            || _minimumSpeedProperty <= 0f || _maximumSpeedProperty < _minimumSpeedProperty)
+        {
+            throw new InvalidOperationException("防御路线的距离倍率、出兵间隔或推导移速范围配置无效。");
         }
     }
 
@@ -510,8 +612,8 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             {
                 Identifier = identifier,
                 LevelIdentifier = sheet.Cells[row, 5].Text.Trim(),
-                SourceStrongholdId = sheet.Cells[row, 6].Text.Trim(),
-                WaypointStrongholdIds = SplitArray(sheet.Cells[row, 7].Text)
+                SourceTeleportationId = sheet.Cells[row, 6].Text.Trim(),
+                WaypointTeleportationIds = SplitArray(sheet.Cells[row, 7].Text)
             });
         }
     }
@@ -520,12 +622,13 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     {
         using ExcelPackage package = OpenExcel(GroupExcelPath);
         ExcelWorksheet sheet = package.Workbook.Worksheets[0];
+        int delayColumn = FindColumn(sheet, "StartDelaySeconds");
+        int expectedEngagementColumn = FindColumn(sheet, "ExpectedEngagementSeconds");
         for (int row = 5; row <= sheet.Dimension.End.Row; row++)
         {
             string identifier = sheet.Cells[row, 4].Text.Trim();
             if (string.IsNullOrWhiteSpace(identifier))
                 continue;
-            float[] values = SplitArray(sheet.Cells[row, 10].Text).Select(ParseFloat).ToArray();
             _groups.Add(new GroupRecord
             {
                 Identifier = identifier,
@@ -534,10 +637,8 @@ public sealed class DefendRouteEditorWindow : EditorWindow
                 RouteIdentifier = sheet.Cells[row, 7].Text.Trim(),
                 Enemies = ParseEnemies(sheet.Cells[row, 8].Text),
                 AfterGroupIdentifier = sheet.Cells[row, 9].Text.Trim(),
-                DelaySeconds = ValueAt(values, 0),
-                SpawnIntervalSeconds = ValueAt(values, 1),
-                ExpectedDurationSeconds = ValueAt(values, 2),
-                SpeedOverrideProperty = ValueAt(values, 3)
+                DelaySeconds = ParseFloat(sheet.Cells[row, delayColumn].Text),
+                ExpectedEngagementSeconds = ParseFloat(sheet.Cells[row, expectedEngagementColumn].Text)
             });
         }
     }
@@ -545,7 +646,12 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     private void LoadLevelGeometry()
     {
         _strongholds.Clear();
-        _basePosition = null;
+        _initialDefenseTargets.Clear();
+        _initialDefenseTargetPosition = null;
+        _initialDefenseTargetLabel = null;
+        _previewNavigationGrids = Array.Empty<FlowNavigationGridAsset>();
+        _previewNavigationCollisionGrid = null;
+        _routePreviewCache.Clear();
         _levelPrefab = null;
         if (_levels.Count == 0)
             return;
@@ -576,16 +682,39 @@ public sealed class DefendRouteEditorWindow : EditorWindow
                 {
                     Identifier = layer.layerName,
                     Cells = cells,
-                    Center = sum / cells.Count
+                    Center = sum / cells.Count,
+                    FactionId = ParseStrongholdFactionId(layer.layerName)
                 });
             }
+        }
+
+        FlowNavigationGridSource navigationSource = _levelPrefab.GetComponentInChildren<FlowNavigationGridSource>(true);
+        if (navigationSource != null)
+        {
+            _previewNavigationCollisionGrid = navigationSource.Grid;
+            List<FlowNavigationGridAsset> grids = new();
+            if (navigationSource.Grid != null)
+                grids.Add(navigationSource.Grid);
+            if (navigationSource.MovementTypeGrids != null)
+                grids.AddRange(navigationSource.MovementTypeGrids.Where(x => x != null));
+            _previewNavigationGrids = grids.GroupBy(x => x.AgentTypeId).Select(x => x.First()).ToArray();
         }
 
         EntityPresetPoint[] points = _levelPrefab.GetComponentsInChildren<EntityPresetPoint>(true);
         foreach (EntityPresetPoint point in points)
         {
-            if (point.PointType == EntityPresetPointType.Building && EntityPresetPoint.IsInitialBaseIdentifier(point.Identifier))
-                _basePosition = point.Position;
+            if (point.PointType == EntityPresetPointType.Building && point.IsGameEndConditionBuilding)
+            {
+                StrongholdInfo targetStronghold = FindStrongholdAtPosition(point.Position, manager);
+                if (targetStronghold != null && targetStronghold.FactionId == EntitySideHelper.PlayerFactionId)
+                {
+                    _initialDefenseTargets.Add(new DefenseTargetPreview
+                    {
+                        Position = point.Position,
+                        Label = string.IsNullOrWhiteSpace(point.name) ? point.Identifier : point.name
+                    });
+                }
+            }
             if (point.PointType != EntityPresetPointType.Teleportation)
                 continue;
             Vector3 local = manager.transform.InverseTransformPoint(point.Position);
@@ -599,6 +728,12 @@ public sealed class DefendRouteEditorWindow : EditorWindow
                 throw new InvalidOperationException($"据点 '{stronghold.Identifier}' 有多个传送点。");
             stronghold.TeleportPosition = point.Position;
             stronghold.TeleportationId = point.TeleportationId;
+        }
+        _initialDefenseTargets.Sort((left, right) => string.CompareOrdinal(left.Label, right.Label));
+        if (_initialDefenseTargets.Count > 0)
+        {
+            _initialDefenseTargetPosition = _initialDefenseTargets[0].Position;
+            _initialDefenseTargetLabel = _initialDefenseTargets[0].Label;
         }
         SceneView.RepaintAll();
     }
@@ -626,19 +761,28 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     {
         if (_strongholds.Count == 0)
             return;
-        GUIStyle labelStyle = new(EditorStyles.boldLabel)
+        GUIStyle teleportLabelStyle = new(EditorStyles.boldLabel)
         {
             normal = { textColor = Color.white },
-            alignment = TextAnchor.MiddleCenter
+            alignment = TextAnchor.MiddleRight
+        };
+        GUIStyle routeLabelStyle = new(EditorStyles.boldLabel)
+        {
+            normal = { textColor = Color.white },
+            alignment = TextAnchor.MiddleLeft
         };
         foreach (StrongholdInfo stronghold in _strongholds.Values)
         {
+            Vector3 point = stronghold.TeleportPosition ?? stronghold.Center;
             Handles.color = stronghold.TeleportPosition.HasValue ? new Color(0.15f, 0.9f, 0.9f) : Color.yellow;
-            Handles.SphereHandleCap(0, stronghold.TeleportPosition ?? stronghold.Center, Quaternion.identity, 1.2f, EventType.Repaint);
+            Handles.SphereHandleCap(0, point, Quaternion.identity, 1.2f, EventType.Repaint);
             string label = stronghold.TeleportPosition.HasValue
-                ? $"{stronghold.Identifier}  TP:{stronghold.TeleportationId}"
-                : $"{stronghold.Identifier}  TP:缺失";
-            Handles.Label(stronghold.Center + Vector3.up * 1.5f, label, labelStyle);
+                ? $"TP:{stronghold.TeleportationId}"
+                : "TP:缺失";
+            Handles.Label(
+                OffsetSceneLabelPosition(sceneView, point, -0.45f, 0.2f),
+                label,
+                teleportLabelStyle);
         }
 
         List<RouteRecord> routes = CurrentRoutes();
@@ -646,31 +790,153 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         {
             if (!_showAllRoutes && i != _selectedRouteIndex)
                 continue;
-            if (!TryBuildRoutePoints(routes[i], out List<Vector3> points) || points.Count < 2)
+            if (!TryBuildNavigationPreview(routes[i], out RoutePreview preview) || preview.NavigationPoints.Count < 2)
                 continue;
             Handles.color = RouteColor(routes[i].Identifier, i == _selectedRouteIndex);
-            Handles.DrawAAPolyLine(i == _selectedRouteIndex ? 6f : 3f, points.ToArray());
-            for (int pointIndex = 0; pointIndex < points.Count; pointIndex++)
-                Handles.Label(points[pointIndex] + Vector3.up * 0.4f, pointIndex == points.Count - 1 ? "BASE" : pointIndex.ToString(), labelStyle);
+            Handles.DrawAAPolyLine(i == _selectedRouteIndex ? 6f : 3f, preview.NavigationPoints.ToArray());
+            if (i != _selectedRouteIndex)
+                continue;
+
+            for (int pointIndex = 0; pointIndex < preview.TopologyPoints.Count; pointIndex++)
+            {
+                string label = pointIndex == 0
+                    ? "出兵点"
+                    : pointIndex == preview.TopologyPoints.Count - 1 && preview.IncludesInitialTarget
+                        ? "最终目标"
+                        : $"中转 {pointIndex}";
+                Handles.Label(
+                    OffsetSceneLabelPosition(sceneView, preview.TopologyPoints[pointIndex], 0.45f, 0.2f),
+                    label,
+                    routeLabelStyle);
+            }
         }
+    }
+
+    private static Vector3 OffsetSceneLabelPosition(
+        SceneView sceneView,
+        Vector3 point,
+        float horizontalHandleUnits,
+        float verticalHandleUnits)
+    {
+        if (sceneView == null || sceneView.camera == null)
+            throw new InvalidOperationException("防御路线场景预览缺少 SceneView 相机。");
+        float handleSize = HandleUtility.GetHandleSize(point);
+        Transform cameraTransform = sceneView.camera.transform;
+        return point
+               + cameraTransform.right * (handleSize * horizontalHandleUnits)
+               + cameraTransform.up * (handleSize * verticalHandleUnits);
     }
 
     private bool TryBuildRoutePoints(RouteRecord route, out List<Vector3> points)
     {
         points = new List<Vector3>();
-        if (route == null || !_strongholds.TryGetValue(route.SourceStrongholdId, out StrongholdInfo source))
+        if (route == null || !TryGetTeleportationPosition(route.SourceTeleportationId, out Vector3 sourcePosition))
             return false;
-        points.Add(source.TeleportPosition ?? source.Center);
-        foreach (string waypointId in route.WaypointStrongholdIds)
+        points.Add(sourcePosition);
+        foreach (string waypointId in route.WaypointTeleportationIds)
         {
-            if (!_strongholds.TryGetValue(waypointId, out StrongholdInfo waypoint))
+            if (!TryGetTeleportationPosition(waypointId, out Vector3 waypointPosition))
                 return false;
-            points.Add(waypoint.TeleportPosition ?? waypoint.Center);
+            points.Add(waypointPosition);
         }
-        if (!_basePosition.HasValue)
-            return false;
-        points.Add(_basePosition.Value);
+        if (_initialDefenseTargets.Count > 0)
+        {
+            List<Vector3> routePoints = points;
+            DefenseTargetPreview target = _initialDefenseTargets
+                .OrderBy(x => Vector3.SqrMagnitude(x.Position - routePoints[routePoints.Count - 1]))
+                .ThenBy(x => x.Label, StringComparer.Ordinal)
+                .First();
+            points.Add(target.Position);
+        }
         return true;
+    }
+
+    private bool TryBuildNavigationPreview(RouteRecord route, out RoutePreview preview)
+    {
+        string cacheKey = BuildRoutePreviewCacheKey(route);
+        if (_routePreviewCache.TryGetValue(cacheKey, out preview))
+            return preview.Failure == null;
+
+        preview = new RoutePreview();
+        if (!TryBuildRoutePoints(route, out List<Vector3> topologyPoints))
+        {
+            preview.Failure = "路线传送点 ID 无法解析。";
+            _routePreviewCache[cacheKey] = preview;
+            return false;
+        }
+        preview.TopologyPoints.AddRange(topologyPoints);
+        preview.TopologyCumulativeNavigationDistances.Add(0f);
+
+        if (preview.TopologyPoints.Count == 1)
+        {
+            preview.NavigationPoints.Add(preview.TopologyPoints[0]);
+            _routePreviewCache[cacheKey] = preview;
+            return true;
+        }
+
+        int agentTypeId = AgentTypeHelper.ResolveNavAgentTypeId(_previewUnitSize);
+        FlowNavigationGridAsset grid = _previewNavigationGrids.FirstOrDefault(x => x.AgentTypeId == agentTypeId);
+        if (grid == null)
+        {
+            preview.Failure = $"关卡 Prefab 未绑定体型 {_previewUnitSize} 的 FlowNavigationGridAsset。";
+            _routePreviewCache[cacheKey] = preview;
+            return false;
+        }
+
+        preview.IncludesInitialTarget = _initialDefenseTargets.Count > 0;
+        for (int segmentIndex = 1; segmentIndex < preview.TopologyPoints.Count; segmentIndex++)
+        {
+            if (!TryBuildGridSegment(
+                    grid,
+                    preview.TopologyPoints[segmentIndex - 1],
+                    preview.TopologyPoints[segmentIndex],
+                    out List<Vector3> segment,
+                    out string failure))
+            {
+                preview.Failure = $"第 {segmentIndex} 段：{failure}";
+                _routePreviewCache[cacheKey] = preview;
+                return false;
+            }
+
+            if (preview.NavigationPoints.Count == 0)
+                preview.NavigationPoints.AddRange(segment);
+            else
+                preview.NavigationPoints.AddRange(segment.Skip(1));
+            preview.TopologyCumulativeNavigationDistances.Add(
+                preview.TopologyCumulativeNavigationDistances[segmentIndex - 1]
+                + PolylineDistance(segment));
+        }
+
+        _routePreviewCache[cacheKey] = preview;
+        return true;
+    }
+
+    private string GetRoutePreviewFailure(RouteRecord route)
+    {
+        TryBuildNavigationPreview(route, out RoutePreview preview);
+        return preview.Failure ?? "未知错误";
+    }
+
+    private string BuildRoutePreviewCacheKey(RouteRecord route)
+    {
+        return $"{CurrentLevelIdentifier}|{_previewUnitSize}|{route?.Identifier}|{route?.SourceTeleportationId}|{string.Join(",", route?.WaypointTeleportationIds ?? new List<string>())}|{_initialDefenseTargets.Count}";
+    }
+
+    private bool TryBuildGridSegment(
+        FlowNavigationGridAsset grid,
+        Vector3 from,
+        Vector3 to,
+        out List<Vector3> path,
+        out string failure)
+    {
+        path = new List<Vector3>();
+        return FlowFieldCrowdMovementSystem.TryGetEditorNavigationPathCorners(
+            grid,
+            _previewNavigationCollisionGrid,
+            from,
+            to,
+            path,
+            out failure);
     }
 
     private void ValidateAll()
@@ -689,17 +955,17 @@ public sealed class DefendRouteEditorWindow : EditorWindow
 
         foreach (RouteRecord route in _routes)
         {
-            if (string.IsNullOrWhiteSpace(route.Identifier) || string.IsNullOrWhiteSpace(route.LevelIdentifier) || string.IsNullOrWhiteSpace(route.SourceStrongholdId))
-                AddValidation($"路线存在空的 ID、关卡或来源据点：'{route.Identifier}'。");
+            if (string.IsNullOrWhiteSpace(route.Identifier) || string.IsNullOrWhiteSpace(route.LevelIdentifier) || string.IsNullOrWhiteSpace(route.SourceTeleportationId))
+                AddValidation($"路线存在空的 ID、关卡或来源传送点：'{route.Identifier}'。");
             if (!string.Equals(route.LevelIdentifier, CurrentLevelIdentifier, StringComparison.Ordinal))
                 continue;
-            ValidateStrongholdOnRoute(route, route.SourceStrongholdId, "来源");
-            var seen = new HashSet<string>(StringComparer.Ordinal) { route.SourceStrongholdId };
-            foreach (string waypointId in route.WaypointStrongholdIds)
+            ValidateTeleportationOnRoute(route, route.SourceTeleportationId, "来源");
+            var seen = new HashSet<string>(StringComparer.Ordinal) { route.SourceTeleportationId };
+            foreach (string waypointId in route.WaypointTeleportationIds)
             {
-                ValidateStrongholdOnRoute(route, waypointId, "途经");
+                ValidateTeleportationOnRoute(route, waypointId, "途经");
                 if (!seen.Add(waypointId))
-                    AddValidation($"路线 '{route.Identifier}' 重复经过据点 '{waypointId}'。");
+                    AddValidation($"路线 '{route.Identifier}' 重复经过传送点 '{waypointId}'。");
             }
         }
 
@@ -718,8 +984,20 @@ public sealed class DefendRouteEditorWindow : EditorWindow
                 if (!UnitTypeHelper.TryParseUnitTypeAndLevel(enemy.Identifier, out _, out _) || enemy.Count <= 0)
                     AddValidation($"出兵组 '{group.Identifier}' 的兵种或数量无效：'{enemy.Identifier}' x{enemy.Count}。");
             }
-            if (group.DelaySeconds < 0f || group.SpawnIntervalSeconds <= 0f || group.ExpectedDurationSeconds <= 0f || group.SpeedOverrideProperty < 0f)
-                AddValidation($"出兵组 '{group.Identifier}' 的时间或速度参数无效。");
+            if (group.DelaySeconds < 0f || group.ExpectedEngagementSeconds <= 0f)
+                AddValidation($"出兵组 '{group.Identifier}' 的延迟或预计接战时间无效。");
+            if (string.Equals(group.LevelIdentifier, CurrentLevelIdentifier, StringComparison.Ordinal))
+            {
+                if (TryGetPresetSpawnLeads(group, out float firstLead, out _, out string leadFailure))
+                {
+                    if (group.ExpectedEngagementSeconds <= firstLead)
+                        AddValidation($"出兵组 '{group.Identifier}' 的预计接战时间不足以容纳固定出兵窗口。");
+                }
+                else
+                {
+                    AddValidation($"出兵组 '{group.Identifier}' 无法推导固定出兵窗口：{leadFailure}");
+                }
+            }
             if (!string.IsNullOrWhiteSpace(group.AfterGroupIdentifier))
             {
                 if (!groupsById.TryGetValue(group.AfterGroupIdentifier, out GroupRecord predecessor))
@@ -729,21 +1007,19 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             }
         }
 
-        foreach (GroupRecord group in _groups)
+        foreach (GroupRecord group in CurrentGroups())
             TryResolveGroupStart(group, groupsById, new HashSet<string>(StringComparer.Ordinal), out _);
+        ValidateCurrentWaveSchedules(groupsById);
         Repaint();
         SceneView.RepaintAll();
     }
 
-    private void ValidateStrongholdOnRoute(RouteRecord route, string strongholdId, string role)
+    private void ValidateTeleportationOnRoute(RouteRecord route, string teleportationId, string role)
     {
-        if (string.IsNullOrWhiteSpace(strongholdId) || !_strongholds.TryGetValue(strongholdId, out StrongholdInfo stronghold))
+        if (!TryGetTeleportationPosition(teleportationId, out _))
         {
-            AddValidation($"路线 '{route.Identifier}' 的{role}据点 '{strongholdId}' 不存在。");
-            return;
+            AddValidation($"路线 '{route.Identifier}' 的{role}传送点 '{teleportationId}' 不存在。");
         }
-        if (!stronghold.TeleportPosition.HasValue)
-            AddValidation($"路线 '{route.Identifier}' 的{role}据点 '{strongholdId}' 缺少传送点。");
     }
 
     private bool TryResolveGroupStart(
@@ -766,10 +1042,75 @@ public sealed class DefendRouteEditorWindow : EditorWindow
                 visiting.Remove(group.Identifier);
                 return false;
             }
-            start += predecessorStart + predecessor.ExpectedDurationSeconds;
+            if (!TryGetPresetSpawnLeads(predecessor, out _, out float predecessorLastLead, out _))
+            {
+                visiting.Remove(group.Identifier);
+                return false;
+            }
+            start += predecessorStart
+                     + predecessor.ExpectedEngagementSeconds
+                     - predecessorLastLead;
         }
         visiting.Remove(group.Identifier);
         return true;
+    }
+
+    private void ValidateCurrentWaveSchedules(IReadOnlyDictionary<string, GroupRecord> groupsById)
+    {
+        foreach (IGrouping<int, GroupRecord> round in CurrentGroups().GroupBy(x => x.DefendRound))
+        {
+            var windows = new List<PreviewSpawnWindow>();
+            foreach (GroupRecord group in round)
+            {
+                if (!TryResolveGroupStart(group, groupsById, new HashSet<string>(StringComparer.Ordinal), out float start)
+                    || !TryGetPresetSpawnLeads(group, out float firstLead, out float lastLead, out _))
+                {
+                    continue;
+                }
+
+                float engagement = start + group.ExpectedEngagementSeconds;
+                float earliest = engagement - firstLead;
+                float latest = engagement - lastLead;
+                int count = group.Enemies.Sum(x => Mathf.Max(0, x.Count));
+                for (int i = 0; i < count; i++)
+                {
+                    windows.Add(new PreviewSpawnWindow
+                    {
+                        GroupIdentifier = group.Identifier,
+                        Earliest = earliest,
+                        Latest = latest,
+                        OrdinalInGroup = i
+                    });
+                }
+            }
+            if (windows.Count == 0)
+                continue;
+
+            float next = windows.Min(x => x.Earliest);
+            while (windows.Count > 0)
+            {
+                PreviewSpawnWindow selected = windows
+                    .Where(x => x.Earliest <= next + 0.0001f)
+                    .OrderBy(x => x.Latest)
+                    .ThenBy(x => x.OrdinalInGroup)
+                    .ThenBy(x => x.GroupIdentifier, StringComparer.Ordinal)
+                    .FirstOrDefault();
+                if (selected == null)
+                {
+                    next = windows.Min(x => x.Earliest);
+                    continue;
+                }
+                if (next > selected.Latest + 0.0001f)
+                {
+                    AddValidation(
+                        $"防御日 {round.Key} 无法在固定窗口内按 {_spawnIntervalSeconds:F2}s 全波错峰；" +
+                        $"最先超限的出兵组为 '{selected.GroupIdentifier}'。请调整预计接战时间或全局推导移速范围。");
+                    break;
+                }
+                windows.Remove(selected);
+                next += _spawnIntervalSeconds;
+            }
+        }
     }
 
     private void SaveAndGenerate()
@@ -812,8 +1153,8 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             sheet.Cells[row, 2].Value = i + 1;
             sheet.Cells[row, 4].Value = ordered[i].Identifier;
             sheet.Cells[row, 5].Value = ordered[i].LevelIdentifier;
-            sheet.Cells[row, 6].Value = ordered[i].SourceStrongholdId;
-            sheet.Cells[row, 7].Value = string.Join(",", ordered[i].WaypointStrongholdIds);
+            sheet.Cells[row, 6].Value = ordered[i].SourceTeleportationId;
+            sheet.Cells[row, 7].Value = string.Join(",", ordered[i].WaypointTeleportationIds);
         }
         package.Save();
     }
@@ -839,13 +1180,8 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             sheet.Cells[row, 7].Value = group.RouteIdentifier;
             sheet.Cells[row, 8].Value = string.Join(",", group.Enemies.Select(x => $"[{x.Identifier},{x.Count}]"));
             sheet.Cells[row, 9].Value = group.AfterGroupIdentifier;
-            sheet.Cells[row, 10].Value = string.Join(",", new[]
-            {
-                FormatFloat(group.DelaySeconds),
-                FormatFloat(group.SpawnIntervalSeconds),
-                FormatFloat(group.ExpectedDurationSeconds),
-                FormatFloat(group.SpeedOverrideProperty)
-            });
+            sheet.Cells[row, 10].Value = FormatFloat(group.DelaySeconds);
+            sheet.Cells[row, 11].Value = FormatFloat(group.ExpectedEngagementSeconds);
         }
         package.Save();
     }
@@ -895,18 +1231,134 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             .ToList();
     }
 
-    private string FirstStrongholdIdExcept(string excluded)
+    private string FirstEnemyTeleportationId()
     {
-        return _strongholds.Keys.OrderBy(x => x, StringComparer.Ordinal).FirstOrDefault(x => !string.Equals(x, excluded, StringComparison.Ordinal)) ?? string.Empty;
+        return _strongholds.Values
+            .Where(x => x.FactionId != EntitySideHelper.PlayerFactionId && x.TeleportPosition.HasValue)
+            .OrderBy(x => x.TeleportationId)
+            .Select(x => x.TeleportationId.ToString(CultureInfo.InvariantCulture))
+            .FirstOrDefault() ?? string.Empty;
     }
 
-    private string FirstAvailableWaypointStrongholdId(RouteRecord route)
+    private string FirstAvailableWaypointTeleportationId(RouteRecord route)
     {
-        var used = new HashSet<string>(route.WaypointStrongholdIds, StringComparer.Ordinal)
+        var used = new HashSet<string>(route.WaypointTeleportationIds, StringComparer.Ordinal)
         {
-            route.SourceStrongholdId
+            route.SourceTeleportationId
         };
-        return _strongholds.Keys.OrderBy(x => x, StringComparer.Ordinal).FirstOrDefault(x => !used.Contains(x)) ?? string.Empty;
+        return _strongholds.Values
+            .Where(x => x.TeleportPosition.HasValue)
+            .OrderBy(x => x.TeleportationId)
+            .Select(x => x.TeleportationId.ToString(CultureInfo.InvariantCulture))
+            .FirstOrDefault(x => !used.Contains(x)) ?? string.Empty;
+    }
+
+    private bool TryGetTeleportationPosition(string teleportationId, out Vector3 position)
+    {
+        foreach (StrongholdInfo stronghold in _strongholds.Values)
+        {
+            if (stronghold.TeleportPosition.HasValue
+                && string.Equals(
+                    stronghold.TeleportationId.ToString(CultureInfo.InvariantCulture),
+                    teleportationId,
+                    StringComparison.Ordinal))
+            {
+                position = stronghold.TeleportPosition.Value;
+                return true;
+            }
+        }
+        position = default;
+        return false;
+    }
+
+    private StrongholdInfo FindStrongholdAtPosition(Vector3 position, TileWorldCreatorManager manager)
+    {
+        Vector3 local = manager.transform.InverseTransformPoint(position);
+        Vector2 cell = new(
+            Mathf.RoundToInt(local.x / manager.configuration.cellSize),
+            Mathf.RoundToInt(local.z / manager.configuration.cellSize));
+        return _strongholds.Values.FirstOrDefault(x => x.Cells.Contains(cell));
+    }
+
+    private static int ParseStrongholdFactionId(string identifier)
+    {
+        string[] parts = identifier.Split('_');
+        if (parts.Length != 3 || !int.TryParse(parts[1], out int factionId))
+            throw new InvalidOperationException($"据点图层名 '{identifier}' 不是 SH_阵营_编号 格式。");
+        return factionId;
+    }
+
+    private bool TryGetPresetSpawnLeads(
+        GroupRecord group,
+        out float firstSpawnLead,
+        out float lastSpawnLead,
+        out string failure)
+    {
+        firstSpawnLead = 0f;
+        lastSpawnLead = 0f;
+        failure = null;
+        RouteRecord route = CurrentRoutes().FirstOrDefault(x =>
+            string.Equals(x.Identifier, group.RouteIdentifier, StringComparison.Ordinal));
+        if (route == null || !TryBuildNavigationPreview(route, out RoutePreview preview))
+        {
+            failure = $"无法生成流场路径预览：{GetRoutePreviewFailure(route)}";
+            return false;
+        }
+        if (preview.TopologyCumulativeNavigationDistances.Count < 2)
+        {
+            failure = "路线没有可用于接战估算的中转点或初始玩家防守目标。";
+            return false;
+        }
+
+        int presetTopologyIndex = -1;
+        for (int i = 0; i < route.WaypointTeleportationIds.Count; i++)
+        {
+            string teleportationId = route.WaypointTeleportationIds[i];
+            StrongholdInfo stronghold = _strongholds.Values.FirstOrDefault(x =>
+                x.TeleportPosition.HasValue
+                && string.Equals(
+                    x.TeleportationId.ToString(CultureInfo.InvariantCulture),
+                    teleportationId,
+                    StringComparison.Ordinal));
+            if (stronghold != null && stronghold.FactionId == EntitySideHelper.PlayerFactionId)
+            {
+                presetTopologyIndex = i + 1;
+                break;
+            }
+        }
+        if (presetTopologyIndex < 0 && preview.IncludesInitialTarget)
+            presetTopologyIndex = preview.TopologyPoints.Count - 1;
+        if (presetTopologyIndex <= 0)
+        {
+            failure = "预设路线没有初始玩家中转点或初始玩家防守目标。";
+            return false;
+        }
+
+        float shortestDistance = Vector3.Distance(
+            preview.TopologyPoints[0],
+            preview.TopologyPoints[1]);
+        float presetEngagementDistance = 0f;
+        for (int i = 1; i <= presetTopologyIndex; i++)
+        {
+            presetEngagementDistance += Vector3.Distance(
+                preview.TopologyPoints[i - 1],
+                preview.TopologyPoints[i]);
+        }
+
+        shortestDistance = Mathf.Max(0f, shortestDistance - _waypointArrivalRadiusWorld);
+        presetEngagementDistance = Mathf.Max(0f, presetEngagementDistance - _waypointArrivalRadiusWorld);
+        if (shortestDistance <= 0f || presetEngagementDistance <= 0f)
+        {
+            failure = "路线长度不大于中转抵达半径。";
+            return false;
+        }
+        float longestAtMaxSpeed = presetEngagementDistance
+                                  / Mathf.Max(0.001f, _maximumSpeedProperty * _distanceConversionRate);
+        float shortestAtMinSpeed = shortestDistance
+                                   / Mathf.Max(0.001f, _minimumSpeedProperty * _distanceConversionRate);
+        firstSpawnLead = Mathf.Max(longestAtMaxSpeed, shortestAtMinSpeed);
+        lastSpawnLead = Mathf.Min(longestAtMaxSpeed, shortestAtMinSpeed);
+        return firstSpawnLead > 0f && lastSpawnLead > 0f;
     }
 
     private static ExcelPackage OpenExcel(string path)
@@ -967,11 +1419,6 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         return result;
     }
 
-    private static float ValueAt(float[] values, int index)
-    {
-        return index < values.Length ? values[index] : 0f;
-    }
-
     private static string FormatFloat(float value)
     {
         return value.ToString("0.###", CultureInfo.InvariantCulture);
@@ -1009,8 +1456,8 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     {
         public string Identifier;
         public string LevelIdentifier;
-        public string SourceStrongholdId;
-        public List<string> WaypointStrongholdIds = new();
+        public string SourceTeleportationId;
+        public List<string> WaypointTeleportationIds = new();
     }
 
     private sealed class GroupRecord
@@ -1022,15 +1469,36 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         public List<EnemyRecord> Enemies = new();
         public string AfterGroupIdentifier;
         public float DelaySeconds;
-        public float SpawnIntervalSeconds;
-        public float ExpectedDurationSeconds;
-        public float SpeedOverrideProperty;
+        public float ExpectedEngagementSeconds;
     }
 
     private sealed class EnemyRecord
     {
         public string Identifier;
         public int Count;
+    }
+
+    private sealed class PreviewSpawnWindow
+    {
+        public string GroupIdentifier;
+        public float Earliest;
+        public float Latest;
+        public int OrdinalInGroup;
+    }
+
+    private sealed class DefenseTargetPreview
+    {
+        public Vector3 Position;
+        public string Label;
+    }
+
+    private sealed class RoutePreview
+    {
+        public readonly List<Vector3> TopologyPoints = new();
+        public readonly List<Vector3> NavigationPoints = new();
+        public readonly List<float> TopologyCumulativeNavigationDistances = new();
+        public bool IncludesInitialTarget;
+        public string Failure;
     }
 
     private sealed class StrongholdInfo
@@ -1040,6 +1508,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         public Vector3 Center;
         public Vector3? TeleportPosition;
         public int TeleportationId;
+        public int FactionId;
     }
 }
 #endif

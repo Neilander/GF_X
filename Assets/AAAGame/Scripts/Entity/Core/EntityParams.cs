@@ -45,7 +45,9 @@ public class EntityParams : RefParams
     public int UnitLevel { get; set; } = 1;
     public Fix64? DefendAssignedSpeed { get; set; }
     public FixVector2[] DefendRouteWaypointsFixed { get; set; }
-    public string[] DefendRouteWaypointStrongholdIds { get; set; }
+    public string[] DefendRouteWaypointTeleportationIds { get; set; }
+    public int DefendSpeedReleaseWaypointIndex { get; set; } = -1;
+    public FixVector2? DefendSpeedReleasePositionFixed { get; set; }
     public int FollowEntityId { get; set; } = -1;
     public LogicSkillFactoryKind LogicSkillFactoryKind { get; set; }
     public const string P_CharacterKey = "CharacterKey";
@@ -127,7 +129,9 @@ public class EntityParams : RefParams
         UnitLevel = 1;
         DefendAssignedSpeed = null;
         DefendRouteWaypointsFixed = null;
-        DefendRouteWaypointStrongholdIds = null;
+        DefendRouteWaypointTeleportationIds = null;
+        DefendSpeedReleaseWaypointIndex = -1;
+        DefendSpeedReleasePositionFixed = null;
         FollowEntityId = -1;
         StartBuffs = null;
         LogicSkillFactoryKind = LogicSkillFactoryKind.None;

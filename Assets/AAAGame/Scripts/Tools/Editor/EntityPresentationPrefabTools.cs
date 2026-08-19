@@ -15,7 +15,7 @@ public static class EntityPresentationPrefabTools
     private const string UnitProxySource = UnitFolder + "/背锅侠.prefab";
     private const string BuildingProxySource = BuildingFolder + "/Buil_DeliveryHub_Lv1.prefab";
 
-    [MenuItem("Tools/AAAGame/Presentation/Migrate Existing Entity Prefabs")]
+    [MenuItem("Tools/Entity Presentation/Migrate Existing Entity Prefabs")]
     public static void MigrateExistingEntityPrefabs()
     {
         int changed = MigrateAllExistingPrefabs();
@@ -23,7 +23,7 @@ public static class EntityPresentationPrefabTools
         Debug.Log($"[EntityPresentationPrefabTools] Migrated {changed} entity prefabs.");
     }
 
-    [MenuItem("Tools/AAAGame/Presentation/Generate Missing Proxy Prefabs")]
+    [MenuItem("Tools/Entity Presentation/Generate Missing Proxy Prefabs")]
     public static void GenerateMissingProxyPrefabs()
     {
         RequireAsset(UnitProxySource);
@@ -34,14 +34,14 @@ public static class EntityPresentationPrefabTools
         int buildingCount = CreateMissingPrefabs(ReadBuildingPrefabPaths(), BuildingProxySource, false);
         MigrateAllExistingPrefabs();
         int resizedUnitCount = NormalizeUnitVisualRadiiInternal();
-        ExecuteRequiredMenuItem("Tools/AAAGame/Bake Building Logic Obstacle Shapes");
-        ExecuteRequiredMenuItem("Tools/AAAGame/Bake Building Combat Shapes");
+        ExecuteRequiredMenuItem("Tools/Buildings/Bake Logic Obstacle Shapes");
+        ExecuteRequiredMenuItem("Tools/Buildings/Bake Combat Shapes");
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         Debug.Log($"[EntityPresentationPrefabTools] Created proxies. units={unitCount}, buildings={buildingCount}, resizedUnits={resizedUnitCount}.");
     }
 
-    [MenuItem("Tools/AAAGame/Presentation/Normalize Unit Visual Radii")]
+    [MenuItem("Tools/Entity Presentation/Normalize Unit Visual Radii")]
     public static void NormalizeUnitVisualRadii()
     {
         int changed = NormalizeUnitVisualRadiiInternal();
@@ -78,7 +78,7 @@ public static class EntityPresentationPrefabTools
         return (float)Fix64.FromRaw(worldRaw);
     }
 
-    [MenuItem("Tools/AAAGame/Presentation/Validate Entity Prefabs")]
+    [MenuItem("Tools/Entity Presentation/Validate Entity Prefabs")]
     public static void ValidateEntityPrefabs()
     {
         int unitCount = ValidateFolder(UnitFolder, true);

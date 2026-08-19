@@ -3820,6 +3820,91 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 防御距离估算必须由分帧共享目标预热_不得在查询时同步全图寻路()
+    {
+        const int width = 40;
+        const int height = 5;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        for (int y = 0; y < height - 1; y++)
+            walkable[y * width + 2] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        var start = new FixVector2((Fix64)0.5f, (Fix64)0.5f);
+        var goal = new FixVector2((Fix64)39.5f, (Fix64)0.5f);
+
+        Assert.IsFalse(
+            FlowFieldCrowdMovementSystem.TryEstimatePrewarmedNavigationDistanceToReachableGoalFixed(
+                start,
+                goal,
+                0,
+                out _,
+                out _,
+                out string unpreparedFailure));
+        StringAssert.Contains("prewarmed flow path unavailable", unpreparedFailure);
+
+        int completionEventCount = 0;
+        int completedRequestCount = 0;
+        EventHandler<NavigationDistancePrewarmCompletedEventArgs> onCompleted = (_, eventArgs) =>
+        {
+            completionEventCount++;
+            completedRequestCount = eventArgs.RequestCount;
+        };
+        FlowFieldCrowdMovementSystem.NavigationDistancePrewarmCompleted += onCompleted;
+        try
+        {
+            FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(start, goal, 0);
+            Assert.IsFalse(FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted);
+            Assert.AreEqual(0, completionEventCount, "提交预热请求时不得提前报告完成。");
+            Assert.IsFalse(
+                FlowFieldCrowdMovementSystem.TryEstimatePrewarmedNavigationDistanceToReachableGoalFixed(
+                    start,
+                    goal,
+                    0,
+                    out _,
+                    out _,
+                    out _),
+                "预热请求本身不得同步计算共享目标场。");
+            int frameCount = 0;
+            do
+            {
+                FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+                frameCount++;
+                Assert.Less(frameCount, 100, "共享目标场预热不应长期滞留。");
+            } while (FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount() > 0);
+
+            Assert.GreaterOrEqual(frameCount, 1);
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted);
+            Assert.AreEqual(1, completionEventCount, "全部请求首次可查询时应且只应报告一次完成。");
+            Assert.AreEqual(1, completedRequestCount);
+            Assert.IsTrue(
+                FlowFieldCrowdMovementSystem.TryEstimatePrewarmedNavigationDistanceToReachableGoalFixed(
+                    start,
+                    goal,
+                    0,
+                    out Fix64 distance,
+                    out _,
+                    out string failureReason),
+                failureReason);
+            Assert.Greater(distance.RawValue, FixVector2.Distance(start, goal).RawValue);
+
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+            Assert.AreEqual(1, completionEventCount, "完成状态未失效时不得重复发送完成事件。");
+
+            FlowFieldCrowdMovementSystem.MarkWorldDirty("prewarm-completion-invalidation-test");
+            Assert.IsFalse(
+                FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted,
+                "导航世界失效后不得沿用旧世界的预热完成状态。");
+        }
+        finally
+        {
+            FlowFieldCrowdMovementSystem.NavigationDistancePrewarmCompleted -= onCompleted;
+        }
+    }
+
+    [Test]
     public void 斜坡导航距离按XZ平面步长计算_忽略导航锚点高度差()
     {
         bool[] walkable = { true, true, true };

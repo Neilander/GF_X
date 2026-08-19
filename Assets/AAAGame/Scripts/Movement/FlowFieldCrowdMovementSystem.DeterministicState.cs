@@ -581,6 +581,7 @@ public static partial class FlowFieldCrowdMovementSystem
     private static void AddAuthorityNavigationCaches(LogicStateHasher hasher)
     {
         hasher.Add(0x4E41564155544843UL);
+        AddNavigationDistancePrewarmRequests(hasher);
         AddAuthoritySectorPathCache(hasher);
         AddAuthoritySectorPortalAccessCache(hasher);
         AddAuthoritySharedGoalFieldCache(hasher);
@@ -905,12 +906,16 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("Cannot remove an unhashed shared-goal field.");
         _sharedGoalFieldAuthorityContentHash ^= field.AuthorityContentHash;
         SharedGoalFields.Remove(key);
+        if (s_NavigationDistancePrewarmCompleted && IsNavigationDistancePrewarmSharedGoalKey(key))
+            s_NavigationDistancePrewarmCompleted = false;
     }
 
     private static void ClearSharedGoalFieldCache()
     {
         SharedGoalFields.Clear();
         _sharedGoalFieldAuthorityContentHash = 0;
+        if (NavigationDistancePrewarmRequests.Count > 0)
+            s_NavigationDistancePrewarmCompleted = false;
     }
 
     private static void AddAuthorityDeterministicFlowTiles(LogicStateHasher hasher)
@@ -2800,6 +2805,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void AddNavigationCaches(LogicStateHasher hasher)
     {
+        AddNavigationDistancePrewarmRequests(hasher);
         var pathKeys = new List<SectorPathCacheKey>(SectorPathCache.Keys);
         pathKeys.Sort(CompareSectorPathKeys);
         hasher.Add(pathKeys.Count);
@@ -2840,6 +2846,22 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(sharedKeys.Count);
         for (int i = 0; i < sharedKeys.Count; i++)
             AddSharedGoalField(hasher, SharedGoalFields[sharedKeys[i]]);
+    }
+
+    private static void AddNavigationDistancePrewarmRequests(LogicStateHasher hasher)
+    {
+        hasher.Add(s_NavigationDistancePrewarmCompleted);
+        hasher.Add(s_NavigationDistancePrewarmCompletionMayHaveChanged);
+        hasher.Add(NavigationDistancePrewarmRequests.Count);
+        for (int i = 0; i < NavigationDistancePrewarmRequests.Count; i++)
+        {
+            NavigationDistancePrewarmRequest request = NavigationDistancePrewarmRequests[i];
+            hasher.Add(request.AgentTypeId);
+            hasher.Add(request.From.x.RawValue);
+            hasher.Add(request.From.y.RawValue);
+            hasher.Add(request.RawGoal.x.RawValue);
+            hasher.Add(request.RawGoal.y.RawValue);
+        }
     }
 
     private static void AddBuildQueues(LogicStateHasher hasher)

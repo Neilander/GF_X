@@ -1,4 +1,22 @@
-#	防御出兵组表								
-#	ID		Identifier	LevelIdentifier	DefendRound	RouteIdentifier	Enemies	AfterGroupIdentifier	UniqueValues
-#	int		string	string	int	string	StringIntPair[]	string	Fix64[]
-#	行号	备注	代码内标识符	所属关卡标识	防御日，从1开始；超过最大日时重复最后一日并按无尽倍率成长	路线标识符	固定兵种与数量；来源据点被占领后整组不出兵且不向其他据点转移	前置出兵组；空表示从防御阶段开始计时	[0]前置结束后的额外延迟秒（无前置时为阶段开始延迟）；[1]组内单位出兵间隔秒；[2]预计本组总持续时间秒（含行军与交战）；[3]行军速度覆盖，0表示使用全局防御最低速度
+#	防御出兵组表									
+#	ID		Identifier	LevelIdentifier	DefendRound	RouteIdentifier	Enemies	AfterGroupIdentifier	StartDelaySeconds	ExpectedEngagementSeconds
+#	int		string	string	int	string	StringIntPair[]	string	Fix64	Fix64
+#	行号	备注	代码内标识符	所属关卡标识	防御日，从1开始；超过最大日时重复最后一日并按无尽倍率成长	路线标识符	固定兵种与数量；来源据点被占领后整组不出兵且不向其他据点转移	前置出兵组；空表示从防御阶段开始计时	前置组固定出兵窗口结束后的延迟秒；无前置时为防御阶段开始延迟	从本组计时基准到预计接战时刻的秒数；固定出兵后，关卡内按当前首个玩家中转据点的导航距离反推移速
+	1		Lv_1_D2_East	Lv_1	2	Lv_1_Route_East	[Unit_HiredBodyguard,2]		0	12
+	2		Lv_1_D2_North	Lv_1	2	Lv_1_Route_North	[Unit_HiredBodyguard,1]		0	15
+	3		Lv_1_D2_West	Lv_1	2	Lv_1_Route_West	[Unit_HiredBodyguard,1]		0	18
+	4		Lv_1_D3_East	Lv_1	3	Lv_1_Route_East	[Unit_HiredBodyguard,2]		0	12
+	5		Lv_1_D3_North	Lv_1	3	Lv_1_Route_North	[Unit_HiredBodyguard,2]		0	15
+	6		Lv_1_D3_West	Lv_1	3	Lv_1_Route_West	[Unit_HiredBodyguard,2]		0	18
+	7		Lv_1_D4_East	Lv_1	4	Lv_1_Route_East	[Unit_HiredBodyguard,3]		0	12
+	8		Lv_1_D4_North	Lv_1	4	Lv_1_Route_North	[Unit_HiredBodyguard,3]		0	15
+	9		Lv_1_D4_West	Lv_1	4	Lv_1_Route_West	[Unit_HiredBodyguard,2]		0	18
+	10		Lv_2_D1_West	Lv_2	1	Lv_2_Route_West	[Unit_BoneButcher,1]		0	12
+	11		Lv_2_D1_SouthWest	Lv_2	1	Lv_2_Route_SouthWest	[Unit_CanMaker_Lv3,1]		0	15
+	12		Lv_2_D1_SouthEast	Lv_2	1	Lv_2_Route_SouthEast	[Unit_CanMaker_Lv3,1]		0	18
+	13		Lv_3_D1_North	Lv_3	1	Lv_3_Route_North	[Unit_BoneButcher_Lv2,1],[Unit_Intern,1]		0	14
+	14		Lv_3_D1_East	Lv_3	1	Lv_3_Route_East	[Unit_Intern,2]		0	17
+	15		Lv_3_D1_SouthEast	Lv_3	1	Lv_3_Route_SouthEast	[Unit_Intern,2]		0	20
+	16		LvTest_D1_SouthWest	LvTest	1	LvTest_Route_SouthWest	[Unit_BoneButcher,1]		0	12
+	17		LvTest_D1_SouthEast	LvTest	1	LvTest_Route_SouthEast	[Unit_Poacher_Lv3,1]		0	15
+	18		LvTest_D1_West	LvTest	1	LvTest_Route_West	[Unit_Poacher_Lv3,1]		0	18

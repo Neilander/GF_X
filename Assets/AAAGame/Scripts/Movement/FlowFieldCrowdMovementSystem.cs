@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using AAAGame.MiniMap.FOG3;
+using GameFramework;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 using MainThreadFrameProfiler = UnityGameFramework.Runtime.MainThreadFrameProfiler;
@@ -820,6 +821,20 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
+    private sealed class NavigationDistancePrewarmRequest
+    {
+        public int AgentTypeId;
+        public FixVector2 From;
+        public FixVector2 RawGoal;
+        public int ResolvedWorldVersion = -1;
+        public int StartX;
+        public int StartY;
+        public int StartSectorId = -1;
+        public int GoalX;
+        public int GoalY;
+        public int GoalSectorId = -1;
+    }
+
     private sealed class SharedGoalField
     {
         public SharedGoalFieldKey Key;
@@ -1334,6 +1349,20 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
+#if UNITY_EDITOR
+    private sealed class EditorNavigationPreviewWorld
+    {
+        public FlowNavigationGridAsset Grid;
+        public FlowNavigationGridAsset StaticCollisionSourceGrid;
+        public FlowNavigationGridAsset.DerivedNavigationData DerivedNavigationData;
+        public bool[] WalkableMask;
+        public byte[] NeighborTraversalMask;
+        public FixVector2[] StaticCollisionVertices;
+        public int[] StaticCollisionPathStarts;
+        public NavigationWorld World;
+    }
+#endif
+
     private sealed class CircleObstacle
     {
         public int Id;
@@ -1787,6 +1816,9 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly Dictionary<SharedGoalFieldKey, Dictionary<int, int>> ActiveSharedGoalFieldDemandStartCells = new Dictionary<SharedGoalFieldKey, Dictionary<int, int>>();
     private static readonly List<SharedGoalFieldKey> ActiveSharedGoalFieldKeyOrderScratch = new List<SharedGoalFieldKey>(64);
     private static readonly Comparison<SharedGoalFieldKey> SharedGoalFieldKeyComparison = CompareSharedGoalKeys;
+    private static readonly List<NavigationDistancePrewarmRequest> NavigationDistancePrewarmRequests = new List<NavigationDistancePrewarmRequest>(64);
+    private static bool s_NavigationDistancePrewarmCompleted;
+    private static bool s_NavigationDistancePrewarmCompletionMayHaveChanged;
     private static readonly List<int> SharedGoalPruneScratch = new List<int>(256);
     private static readonly Dictionary<CombatTargetSlotKey, CombatTargetSlotEntry> CombatTargetSlotCache = new Dictionary<CombatTargetSlotKey, CombatTargetSlotEntry>();
     private static readonly Dictionary<FixedPortalOwnerKey, FixedPortalOwnerState> FixedPortalOwners = new Dictionary<FixedPortalOwnerKey, FixedPortalOwnerState>();
@@ -1808,6 +1840,11 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly List<int> BottleneckWaitingRemovalScratch = new List<int>(16);
     private static readonly MinHeap DistanceEstimateOpenSet = new MinHeap();
     private static readonly DeterministicCostHeap FixedDistanceEstimateOpenSet = new DeterministicCostHeap();
+    private static readonly DeterministicCostHeap SectorDistanceEstimateOpenSet = new DeterministicCostHeap();
+    private static long[] SectorDistanceEstimateCosts = Array.Empty<long>();
+    private static int[] SectorDistanceEstimateVisitedMarks = Array.Empty<int>();
+    private static int[] SectorDistanceEstimateClosedMarks = Array.Empty<int>();
+    private static int SectorDistanceEstimateSearchId;
     private static readonly DeterministicCostHeap PortalAccessIntegrationOpenSet = new DeterministicCostHeap();
     private static readonly List<int> DistanceEstimatePathIndices = new List<int>(256);
     private static readonly Dictionary<int, Stack<bool[]>> BoolArrayPool = new Dictionary<int, Stack<bool[]>>();
@@ -1819,6 +1856,10 @@ public static partial class FlowFieldCrowdMovementSystem
     private static int[] DistanceEstimateClosedMarks = Array.Empty<int>();
     private static int[] DistanceEstimateParents = Array.Empty<int>();
     private static int DistanceEstimateSearchId;
+#if UNITY_EDITOR
+    private static readonly Dictionary<int, EditorNavigationPreviewWorld> EditorNavigationPreviewWorlds =
+        new Dictionary<int, EditorNavigationPreviewWorld>();
+#endif
     private static int _lastRuntimeDirtyPreviewTimingFrame = -100000;
     private static int _navigationGoalReservationFrame = -1;
     private static int _successfulMoveDiagnosticFrame = -1;
@@ -2566,6 +2607,10 @@ public static partial class FlowFieldCrowdMovementSystem
 
     public static int NavigationTopologyVersion => _navigationTopologyVersion;
     public static int DeterministicWorldHashRefreshCount { get; private set; }
+    public static bool IsNavigationDistancePrewarmCompleted =>
+        NavigationDistancePrewarmRequests.Count == 0 || s_NavigationDistancePrewarmCompleted;
+
+    public static event EventHandler<NavigationDistancePrewarmCompletedEventArgs> NavigationDistancePrewarmCompleted;
 
     public static void ResetAll()
     {
@@ -2596,6 +2641,9 @@ public static partial class FlowFieldCrowdMovementSystem
         ActiveSharedGoalFieldDemandStartSectors.Clear();
         ActiveSharedGoalFieldDemandStartCells.Clear();
         ActiveSharedGoalFieldKeyOrderScratch.Clear();
+        NavigationDistancePrewarmRequests.Clear();
+        s_NavigationDistancePrewarmCompleted = false;
+        s_NavigationDistancePrewarmCompletionMayHaveChanged = false;
         FixedPortalOwners.Clear();
         FixedPortalOwnerEvaluatedFrameByWorld.Clear();
         FixedPortalParticipantScratch.Clear();
@@ -3668,6 +3716,83 @@ public static partial class FlowFieldCrowdMovementSystem
         return world;
     }
 
+#if UNITY_EDITOR
+    private static NavigationWorld GetOrCreateEditorNavigationPreviewWorld(
+        FlowNavigationGridAsset grid,
+        FlowNavigationGridAsset staticCollisionSourceGrid)
+    {
+        if (staticCollisionSourceGrid == null)
+            throw new ArgumentNullException(nameof(staticCollisionSourceGrid));
+        if (!staticCollisionSourceGrid.HasStaticCollisionGeometry)
+        {
+            throw new InvalidOperationException(
+                $"Navigation preview collision source grid '{staticCollisionSourceGrid.name}' has no deterministic static collision geometry.");
+        }
+
+        int gridInstanceId = grid.GetInstanceID();
+        FlowNavigationGridAsset.DerivedNavigationData derivedData =
+            grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
+        bool[] walkableMask = grid.GetWalkableMaskRuntimeReadOnlyReference();
+        byte[] neighborTraversalMask = grid.GetNeighborTraversalMaskRuntimeReadOnlyReference();
+        FixVector2[] staticCollisionVertices =
+            staticCollisionSourceGrid.GetStaticCollisionVerticesRuntimeReadOnlyReference();
+        int[] staticCollisionPathStarts =
+            staticCollisionSourceGrid.GetStaticCollisionPathStartsRuntimeReadOnlyReference();
+        if (derivedData == null || !derivedData.IsValid)
+            throw new InvalidOperationException($"Navigation preview grid '{grid.name}' has no valid derived navigation data.");
+        if (neighborTraversalMask == null)
+            throw new InvalidOperationException($"Navigation preview grid '{grid.name}' has no authored traversal mask.");
+
+        if (EditorNavigationPreviewWorlds.TryGetValue(gridInstanceId, out EditorNavigationPreviewWorld cached)
+            && cached.Grid == grid
+            && cached.StaticCollisionSourceGrid == staticCollisionSourceGrid
+            && ReferenceEquals(cached.DerivedNavigationData, derivedData)
+            && ReferenceEquals(cached.WalkableMask, walkableMask)
+            && ReferenceEquals(cached.NeighborTraversalMask, neighborTraversalMask)
+            && ReferenceEquals(cached.StaticCollisionVertices, staticCollisionVertices)
+            && ReferenceEquals(cached.StaticCollisionPathStarts, staticCollisionPathStarts))
+        {
+            return cached.World;
+        }
+
+        FlowNavigationGridAsset.FixedAuthorityMetadata fixedMetadata = grid.GetFixedAuthorityMetadata();
+        Fix64 previewRadius = NavigationGridFixedMath.GridRawToFix64(fixedMetadata.CellSizeGridRaw);
+        TestTerrainOverride source = CreateTerrainOverride(
+            grid.AgentTypeId,
+            grid.Width,
+            grid.Height,
+            grid.CellSize,
+            grid.Origin,
+            walkableMask,
+            grid.GetCellAnchorsRuntimeReadOnlyReference(),
+            grid.GetCostFieldRuntimeReadOnlyReference(),
+            neighborTraversalMask,
+            derivedData,
+            useRuntimeReadOnlyReferences: true,
+            cellSizeGridRaw: fixedMetadata.CellSizeGridRaw,
+            originXGridRaw: fixedMetadata.OriginXGridRaw,
+            originZGridRaw: fixedMetadata.OriginZGridRaw,
+            cellNavAnchorsFixedXZ: grid.GetCellAnchorsFixedRuntimeReadOnlyReference(),
+            hasFixedAuthorityPayload: true,
+            agentRadiusOverrideFixed: previewRadius,
+            staticCollisionVertices: staticCollisionVertices,
+            staticCollisionPathStarts: staticCollisionPathStarts);
+        NavigationWorld world = ImportDerivedNavigationWorld(source);
+        EditorNavigationPreviewWorlds[gridInstanceId] = new EditorNavigationPreviewWorld
+        {
+            Grid = grid,
+            StaticCollisionSourceGrid = staticCollisionSourceGrid,
+            DerivedNavigationData = derivedData,
+            WalkableMask = walkableMask,
+            NeighborTraversalMask = neighborTraversalMask,
+            StaticCollisionVertices = staticCollisionVertices,
+            StaticCollisionPathStarts = staticCollisionPathStarts,
+            World = world
+        };
+        return world;
+    }
+#endif
+
     private static SectorData[] ImportDerivedSectors(FlowNavigationGridAsset.SectorDerivedData[] source)
     {
         if (source == null)
@@ -4020,6 +4145,7 @@ public static partial class FlowFieldCrowdMovementSystem
         ActiveSharedGoalFieldBuildKeys.Clear();
         ActiveSharedGoalFieldDemandStartSectors.Clear();
         ActiveSharedGoalFieldDemandStartCells.Clear();
+        s_NavigationDistancePrewarmCompleted = false;
         MovingTargetAnchors.Clear();
         CombatTargetSlotCache.Clear();
         FixedPortalOwners.Clear();
@@ -4421,6 +4547,12 @@ public static partial class FlowFieldCrowdMovementSystem
 
             if (worldCount > 0)
                 _flowBuildQueueWorldStartIndex = (startIndex + 1) % worldCount;
+
+            if (s_NavigationDistancePrewarmCompletionMayHaveChanged)
+            {
+                s_NavigationDistancePrewarmCompletionMayHaveChanged = false;
+                RefreshNavigationDistancePrewarmCompletion();
+            }
         }
         finally
         {
@@ -4624,6 +4756,153 @@ public static partial class FlowFieldCrowdMovementSystem
                 ResolvePreferredAgentTypeId(agent.AgentTypeId)), agent.NavState.CurrentSectorId, agent.NavState.CurrentCell.x, agent.NavState.CurrentCell.y);
         }
 
+        AddNavigationDistancePrewarmBuildKeysForActiveWorld();
+
+    }
+
+    private static void AddNavigationDistancePrewarmBuildKeysForActiveWorld()
+    {
+        if (_world == null)
+            throw new InvalidOperationException("Navigation distance prewarm requires an active world.");
+
+        for (int i = 0; i < NavigationDistancePrewarmRequests.Count; i++)
+        {
+            NavigationDistancePrewarmRequest request = NavigationDistancePrewarmRequests[i];
+            if (request.AgentTypeId != _world.AgentTypeId)
+                continue;
+            if (request.ResolvedWorldVersion != _world.Version)
+            {
+                if (!TryResolveReachableNavigationQueryCellsFixed(
+                        _world,
+                        request.From,
+                        request.RawGoal,
+                        out request.StartX,
+                        out request.StartY,
+                        out request.GoalX,
+                        out request.GoalY,
+                        out _,
+                        out string failureReason)
+                    || !_world.TryGetSectorId(request.StartX, request.StartY, out request.StartSectorId)
+                    || !_world.TryGetSectorId(request.GoalX, request.GoalY, out request.GoalSectorId))
+                {
+                    throw new InvalidOperationException(
+                        $"Navigation distance prewarm cannot resolve route agentType={request.AgentTypeId} " +
+                        $"fromRaw=({request.From.x.RawValue},{request.From.y.RawValue}) " +
+                        $"goalRaw=({request.RawGoal.x.RawValue},{request.RawGoal.y.RawValue}) reason={failureReason}.");
+                }
+
+                request.ResolvedWorldVersion = _world.Version;
+                s_NavigationDistancePrewarmCompletionMayHaveChanged = true;
+            }
+
+            AddActiveSharedGoalFieldBuildKey(
+                CreateSharedGoalFieldKey(request.GoalSectorId, request.GoalX, request.GoalY, request.AgentTypeId),
+                request.StartSectorId,
+                request.StartX,
+                request.StartY);
+        }
+    }
+
+    private static int CompareNavigationDistancePrewarmRequests(
+        NavigationDistancePrewarmRequest left,
+        NavigationDistancePrewarmRequest right)
+    {
+        int order = left.AgentTypeId.CompareTo(right.AgentTypeId);
+        if (order != 0) return order;
+        order = left.From.x.RawValue.CompareTo(right.From.x.RawValue);
+        if (order != 0) return order;
+        order = left.From.y.RawValue.CompareTo(right.From.y.RawValue);
+        if (order != 0) return order;
+        order = left.RawGoal.x.RawValue.CompareTo(right.RawGoal.x.RawValue);
+        return order != 0 ? order : left.RawGoal.y.RawValue.CompareTo(right.RawGoal.y.RawValue);
+    }
+
+    private static void RefreshNavigationDistancePrewarmCompletion()
+    {
+        if (s_NavigationDistancePrewarmCompleted || NavigationDistancePrewarmRequests.Count == 0)
+            return;
+
+        for (int i = 0; i < NavigationDistancePrewarmRequests.Count; i++)
+        {
+            NavigationDistancePrewarmRequest request = NavigationDistancePrewarmRequests[i];
+            if (!WorldStates.TryGetValue(request.AgentTypeId, out WorldRuntimeState state)
+                || state == null
+                || state.IsDirty
+                || state.BuildJob != null
+                || state.World == null
+                || request.ResolvedWorldVersion != state.World.Version)
+            {
+                return;
+            }
+
+            NavigationWorld world = state.World;
+            if (request.StartX == request.GoalX && request.StartY == request.GoalY)
+                continue;
+            if (request.StartSectorId == request.GoalSectorId)
+                continue;
+
+            var key = new SharedGoalFieldKey(
+                world.Version,
+                request.AgentTypeId,
+                request.GoalSectorId,
+                world.GetIndex(request.GoalX, request.GoalY),
+                world.Sectors[request.GoalSectorId].DirtyVersion);
+            if (!SharedGoalFields.TryGetValue(key, out SharedGoalField field) || field == null)
+            {
+                if (PendingSharedGoalFieldBuildJobs.Contains(key))
+                    return;
+                throw new InvalidOperationException(
+                    $"Navigation distance prewarm failed to build a route agentType={request.AgentTypeId} " +
+                    $"start=({request.StartX},{request.StartY}) goal=({request.GoalX},{request.GoalY}).");
+            }
+
+            int startCellIndex = world.GetIndex(request.StartX, request.StartY);
+            if (field.CompletedDemandStartCellIndices.Count > 0)
+            {
+                if (!field.CompletedDemandStartCellIndices.Contains(startCellIndex))
+                    return;
+            }
+            else if (field.CompletedDemandStartSectorIds.Count > 0
+                     && !field.CompletedDemandStartSectorIds.Contains(request.StartSectorId))
+            {
+                return;
+            }
+        }
+
+        for (int i = 0; i < NavigationDistancePrewarmRequests.Count; i++)
+        {
+            NavigationDistancePrewarmRequest request = NavigationDistancePrewarmRequests[i];
+            if (!TryEstimatePrewarmedNavigationDistanceToReachableGoalFixed(
+                    request.From,
+                    request.RawGoal,
+                    request.AgentTypeId,
+                    out _,
+                    out _,
+                    out string failureReason))
+            {
+                throw new InvalidOperationException(
+                    $"Navigation distance prewarm completed without a queryable route agentType={request.AgentTypeId} " +
+                    $"fromRaw=({request.From.x.RawValue},{request.From.y.RawValue}) " +
+                    $"goalRaw=({request.RawGoal.x.RawValue},{request.RawGoal.y.RawValue}) reason={failureReason}.");
+            }
+        }
+
+        s_NavigationDistancePrewarmCompleted = true;
+        EventHandler<NavigationDistancePrewarmCompletedEventArgs> handler = NavigationDistancePrewarmCompleted;
+        if (handler == null)
+            return;
+
+        NavigationDistancePrewarmCompletedEventArgs eventArgs =
+            ReferencePool.Acquire<NavigationDistancePrewarmCompletedEventArgs>();
+        eventArgs.RequestCount = NavigationDistancePrewarmRequests.Count;
+        try
+        {
+            handler(null, eventArgs);
+        }
+        finally
+        {
+            ReferencePool.Release(eventArgs);
+        }
     }
 
     private static void AddActiveMovingTargetSharedGoalFieldBuildKeys(AgentRuntimeData agent)
@@ -9161,6 +9440,100 @@ public static partial class FlowFieldCrowdMovementSystem
         return false;
     }
 
+    public static bool TryEstimatePrewarmedNavigationDistanceToReachableGoalFixed(
+        FixVector2 from,
+        FixVector2 rawGoal,
+        int agentTypeId,
+        out Fix64 distance,
+        out FixVector2 reachableGoal,
+        out string failureReason)
+    {
+        distance = Fix64.Zero;
+        reachableGoal = rawGoal;
+        failureReason = string.Empty;
+        if (!TryGetCommittedNavigationQueryWorld(agentTypeId, allowSynchronousBuild: false, out NavigationWorld world))
+        {
+            failureReason = $"committed navigation world unavailable agentType={agentTypeId}";
+            return false;
+        }
+        if (!TryResolveReachableNavigationQueryCellsFixed(
+                world,
+                from,
+                rawGoal,
+                out int startX,
+                out int startY,
+                out int goalX,
+                out int goalY,
+                out reachableGoal,
+                out failureReason))
+        {
+            return false;
+        }
+        if (startX == goalX && startY == goalY)
+            return true;
+        if (TryEstimateFlowPathDistanceFixed(world, startX, startY, goalX, goalY, out distance))
+            return true;
+
+        failureReason =
+            $"prewarmed flow path unavailable start=({startX},{startY}) goal=({goalX},{goalY}) " +
+            $"rawGoal=({rawGoal.x.RawValue},{rawGoal.y.RawValue}) agentType={agentTypeId}";
+        return false;
+    }
+
+    public static void RequestNavigationDistancePrewarmFixed(
+        FixVector2 from,
+        FixVector2 rawGoal,
+        int agentTypeId)
+    {
+        int resolvedAgentTypeId = ResolvePreferredAgentTypeId(agentTypeId);
+        for (int i = 0; i < NavigationDistancePrewarmRequests.Count; i++)
+        {
+            NavigationDistancePrewarmRequest existing = NavigationDistancePrewarmRequests[i];
+            if (existing.AgentTypeId == resolvedAgentTypeId
+                && existing.From == from
+                && existing.RawGoal == rawGoal)
+            {
+                return;
+            }
+        }
+
+        NavigationDistancePrewarmRequests.Add(new NavigationDistancePrewarmRequest
+        {
+            AgentTypeId = resolvedAgentTypeId,
+            From = from,
+            RawGoal = rawGoal
+        });
+        NavigationDistancePrewarmRequests.Sort(CompareNavigationDistancePrewarmRequests);
+        s_NavigationDistancePrewarmCompleted = false;
+        s_NavigationDistancePrewarmCompletionMayHaveChanged = false;
+    }
+
+    public static void ClearNavigationDistancePrewarmRequests()
+    {
+        NavigationDistancePrewarmRequests.Clear();
+        s_NavigationDistancePrewarmCompleted = false;
+        s_NavigationDistancePrewarmCompletionMayHaveChanged = false;
+    }
+
+    private static bool IsNavigationDistancePrewarmSharedGoalKey(SharedGoalFieldKey key)
+    {
+        for (int i = 0; i < NavigationDistancePrewarmRequests.Count; i++)
+        {
+            NavigationDistancePrewarmRequest request = NavigationDistancePrewarmRequests[i];
+            if (request.AgentTypeId == key.AgentTypeId
+                && request.ResolvedWorldVersion == key.WorldVersion
+                && request.GoalSectorId == key.GoalSectorId
+                && WorldStates.TryGetValue(request.AgentTypeId, out WorldRuntimeState state)
+                && state?.World != null
+                && state.World.GetIndex(request.GoalX, request.GoalY) == key.GoalCellIndex)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static bool TryGetNavigationPathCorners(
         Vector3 from,
         Vector3 to,
@@ -9236,6 +9609,32 @@ public static partial class FlowFieldCrowdMovementSystem
             out navigationUpdatePending);
     }
 
+#if UNITY_EDITOR
+    public static bool TryGetEditorNavigationPathCorners(
+        FlowNavigationGridAsset grid,
+        FlowNavigationGridAsset staticCollisionSourceGrid,
+        Vector3 from,
+        Vector3 rawGoal,
+        List<Vector3> pathCorners,
+        out string failureReason)
+    {
+        if (grid == null)
+            throw new ArgumentNullException(nameof(grid));
+        if (pathCorners == null)
+            throw new ArgumentNullException(nameof(pathCorners));
+
+        NavigationWorld world = GetOrCreateEditorNavigationPreviewWorld(grid, staticCollisionSourceGrid);
+        return TryGetNavigationPathCorners(
+            world,
+            from,
+            rawGoal,
+            grid.AgentTypeId,
+            resolveReachableGoal: true,
+            pathCorners,
+            out failureReason);
+    }
+#endif
+
     private static bool TryGetNavigationPathCorners(
         Vector3 from,
         Vector3 to,
@@ -9281,6 +9680,28 @@ public static partial class FlowFieldCrowdMovementSystem
 
             world = ResolveReachabilityQueryWorld(queryWorldState);
         }
+
+        return TryGetNavigationPathCorners(
+            world,
+            from,
+            to,
+            agentTypeId,
+            resolveReachableGoal,
+            pathCorners,
+            out failureReason);
+    }
+
+    private static bool TryGetNavigationPathCorners(
+        NavigationWorld world,
+        Vector3 from,
+        Vector3 to,
+        int agentTypeId,
+        bool resolveReachableGoal,
+        List<Vector3> pathCorners,
+        out string failureReason)
+    {
+        pathCorners.Clear();
+        failureReason = string.Empty;
         int startX;
         int startY;
         int goalX;
@@ -16811,6 +17232,7 @@ public static partial class FlowFieldCrowdMovementSystem
         ActiveSharedGoalFieldBuildKeys.Clear();
         ActiveSharedGoalFieldDemandStartSectors.Clear();
         ActiveSharedGoalFieldDemandStartCells.Clear();
+        s_NavigationDistancePrewarmCompleted = false;
         CommitPendingSectorPortalAccessEntries(
             state.World,
             job.PendingPortalAccessEntries,
@@ -18214,6 +18636,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         _world = target;
         _navigationTopologyVersion++;
+        s_NavigationDistancePrewarmCompleted = false;
         job.CommitAgentInvalidationTicks = Stopwatch.GetTimestamp() - stepStartTicks;
         LogNoStacktrace(
             $"[FlowRuntimeDirtyCommit] worldVersion={target.Version} dirtySectors={job.DirtySectors.Count} costSectors={job.CostDirtySectors.Count} " +
@@ -21578,6 +22001,8 @@ public static partial class FlowFieldCrowdMovementSystem
             SetSharedGoalFieldCacheEntry(job.Key, job.Field);
             _perf.SharedGoalFieldBuilds++;
             TrimSharedGoalFields();
+            if (IsNavigationDistancePrewarmSharedGoalKey(job.Key))
+                s_NavigationDistancePrewarmCompletionMayHaveChanged = true;
         }
 
         job.Stage = SharedGoalFieldBuildStage.Complete;
@@ -21823,6 +22248,66 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         return null;
+    }
+
+    private static bool TryEstimateFlowPathDistanceFixed(
+        NavigationWorld world,
+        int startX,
+        int startY,
+        int goalX,
+        int goalY,
+        out Fix64 distance)
+    {
+        distance = Fix64.Zero;
+        if (world == null)
+            throw new ArgumentNullException(nameof(world));
+        if (!ReferenceEquals(world, _world))
+            throw new InvalidOperationException("Flow path distance estimation requires the active committed navigation world.");
+        if (!world.TryGetSectorId(startX, startY, out int startSectorId)
+            || !world.TryGetSectorId(goalX, goalY, out int goalSectorId))
+        {
+            return false;
+        }
+
+        if (startSectorId == goalSectorId
+            && TryFindSectorPathFixed(
+                world,
+                world.Sectors[startSectorId],
+                startX,
+                startY,
+                goalX,
+                goalY,
+                out distance))
+        {
+            return true;
+        }
+
+        int sharedAgentTypeId = ResolvePreferredAgentTypeId(world.AgentTypeId);
+        if (!TryGetCachedSharedGoalField(goalSectorId, goalX, goalY, sharedAgentTypeId, out SharedGoalField sharedField))
+            return false;
+        int startCellIndex = world.GetIndex(startX, startY);
+        if (sharedField.CompletedDemandStartCellIndices.Count > 0
+            && !sharedField.CompletedDemandStartCellIndices.Contains(startCellIndex))
+        {
+            return false;
+        }
+
+        SectorData startSector = world.Sectors[startSectorId];
+        long bestCost = long.MaxValue;
+        for (int i = 0; i < startSector.PortalIds.Count; i++)
+        {
+            int portalId = startSector.PortalIds[i];
+            int startNode = EncodePortalNode(startSectorId, portalId);
+            if (!sharedField.NodeCosts.TryGetValue(startNode, out long downstreamCost))
+                continue;
+            long startCost = ResolveDeterministicPortalAccessCost(startSector, startSectorId, portalId, startX, startY);
+            bestCost = Math.Min(bestCost, AddDeterministicPortalCosts(startCost, downstreamCost));
+        }
+
+        if (bestCost == long.MaxValue)
+            return false;
+        distance = Fix64.FromRaw(bestCost) * world.CellSizeFixed;
+        return distance > Fix64.Zero;
     }
 
     private static bool TryBuildPathHandleFromSharedGoalField(
@@ -29116,6 +29601,106 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         return false;
+    }
+
+    private static bool TryFindSectorPathFixed(
+        NavigationWorld world,
+        SectorData sector,
+        int startX,
+        int startY,
+        int goalX,
+        int goalY,
+        out Fix64 distance)
+    {
+        distance = Fix64.Zero;
+        if (world == null)
+            throw new ArgumentNullException(nameof(world));
+        if (sector == null)
+            throw new ArgumentNullException(nameof(sector));
+        if (!IsInsideSector(sector, startX, startY) || !IsInsideSector(sector, goalX, goalY))
+            throw new ArgumentOutOfRangeException(nameof(sector), "Sector-local path endpoints must be inside the supplied sector.");
+
+        int searchId = BeginSectorDistanceEstimateSearch(sector.Width * sector.Height);
+        int startIndex = GetSectorLocalIndex(sector, startX, startY);
+        int goalIndex = GetSectorLocalIndex(sector, goalX, goalY);
+        SectorDistanceEstimateCosts[startIndex] = 0L;
+        SectorDistanceEstimateVisitedMarks[startIndex] = searchId;
+        SectorDistanceEstimateOpenSet.Push(
+            startIndex,
+            EstimateGridHeuristicCostFixed(startX, startY, goalX, goalY, world.CellSizeFixed).RawValue);
+
+        Fix64 diagonalStepCost = world.CellSizeFixed * Fix64.Sqrt((Fix64)2);
+        while (SectorDistanceEstimateOpenSet.Count > 0)
+        {
+            int currentIndex = SectorDistanceEstimateOpenSet.Pop().Index;
+            if (SectorDistanceEstimateClosedMarks[currentIndex] == searchId)
+                continue;
+            if (currentIndex == goalIndex)
+            {
+                distance = Fix64.FromRaw(SectorDistanceEstimateCosts[currentIndex]);
+                return true;
+            }
+
+            SectorDistanceEstimateClosedMarks[currentIndex] = searchId;
+            int currentX = sector.StartX + currentIndex % sector.Width;
+            int currentY = sector.StartY + currentIndex / sector.Width;
+            long currentCostRaw = SectorDistanceEstimateCosts[currentIndex];
+            for (int i = 0; i < NeighborOffsetX.Length; i++)
+            {
+                int nextX = currentX + NeighborOffsetX[i];
+                int nextY = currentY + NeighborOffsetY[i];
+                if (!IsInsideSector(sector, nextX, nextY)
+                    || !CanTraverseNeighborCells(world, currentX, currentY, nextX, nextY))
+                {
+                    continue;
+                }
+
+                int nextIndex = GetSectorLocalIndex(sector, nextX, nextY);
+                if (SectorDistanceEstimateClosedMarks[nextIndex] == searchId)
+                    continue;
+                long stepCostRaw = NeighborOffsetX[i] != 0 && NeighborOffsetY[i] != 0
+                    ? diagonalStepCost.RawValue
+                    : world.CellSizeFixed.RawValue;
+                long nextCostRaw = checked(currentCostRaw + stepCostRaw);
+                if (SectorDistanceEstimateVisitedMarks[nextIndex] == searchId
+                    && nextCostRaw >= SectorDistanceEstimateCosts[nextIndex])
+                {
+                    continue;
+                }
+
+                SectorDistanceEstimateVisitedMarks[nextIndex] = searchId;
+                SectorDistanceEstimateCosts[nextIndex] = nextCostRaw;
+                long priorityRaw = checked(
+                    nextCostRaw
+                    + EstimateGridHeuristicCostFixed(nextX, nextY, goalX, goalY, world.CellSizeFixed).RawValue);
+                SectorDistanceEstimateOpenSet.Push(nextIndex, priorityRaw);
+            }
+        }
+
+        return false;
+    }
+
+    private static int BeginSectorDistanceEstimateSearch(int cellCount)
+    {
+        if (cellCount <= 0)
+            throw new InvalidOperationException($"BeginSectorDistanceEstimateSearch failed: invalid cellCount={cellCount}.");
+        if (SectorDistanceEstimateCosts.Length < cellCount)
+        {
+            SectorDistanceEstimateCosts = new long[cellCount];
+            SectorDistanceEstimateVisitedMarks = new int[cellCount];
+            SectorDistanceEstimateClosedMarks = new int[cellCount];
+            SectorDistanceEstimateSearchId = 0;
+        }
+        if (SectorDistanceEstimateSearchId == int.MaxValue)
+        {
+            Array.Clear(SectorDistanceEstimateVisitedMarks, 0, SectorDistanceEstimateVisitedMarks.Length);
+            Array.Clear(SectorDistanceEstimateClosedMarks, 0, SectorDistanceEstimateClosedMarks.Length);
+            SectorDistanceEstimateSearchId = 0;
+        }
+
+        SectorDistanceEstimateOpenSet.Clear();
+        SectorDistanceEstimateSearchId++;
+        return SectorDistanceEstimateSearchId;
     }
 
     private static void BuildGridPathCorners(

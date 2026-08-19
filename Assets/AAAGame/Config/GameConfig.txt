@@ -30,8 +30,9 @@
 	PullDurationLevelM1	-1级拉力作用时间	0.4
 	PullDurationLevel0	0级及以上拉力作用时间	1
 	Friction	摩擦力	400
-	DefendPhaseEnemyArriveInterval	防御阶段出怪间隔	0.8
-	DefendPhaseEnemyMinSpeed	防御阶段出怪移速最小值	500
+	DefendPhaseEnemyArriveInterval	防御阶段全波固定最小出兵间隔（秒）	0.8
+	DefendPhaseEnemyMinSpeed	固定出兵窗口推导用的估算最低移速，不限制关卡内实际移速	300
+	DefendPhaseEnemyMaxSpeed	固定出兵窗口推导用的估算最高移速，不限制关卡内实际移速	1200
 	DefendPhaseEnemyEndlessGrowthRate	防御阶段无尽出怪增长率	1.2
 	BaseResourceIncomeDailyGrowth	基础资源收获每日增长量	0.5
 	DefendPhaseBaseResourceIncome	防御阶段基础资源收获	3
@@ -59,3 +60,4 @@
 	BuildingInteractionRadius	建筑面板交互半径（码数）	80
 	DefendReturnMoveSpeedBonus	驻守单位返航固定移速加成	250
 	PlayerOutOfCombatMoveSpeedBonus	我方单位脱战固定移速加成	500
+	DefendRouteWaypointArrivalRadius	防御路线中转传送点抵达半径（码数）	100

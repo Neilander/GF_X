@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using AAAGame.Card;
 using Stopwatch = System.Diagnostics.Stopwatch;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -8,6 +7,8 @@ using UnityGameFramework.Runtime;
 public static class DefendPhaseRuntime
 {
     private const string DefendEnemyMinSpeedConfigKey = "DefendPhaseEnemyMinSpeed";
+    private const string DefendEnemyMaxSpeedConfigKey = "DefendPhaseEnemyMaxSpeed";
+    private const string DefendEnemySpawnIntervalConfigKey = "DefendPhaseEnemyArriveInterval";
     private const string DefendEndlessGrowthRateConfigKey = "DefendPhaseEnemyEndlessGrowthRate";
     private static readonly Fix64 MinWorldSpeed = Fix64.FromRaw(5);
     private static readonly Fix64 NavigationPointProbeRadius = Fix64.FromRaw(10240);
@@ -32,17 +33,22 @@ public static class DefendPhaseRuntime
         (left, right) => left.CompareTo(right);
 
     private static bool s_SubscribedLogicUnitDead;
+    private static bool s_SubscribedNavigationDistancePrewarm;
     private static bool s_ArchetypeCacheConfigured;
     private static bool s_SpawnPointCacheConfigured;
     private static bool s_WaveConfigConfigured;
     private static int s_CachedLevelEntityId;
     private static int s_DefendRoundIndex;
     private static bool s_SpawnScheduleCompleted;
+    private static bool s_WaitingForNavigationDistancePrewarm;
     private static string s_WaveConfigLevelIdentifier = string.Empty;
     private static readonly List<PlannedSpawnEvent> s_PlannedSpawnEvents = new();
     private static int s_NextPlannedSpawnIndex;
     private static ulong s_SpawnRequestStartFrame;
     private static Fix64 s_MinSpeedWorld;
+    private static Fix64 s_MaxSpeedWorld;
+    private static Fix64 s_SpawnIntervalSeconds;
+    private static Fix64 s_WaypointArrivalRadiusWorld;
     private static Fix64 s_EndlessGrowthRate;
     private static decimal s_DistanceConversionRate;
     private static bool s_TutorialFirstDefenseConsumed;
@@ -123,6 +129,7 @@ public static class DefendPhaseRuntime
     public static void ClearPreparedRuntime()
     {
         ResetDefendPhaseState(keepRoundIndex: false);
+        FlowFieldCrowdMovementSystem.ClearNavigationDistancePrewarmRequests();
         s_ArchetypeByUnitType.Clear();
         s_ArchetypeUnitTypeMapper = null;
         s_AgentTypeIdByUnitType.Clear();
@@ -136,6 +143,9 @@ public static class DefendPhaseRuntime
         s_CachedLevelEntityId = 0;
         s_WaveConfigLevelIdentifier = string.Empty;
         s_MinSpeedWorld = Fix64.Zero;
+        s_MaxSpeedWorld = Fix64.Zero;
+        s_SpawnIntervalSeconds = Fix64.Zero;
+        s_WaypointArrivalRadiusWorld = Fix64.Zero;
         s_EndlessGrowthRate = Fix64.Zero;
         s_DistanceConversionRate = decimal.Zero;
     }
@@ -147,6 +157,7 @@ public static class DefendPhaseRuntime
 
         Stopwatch stopwatch = Stopwatch.StartNew();
         EnsureSubscribedSoldierDead();
+        EnsureSubscribedNavigationDistancePrewarm();
         double subscribeMs = stopwatch.Elapsed.TotalMilliseconds;
         ConfigureArchetypeCacheIfNeeded();
         double archetypeMs = stopwatch.Elapsed.TotalMilliseconds;
@@ -190,6 +201,34 @@ public static class DefendPhaseRuntime
             return;
         }
 
+        if (!FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted)
+        {
+            s_WaitingForNavigationDistancePrewarm = true;
+            Log.Info("[DefendPhase] Waiting for navigation distance prewarm. round={0}", s_DefendRoundIndex);
+            return;
+        }
+
+        StartPreparedDefendWave(groups, LogicTimeControlService.CurrentFrame > 0
+            ? LogicTimeControlService.CurrentFrame
+            : 1UL);
+    }
+
+    private static void StartPreparedDefendWave(
+        IReadOnlyList<DefendAttackGroupDefinition> groups,
+        ulong startFrame)
+    {
+        if (groups == null)
+            throw new ArgumentNullException(nameof(groups));
+        if (groups.Count == 0)
+            throw new InvalidOperationException("Cannot start an empty prepared defense wave.");
+        if (startFrame == 0)
+            throw new ArgumentOutOfRangeException(nameof(startFrame));
+        if (!FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted)
+            throw new InvalidOperationException("Cannot start a defense wave before navigation distance prewarm completes.");
+        if (s_PlannedSpawnEvents.Count != 0 || s_NextPlannedSpawnIndex != 0 || s_SpawnRequestStartFrame != 0)
+            throw new InvalidOperationException("Cannot start a defense wave over an existing spawn schedule.");
+
+        s_WaitingForNavigationDistancePrewarm = false;
         s_PlannedSpawnEvents.AddRange(BuildSpawnEvents(groups));
         if (s_PlannedSpawnEvents.Count == 0)
         {
@@ -200,9 +239,7 @@ public static class DefendPhaseRuntime
         }
 
         s_PlannedSpawnEvents.Sort(ComparePlannedSpawnEvents);
-        s_SpawnRequestStartFrame = LogicTimeControlService.CurrentFrame > 0
-            ? LogicTimeControlService.CurrentFrame
-            : 1UL;
+        s_SpawnRequestStartFrame = startFrame;
     }
 
     public static void StartTutorialTriggeredFirstDefense(string strongholdId)
@@ -242,6 +279,7 @@ public static class DefendPhaseRuntime
                 spawned: entityId =>
                 {
                     TrackSpawnedDefendEnemy(entityId, "Tutorial first defense");
+                    ReleaseTrackedDefendEnemySpawnSpeed(entityId, "tutorial spawn", null);
                     spawnedCount++;
                 },
                 configureParams: entityParams => entityParams.DefendAssignedSpeed = assignedSpeed);
@@ -265,7 +303,8 @@ public static class DefendPhaseRuntime
             throw new InvalidOperationException(
                 $"DefendPhaseRuntime.ApplyScheduledSpawnRequests failed: frame mismatch. requested={frame}, logic={LogicTimeControlService.CurrentFrame}.");
         }
-        ReleaseAuthoritativelyVisibleEnemySpawnSpeeds(frame);
+        if (s_WaitingForNavigationDistancePrewarm)
+            return;
         if (s_SpawnScheduleCompleted || s_PlannedSpawnEvents.Count == 0)
             return;
         if (LogicPhaseCommandService.GetRequiredCurrentPhase() != GamePhase.Defend)
@@ -293,6 +332,17 @@ public static class DefendPhaseRuntime
 
     private static void SpawnPlannedEvent(PlannedSpawnEvent evt)
     {
+        if (!IsAttackGroupSourceActive(evt.SourceStrongholdId))
+        {
+            Log.Info(
+                "[DefendPhase] Skip occupied source slot. unit={0}, point={1}, stronghold={2}, requestOffset={3}.",
+                evt.UnitType,
+                evt.SpawnPointName,
+                evt.SourceStrongholdId,
+                evt.RequestFrameOffset);
+            return;
+        }
+
         LogicEntityId entityId = SoldierFactory.ShowCurrentBattleTroopFixed(
             evt.UnitType,
             evt.SpawnPosition,
@@ -305,7 +355,9 @@ public static class DefendPhaseRuntime
             {
                 entityParams.DefendAssignedSpeed = evt.SpeedProperty;
                 entityParams.DefendRouteWaypointsFixed = evt.RouteWaypointsFixed;
-                entityParams.DefendRouteWaypointStrongholdIds = evt.RouteWaypointStrongholdIds;
+                entityParams.DefendRouteWaypointTeleportationIds = evt.RouteWaypointTeleportationIds;
+                entityParams.DefendSpeedReleaseWaypointIndex = evt.SpeedReleaseWaypointIndex;
+                entityParams.DefendSpeedReleasePositionFixed = evt.SpeedReleasePositionFixed;
             },
             evt.UnitLevel);
         if (!entityId.IsValid)
@@ -420,43 +472,82 @@ public static class DefendPhaseRuntime
         s_SubscribedLogicUnitDead = true;
     }
 
-    private static void ReleaseAuthoritativelyVisibleEnemySpawnSpeeds(ulong frame)
+    private static void EnsureSubscribedNavigationDistancePrewarm()
     {
-        if (s_AcceleratedEnemyLogicEntityIds.Count == 0)
+        if (s_SubscribedNavigationDistancePrewarm)
             return;
-        if (!LogicCardPlacementAuthority.IsWorldBound)
-            throw new InvalidOperationException("DefendPhaseRuntime cannot evaluate enemy visibility without a bound logic visibility world.");
 
-        s_DeterministicAcceleratedEnemyIds.Clear();
-        foreach (int entityId in s_AcceleratedEnemyLogicEntityIds)
-            s_DeterministicAcceleratedEnemyIds.Add(entityId);
-        s_DeterministicAcceleratedEnemyIds.Sort(s_DeterministicEnemyIdComparison);
+        FlowFieldCrowdMovementSystem.NavigationDistancePrewarmCompleted +=
+            OnNavigationDistancePrewarmCompleted;
+        s_SubscribedNavigationDistancePrewarm = true;
+    }
 
-        for (int i = 0; i < s_DeterministicAcceleratedEnemyIds.Count; i++)
-        {
-            int entityId = s_DeterministicAcceleratedEnemyIds[i];
-            if (!s_AliveEnemyLogicEntityIds.Contains(entityId))
-                throw new InvalidOperationException($"DefendPhaseRuntime tracks spawn acceleration for non-alive defend enemy {entityId}.");
+    private static void OnNavigationDistancePrewarmCompleted(
+        object sender,
+        NavigationDistancePrewarmCompletedEventArgs eventArgs)
+    {
+        if (!s_WaitingForNavigationDistancePrewarm)
+            return;
+        if (eventArgs == null || eventArgs.RequestCount <= 0)
+            throw new InvalidOperationException("Navigation distance prewarm completion event is invalid.");
+        if (LogicPhaseCommandService.GetRequiredCurrentPhase() != GamePhase.Defend)
+            throw new InvalidOperationException("Navigation distance prewarm completed for a pending wave outside the Defend phase.");
 
-            LogicEntityState state = LogicEntityStateStore.GetRequired(new LogicEntityId(entityId));
-            if (!state.BuffComp.HasBuff(LogicUnitConfigurator.DefendSpeedBuffId))
-                throw new InvalidOperationException($"DefendPhaseRuntime accelerated enemy {entityId} is missing its speed override buff.");
-            if (!LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(state.Position))
-                continue;
+        List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForRound(s_DefendRoundIndex);
+        if (groups.Count == 0)
+            throw new InvalidOperationException($"Pending defense round {s_DefendRoundIndex} has no attack groups.");
+        ulong startFrame = LogicTimeControlService.CurrentFrame > 0
+            ? checked(LogicTimeControlService.CurrentFrame + 1UL)
+            : 1UL;
+        StartPreparedDefendWave(groups, startFrame);
+        Log.Info(
+            "[DefendPhase] Navigation distance prewarm completed; spawn schedule starts next frame. round={0}, requests={1}, startFrame={2}",
+            s_DefendRoundIndex,
+            eventArgs.RequestCount,
+            startFrame);
+    }
 
-            Fix64 speedBefore = state.GetProperty(CreatureMainProperty.Speed);
-            if (!LogicUnitConfigurator.ReleaseDefendEnemySpawnSpeed(state))
-                throw new InvalidOperationException($"DefendPhaseRuntime failed to release spawn acceleration for visible enemy {entityId}.");
-            Fix64 speedAfter = state.GetProperty(CreatureMainProperty.Speed);
-            s_AcceleratedEnemyLogicEntityIds.Remove(entityId);
-            Log.Info(
-                "[DefendPhase] Released spawn speed on authoritative visibility. logicEntityId={0} frame={1} speedBeforeRaw={2} speedAfterRaw={3}",
-                entityId,
-                frame,
-                speedBefore.RawValue,
-                speedAfter.RawValue);
-        }
-        s_DeterministicAcceleratedEnemyIds.Clear();
+    public static void NotifyDefendEnemyReachedSpeedReleaseWaypoint(
+        LogicEntityId entityId,
+        string teleportationId)
+    {
+        if (!entityId.IsValid)
+            throw new ArgumentException("Defense speed release entity ID is invalid.", nameof(entityId));
+        if (string.IsNullOrWhiteSpace(teleportationId))
+            throw new ArgumentException("Defense speed release teleportation ID is empty.", nameof(teleportationId));
+        ReleaseTrackedDefendEnemySpawnSpeed(entityId, "route waypoint", teleportationId);
+    }
+
+    public static void NotifyDefendEnemyReachedSpeedReleaseTarget(LogicEntityId entityId)
+    {
+        if (!entityId.IsValid)
+            throw new ArgumentException("Defense speed release entity ID is invalid.", nameof(entityId));
+        ReleaseTrackedDefendEnemySpawnSpeed(entityId, "initial GameEnd target", null);
+    }
+
+    private static void ReleaseTrackedDefendEnemySpawnSpeed(
+        LogicEntityId entityId,
+        string reason,
+        string teleportationId)
+    {
+        if (!s_AliveEnemyLogicEntityIds.Contains(entityId.Value))
+            throw new InvalidOperationException($"Defense speed release references non-alive enemy {entityId.Value}.");
+        if (!s_AcceleratedEnemyLogicEntityIds.Remove(entityId.Value))
+            throw new InvalidOperationException($"Defense enemy {entityId.Value} has no tracked speed override to release.");
+
+        LogicEntityState state = LogicEntityStateStore.GetRequired(entityId);
+        Fix64 speedBefore = state.GetProperty(CreatureMainProperty.Speed);
+        if (!LogicUnitConfigurator.ReleaseDefendEnemySpawnSpeed(state))
+            throw new InvalidOperationException($"Defense enemy {entityId.Value} is missing its speed override buff.");
+        Fix64 speedAfter = state.GetProperty(CreatureMainProperty.Speed);
+        Log.Info(
+            "[DefendPhase] Released spawn speed. logicEntityId={0} reason={1} teleportation={2} frame={3} speedBeforeRaw={4} speedAfterRaw={5}",
+            entityId.Value,
+            reason,
+            teleportationId ?? "none",
+            LogicTimeControlService.CurrentFrame,
+            speedBefore.RawValue,
+            speedAfter.RawValue);
     }
 
     private static void OnLogicUnitDied(IEntityContext victim)
@@ -596,37 +687,10 @@ public static class DefendPhaseRuntime
             diagnosticsMs);
     }
 
-    private static FixVector2 ResolvePlayerBasePositionFixed()
-    {
-        IEntityContext bestBase = null;
-        IList<IEntityContext> entities = EntityRegistry.AllEntities;
-        for (int i = 0; i < entities.Count; i++)
-        {
-            if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
-                || !building.Alive
-                || building.OwnerFactionId != EntitySideHelper.PlayerFactionId
-                || building.BuildingData == null
-                || building.BuildingData.Type != BuilType.Base)
-            {
-                continue;
-            }
-
-            if (bestBase == null || building.LogicEntityId.Value < bestBase.LogicEntityId.Value)
-                bestBase = building;
-        }
-        if (bestBase != null)
-            return bestBase.PositionFixed;
-
-        if (EntityRegistry.Player != null)
-            return EntityRegistry.Player.PositionFixed;
-
-        throw new InvalidOperationException("DefendPhaseRuntime cannot resolve a player base or player logic position.");
-    }
-
     private static Fix64 CalculatePathDistanceFixed(FixVector2 from, FixVector2 to, UnitType unitType)
     {
         int agentTypeId = ResolveAgentTypeId(unitType);
-        if (FlowFieldCrowdMovementSystem.TryEstimateNavigationDistanceToReachableGoalFixed(
+        if (FlowFieldCrowdMovementSystem.TryEstimatePrewarmedNavigationDistanceToReachableGoalFixed(
                 from,
                 to,
                 agentTypeId,
@@ -687,7 +751,7 @@ public static class DefendPhaseRuntime
             out Vector3 legalPoint);
 
         Log.Info(
-            "[DefendPhase] SpawnEvent logicEntityId={0} unit={1} level={2} pos={3} speedProp={4:F2} speedRaw={5} point={6} stronghold={7} flowHit={8} flowPos={9} agentType={10}",
+            "[DefendPhase] SpawnEvent logicEntityId={0} unit={1} level={2} pos={3} speedProp={4:F2} speedRaw={5} point={6} stronghold={7} flowHit={8} flowPos={9} agentType={10} releaseWaypoint={11}",
             entityId.Value,
             evt.UnitType,
             evt.UnitLevel,
@@ -698,7 +762,8 @@ public static class DefendPhaseRuntime
             evt.SourceStrongholdId ?? "null",
             flowHit,
             flowHit ? legalPoint.ToString() : "none",
-            agentTypeId);
+            agentTypeId,
+            evt.SpeedReleaseWaypointIndex);
     }
 
     private static int ResolveAgentTypeId(UnitType unitType)
@@ -727,14 +792,13 @@ public static class DefendPhaseRuntime
                          ?? throw new InvalidOperationException("DefendRouteTable is required for defense configuration.");
         var groupTable = GF.DataTable.GetDataTable<DefendAttackGroupTable>()
                          ?? throw new InvalidOperationException("DefendAttackGroupTable is required for defense configuration.");
-        var pointsByStrongholdId = new Dictionary<string, DefendSpawnPointRuntime>(StringComparer.Ordinal);
+        var pointsByTeleportationId = new Dictionary<string, DefendSpawnPointRuntime>(StringComparer.Ordinal);
         for (int i = 0; i < s_DefendSpawnPoints.Count; i++)
         {
             DefendSpawnPointRuntime point = s_DefendSpawnPoints[i];
-            pointsByStrongholdId.Add(point.StrongholdId, point);
+            pointsByTeleportationId.Add(point.Identifier, point);
         }
 
-        FixVector2 basePosition = ResolvePlayerBasePositionFixed();
         DefendRouteTable[] routeRows = routeTable.GetAllDataRows();
         for (int rowIndex = 0; rowIndex < routeRows.Length; rowIndex++)
         {
@@ -743,44 +807,77 @@ public static class DefendPhaseRuntime
                 continue;
             if (string.IsNullOrWhiteSpace(row.Identifier))
                 throw new InvalidOperationException($"Defend route row {row.Id} has an empty identifier.");
-            if (string.IsNullOrWhiteSpace(row.SourceStrongholdId))
-                throw new InvalidOperationException($"Defend route '{row.Identifier}' has an empty source stronghold.");
-            if (!pointsByStrongholdId.TryGetValue(row.SourceStrongholdId, out DefendSpawnPointRuntime sourcePoint))
-                throw new InvalidOperationException($"Defend route '{row.Identifier}' source '{row.SourceStrongholdId}' has no Teleportation point.");
+            if (string.IsNullOrWhiteSpace(row.SourceTeleportationId))
+                throw new InvalidOperationException($"Defend route '{row.Identifier}' has an empty source teleportation id.");
+            if (!pointsByTeleportationId.TryGetValue(row.SourceTeleportationId, out DefendSpawnPointRuntime sourcePoint))
+                throw new InvalidOperationException($"Defend route '{row.Identifier}' source teleportation '{row.SourceTeleportationId}' has no matching point.");
 
-            string[] waypointIds = row.WaypointStrongholdIds ?? Array.Empty<string>();
-            var seenStrongholds = new HashSet<string>(StringComparer.Ordinal) { row.SourceStrongholdId };
-            var waypointPositions = new FixVector2[waypointIds.Length + 1];
-            var waypointStrongholdIds = new string[waypointIds.Length + 1];
+            string[] waypointIds = row.WaypointTeleportationIds ?? Array.Empty<string>();
+            var seenTeleportationIds = new HashSet<string>(StringComparer.Ordinal) { row.SourceTeleportationId };
+            var waypointPositions = new FixVector2[waypointIds.Length];
+            var waypointTeleportationIds = new string[waypointIds.Length];
+            var waypointStrongholdIds = new string[waypointIds.Length];
             FixVector2 previousPosition = sourcePoint.Position;
-            Fix64 worldDistance = Fix64.Zero;
+            Fix64 firstWaypointDistance = Fix64.Zero;
+            int presetFirstPlayerWaypointIndex = -1;
             for (int waypointIndex = 0; waypointIndex < waypointIds.Length; waypointIndex++)
             {
                 string waypointId = waypointIds[waypointIndex];
                 if (string.IsNullOrWhiteSpace(waypointId))
                     throw new InvalidOperationException($"Defend route '{row.Identifier}' contains an empty waypoint at index {waypointIndex}.");
-                if (!seenStrongholds.Add(waypointId))
-                    throw new InvalidOperationException($"Defend route '{row.Identifier}' repeats stronghold '{waypointId}'.");
-                if (!pointsByStrongholdId.TryGetValue(waypointId, out DefendSpawnPointRuntime waypointPoint))
-                    throw new InvalidOperationException($"Defend route '{row.Identifier}' waypoint '{waypointId}' has no Teleportation point.");
+                if (!seenTeleportationIds.Add(waypointId))
+                    throw new InvalidOperationException($"Defend route '{row.Identifier}' repeats teleportation id '{waypointId}'.");
+                if (!pointsByTeleportationId.TryGetValue(waypointId, out DefendSpawnPointRuntime waypointPoint))
+                    throw new InvalidOperationException($"Defend route '{row.Identifier}' waypoint teleportation '{waypointId}' has no matching point.");
 
                 waypointPositions[waypointIndex] = waypointPoint.Position;
-                waypointStrongholdIds[waypointIndex] = waypointId;
-                worldDistance += FixVector2.Distance(previousPosition, waypointPoint.Position);
+                waypointTeleportationIds[waypointIndex] = waypointId;
+                waypointStrongholdIds[waypointIndex] = waypointPoint.StrongholdId;
+                Fix64 segmentDistance = FixVector2.Distance(previousPosition, waypointPoint.Position);
+                if (waypointIndex == 0)
+                    firstWaypointDistance = segmentDistance;
                 previousPosition = waypointPoint.Position;
+                if (presetFirstPlayerWaypointIndex < 0
+                    && ResolveAuthoredStrongholdFactionId(waypointPoint.StrongholdId)
+                    == EntitySideHelper.PlayerFactionId)
+                {
+                    presetFirstPlayerWaypointIndex = waypointIndex;
+                }
             }
 
-            waypointPositions[waypointPositions.Length - 1] = basePosition;
-            waypointStrongholdIds[waypointStrongholdIds.Length - 1] = null;
-            worldDistance += FixVector2.Distance(previousPosition, basePosition);
+            bool usesInitialGameEndTarget = false;
+            FixVector2 initialGameEndTargetPosition = FixVector2.Zero;
+            if (presetFirstPlayerWaypointIndex < 0
+                && LogicGameEndService.TryGetNearestPlayerInitialConditionBuilding(
+                    previousPosition,
+                    out IBuildingLogicContext initialGameEndTarget))
+            {
+                usesInitialGameEndTarget = true;
+                initialGameEndTargetPosition = initialGameEndTarget.PositionFixed;
+                if (waypointPositions.Length == 0)
+                    firstWaypointDistance = FixVector2.Distance(sourcePoint.Position, initialGameEndTargetPosition);
+            }
+
             var route = new DefendRouteDefinition
             {
                 Identifier = row.Identifier,
-                SourceStrongholdId = row.SourceStrongholdId,
+                SourceStrongholdId = sourcePoint.StrongholdId,
                 SourcePoint = sourcePoint,
                 WaypointsFixed = waypointPositions,
+                WaypointTeleportationIds = waypointTeleportationIds,
                 WaypointStrongholdIds = waypointStrongholdIds,
-                WorldDistance = worldDistance
+                FirstWaypointDistance = firstWaypointDistance,
+                PresetEngagementDistance = presetFirstPlayerWaypointIndex >= 0
+                    ? CalculatePolylineDistance(sourcePoint.Position, waypointPositions, presetFirstPlayerWaypointIndex)
+                    : usesInitialGameEndTarget
+                        ? CalculatePolylineDistanceToTarget(
+                            sourcePoint.Position,
+                            waypointPositions,
+                            initialGameEndTargetPosition)
+                        : Fix64.Zero,
+                PresetFirstPlayerWaypointIndex = presetFirstPlayerWaypointIndex,
+                UsesInitialGameEndTarget = usesInitialGameEndTarget,
+                InitialGameEndTargetPosition = initialGameEndTargetPosition
             };
             if (!s_DefendRoutesByIdentifier.TryAdd(route.Identifier, route))
                 throw new InvalidOperationException($"Duplicate defend route identifier '{route.Identifier}'.");
@@ -801,12 +898,9 @@ public static class DefendPhaseRuntime
                 throw new InvalidOperationException($"Defend attack group '{row.Identifier}' references unknown route '{row.RouteIdentifier}'.");
             if (row.Enemies == null || row.Enemies.Length == 0)
                 throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has no enemies.");
-            if (row.UniqueValues == null || row.UniqueValues.Length != 4)
-                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' must configure exactly four UniqueValues.");
-            if (row.UniqueValues[0] < Fix64.Zero || row.UniqueValues[1] <= Fix64.Zero
-                || row.UniqueValues[2] <= Fix64.Zero || row.UniqueValues[3] < Fix64.Zero)
+            if (row.StartDelaySeconds < Fix64.Zero || row.ExpectedEngagementSeconds <= Fix64.Zero)
             {
-                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has invalid timing or speed values.");
+                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has invalid delay or expected engagement time.");
             }
 
             var group = new DefendAttackGroupDefinition
@@ -815,10 +909,8 @@ public static class DefendPhaseRuntime
                 DefendRound = row.DefendRound,
                 Route = route,
                 AfterGroupIdentifier = string.IsNullOrWhiteSpace(row.AfterGroupIdentifier) ? null : row.AfterGroupIdentifier,
-                DelaySeconds = row.UniqueValues[0],
-                SpawnIntervalSeconds = row.UniqueValues[1],
-                ExpectedDurationSeconds = row.UniqueValues[2],
-                SpeedOverrideProperty = row.UniqueValues[3]
+                DelaySeconds = row.StartDelaySeconds,
+                ExpectedEngagementSeconds = row.ExpectedEngagementSeconds
             };
             for (int enemyIndex = 0; enemyIndex < row.Enemies.Length; enemyIndex++)
             {
@@ -836,10 +928,6 @@ public static class DefendPhaseRuntime
             s_MaxConfiguredDefendRound = Mathf.Max(s_MaxConfiguredDefendRound, group.DefendRound);
         }
 
-        foreach (DefendAttackGroupDefinition group in s_DefendAttackGroups)
-            ResolveGroupStartSeconds(group, groupsByIdentifier, new HashSet<string>(StringComparer.Ordinal));
-        s_DefendAttackGroups.Sort(CompareAttackGroups);
-
         s_AgentTypeIdByUnitType.Clear();
         for (int groupIndex = 0; groupIndex < s_DefendAttackGroups.Count; groupIndex++)
         {
@@ -848,11 +936,28 @@ public static class DefendPhaseRuntime
                 s_AgentTypeIdByUnitType[enemies[entryIndex].UnitType] = AgentTypeHelper.ResolveNavAgentTypeId(enemies[entryIndex].UnitType);
         }
         Fix64 minSpeedProperty = ResolveFiniteConfigFixed(DefendEnemyMinSpeedConfigKey, Fix64.One);
+        Fix64 maxSpeedProperty = ResolveFiniteConfigFixed(DefendEnemyMaxSpeedConfigKey, Fix64.One);
         s_MinSpeedWorld = Fix64.Max(
             MinWorldSpeed,
             DistanceUnitConverter.ConvertToWorld(minSpeedProperty));
+        s_MaxSpeedWorld = DistanceUnitConverter.ConvertToWorld(maxSpeedProperty);
+        if (s_MaxSpeedWorld < s_MinSpeedWorld)
+            throw new InvalidOperationException("DefendPhaseEnemyMaxSpeed must be greater than or equal to DefendPhaseEnemyMinSpeed.");
+        s_SpawnIntervalSeconds = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(
+            DefendEnemySpawnIntervalConfigKey);
+        s_WaypointArrivalRadiusWorld = DistanceUnitConverter.ConvertToWorld(
+            DistanceUnitConverter.ReadRequiredPositiveFixedConfig(
+                LogicUnitConfigurator.DefendRouteWaypointArrivalRadiusConfigKey));
         s_EndlessGrowthRate = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(
             DefendEndlessGrowthRateConfigKey);
+
+        for (int i = 0; i < s_DefendAttackGroups.Count; i++)
+            ConfigureFixedSpawnWindow(s_DefendAttackGroups[i]);
+
+        foreach (DefendAttackGroupDefinition group in s_DefendAttackGroups)
+            ResolveGroupStartSeconds(group, groupsByIdentifier, new HashSet<string>(StringComparer.Ordinal));
+        s_DefendAttackGroups.Sort(CompareAttackGroups);
+        ConfigureNavigationDistancePrewarmRequests();
         s_WaveConfigConfigured = true;
 
         Log.Info("[DefendPhase] Defense routes loaded. level={0}, routes={1}, groups={2}, maxRound={3}",
@@ -862,9 +967,116 @@ public static class DefendPhaseRuntime
             s_MaxConfiguredDefendRound);
     }
 
+    private static void ConfigureNavigationDistancePrewarmRequests()
+    {
+        FlowFieldCrowdMovementSystem.ClearNavigationDistancePrewarmRequests();
+        for (int groupIndex = 0; groupIndex < s_DefendAttackGroups.Count; groupIndex++)
+        {
+            DefendAttackGroupDefinition group = s_DefendAttackGroups[groupIndex];
+            DefendRouteDefinition route = group.Route
+                ?? throw new InvalidOperationException($"Defend group '{group.Identifier}' has no route for navigation prewarm.");
+            for (int enemyIndex = 0; enemyIndex < group.Enemies.Count; enemyIndex++)
+            {
+                int agentTypeId = ResolveAgentTypeId(group.Enemies[enemyIndex].UnitType);
+                FixVector2 from = route.SourcePoint.Position;
+                for (int waypointIndex = 0; waypointIndex < route.WaypointsFixed.Length; waypointIndex++)
+                {
+                    FixVector2 to = route.WaypointsFixed[waypointIndex];
+                    FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(from, to, agentTypeId);
+                    from = to;
+                }
+                if (route.UsesInitialGameEndTarget)
+                {
+                    FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(
+                        from,
+                        route.InitialGameEndTargetPosition,
+                        agentTypeId);
+                }
+            }
+        }
+    }
+
     private static string ResolveCurrentLevelIdentifier()
     {
         return LevelSelectionService.SelectedLevelIdentifier;
+    }
+
+    private static int ResolveAuthoredStrongholdFactionId(string strongholdId)
+    {
+        if (string.IsNullOrWhiteSpace(strongholdId))
+            throw new ArgumentException("Stronghold ID is empty.", nameof(strongholdId));
+        string[] parts = strongholdId.Split('_');
+        if (parts.Length != 3 || !string.Equals(parts[0], "SH", StringComparison.Ordinal)
+                              || !int.TryParse(parts[1], out int factionId))
+        {
+            throw new InvalidOperationException(
+                $"Stronghold '{strongholdId}' does not use the authored SH_faction_index format.");
+        }
+        return factionId;
+    }
+
+    private static Fix64 CalculatePolylineDistance(
+        FixVector2 source,
+        IReadOnlyList<FixVector2> waypoints,
+        int finalWaypointIndex)
+    {
+        if (waypoints == null)
+            throw new ArgumentNullException(nameof(waypoints));
+        if (finalWaypointIndex < 0 || finalWaypointIndex >= waypoints.Count)
+            throw new ArgumentOutOfRangeException(nameof(finalWaypointIndex));
+
+        Fix64 distance = Fix64.Zero;
+        FixVector2 previous = source;
+        for (int i = 0; i <= finalWaypointIndex; i++)
+        {
+            distance += FixVector2.Distance(previous, waypoints[i]);
+            previous = waypoints[i];
+        }
+        return distance;
+    }
+
+    private static Fix64 CalculatePolylineDistanceToTarget(
+        FixVector2 source,
+        IReadOnlyList<FixVector2> waypoints,
+        FixVector2 target)
+    {
+        if (waypoints == null)
+            throw new ArgumentNullException(nameof(waypoints));
+        Fix64 distance = Fix64.Zero;
+        FixVector2 previous = source;
+        for (int i = 0; i < waypoints.Count; i++)
+        {
+            distance += FixVector2.Distance(previous, waypoints[i]);
+            previous = waypoints[i];
+        }
+        return distance + FixVector2.Distance(previous, target);
+    }
+
+    private static void ConfigureFixedSpawnWindow(DefendAttackGroupDefinition group)
+    {
+        DefendRouteDefinition route = group.Route
+            ?? throw new InvalidOperationException($"Defend group '{group.Identifier}' has no route.");
+        if (route.PresetFirstPlayerWaypointIndex < 0 && !route.UsesInitialGameEndTarget)
+        {
+            throw new InvalidOperationException(
+                $"Defend route '{route.Identifier}' has no authored player waypoint or initial player GameEnd target for fixed wave spawn scheduling.");
+        }
+        Fix64 shortestEngagementDistance = route.FirstWaypointDistance - s_WaypointArrivalRadiusWorld;
+        Fix64 presetEngagementDistance = route.PresetEngagementDistance - s_WaypointArrivalRadiusWorld;
+        if (shortestEngagementDistance <= Fix64.Zero || presetEngagementDistance <= Fix64.Zero)
+            throw new InvalidOperationException($"Defend route '{route.Identifier}' has a non-positive preset distance.");
+
+        Fix64 longestRouteAtMaxSpeed = presetEngagementDistance / s_MaxSpeedWorld;
+        Fix64 shortestRouteAtMinSpeed = shortestEngagementDistance / s_MinSpeedWorld;
+        group.FirstSpawnLeadSeconds = Fix64.Max(longestRouteAtMaxSpeed, shortestRouteAtMinSpeed);
+        group.LastSpawnLeadSeconds = Fix64.Min(longestRouteAtMaxSpeed, shortestRouteAtMinSpeed);
+        if (group.LastSpawnLeadSeconds <= Fix64.Zero
+            || group.ExpectedEngagementSeconds <= group.FirstSpawnLeadSeconds)
+        {
+            throw new InvalidOperationException(
+                $"Defend group '{group.Identifier}' expected engagement time must exceed its preset first-spawn lead. " +
+                $"expectedRaw={group.ExpectedEngagementSeconds.RawValue}, leadRaw={group.FirstSpawnLeadSeconds.RawValue}.");
+        }
     }
 
     private static Fix64 ResolveGroupStartSeconds(
@@ -885,13 +1097,21 @@ public static class DefendPhaseRuntime
             if (predecessor.DefendRound != group.DefendRound)
                 throw new InvalidOperationException($"Defend attack group '{group.Identifier}' predecessor must be in the same round.");
             start += ResolveGroupStartSeconds(predecessor, groupsByIdentifier, visiting)
-                     + predecessor.ExpectedDurationSeconds;
+                     + GetFixedSpawnWindowEndOffset(predecessor);
         }
 
         visiting.Remove(group.Identifier);
         group.StartSeconds = start;
         group.StartResolved = true;
         return start;
+    }
+
+    private static Fix64 GetFixedSpawnWindowEndOffset(DefendAttackGroupDefinition group)
+    {
+        Fix64 offset = group.ExpectedEngagementSeconds - group.LastSpawnLeadSeconds;
+        if (offset < Fix64.Zero)
+            throw new InvalidOperationException($"Defend group '{group.Identifier}' has an invalid fixed spawn window end.");
+        return offset;
     }
 
     private static int CompareAttackGroups(DefendAttackGroupDefinition left, DefendAttackGroupDefinition right)
@@ -924,9 +1144,9 @@ public static class DefendPhaseRuntime
                 Route = source.Route,
                 AfterGroupIdentifier = source.AfterGroupIdentifier,
                 DelaySeconds = source.DelaySeconds,
-                SpawnIntervalSeconds = source.SpawnIntervalSeconds,
-                ExpectedDurationSeconds = source.ExpectedDurationSeconds,
-                SpeedOverrideProperty = source.SpeedOverrideProperty,
+                ExpectedEngagementSeconds = source.ExpectedEngagementSeconds,
+                FirstSpawnLeadSeconds = source.FirstSpawnLeadSeconds,
+                LastSpawnLeadSeconds = source.LastSpawnLeadSeconds,
                 StartSeconds = source.StartSeconds,
                 StartResolved = true
             };
@@ -965,55 +1185,292 @@ public static class DefendPhaseRuntime
     private static List<PlannedSpawnEvent> BuildSpawnEvents(IReadOnlyList<DefendAttackGroupDefinition> groups)
     {
         var events = new List<PlannedSpawnEvent>();
+        var candidates = new List<WaveSpawnCandidate>();
+        var distanceByRouteUnitAndWaypoint = new Dictionary<string, EngagementPathEstimate>(StringComparer.Ordinal);
         if (groups == null || groups.Count == 0 || s_DefendSpawnPoints.Count == 0)
             return events;
 
         for (int groupIndex = 0; groupIndex < groups.Count; groupIndex++)
         {
             DefendAttackGroupDefinition group = groups[groupIndex];
-            if (!IsAttackGroupSourceActive(group.Route.SourceStrongholdId))
-            {
-                Log.Info("[DefendPhase] Fixed source group removed by capture. group={0}, source={1}",
-                    group.Identifier,
-                    group.Route.SourceStrongholdId);
-                continue;
-            }
+            Fix64 earliestSpawnSeconds = group.StartSeconds
+                                         + group.ExpectedEngagementSeconds
+                                         - group.FirstSpawnLeadSeconds;
+            Fix64 latestSpawnSeconds = group.StartSeconds
+                                       + group.ExpectedEngagementSeconds
+                                       - group.LastSpawnLeadSeconds;
+            if (earliestSpawnSeconds < Fix64.Zero || latestSpawnSeconds < earliestSpawnSeconds)
+                throw new InvalidOperationException($"Defend group '{group.Identifier}' has an invalid fixed spawn window.");
 
-            Fix64 speedWorld = group.SpeedOverrideProperty > Fix64.Zero
-                ? Fix64.Max(s_MinSpeedWorld, DistanceUnitConverter.ConvertToWorld(group.SpeedOverrideProperty))
-                : s_MinSpeedWorld;
-            Fix64 speedProperty = DistanceUnitConverter.ConvertFromWorld(speedWorld, s_DistanceConversionRate);
-            ulong groupStartTicks = SecondsToTicksCeiling(group.StartSeconds);
-            ulong spawnIntervalTicks = SecondsToTicksCeiling(group.SpawnIntervalSeconds);
-            ulong travelTicks = SecondsToTicksCeiling(group.Route.WorldDistance / speedWorld);
-            ulong groupSpawnIndex = 0;
+            int ordinalInGroup = 0;
             for (int entryIndex = 0; entryIndex < group.Enemies.Count; entryIndex++)
             {
                 DefendAttackEntry entry = group.Enemies[entryIndex];
                 int spawnCount = LevelTagRuntime.ModifyEnemySpawnCount(entry.Count);
                 for (int spawnIndex = 0; spawnIndex < spawnCount; spawnIndex++)
                 {
-                    ulong requestTicks = checked(groupStartTicks + checked(groupSpawnIndex * spawnIntervalTicks));
-                    events.Add(new PlannedSpawnEvent
+                    candidates.Add(new WaveSpawnCandidate
                     {
-                        RequestFrameOffset = requestTicks,
-                        Sequence = checked((ulong)events.Count + 1UL),
-                        UnitType = entry.UnitType,
-                        UnitLevel = entry.UnitLevel,
-                        SpawnPosition = group.Route.SourcePoint.Position,
-                        SpeedProperty = speedProperty,
-                        SourceStrongholdId = group.Route.SourceStrongholdId,
-                        SpawnPointName = group.Route.SourcePoint.Name,
-                        RouteWaypointsFixed = group.Route.WaypointsFixed,
-                        RouteWaypointStrongholdIds = group.Route.WaypointStrongholdIds,
-                        TheoreticalArrivalFrameOffset = checked(requestTicks + travelTicks)
+                        Group = group,
+                        Entry = entry,
+                        EarliestSpawnSeconds = earliestSpawnSeconds,
+                        LatestSpawnSeconds = latestSpawnSeconds,
+                        OrdinalInGroup = ordinalInGroup++,
+                        StableSequence = candidates.Count
                     });
-                    groupSpawnIndex++;
                 }
             }
         }
 
+        ScheduleWaveSpawnCandidates(candidates, s_SpawnIntervalSeconds);
+        candidates.Sort((left, right) =>
+        {
+            int time = left.ScheduledSpawnSeconds.CompareTo(right.ScheduledSpawnSeconds);
+            return time != 0 ? time : left.StableSequence.CompareTo(right.StableSequence);
+        });
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            AddPlannedSpawnEvent(
+                candidates[i],
+                candidates[i].ScheduledSpawnSeconds,
+                distanceByRouteUnitAndWaypoint,
+                events);
+        }
+
         return events;
+    }
+
+    private static void ScheduleWaveSpawnCandidates(
+        IReadOnlyList<WaveSpawnCandidate> candidates,
+        Fix64 spawnIntervalSeconds)
+    {
+        if (spawnIntervalSeconds <= Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(spawnIntervalSeconds));
+        var pending = new List<WaveSpawnCandidate>(candidates);
+        Fix64 nextSpawnSeconds = Fix64.Zero;
+        if (pending.Count > 0)
+        {
+            nextSpawnSeconds = pending[0].EarliestSpawnSeconds;
+            for (int i = 1; i < pending.Count; i++)
+                nextSpawnSeconds = Fix64.Min(nextSpawnSeconds, pending[i].EarliestSpawnSeconds);
+        }
+        while (pending.Count > 0)
+        {
+            int selectedIndex = SelectNextWaveSpawnCandidate(pending, nextSpawnSeconds);
+            if (selectedIndex < 0)
+            {
+                nextSpawnSeconds = pending[0].EarliestSpawnSeconds;
+                for (int i = 1; i < pending.Count; i++)
+                    nextSpawnSeconds = Fix64.Min(nextSpawnSeconds, pending[i].EarliestSpawnSeconds);
+                selectedIndex = SelectNextWaveSpawnCandidate(pending, nextSpawnSeconds);
+            }
+            if (selectedIndex < 0)
+                throw new InvalidOperationException("Defense wave scheduler could not select an available spawn candidate.");
+
+            WaveSpawnCandidate candidate = pending[selectedIndex];
+            pending.RemoveAt(selectedIndex);
+            if (nextSpawnSeconds > candidate.LatestSpawnSeconds)
+            {
+                throw new InvalidOperationException(
+                    $"Defense wave cannot keep the global spawn interval inside group '{candidate.Group.Identifier}' fixed window. " +
+                    $"scheduledRaw={nextSpawnSeconds.RawValue}, latestRaw={candidate.LatestSpawnSeconds.RawValue}.");
+            }
+
+            candidate.ScheduledSpawnSeconds = nextSpawnSeconds;
+            nextSpawnSeconds += spawnIntervalSeconds;
+        }
+    }
+
+    private static int SelectNextWaveSpawnCandidate(
+        IReadOnlyList<WaveSpawnCandidate> candidates,
+        Fix64 spawnSeconds)
+    {
+        int selectedIndex = -1;
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            WaveSpawnCandidate candidate = candidates[i];
+            if (candidate.EarliestSpawnSeconds > spawnSeconds)
+                continue;
+            if (selectedIndex < 0 || CompareWaveSpawnCandidates(candidate, candidates[selectedIndex]) < 0)
+                selectedIndex = i;
+        }
+        return selectedIndex;
+    }
+
+    private static int CompareWaveSpawnCandidates(WaveSpawnCandidate left, WaveSpawnCandidate right)
+    {
+        int deadline = left.LatestSpawnSeconds.CompareTo(right.LatestSpawnSeconds);
+        if (deadline != 0)
+            return deadline;
+        int ordinal = left.OrdinalInGroup.CompareTo(right.OrdinalInGroup);
+        if (ordinal != 0)
+            return ordinal;
+        int group = string.CompareOrdinal(left.Group.Identifier, right.Group.Identifier);
+        return group != 0 ? group : left.StableSequence.CompareTo(right.StableSequence);
+    }
+
+    private static void AddPlannedSpawnEvent(
+        WaveSpawnCandidate candidate,
+        Fix64 spawnSeconds,
+        IDictionary<string, EngagementPathEstimate> distanceCache,
+        ICollection<PlannedSpawnEvent> events)
+    {
+        DefendAttackGroupDefinition group = candidate.Group;
+        int speedReleaseWaypointIndex = TryResolveFirstPlayerWaypointIndex(
+            group.Route.Identifier,
+            group.Route.WaypointStrongholdIds);
+        if (speedReleaseWaypointIndex < 0 && !group.Route.UsesInitialGameEndTarget)
+        {
+            throw new InvalidOperationException(
+                $"Active defend route '{group.Route.Identifier}' has no player-owned waypoint or initial player GameEnd target for engagement speed estimation.");
+        }
+        FixVector2 dynamicTargetPosition = group.Route.InitialGameEndTargetPosition;
+        string distanceCacheKey = speedReleaseWaypointIndex >= 0
+            ? $"{group.Route.Identifier}|{(int)candidate.Entry.UnitType}|WP:{speedReleaseWaypointIndex}"
+            : $"{group.Route.Identifier}|{(int)candidate.Entry.UnitType}|TARGET:{dynamicTargetPosition.x.RawValue}:{dynamicTargetPosition.y.RawValue}";
+        if (!distanceCache.TryGetValue(distanceCacheKey, out EngagementPathEstimate pathEstimate))
+        {
+            pathEstimate = speedReleaseWaypointIndex >= 0
+                ? new EngagementPathEstimate(
+                    CalculateRouteDistanceToWaypoint(
+                        group.Route.Identifier,
+                        group.Route.SourcePoint.Position,
+                        group.Route.WaypointsFixed,
+                        candidate.Entry.UnitType,
+                        speedReleaseWaypointIndex),
+                    null)
+                : CalculateRouteDistanceToTarget(
+                    group.Route.Identifier,
+                    group.Route.SourcePoint.Position,
+                    group.Route.WaypointsFixed,
+                    dynamicTargetPosition,
+                    candidate.Entry.UnitType);
+            distanceCache.Add(distanceCacheKey, pathEstimate);
+        }
+
+        Fix64 engagementSeconds = group.StartSeconds + group.ExpectedEngagementSeconds;
+        if (engagementSeconds <= spawnSeconds)
+        {
+            throw new InvalidOperationException(
+                $"Defend group '{group.Identifier}' scheduled a unit at or after its expected engagement time.");
+        }
+        ulong requestTicks = SecondsToTicksCeiling(spawnSeconds);
+        ulong expectedEngagementTicks = SecondsToTicksCeiling(engagementSeconds);
+        if (expectedEngagementTicks <= requestTicks)
+            throw new InvalidOperationException($"Defend group '{group.Identifier}' has no travel ticks after scheduling.");
+        Fix64 remainingTravelSeconds = TicksToDuration(expectedEngagementTicks - requestTicks);
+        Fix64 speedWorld = CalculateExpectedEngagementSpeed(pathEstimate.Distance, remainingTravelSeconds);
+        Fix64 speedProperty = DistanceUnitConverter.ConvertFromWorld(speedWorld, s_DistanceConversionRate);
+        events.Add(new PlannedSpawnEvent
+        {
+            RequestFrameOffset = requestTicks,
+            Sequence = checked((ulong)candidate.StableSequence + 1UL),
+            UnitType = candidate.Entry.UnitType,
+            UnitLevel = candidate.Entry.UnitLevel,
+            SpawnPosition = group.Route.SourcePoint.Position,
+            RouteIdentifier = group.Route.Identifier,
+            SpeedProperty = speedProperty,
+            SourceStrongholdId = group.Route.SourceStrongholdId,
+            SpawnPointName = group.Route.SourcePoint.Name,
+            RouteWaypointsFixed = group.Route.WaypointsFixed,
+            RouteWaypointTeleportationIds = group.Route.WaypointTeleportationIds,
+            ExpectedEngagementFrameOffset = expectedEngagementTicks,
+            SpeedReleaseWaypointIndex = speedReleaseWaypointIndex,
+            SpeedReleasePositionFixed = pathEstimate.ReleasePosition
+        });
+    }
+
+    private static Fix64 CalculateExpectedEngagementSpeed(
+        Fix64 engagementDistance,
+        Fix64 remainingTravelSeconds)
+    {
+        if (engagementDistance <= Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(engagementDistance));
+        if (remainingTravelSeconds <= Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(remainingTravelSeconds));
+        return engagementDistance / remainingTravelSeconds;
+    }
+
+    private static int TryResolveFirstPlayerWaypointIndex(
+        string routeIdentifier,
+        IReadOnlyList<string> waypointStrongholdIds)
+    {
+        if (string.IsNullOrWhiteSpace(routeIdentifier))
+            throw new ArgumentException("Defense route identifier is empty.", nameof(routeIdentifier));
+        if (waypointStrongholdIds == null)
+            throw new ArgumentNullException(nameof(waypointStrongholdIds));
+        for (int i = 0; i < waypointStrongholdIds.Count; i++)
+        {
+            if (LogicStrongholdMap.GetOwnerFactionIdRequired(waypointStrongholdIds[i])
+                == EntitySideHelper.PlayerFactionId)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static Fix64 CalculateRouteDistanceToWaypoint(
+        string routeIdentifier,
+        FixVector2 sourcePosition,
+        IReadOnlyList<FixVector2> waypoints,
+        UnitType unitType,
+        int waypointIndex)
+    {
+        if (string.IsNullOrWhiteSpace(routeIdentifier))
+            throw new ArgumentException("Defense route identifier is empty.", nameof(routeIdentifier));
+        if (waypoints == null)
+            throw new ArgumentNullException(nameof(waypoints));
+        if (waypointIndex < 0 || waypointIndex >= waypoints.Count)
+            throw new ArgumentOutOfRangeException(nameof(waypointIndex), waypointIndex, "Defense engagement waypoint is outside the route.");
+
+        FixVector2 from = sourcePosition;
+        Fix64 distance = Fix64.Zero;
+        for (int i = 0; i <= waypointIndex; i++)
+        {
+            FixVector2 to = waypoints[i];
+            distance += CalculatePathDistanceFixed(from, to, unitType);
+            from = to;
+        }
+        distance -= s_WaypointArrivalRadiusWorld;
+        if (distance <= Fix64.Zero)
+            throw new InvalidOperationException($"Defend route '{routeIdentifier}' resolved a non-positive engagement distance.");
+        return distance;
+    }
+
+    private static EngagementPathEstimate CalculateRouteDistanceToTarget(
+        string routeIdentifier,
+        FixVector2 sourcePosition,
+        IReadOnlyList<FixVector2> waypoints,
+        FixVector2 targetPosition,
+        UnitType unitType)
+    {
+        if (waypoints == null)
+            throw new ArgumentNullException(nameof(waypoints));
+        FixVector2 from = sourcePosition;
+        Fix64 distance = Fix64.Zero;
+        for (int i = 0; i < waypoints.Count; i++)
+        {
+            distance += CalculatePathDistanceFixed(from, waypoints[i], unitType);
+            from = waypoints[i];
+        }
+        int agentTypeId = ResolveAgentTypeId(unitType);
+        if (!FlowFieldCrowdMovementSystem.TryEstimatePrewarmedNavigationDistanceToReachableGoalFixed(
+                from,
+                targetPosition,
+                agentTypeId,
+                out Fix64 finalDistance,
+                out FixVector2 reachableGoal,
+                out string failureReason))
+        {
+            throw new InvalidOperationException(
+                $"Defend route '{routeIdentifier}' final target navigation distance failed: {failureReason}");
+        }
+        distance += finalDistance - s_WaypointArrivalRadiusWorld;
+        if (distance <= Fix64.Zero)
+            throw new InvalidOperationException($"Defend route '{routeIdentifier}' resolved a non-positive final target engagement distance.");
+        return new EngagementPathEstimate(distance, reachableGoal);
     }
 
     private static bool IsAttackGroupSourceActive(string sourceStrongholdId)
@@ -1097,6 +1554,7 @@ public static class DefendPhaseRuntime
     private static void RequirePreparedRuntime()
     {
         if (!s_SubscribedLogicUnitDead
+            || !s_SubscribedNavigationDistancePrewarm
             || !s_ArchetypeCacheConfigured
             || !s_SpawnPointCacheConfigured
             || !s_WaveConfigConfigured)
@@ -1105,6 +1563,9 @@ public static class DefendPhaseRuntime
                 "DefendPhaseRuntime was not prepared before entering the logic Defend phase.");
         }
         if (s_MinSpeedWorld <= Fix64.Zero
+            || s_MaxSpeedWorld < s_MinSpeedWorld
+            || s_SpawnIntervalSeconds <= Fix64.Zero
+            || s_WaypointArrivalRadiusWorld <= Fix64.Zero
             || s_EndlessGrowthRate <= Fix64.Zero)
         {
             throw new InvalidOperationException("DefendPhaseRuntime prepared config contains a non-positive value.");
@@ -1119,6 +1580,7 @@ public static class DefendPhaseRuntime
         s_NextPlannedSpawnIndex = 0;
         s_SpawnRequestStartFrame = 0;
         s_SpawnScheduleCompleted = false;
+        s_WaitingForNavigationDistancePrewarm = false;
         s_TutorialFirstDefenseWaiting = false;
         s_TutorialFirstDefenseActive = false;
         if (!keepRoundIndex)
@@ -1134,6 +1596,7 @@ public static class DefendPhaseRuntime
 
         hasher.Add(s_DefendRoundIndex);
         hasher.Add(s_SpawnScheduleCompleted);
+        hasher.Add(s_WaitingForNavigationDistancePrewarm);
         hasher.Add(s_SpawnRequestStartFrame);
         hasher.Add(s_NextPlannedSpawnIndex);
         hasher.Add(s_PlannedSpawnEvents.Count);
@@ -1146,17 +1609,29 @@ public static class DefendPhaseRuntime
             hasher.Add(evt.UnitLevel);
             hasher.Add(evt.SpawnPosition.x.RawValue);
             hasher.Add(evt.SpawnPosition.y.RawValue);
+            hasher.Add(evt.RouteIdentifier);
             hasher.Add(evt.SpeedProperty.RawValue);
             hasher.Add(evt.SourceStrongholdId);
             hasher.Add(evt.SpawnPointName);
-            hasher.Add(evt.TheoreticalArrivalFrameOffset);
+            hasher.Add(evt.ExpectedEngagementFrameOffset);
+            hasher.Add(evt.SpeedReleaseWaypointIndex);
+            if (evt.SpeedReleasePositionFixed.HasValue)
+            {
+                hasher.Add(true);
+                hasher.Add(evt.SpeedReleasePositionFixed.Value.x.RawValue);
+                hasher.Add(evt.SpeedReleasePositionFixed.Value.y.RawValue);
+            }
+            else
+            {
+                hasher.Add(false);
+            }
             int routeCount = evt.RouteWaypointsFixed?.Length ?? 0;
             hasher.Add(routeCount);
             for (int routeIndex = 0; routeIndex < routeCount; routeIndex++)
             {
                 hasher.Add(evt.RouteWaypointsFixed[routeIndex].x.RawValue);
                 hasher.Add(evt.RouteWaypointsFixed[routeIndex].y.RawValue);
-                hasher.Add(evt.RouteWaypointStrongholdIds[routeIndex]);
+                hasher.Add(evt.RouteWaypointTeleportationIds[routeIndex]);
             }
         }
 
@@ -1178,6 +1653,26 @@ public static class DefendPhaseRuntime
     }
 
 #if UNITY_EDITOR
+    public static bool GetEditorTestIsWaitingForNavigationDistancePrewarm()
+    {
+        return s_WaitingForNavigationDistancePrewarm;
+    }
+
+    public static int GetEditorTestPlannedSpawnCount()
+    {
+        return s_PlannedSpawnEvents.Count;
+    }
+
+    public static int GetEditorTestAliveEnemyCount()
+    {
+        return s_AliveEnemyLogicEntityIds.Count;
+    }
+
+    public static ulong GetEditorTestSpawnRequestStartFrame()
+    {
+        return s_SpawnRequestStartFrame;
+    }
+
     public static bool GetEditorTestIsAttackGroupSourceActive(string sourceStrongholdId)
     {
         return IsAttackGroupSourceActive(sourceStrongholdId);
@@ -1191,6 +1686,55 @@ public static class DefendPhaseRuntime
     public static int GetEditorTestWeightedSpawnCount(Fix64 weight, Fix64 totalWeight, int totalCount)
     {
         return RoundPositiveRatioToInt(checked(weight.RawValue * totalCount), totalWeight.RawValue);
+    }
+
+    public static Fix64[] GetEditorTestWaveSpawnSeconds(
+        Fix64[] earliestSpawnSeconds,
+        Fix64[] latestSpawnSeconds,
+        string[] groupIdentifiers,
+        int[] ordinalsInGroup,
+        Fix64 spawnIntervalSeconds)
+    {
+        if (earliestSpawnSeconds == null || latestSpawnSeconds == null
+            || groupIdentifiers == null || ordinalsInGroup == null)
+        {
+            throw new ArgumentNullException("Wave spawn test inputs cannot be null.");
+        }
+        int count = earliestSpawnSeconds.Length;
+        if (latestSpawnSeconds.Length != count || groupIdentifiers.Length != count || ordinalsInGroup.Length != count)
+            throw new ArgumentException("Wave spawn test input lengths are mismatched.");
+
+        var candidates = new List<WaveSpawnCandidate>(count);
+        for (int i = 0; i < count; i++)
+        {
+            candidates.Add(new WaveSpawnCandidate
+            {
+                Group = new DefendAttackGroupDefinition { Identifier = groupIdentifiers[i] },
+                EarliestSpawnSeconds = earliestSpawnSeconds[i],
+                LatestSpawnSeconds = latestSpawnSeconds[i],
+                OrdinalInGroup = ordinalsInGroup[i],
+                StableSequence = i
+            });
+        }
+        ScheduleWaveSpawnCandidates(candidates, spawnIntervalSeconds);
+        var result = new Fix64[count];
+        for (int i = 0; i < count; i++)
+            result[i] = candidates[i].ScheduledSpawnSeconds;
+        return result;
+    }
+
+    public static Fix64 GetEditorTestExpectedEngagementSpeed(
+        Fix64 engagementDistance,
+        Fix64 remainingTravelSeconds)
+    {
+        return CalculateExpectedEngagementSpeed(engagementDistance, remainingTravelSeconds);
+    }
+
+    public static int GetEditorTestFirstPlayerWaypointIndex(
+        string routeIdentifier,
+        string[] waypointStrongholdIds)
+    {
+        return TryResolveFirstPlayerWaypointIndex(routeIdentifier, waypointStrongholdIds);
     }
 #endif
 
@@ -1209,8 +1753,13 @@ public static class DefendPhaseRuntime
         public string SourceStrongholdId;
         public DefendSpawnPointRuntime SourcePoint;
         public FixVector2[] WaypointsFixed;
+        public string[] WaypointTeleportationIds;
         public string[] WaypointStrongholdIds;
-        public Fix64 WorldDistance;
+        public Fix64 FirstWaypointDistance;
+        public Fix64 PresetEngagementDistance;
+        public int PresetFirstPlayerWaypointIndex;
+        public bool UsesInitialGameEndTarget;
+        public FixVector2 InitialGameEndTargetPosition;
     }
 
     private sealed class DefendAttackGroupDefinition
@@ -1221,9 +1770,9 @@ public static class DefendPhaseRuntime
         public DefendRouteDefinition Route;
         public string AfterGroupIdentifier;
         public Fix64 DelaySeconds;
-        public Fix64 SpawnIntervalSeconds;
-        public Fix64 ExpectedDurationSeconds;
-        public Fix64 SpeedOverrideProperty;
+        public Fix64 ExpectedEngagementSeconds;
+        public Fix64 FirstSpawnLeadSeconds;
+        public Fix64 LastSpawnLeadSeconds;
         public Fix64 StartSeconds;
         public bool StartResolved;
     }
@@ -1242,12 +1791,38 @@ public static class DefendPhaseRuntime
         public UnitType UnitType;
         public int UnitLevel;
         public FixVector2 SpawnPosition;
+        public string RouteIdentifier;
         public Fix64 SpeedProperty;
         public string SourceStrongholdId;
         public string SpawnPointName;
-        public ulong TheoreticalArrivalFrameOffset;
+        public ulong ExpectedEngagementFrameOffset;
         public FixVector2[] RouteWaypointsFixed;
-        public string[] RouteWaypointStrongholdIds;
+        public string[] RouteWaypointTeleportationIds;
+        public int SpeedReleaseWaypointIndex;
+        public FixVector2? SpeedReleasePositionFixed;
+    }
+
+    private readonly struct EngagementPathEstimate
+    {
+        public EngagementPathEstimate(Fix64 distance, FixVector2? releasePosition)
+        {
+            Distance = distance;
+            ReleasePosition = releasePosition;
+        }
+
+        public Fix64 Distance { get; }
+        public FixVector2? ReleasePosition { get; }
+    }
+
+    private sealed class WaveSpawnCandidate
+    {
+        public DefendAttackGroupDefinition Group;
+        public DefendAttackEntry Entry;
+        public Fix64 EarliestSpawnSeconds;
+        public Fix64 LatestSpawnSeconds;
+        public int OrdinalInGroup;
+        public int StableSequence;
+        public Fix64 ScheduledSpawnSeconds;
     }
 
     private sealed class TutorialTriggeredSpawnPoint

@@ -68,7 +68,7 @@ internal static class LvTestHeroGapDiagnosticRunner
         EditorApplication.update += Update;
     }
 
-    [MenuItem("Tools/AAAGame/Diagnostics/Run LvTest Hero 0.8m Gap Diagnostic")]
+    [MenuItem("Tools/Diagnostics/Run LvTest Hero 0.8m Gap Diagnostic")]
     public static void Run()
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode)
