@@ -44,6 +44,8 @@ public class EntityParams : RefParams
     public BrainType BrainType { get; set; } = BrainType.Player;
     public int UnitLevel { get; set; } = 1;
     public Fix64? DefendAssignedSpeed { get; set; }
+    public FixVector2[] DefendRouteWaypointsFixed { get; set; }
+    public string[] DefendRouteWaypointStrongholdIds { get; set; }
     public int FollowEntityId { get; set; } = -1;
     public LogicSkillFactoryKind LogicSkillFactoryKind { get; set; }
     public const string P_CharacterKey = "CharacterKey";
@@ -124,6 +126,8 @@ public class EntityParams : RefParams
         BrainType = BrainType.Player;
         UnitLevel = 1;
         DefendAssignedSpeed = null;
+        DefendRouteWaypointsFixed = null;
+        DefendRouteWaypointStrongholdIds = null;
         FollowEntityId = -1;
         StartBuffs = null;
         LogicSkillFactoryKind = LogicSkillFactoryKind.None;

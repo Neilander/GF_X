@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Pathfinding.Clipper2Lib;
 using AAAGame.Tilemap;
 using GiantGrey.TileWorldCreator;
 using UnityEditor;
@@ -194,6 +195,7 @@ namespace AAAGame.Tools.Editor
 
                 TerrainRaster raster = BuildTerrainRaster(groundIndex, obstacleIndex, width, height, cellSize, gridOrigin, agentTypeId, stopwatch);
                 AuthoredTerrainTopology terrainTopology = AuthoredTerrainTopology.TryCreate(terrainRoot);
+                BuildStaticCollisionGeometry(groundColliders, out FixVector2[] staticCollisionVertices, out int[] staticCollisionPathStarts);
                 return BakeMovementTypeFromRaster(
                     terrainPrefabPath,
                     assetPath,
@@ -203,6 +205,9 @@ namespace AAAGame.Tools.Editor
                     groundIndex,
                     obstacleIndex,
                     terrainTopology,
+                    staticCollisionVertices,
+                    staticCollisionPathStarts,
+                    true,
                     groundColliders.Length,
                     obstacleColliders.Length,
                     stopwatch);
@@ -385,6 +390,7 @@ namespace AAAGame.Tools.Editor
 
                 TerrainRaster raster = BuildTerrainRaster(groundIndex, obstacleIndex, width, height, cellSize, gridOrigin, int.MinValue, stopwatch);
                 AuthoredTerrainTopology terrainTopology = AuthoredTerrainTopology.TryCreate(terrainRoot);
+                BuildStaticCollisionGeometry(groundColliders, out FixVector2[] staticCollisionVertices, out int[] staticCollisionPathStarts);
                 Result[] results = new Result[requests.Count];
                 HashSet<int> agentTypeIds = new HashSet<int>();
                 for (int i = 0; i < requests.Count; i++)
@@ -405,6 +411,9 @@ namespace AAAGame.Tools.Editor
                         groundIndex,
                         obstacleIndex,
                         terrainTopology,
+                        staticCollisionVertices,
+                        staticCollisionPathStarts,
+                        i == 0,
                         groundColliders.Length,
                         combinedObstacleColliders.Length,
                         stopwatch);
@@ -588,6 +597,175 @@ namespace AAAGame.Tools.Editor
                 $"config={FlowFieldNavigationConfigPath} sector={config.SectorSizeInCells} narrow={config.PortalNarrowWidthCells} maxWindow={config.PortalMaxWindowWidthCells}");
         }
 
+        private static void BuildStaticCollisionGeometry(
+            IReadOnlyList<Collider> groundColliders,
+            out FixVector2[] vertices,
+            out int[] pathStarts)
+        {
+            if (groundColliders == null || groundColliders.Count == 0)
+                throw new InvalidOperationException("BuildStaticCollisionGeometry failed: ground colliders are empty.");
+
+            var subjects = new List<List<Point64>>();
+            for (int colliderIndex = 0; colliderIndex < groundColliders.Count; colliderIndex++)
+            {
+                if (!(groundColliders[colliderIndex] is MeshCollider meshCollider) || meshCollider.sharedMesh == null)
+                {
+                    throw new InvalidOperationException(
+                        $"BuildStaticCollisionGeometry failed: Ground collider must be a MeshCollider with a mesh. index={colliderIndex} collider={groundColliders[colliderIndex]?.name ?? "null"}.");
+                }
+
+                Vector3[] meshVertices = meshCollider.sharedMesh.vertices;
+                int[] triangles = meshCollider.sharedMesh.triangles;
+                for (int triangleIndex = 0; triangleIndex < triangles.Length; triangleIndex += 3)
+                {
+                    Vector3 a = meshCollider.transform.TransformPoint(meshVertices[triangles[triangleIndex]]);
+                    Vector3 b = meshCollider.transform.TransformPoint(meshVertices[triangles[triangleIndex + 1]]);
+                    Vector3 c = meshCollider.transform.TransformPoint(meshVertices[triangles[triangleIndex + 2]]);
+                    if (Vector3.Cross(b - a, c - a).y <= 0.000001f)
+                        continue;
+
+                    Point64 fixedA = ToStaticCollisionPoint(a);
+                    Point64 fixedB = ToStaticCollisionPoint(b);
+                    Point64 fixedC = ToStaticCollisionPoint(c);
+                    long twiceArea = checked(
+                        fixedA.X * (fixedB.Y - fixedC.Y)
+                        + fixedB.X * (fixedC.Y - fixedA.Y)
+                        + fixedC.X * (fixedA.Y - fixedB.Y));
+                    if (twiceArea == 0)
+                        continue;
+
+                    subjects.Add(new List<Point64>(3) { fixedA, fixedB, fixedC });
+                }
+            }
+
+            if (subjects.Count == 0)
+                throw new InvalidOperationException("BuildStaticCollisionGeometry failed: Ground meshes contain no upward-facing projected triangles.");
+
+            var clipper = new Clipper64();
+            clipper.AddSubject(subjects);
+            var solution = new List<List<Point64>>();
+            if (!clipper.Execute(ClipType.Union, FillRule.NonZero, solution))
+                throw new InvalidOperationException("BuildStaticCollisionGeometry failed: Clipper2 union failed.");
+
+            var normalizedPaths = new List<List<Point64>>(solution.Count);
+            for (int i = 0; i < solution.Count; i++)
+            {
+                List<Point64> normalized = NormalizeStaticCollisionPath(solution[i]);
+                if (normalized.Count >= 3)
+                    normalizedPaths.Add(normalized);
+            }
+            normalizedPaths.Sort(CompareStaticCollisionPaths);
+            if (normalizedPaths.Count == 0)
+                throw new InvalidOperationException("BuildStaticCollisionGeometry failed: union produced no closed paths.");
+
+            int vertexCount = normalizedPaths.Sum(path => path.Count);
+            vertices = new FixVector2[vertexCount];
+            pathStarts = new int[normalizedPaths.Count + 1];
+            int cursor = 0;
+            for (int pathIndex = 0; pathIndex < normalizedPaths.Count; pathIndex++)
+            {
+                pathStarts[pathIndex] = cursor;
+                List<Point64> path = normalizedPaths[pathIndex];
+                for (int i = 0; i < path.Count; i++)
+                {
+                    vertices[cursor++] = new FixVector2(
+                        Fix64.FromRaw(path[i].X),
+                        Fix64.FromRaw(path[i].Y));
+                }
+            }
+            pathStarts[pathStarts.Length - 1] = cursor;
+            Debug.Log(
+                $"[FlowNavigationGridBake] stage=static-collision-geometry-complete " +
+                $"inputTriangles={subjects.Count} paths={normalizedPaths.Count} vertices={vertexCount}");
+        }
+
+        private static Point64 ToStaticCollisionPoint(Vector3 point)
+        {
+            const double fixedScale = 1 << Fix64.FRACTIONAL_PLACES;
+            return new Point64(
+                checked((long)Math.Round(point.x * fixedScale, MidpointRounding.AwayFromZero)),
+                checked((long)Math.Round(point.z * fixedScale, MidpointRounding.AwayFromZero)));
+        }
+
+        private static List<Point64> NormalizeStaticCollisionPath(IReadOnlyList<Point64> source)
+        {
+            var compact = new List<Point64>(source?.Count ?? 0);
+            if (source == null)
+                return compact;
+            for (int i = 0; i < source.Count; i++)
+            {
+                Point64 point = source[i];
+                if (compact.Count == 0 || !SameStaticCollisionPoint(compact[compact.Count - 1], point))
+                    compact.Add(point);
+            }
+            if (compact.Count > 1 && SameStaticCollisionPoint(compact[0], compact[compact.Count - 1]))
+                compact.RemoveAt(compact.Count - 1);
+            bool changed = true;
+            while (changed && compact.Count >= 3)
+            {
+                changed = false;
+                for (int i = 0; i < compact.Count; i++)
+                {
+                    Point64 previous = compact[(i + compact.Count - 1) % compact.Count];
+                    Point64 current = compact[i];
+                    Point64 next = compact[(i + 1) % compact.Count];
+                    long cross = checked(
+                        (current.X - previous.X) * (next.Y - current.Y)
+                        - (current.Y - previous.Y) * (next.X - current.X));
+                    bool isBacktrack = SameStaticCollisionPoint(previous, next);
+                    bool isCollinearBetween = cross == 0
+                                              && current.X >= Math.Min(previous.X, next.X)
+                                              && current.X <= Math.Max(previous.X, next.X)
+                                              && current.Y >= Math.Min(previous.Y, next.Y)
+                                              && current.Y <= Math.Max(previous.Y, next.Y);
+                    if (!isBacktrack && !isCollinearBetween)
+                        continue;
+                    compact.RemoveAt(i);
+                    changed = true;
+                    break;
+                }
+            }
+            if (compact.Count < 3)
+                return compact;
+
+            int first = 0;
+            for (int i = 1; i < compact.Count; i++)
+            {
+                if (CompareStaticCollisionPoints(compact[i], compact[first]) < 0)
+                    first = i;
+            }
+            int nextIndex = (first + 1) % compact.Count;
+            int previousIndex = (first + compact.Count - 1) % compact.Count;
+            int direction = CompareStaticCollisionPoints(compact[nextIndex], compact[previousIndex]) <= 0 ? 1 : -1;
+            var normalized = new List<Point64>(compact.Count);
+            for (int i = 0; i < compact.Count; i++)
+                normalized.Add(compact[(first + direction * i + compact.Count) % compact.Count]);
+            return normalized;
+        }
+
+        private static int CompareStaticCollisionPaths(List<Point64> left, List<Point64> right)
+        {
+            int count = Math.Min(left.Count, right.Count);
+            for (int i = 0; i < count; i++)
+            {
+                int comparison = CompareStaticCollisionPoints(left[i], right[i]);
+                if (comparison != 0)
+                    return comparison;
+            }
+            return left.Count.CompareTo(right.Count);
+        }
+
+        private static int CompareStaticCollisionPoints(Point64 left, Point64 right)
+        {
+            int x = left.X.CompareTo(right.X);
+            return x != 0 ? x : left.Y.CompareTo(right.Y);
+        }
+
+        private static bool SameStaticCollisionPoint(Point64 left, Point64 right)
+        {
+            return left.X == right.X && left.Y == right.Y;
+        }
+
         private static Result BakeMovementTypeFromRaster(
             string terrainPrefabPath,
             string assetPath,
@@ -597,6 +775,9 @@ namespace AAAGame.Tools.Editor
             ColliderSpatialIndex groundIndex,
             ColliderSpatialIndex obstacleIndex,
             AuthoredTerrainTopology terrainTopology,
+            FixVector2[] staticCollisionVertices,
+            int[] staticCollisionPathStarts,
+            bool storeStaticCollisionGeometry,
             int groundColliderCount,
             int obstacleColliderCount,
             System.Diagnostics.Stopwatch stopwatch)
@@ -666,6 +847,10 @@ namespace AAAGame.Tools.Editor
             FlowNavigationGridAsset asset = LoadOrCreateAsset(assetPath);
             Debug.Log($"[FlowNavigationGridBake] stage=asset-loaded elapsedMs={stopwatch.ElapsedMilliseconds} agentType={agentTypeId} asset={assetPath}");
             asset.Overwrite(agentTypeId, raster.Width, raster.Height, raster.CellSize, raster.Origin, movementWalkable, movementCosts, movementAnchors, movementNeighborMasks);
+            if (storeStaticCollisionGeometry)
+                asset.SetStaticCollisionGeometry(staticCollisionVertices, staticCollisionPathStarts);
+            else
+                asset.ClearStaticCollisionGeometry();
             Debug.Log(
                 $"[FlowNavigationGridBake] stage=asset-cells-written elapsedMs={stopwatch.ElapsedMilliseconds} agentType={agentTypeId} " +
                 $"walkable={walkableCount} blocked={raster.CellCount - walkableCount}");

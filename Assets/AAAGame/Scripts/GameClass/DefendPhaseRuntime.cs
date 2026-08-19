@@ -7,10 +7,8 @@ using UnityGameFramework.Runtime;
 
 public static class DefendPhaseRuntime
 {
-    private const string DefendEnemyArriveIntervalConfigKey = "DefendPhaseEnemyArriveInterval";
     private const string DefendEnemyMinSpeedConfigKey = "DefendPhaseEnemyMinSpeed";
     private const string DefendEndlessGrowthRateConfigKey = "DefendPhaseEnemyEndlessGrowthRate";
-    private static readonly Fix64 MinArriveIntervalSeconds = Fix64.FromRaw(41);
     private static readonly Fix64 MinWorldSpeed = Fix64.FromRaw(5);
     private static readonly Fix64 NavigationPointProbeRadius = Fix64.FromRaw(10240);
     private const string TutorialLevelIdentifier = "Lv_1";
@@ -21,7 +19,10 @@ public static class DefendPhaseRuntime
     private static readonly Dictionary<UnitType, Archetype> s_ArchetypeByUnitType = new();
     private static readonly Dictionary<UnitType, int> s_AgentTypeIdByUnitType = new();
     private static readonly List<DefendSpawnPointRuntime> s_DefendSpawnPoints = new();
-    private static readonly List<DefendWaveDefinition> s_DefendWaves = new();
+    private static readonly Dictionary<string, DefendRouteDefinition> s_DefendRoutesByIdentifier =
+        new(StringComparer.Ordinal);
+    private static readonly List<DefendAttackGroupDefinition> s_DefendAttackGroups = new();
+    private static int s_MaxConfiguredDefendRound;
     private static readonly List<TutorialTriggeredSpawnPoint> s_TutorialTriggeredSpawnPoints = new();
     private static readonly HashSet<int> s_AliveEnemyLogicEntityIds = new();
     private static readonly List<int> s_DeterministicAliveEnemyIds = new();
@@ -41,7 +42,6 @@ public static class DefendPhaseRuntime
     private static readonly List<PlannedSpawnEvent> s_PlannedSpawnEvents = new();
     private static int s_NextPlannedSpawnIndex;
     private static ulong s_SpawnRequestStartFrame;
-    private static Fix64 s_ArriveInterval;
     private static Fix64 s_MinSpeedWorld;
     private static Fix64 s_EndlessGrowthRate;
     private static decimal s_DistanceConversionRate;
@@ -127,13 +127,14 @@ public static class DefendPhaseRuntime
         s_ArchetypeUnitTypeMapper = null;
         s_AgentTypeIdByUnitType.Clear();
         s_DefendSpawnPoints.Clear();
-        s_DefendWaves.Clear();
+        s_DefendRoutesByIdentifier.Clear();
+        s_DefendAttackGroups.Clear();
+        s_MaxConfiguredDefendRound = 0;
         s_ArchetypeCacheConfigured = false;
         s_SpawnPointCacheConfigured = false;
         s_WaveConfigConfigured = false;
         s_CachedLevelEntityId = 0;
         s_WaveConfigLevelIdentifier = string.Empty;
-        s_ArriveInterval = Fix64.Zero;
         s_MinSpeedWorld = Fix64.Zero;
         s_EndlessGrowthRate = Fix64.Zero;
         s_DistanceConversionRate = decimal.Zero;
@@ -180,8 +181,8 @@ public static class DefendPhaseRuntime
 
         s_DefendRoundIndex++;
 
-        DefendWaveDefinition wave = ResolveWaveForCurrentRound();
-        if (wave == null || wave.Entries.Count == 0)
+        List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForRound(s_DefendRoundIndex);
+        if (groups.Count == 0)
         {
             Log.Warning("[DefendPhase] 当前防御波次无配置，直接结束。round={0}", s_DefendRoundIndex);
             s_SpawnScheduleCompleted = true;
@@ -189,7 +190,7 @@ public static class DefendPhaseRuntime
             return;
         }
 
-        s_PlannedSpawnEvents.AddRange(BuildSpawnEvents(wave));
+        s_PlannedSpawnEvents.AddRange(BuildSpawnEvents(groups));
         if (s_PlannedSpawnEvents.Count == 0)
         {
             Log.Warning("[DefendPhase] 当前防御波次无法生成出怪计划，直接结束。round={0}", s_DefendRoundIndex);
@@ -303,6 +304,8 @@ public static class DefendPhaseRuntime
             entityParams =>
             {
                 entityParams.DefendAssignedSpeed = evt.SpeedProperty;
+                entityParams.DefendRouteWaypointsFixed = evt.RouteWaypointsFixed;
+                entityParams.DefendRouteWaypointStrongholdIds = evt.RouteWaypointStrongholdIds;
             },
             evt.UnitLevel);
         if (!entityId.IsValid)
@@ -335,32 +338,30 @@ public static class DefendPhaseRuntime
         results.Clear();
         RequirePreparedRuntime();
 
-        DefendWaveDefinition wave = ResolveWaveForRound(Mathf.Max(1, s_DefendRoundIndex + 1));
-        if (wave == null || wave.Entries.Count == 0)
+        List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForRound(Mathf.Max(1, s_DefendRoundIndex + 1));
+        if (groups.Count == 0)
             return false;
 
-        for (int i = 0; i < wave.Entries.Count; i++)
+        for (int i = 0; i < groups.Count; i++)
         {
-            DefendWaveEntry waveEntry = wave.Entries[i];
-            if (waveEntry.Count <= 0)
+            DefendAttackGroupDefinition group = groups[i];
+            if (!IsAttackGroupSourceActive(group.Route.SourceStrongholdId))
                 continue;
 
-            List<PointSpawnCount> pointCounts = AllocatePointCountsForUnit(waveEntry.UnitType, LevelTagRuntime.ModifyEnemySpawnCount(waveEntry.Count));
-            for (int j = 0; j < pointCounts.Count; j++)
+            for (int j = 0; j < group.Enemies.Count; j++)
             {
-                PointSpawnCount pointCount = pointCounts[j];
-                if (pointCount == null || pointCount.Point == null)
-                    continue;
-                if (pointCount.Count <= 0)
+                DefendAttackEntry entry = group.Enemies[j];
+                int count = LevelTagRuntime.ModifyEnemySpawnCount(entry.Count);
+                if (count <= 0)
                     continue;
 
-                FixVector2 spawnPosition = pointCount.Point.Position;
+                FixVector2 spawnPosition = group.Route.SourcePoint.Position;
                 results.Add(new DefendPreviewSpawnEntry(
-                    waveEntry.UnitType,
-                    waveEntry.UnitLevel,
-                    pointCount.Count,
+                    entry.UnitType,
+                    entry.UnitLevel,
+                    count,
                     new Vector3((float)spawnPosition.x, 0f, (float)spawnPosition.y),
-                    pointCount.Point.Identifier));
+                    group.Route.SourceStrongholdId));
             }
         }
 
@@ -531,7 +532,9 @@ public static class DefendPhaseRuntime
         s_DefendRoundIndex = 0;
         s_WaveConfigLevelIdentifier = string.Empty;
         s_WaveConfigConfigured = false;
-        s_DefendWaves.Clear();
+        s_DefendRoutesByIdentifier.Clear();
+        s_DefendAttackGroups.Clear();
+        s_MaxConfiguredDefendRound = 0;
         s_DefendSpawnPoints.Clear();
 
         EntityPresetPoint[] points = levelEntity.GetComponentsInChildren<EntityPresetPoint>(true);
@@ -716,38 +719,134 @@ public static class DefendPhaseRuntime
             return;
 
         s_WaveConfigLevelIdentifier = levelIdentifier;
-        s_DefendWaves.Clear();
+        s_DefendRoutesByIdentifier.Clear();
+        s_DefendAttackGroups.Clear();
+        s_MaxConfiguredDefendRound = 0;
 
-        if (!LevelSelectionService.TryGetLevelRow(levelIdentifier, out LevelTable levelRow, out string errorMessage) || levelRow == null)
+        var routeTable = GF.DataTable.GetDataTable<DefendRouteTable>()
+                         ?? throw new InvalidOperationException("DefendRouteTable is required for defense configuration.");
+        var groupTable = GF.DataTable.GetDataTable<DefendAttackGroupTable>()
+                         ?? throw new InvalidOperationException("DefendAttackGroupTable is required for defense configuration.");
+        var pointsByStrongholdId = new Dictionary<string, DefendSpawnPointRuntime>(StringComparer.Ordinal);
+        for (int i = 0; i < s_DefendSpawnPoints.Count; i++)
         {
-            throw new InvalidOperationException(
-                $"DefendPhaseRuntime failed to load LevelTable row. level={levelIdentifier}, error={errorMessage}");
+            DefendSpawnPointRuntime point = s_DefendSpawnPoints[i];
+            pointsByStrongholdId.Add(point.StrongholdId, point);
         }
 
-        AppendWaveFromPairs(levelRow.Def1Enemies);
-        AppendWaveFromPairs(levelRow.Def2Enemies);
-        AppendWaveFromPairs(levelRow.Def3Enemies);
-        AppendWaveFromPairs(levelRow.Def4Enemies);
-        AppendWaveFromPairs(levelRow.Def5Enemies);
-        AppendWaveFromPairs(levelRow.Def6Enemies);
-        AppendWaveFromPairs(levelRow.Def7Enemies);
-        AppendWaveFromPairs(levelRow.Def8Enemies);
-        AppendWaveFromPairs(levelRow.Def9Enemies);
-        AppendWaveFromPairs(levelRow.Def10Enemies);
+        FixVector2 basePosition = ResolvePlayerBasePositionFixed();
+        DefendRouteTable[] routeRows = routeTable.GetAllDataRows();
+        for (int rowIndex = 0; rowIndex < routeRows.Length; rowIndex++)
+        {
+            DefendRouteTable row = routeRows[rowIndex];
+            if (!string.Equals(row.LevelIdentifier, levelIdentifier, StringComparison.Ordinal))
+                continue;
+            if (string.IsNullOrWhiteSpace(row.Identifier))
+                throw new InvalidOperationException($"Defend route row {row.Id} has an empty identifier.");
+            if (string.IsNullOrWhiteSpace(row.SourceStrongholdId))
+                throw new InvalidOperationException($"Defend route '{row.Identifier}' has an empty source stronghold.");
+            if (!pointsByStrongholdId.TryGetValue(row.SourceStrongholdId, out DefendSpawnPointRuntime sourcePoint))
+                throw new InvalidOperationException($"Defend route '{row.Identifier}' source '{row.SourceStrongholdId}' has no Teleportation point.");
+
+            string[] waypointIds = row.WaypointStrongholdIds ?? Array.Empty<string>();
+            var seenStrongholds = new HashSet<string>(StringComparer.Ordinal) { row.SourceStrongholdId };
+            var waypointPositions = new FixVector2[waypointIds.Length + 1];
+            var waypointStrongholdIds = new string[waypointIds.Length + 1];
+            FixVector2 previousPosition = sourcePoint.Position;
+            Fix64 worldDistance = Fix64.Zero;
+            for (int waypointIndex = 0; waypointIndex < waypointIds.Length; waypointIndex++)
+            {
+                string waypointId = waypointIds[waypointIndex];
+                if (string.IsNullOrWhiteSpace(waypointId))
+                    throw new InvalidOperationException($"Defend route '{row.Identifier}' contains an empty waypoint at index {waypointIndex}.");
+                if (!seenStrongholds.Add(waypointId))
+                    throw new InvalidOperationException($"Defend route '{row.Identifier}' repeats stronghold '{waypointId}'.");
+                if (!pointsByStrongholdId.TryGetValue(waypointId, out DefendSpawnPointRuntime waypointPoint))
+                    throw new InvalidOperationException($"Defend route '{row.Identifier}' waypoint '{waypointId}' has no Teleportation point.");
+
+                waypointPositions[waypointIndex] = waypointPoint.Position;
+                waypointStrongholdIds[waypointIndex] = waypointId;
+                worldDistance += FixVector2.Distance(previousPosition, waypointPoint.Position);
+                previousPosition = waypointPoint.Position;
+            }
+
+            waypointPositions[waypointPositions.Length - 1] = basePosition;
+            waypointStrongholdIds[waypointStrongholdIds.Length - 1] = null;
+            worldDistance += FixVector2.Distance(previousPosition, basePosition);
+            var route = new DefendRouteDefinition
+            {
+                Identifier = row.Identifier,
+                SourceStrongholdId = row.SourceStrongholdId,
+                SourcePoint = sourcePoint,
+                WaypointsFixed = waypointPositions,
+                WaypointStrongholdIds = waypointStrongholdIds,
+                WorldDistance = worldDistance
+            };
+            if (!s_DefendRoutesByIdentifier.TryAdd(route.Identifier, route))
+                throw new InvalidOperationException($"Duplicate defend route identifier '{route.Identifier}'.");
+        }
+
+        var groupsByIdentifier = new Dictionary<string, DefendAttackGroupDefinition>(StringComparer.Ordinal);
+        DefendAttackGroupTable[] groupRows = groupTable.GetAllDataRows();
+        for (int rowIndex = 0; rowIndex < groupRows.Length; rowIndex++)
+        {
+            DefendAttackGroupTable row = groupRows[rowIndex];
+            if (!string.Equals(row.LevelIdentifier, levelIdentifier, StringComparison.Ordinal))
+                continue;
+            if (string.IsNullOrWhiteSpace(row.Identifier))
+                throw new InvalidOperationException($"Defend attack group row {row.Id} has an empty identifier.");
+            if (row.DefendRound <= 0)
+                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has invalid round {row.DefendRound}.");
+            if (!s_DefendRoutesByIdentifier.TryGetValue(row.RouteIdentifier, out DefendRouteDefinition route))
+                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' references unknown route '{row.RouteIdentifier}'.");
+            if (row.Enemies == null || row.Enemies.Length == 0)
+                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has no enemies.");
+            if (row.UniqueValues == null || row.UniqueValues.Length != 4)
+                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' must configure exactly four UniqueValues.");
+            if (row.UniqueValues[0] < Fix64.Zero || row.UniqueValues[1] <= Fix64.Zero
+                || row.UniqueValues[2] <= Fix64.Zero || row.UniqueValues[3] < Fix64.Zero)
+            {
+                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has invalid timing or speed values.");
+            }
+
+            var group = new DefendAttackGroupDefinition
+            {
+                Identifier = row.Identifier,
+                DefendRound = row.DefendRound,
+                Route = route,
+                AfterGroupIdentifier = string.IsNullOrWhiteSpace(row.AfterGroupIdentifier) ? null : row.AfterGroupIdentifier,
+                DelaySeconds = row.UniqueValues[0],
+                SpawnIntervalSeconds = row.UniqueValues[1],
+                ExpectedDurationSeconds = row.UniqueValues[2],
+                SpeedOverrideProperty = row.UniqueValues[3]
+            };
+            for (int enemyIndex = 0; enemyIndex < row.Enemies.Length; enemyIndex++)
+            {
+                StringIntPair pair = row.Enemies[enemyIndex];
+                if (!UnitTypeHelper.TryParseUnitTypeAndLevel(pair.str, out UnitType unitType, out int unitLevel))
+                    throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has invalid unit '{pair.str}'.");
+                if (pair.num <= 0)
+                    throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has non-positive count for '{pair.str}'.");
+                group.Enemies.Add(new DefendAttackEntry { UnitType = unitType, UnitLevel = unitLevel, Count = pair.num });
+            }
+
+            if (!groupsByIdentifier.TryAdd(group.Identifier, group))
+                throw new InvalidOperationException($"Duplicate defend attack group identifier '{group.Identifier}'.");
+            s_DefendAttackGroups.Add(group);
+            s_MaxConfiguredDefendRound = Mathf.Max(s_MaxConfiguredDefendRound, group.DefendRound);
+        }
+
+        foreach (DefendAttackGroupDefinition group in s_DefendAttackGroups)
+            ResolveGroupStartSeconds(group, groupsByIdentifier, new HashSet<string>(StringComparer.Ordinal));
+        s_DefendAttackGroups.Sort(CompareAttackGroups);
 
         s_AgentTypeIdByUnitType.Clear();
-        for (int waveIndex = 0; waveIndex < s_DefendWaves.Count; waveIndex++)
+        for (int groupIndex = 0; groupIndex < s_DefendAttackGroups.Count; groupIndex++)
         {
-            DefendWaveDefinition wave = s_DefendWaves[waveIndex];
-            for (int entryIndex = 0; entryIndex < wave.Entries.Count; entryIndex++)
-            {
-                UnitType unitType = wave.Entries[entryIndex].UnitType;
-                s_AgentTypeIdByUnitType[unitType] = AgentTypeHelper.ResolveNavAgentTypeId(unitType);
-            }
+            List<DefendAttackEntry> enemies = s_DefendAttackGroups[groupIndex].Enemies;
+            for (int entryIndex = 0; entryIndex < enemies.Count; entryIndex++)
+                s_AgentTypeIdByUnitType[enemies[entryIndex].UnitType] = AgentTypeHelper.ResolveNavAgentTypeId(enemies[entryIndex].UnitType);
         }
-        s_ArriveInterval = ResolveFiniteConfigFixed(
-            DefendEnemyArriveIntervalConfigKey,
-            MinArriveIntervalSeconds);
         Fix64 minSpeedProperty = ResolveFiniteConfigFixed(DefendEnemyMinSpeedConfigKey, Fix64.One);
         s_MinSpeedWorld = Fix64.Max(
             MinWorldSpeed,
@@ -756,7 +855,11 @@ public static class DefendPhaseRuntime
             DefendEndlessGrowthRateConfigKey);
         s_WaveConfigConfigured = true;
 
-        Log.Info("[DefendPhase] 防御波次配置加载完成。level={0}, waves={1}", levelIdentifier, s_DefendWaves.Count);
+        Log.Info("[DefendPhase] Defense routes loaded. level={0}, routes={1}, groups={2}, maxRound={3}",
+            levelIdentifier,
+            s_DefendRoutesByIdentifier.Count,
+            s_DefendAttackGroups.Count,
+            s_MaxConfiguredDefendRound);
     }
 
     private static string ResolveCurrentLevelIdentifier()
@@ -764,186 +867,161 @@ public static class DefendPhaseRuntime
         return LevelSelectionService.SelectedLevelIdentifier;
     }
 
-    private static void AppendWaveFromPairs(StringIntPair[] wavePairs)
+    private static Fix64 ResolveGroupStartSeconds(
+        DefendAttackGroupDefinition group,
+        IReadOnlyDictionary<string, DefendAttackGroupDefinition> groupsByIdentifier,
+        HashSet<string> visiting)
     {
-        if (wavePairs == null || wavePairs.Length == 0)
-            return;
+        if (group.StartResolved)
+            return group.StartSeconds;
+        if (!visiting.Add(group.Identifier))
+            throw new InvalidOperationException($"Defend attack group dependency cycle contains '{group.Identifier}'.");
 
-        var wave = new DefendWaveDefinition();
-        for (int i = 0; i < wavePairs.Length; i++)
+        Fix64 start = group.DelaySeconds;
+        if (!string.IsNullOrWhiteSpace(group.AfterGroupIdentifier))
         {
-            string unitId = wavePairs[i].str;
-            int count = wavePairs[i].num;
-            if (!UnitTypeHelper.TryParseUnitTypeAndLevel(unitId, out UnitType unitType, out int unitLevel))
-                throw new InvalidOperationException($"DefendPhaseRuntime found an invalid wave unit identifier '{unitId}'.");
-            if (count <= 0)
-                throw new InvalidOperationException($"DefendPhaseRuntime found a non-positive wave count. unit={unitId}, count={count}.");
-
-            wave.Entries.Add(new DefendWaveEntry
-            {
-                UnitType = unitType,
-                UnitLevel = unitLevel,
-                Count = count
-            });
+            if (!groupsByIdentifier.TryGetValue(group.AfterGroupIdentifier, out DefendAttackGroupDefinition predecessor))
+                throw new InvalidOperationException($"Defend attack group '{group.Identifier}' references unknown predecessor '{group.AfterGroupIdentifier}'.");
+            if (predecessor.DefendRound != group.DefendRound)
+                throw new InvalidOperationException($"Defend attack group '{group.Identifier}' predecessor must be in the same round.");
+            start += ResolveGroupStartSeconds(predecessor, groupsByIdentifier, visiting)
+                     + predecessor.ExpectedDurationSeconds;
         }
 
-        if (wave.Entries.Count > 0)
-            s_DefendWaves.Add(wave);
+        visiting.Remove(group.Identifier);
+        group.StartSeconds = start;
+        group.StartResolved = true;
+        return start;
     }
 
-    private static DefendWaveDefinition ResolveWaveForCurrentRound()
+    private static int CompareAttackGroups(DefendAttackGroupDefinition left, DefendAttackGroupDefinition right)
     {
-        return ResolveWaveForRound(s_DefendRoundIndex);
+        int round = left.DefendRound.CompareTo(right.DefendRound);
+        if (round != 0)
+            return round;
+        int start = left.StartSeconds.CompareTo(right.StartSeconds);
+        return start != 0 ? start : string.CompareOrdinal(left.Identifier, right.Identifier);
     }
 
-    private static DefendWaveDefinition ResolveWaveForRound(int roundIndex)
+    private static List<DefendAttackGroupDefinition> ResolveAttackGroupsForRound(int roundIndex)
     {
-        if (s_DefendWaves.Count == 0)
-            return null;
+        var result = new List<DefendAttackGroupDefinition>();
+        if (roundIndex <= 0 || s_MaxConfiguredDefendRound <= 0)
+            return result;
 
-        if (roundIndex <= s_DefendWaves.Count)
-            return CloneWave(s_DefendWaves[Mathf.Max(0, roundIndex - 1)], Fix64.One);
-
-        int overflowRounds = roundIndex - s_DefendWaves.Count;
-        Fix64 scale = Fix64.Pow(s_EndlessGrowthRate, overflowRounds);
-        return CloneWave(s_DefendWaves[s_DefendWaves.Count - 1], scale);
-    }
-
-    private static DefendWaveDefinition CloneWave(DefendWaveDefinition source, Fix64 scale)
-    {
-        if (source == null)
-            return null;
-
-        var clone = new DefendWaveDefinition();
-        for (int i = 0; i < source.Entries.Count; i++)
+        int configuredRound = Mathf.Min(roundIndex, s_MaxConfiguredDefendRound);
+        int overflowRounds = Mathf.Max(0, roundIndex - s_MaxConfiguredDefendRound);
+        Fix64 scale = overflowRounds > 0 ? Fix64.Pow(s_EndlessGrowthRate, overflowRounds) : Fix64.One;
+        for (int i = 0; i < s_DefendAttackGroups.Count; i++)
         {
-            DefendWaveEntry entry = source.Entries[i];
-            long scaledCountRaw = checked((long)entry.Count * Fix64.Max(Fix64.Zero, scale).RawValue);
-            long roundedCount = checked(scaledCountRaw + (1L << (Fix64.FRACTIONAL_PLACES - 1)))
-                                >> Fix64.FRACTIONAL_PLACES;
-            int scaledCount = checked((int)roundedCount);
-            if (entry.Count > 0 && scaledCount <= 0)
-                scaledCount = 1;
-
-            clone.Entries.Add(new DefendWaveEntry
+            DefendAttackGroupDefinition source = s_DefendAttackGroups[i];
+            if (source.DefendRound != configuredRound)
+                continue;
+            var clone = new DefendAttackGroupDefinition
             {
-                UnitType = entry.UnitType,
-                UnitLevel = entry.UnitLevel,
-                Count = scaledCount
-            });
+                Identifier = source.Identifier,
+                DefendRound = roundIndex,
+                Route = source.Route,
+                AfterGroupIdentifier = source.AfterGroupIdentifier,
+                DelaySeconds = source.DelaySeconds,
+                SpawnIntervalSeconds = source.SpawnIntervalSeconds,
+                ExpectedDurationSeconds = source.ExpectedDurationSeconds,
+                SpeedOverrideProperty = source.SpeedOverrideProperty,
+                StartSeconds = source.StartSeconds,
+                StartResolved = true
+            };
+            for (int entryIndex = 0; entryIndex < source.Enemies.Count; entryIndex++)
+            {
+                DefendAttackEntry entry = source.Enemies[entryIndex];
+                clone.Enemies.Add(new DefendAttackEntry
+                {
+                    UnitType = entry.UnitType,
+                    UnitLevel = entry.UnitLevel,
+                    Count = ScaleSpawnCount(entry.Count, scale)
+                });
+            }
+            result.Add(clone);
         }
 
-        return clone;
+        return result;
+    }
+
+    private static int ScaleSpawnCount(int count, Fix64 scale)
+    {
+        long scaledCountRaw = checked((long)count * Fix64.Max(Fix64.Zero, scale).RawValue);
+        long roundedCount = checked(scaledCountRaw + (1L << (Fix64.FRACTIONAL_PLACES - 1)))
+                            >> Fix64.FRACTIONAL_PLACES;
+        int scaledCount = checked((int)roundedCount);
+        return count > 0 && scaledCount <= 0 ? 1 : scaledCount;
     }
 
 #if UNITY_EDITOR
     public static int GetEditorTestScaledSpawnCount(int count, Fix64 scale)
     {
-        var wave = new DefendWaveDefinition();
-        wave.Entries.Add(new DefendWaveEntry { Count = count });
-        return CloneWave(wave, scale).Entries[0].Count;
+        return ScaleSpawnCount(count, scale);
     }
 #endif
 
-    private static List<PlannedSpawnEvent> BuildSpawnEvents(DefendWaveDefinition wave)
+    private static List<PlannedSpawnEvent> BuildSpawnEvents(IReadOnlyList<DefendAttackGroupDefinition> groups)
     {
         var events = new List<PlannedSpawnEvent>();
-        if (wave == null || wave.Entries.Count == 0 || s_DefendSpawnPoints.Count == 0)
+        if (groups == null || groups.Count == 0 || s_DefendSpawnPoints.Count == 0)
             return events;
 
-        ulong arriveIntervalTicks = SecondsToTicksCeiling(s_ArriveInterval);
-        Fix64 minSpeedWorld = s_MinSpeedWorld;
-        FixVector2 basePosition = ResolvePlayerBasePositionFixed();
-
-        for (int i = 0; i < wave.Entries.Count; i++)
+        for (int groupIndex = 0; groupIndex < groups.Count; groupIndex++)
         {
-            DefendWaveEntry entry = wave.Entries[i];
-            if (entry.Count <= 0)
-                continue;
-
-            List<PointSpawnCount> pointCounts = AllocatePointCountsForUnit(entry.UnitType, LevelTagRuntime.ModifyEnemySpawnCount(entry.Count));
-            if (pointCounts.Count == 0)
-                continue;
-
-            for (int pointIndex = 0; pointIndex < pointCounts.Count; pointIndex++)
+            DefendAttackGroupDefinition group = groups[groupIndex];
+            if (!IsAttackGroupSourceActive(group.Route.SourceStrongholdId))
             {
-                PointSpawnCount pointCount = pointCounts[pointIndex];
-                if (pointCount?.Point == null)
-                    throw new InvalidOperationException($"DefendPhaseRuntime.BuildSpawnEvents failed: spawn point is null. unit={entry.UnitType} index={pointIndex}.");
-
-                pointCount.DistanceToBase = CalculatePathDistanceFixed(
-                    pointCount.Point.Position,
-                    basePosition,
-                    entry.UnitType);
+                Log.Info("[DefendPhase] Fixed source group removed by capture. group={0}, source={1}",
+                    group.Identifier,
+                    group.Route.SourceStrongholdId);
+                continue;
             }
 
-            pointCounts.Sort(ComparePointSpawnCounts);
-
-            ulong previousLastArrivalTicks = 0;
-            for (int pointIndex = 0; pointIndex < pointCounts.Count; pointIndex++)
+            Fix64 speedWorld = group.SpeedOverrideProperty > Fix64.Zero
+                ? Fix64.Max(s_MinSpeedWorld, DistanceUnitConverter.ConvertToWorld(group.SpeedOverrideProperty))
+                : s_MinSpeedWorld;
+            Fix64 speedProperty = DistanceUnitConverter.ConvertFromWorld(speedWorld, s_DistanceConversionRate);
+            ulong groupStartTicks = SecondsToTicksCeiling(group.StartSeconds);
+            ulong spawnIntervalTicks = SecondsToTicksCeiling(group.SpawnIntervalSeconds);
+            ulong travelTicks = SecondsToTicksCeiling(group.Route.WorldDistance / speedWorld);
+            ulong groupSpawnIndex = 0;
+            for (int entryIndex = 0; entryIndex < group.Enemies.Count; entryIndex++)
             {
-                PointSpawnCount pointCount = pointCounts[pointIndex];
-                int spawnCount = pointCount.Count;
-                if (spawnCount <= 0)
-                    continue;
-
-                Fix64 distance = Fix64.Max(Fix64.Zero, pointCount.DistanceToBase);
-                ulong targetFirstArrivalTicks;
-                ulong spawnDelayTicks;
-                Fix64 pointSpeedWorld;
-                ulong naturalArrivalTicks = SecondsToTicksCeiling(distance / minSpeedWorld);
-
-                if (pointIndex == 0)
-                {
-                    targetFirstArrivalTicks = naturalArrivalTicks;
-                    spawnDelayTicks = 0;
-                    pointSpeedWorld = minSpeedWorld;
-                }
-                else
-                {
-                    targetFirstArrivalTicks = checked(previousLastArrivalTicks + arriveIntervalTicks);
-                    if (naturalArrivalTicks <= targetFirstArrivalTicks)
-                    {
-                        spawnDelayTicks = targetFirstArrivalTicks - naturalArrivalTicks;
-                        pointSpeedWorld = minSpeedWorld;
-                    }
-                    else
-                    {
-                        spawnDelayTicks = 0;
-                        Fix64 targetArrivalTime = TicksToDuration(targetFirstArrivalTicks);
-                        pointSpeedWorld = distance / targetArrivalTime;
-                    }
-                }
-
-                Fix64 pointSpeedProperty = DistanceUnitConverter.ConvertFromWorld(pointSpeedWorld, s_DistanceConversionRate);
-                ulong pointLastArrivalTicks = checked(
-                    targetFirstArrivalTicks + checked((ulong)(spawnCount - 1) * arriveIntervalTicks));
-                previousLastArrivalTicks = pointLastArrivalTicks;
-
-                string strongholdId = pointCount.StrongholdId;
-                string pointName = pointCount.Point.Name;
-                FixVector2 spawnPosition = pointCount.Point.Position;
-
+                DefendAttackEntry entry = group.Enemies[entryIndex];
+                int spawnCount = LevelTagRuntime.ModifyEnemySpawnCount(entry.Count);
                 for (int spawnIndex = 0; spawnIndex < spawnCount; spawnIndex++)
                 {
+                    ulong requestTicks = checked(groupStartTicks + checked(groupSpawnIndex * spawnIntervalTicks));
                     events.Add(new PlannedSpawnEvent
                     {
-                        RequestFrameOffset = checked(spawnDelayTicks + checked((ulong)spawnIndex * arriveIntervalTicks)),
+                        RequestFrameOffset = requestTicks,
                         Sequence = checked((ulong)events.Count + 1UL),
                         UnitType = entry.UnitType,
                         UnitLevel = entry.UnitLevel,
-                        SpawnPosition = spawnPosition,
-                        SpeedProperty = pointSpeedProperty,
-                        SourceStrongholdId = strongholdId,
-                        SpawnPointName = pointName,
-                        TheoreticalArrivalFrameOffset = checked(
-                            targetFirstArrivalTicks + checked((ulong)spawnIndex * arriveIntervalTicks))
+                        SpawnPosition = group.Route.SourcePoint.Position,
+                        SpeedProperty = speedProperty,
+                        SourceStrongholdId = group.Route.SourceStrongholdId,
+                        SpawnPointName = group.Route.SourcePoint.Name,
+                        RouteWaypointsFixed = group.Route.WaypointsFixed,
+                        RouteWaypointStrongholdIds = group.Route.WaypointStrongholdIds,
+                        TheoreticalArrivalFrameOffset = checked(requestTicks + travelTicks)
                     });
+                    groupSpawnIndex++;
                 }
             }
         }
 
         return events;
+    }
+
+    private static bool IsAttackGroupSourceActive(string sourceStrongholdId)
+    {
+        if (string.IsNullOrWhiteSpace(sourceStrongholdId))
+            throw new ArgumentException("Defense attack group source stronghold ID is empty.", nameof(sourceStrongholdId));
+        return LogicStrongholdMap.GetOwnerFactionIdRequired(sourceStrongholdId)
+               != EntitySideHelper.PlayerFactionId;
     }
 
     private static Fix64 ResolveFiniteConfigFixed(string key, Fix64 minimum)
@@ -964,14 +1042,6 @@ public static class DefendPhaseRuntime
         if (ticks == 0 || ticks > long.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(ticks), ticks, "Tick duration must fit a positive Int64.");
         return LogicFrameRuntime.FixedDeltaTime * (Fix64)(long)ticks;
-    }
-
-    private static int ComparePointSpawnCounts(PointSpawnCount left, PointSpawnCount right)
-    {
-        int distance = left.DistanceToBase.CompareTo(right.DistanceToBase);
-        return distance != 0
-            ? distance
-            : CompareDefendSpawnPoints(left.Point, right.Point);
     }
 
     private static int CompareDefendSpawnPoints(DefendSpawnPointRuntime left, DefendSpawnPointRuntime right)
@@ -996,120 +1066,6 @@ public static class DefendPhaseRuntime
     {
         int frame = left.RequestFrameOffset.CompareTo(right.RequestFrameOffset);
         return frame != 0 ? frame : left.Sequence.CompareTo(right.Sequence);
-    }
-
-    private static List<PointSpawnCount> AllocatePointCountsForUnit(UnitType unitType, int totalCount)
-    {
-        var result = new List<PointSpawnCount>();
-        if (totalCount <= 0 || s_DefendSpawnPoints.Count == 0)
-            return result;
-
-        if (!s_ArchetypeByUnitType.TryGetValue(unitType, out Archetype unitArchetype))
-        {
-            Log.Info(
-                "[DefendPhase] no archetype mapping for unit; no spawn will be scheduled. unit={0}.",
-                unitType);
-            return result;
-        }
-
-        var eligiblePoints = new List<DefendSpawnPointRuntime>();
-        Fix64 totalWeightAllSides = Fix64.Zero;
-
-        for (int i = 0; i < s_DefendSpawnPoints.Count; i++)
-        {
-            DefendSpawnPointRuntime runtimePoint = s_DefendSpawnPoints[i];
-            if (!LogicBuildingQueryService.TryResolveStrongholdOwnerFaction(runtimePoint.StrongholdId, out int ownerFactionId)
-                || ownerFactionId == EntitySideHelper.PlayerFactionId)
-            {
-                continue;
-            }
-
-            bool archMatched = LogicBuildingQueryService.HasBuildingArchetype(
-                runtimePoint.StrongholdId,
-                ownerFactionId,
-                unitArchetype);
-            if (!archMatched)
-                continue;
-
-            Fix64 weight = runtimePoint.Weight;
-            if (weight <= Fix64.Zero)
-                continue;
-
-            eligiblePoints.Add(runtimePoint);
-            totalWeightAllSides += weight;
-        }
-
-        if (eligiblePoints.Count == 0 || totalWeightAllSides <= Fix64.Zero)
-        {
-            Log.Info(
-                "[DefendPhase] no eligible enemy stronghold for unit archetype; no spawn will be scheduled. unit={0} archetype={1}.",
-                unitType,
-                unitArchetype);
-            return result;
-        }
-
-        int allocatedTotal = 0;
-        for (int i = 0; i < eligiblePoints.Count; i++)
-        {
-            DefendSpawnPointRuntime runtimePoint = eligiblePoints[i];
-            if (!LogicBuildingQueryService.TryResolveStrongholdOwnerFaction(runtimePoint.StrongholdId, out int ownerFactionId)
-                || ownerFactionId == EntitySideHelper.PlayerFactionId)
-            {
-                continue;
-            }
-
-            Fix64 weight = runtimePoint.Weight;
-            int count = RoundPositiveRatioToInt(checked(weight.RawValue * totalCount), totalWeightAllSides.RawValue);
-            if (count <= 0)
-                continue;
-
-            allocatedTotal += count;
-            result.Add(new PointSpawnCount
-            {
-                Point = runtimePoint,
-                StrongholdId = runtimePoint.StrongholdId,
-                Count = count
-            });
-        }
-
-        if (result.Count == 0)
-            return result;
-
-        int delta = totalCount - allocatedTotal;
-        if (delta > 0)
-        {
-            int index = result.Count - 1;
-            while (delta > 0)
-            {
-                result[index].Count++;
-                delta--;
-                if (--index < 0)
-                    index = result.Count - 1;
-            }
-        }
-        else if (delta < 0)
-        {
-            delta = -delta;
-            int index = result.Count - 1;
-            while (delta > 0 && index >= 0)
-            {
-                if (result[index].Count > 0)
-                {
-                    result[index].Count--;
-                    delta--;
-                }
-
-                if (result[index].Count <= 0)
-                {
-                    result.RemoveAt(index);
-                }
-
-                index = result.Count - 1;
-            }
-        }
-
-        result.RemoveAll(x => x.Count <= 0);
-        return result;
     }
 
     private static int RoundPositiveRatioToInt(long numerator, long denominator)
@@ -1148,8 +1104,7 @@ public static class DefendPhaseRuntime
             throw new InvalidOperationException(
                 "DefendPhaseRuntime was not prepared before entering the logic Defend phase.");
         }
-        if (s_ArriveInterval <= Fix64.Zero
-            || s_MinSpeedWorld <= Fix64.Zero
+        if (s_MinSpeedWorld <= Fix64.Zero
             || s_EndlessGrowthRate <= Fix64.Zero)
         {
             throw new InvalidOperationException("DefendPhaseRuntime prepared config contains a non-positive value.");
@@ -1195,6 +1150,14 @@ public static class DefendPhaseRuntime
             hasher.Add(evt.SourceStrongholdId);
             hasher.Add(evt.SpawnPointName);
             hasher.Add(evt.TheoreticalArrivalFrameOffset);
+            int routeCount = evt.RouteWaypointsFixed?.Length ?? 0;
+            hasher.Add(routeCount);
+            for (int routeIndex = 0; routeIndex < routeCount; routeIndex++)
+            {
+                hasher.Add(evt.RouteWaypointsFixed[routeIndex].x.RawValue);
+                hasher.Add(evt.RouteWaypointsFixed[routeIndex].y.RawValue);
+                hasher.Add(evt.RouteWaypointStrongholdIds[routeIndex]);
+            }
         }
 
         s_DeterministicAliveEnemyIds.Clear();
@@ -1215,6 +1178,11 @@ public static class DefendPhaseRuntime
     }
 
 #if UNITY_EDITOR
+    public static bool GetEditorTestIsAttackGroupSourceActive(string sourceStrongholdId)
+    {
+        return IsAttackGroupSourceActive(sourceStrongholdId);
+    }
+
     public static ulong GetEditorTestTickCount(Fix64 duration)
     {
         return SecondsToTicksCeiling(duration);
@@ -1235,24 +1203,36 @@ public static class DefendPhaseRuntime
         public string StrongholdId;
     }
 
-    private sealed class DefendWaveDefinition
+    private sealed class DefendRouteDefinition
     {
-        public readonly List<DefendWaveEntry> Entries = new();
+        public string Identifier;
+        public string SourceStrongholdId;
+        public DefendSpawnPointRuntime SourcePoint;
+        public FixVector2[] WaypointsFixed;
+        public string[] WaypointStrongholdIds;
+        public Fix64 WorldDistance;
     }
 
-    private sealed class DefendWaveEntry
+    private sealed class DefendAttackGroupDefinition
+    {
+        public readonly List<DefendAttackEntry> Enemies = new();
+        public string Identifier;
+        public int DefendRound;
+        public DefendRouteDefinition Route;
+        public string AfterGroupIdentifier;
+        public Fix64 DelaySeconds;
+        public Fix64 SpawnIntervalSeconds;
+        public Fix64 ExpectedDurationSeconds;
+        public Fix64 SpeedOverrideProperty;
+        public Fix64 StartSeconds;
+        public bool StartResolved;
+    }
+
+    private sealed class DefendAttackEntry
     {
         public UnitType UnitType;
         public int UnitLevel;
         public int Count;
-    }
-
-    private sealed class PointSpawnCount
-    {
-        public DefendSpawnPointRuntime Point;
-        public string StrongholdId;
-        public int Count;
-        public Fix64 DistanceToBase;
     }
 
     private sealed class PlannedSpawnEvent
@@ -1266,6 +1246,8 @@ public static class DefendPhaseRuntime
         public string SourceStrongholdId;
         public string SpawnPointName;
         public ulong TheoreticalArrivalFrameOffset;
+        public FixVector2[] RouteWaypointsFixed;
+        public string[] RouteWaypointStrongholdIds;
     }
 
     private sealed class TutorialTriggeredSpawnPoint

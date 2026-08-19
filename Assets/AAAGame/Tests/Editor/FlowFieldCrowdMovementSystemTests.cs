@@ -281,6 +281,22 @@ public class FlowFieldCrowdMovementSystemTests
         try
         {
             asset.Overwrite(0, width, height, cellSize, origin, walkable, costs, anchors, neighbors);
+            FlowNavigationGridAsset.FixedAuthorityMetadata geometryMetadata = asset.GetFixedAuthorityMetadata();
+            Fix64 minX = NavigationGridFixedMath.GridRawToFix64(geometryMetadata.OriginXGridRaw);
+            Fix64 minZ = NavigationGridFixedMath.GridRawToFix64(geometryMetadata.OriginZGridRaw);
+            Fix64 maxX = NavigationGridFixedMath.GridRawToFix64(
+                checked(geometryMetadata.OriginXGridRaw + width * geometryMetadata.CellSizeGridRaw));
+            Fix64 maxZ = NavigationGridFixedMath.GridRawToFix64(
+                checked(geometryMetadata.OriginZGridRaw + height * geometryMetadata.CellSizeGridRaw));
+            asset.SetStaticCollisionGeometry(
+                new[]
+                {
+                    new FixVector2(minX, minZ),
+                    new FixVector2(maxX, minZ),
+                    new FixVector2(maxX, maxZ),
+                    new FixVector2(minX, maxZ),
+                },
+                new[] { 0, 4 });
             FlowNavigationGridAsset.DerivedNavigationData derivedData = FlowFieldCrowdMovementSystem.BuildDerivedNavigationDataForAsset(
                 0,
                 DistanceUnitConverter.ConvertToWorld(DistanceUnitConverter.ReadRequiredPositiveFixedConfig("MediumUnitCollisionRadius")),
@@ -5917,11 +5933,12 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void LvTest真实零点八米建筑边界通道允许中型单位横穿()
+    public void LvTest真实零点八米建筑边界通道使用原始几何允许英雄横穿()
     {
         FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>(
             "Assets/AAAGame/Tilemap/LvTest_FlowNavigationGrid_Medium.asset");
         Assert.NotNull(grid);
+        Assert.IsTrue(grid.HasStaticCollisionGeometry, "LvTest 主导航资产必须持有唯一的 Ground 原始碰撞几何。");
         FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
         Assert.NotNull(derivedData);
         Assert.IsTrue(derivedData.IsValid);
@@ -5931,55 +5948,135 @@ public class FlowFieldCrowdMovementSystemTests
         config.PortalNarrowWidthCells = derivedData.ConfigPortalNarrowWidthCells;
         config.PortalMaxWindowWidthCells = derivedData.ConfigPortalMaxWindowWidthCells;
         FlowFieldCrowdMovementSystem.SetConfig(config);
-        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSource(
+        FlowNavigationGridAsset.FixedAuthorityMetadata fixedMetadata = grid.GetFixedAuthorityMetadata();
+        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSourceFixed(
             grid.AgentTypeId,
             grid.Width,
             grid.Height,
             grid.CellSize,
             grid.Origin,
+            fixedMetadata.CellSizeGridRaw,
+            fixedMetadata.OriginXGridRaw,
+            fixedMetadata.OriginZGridRaw,
             grid.GetWalkableMaskRuntimeReadOnlyReference(),
-            grid.GetCellAnchorsRuntimeReadOnlyReference(),
+            grid.GetCellAnchorsRuntimeReadOnlyReferenceOrNull(),
+            grid.GetCellAnchorsFixedRuntimeReadOnlyReference(),
             grid.GetCostFieldRuntimeReadOnlyReference(),
             grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
             derivedData,
-            useRuntimeReadOnlyReferences: true);
+            useRuntimeReadOnlyReferences: true,
+            staticCollisionVertices: grid.GetStaticCollisionVerticesRuntimeReadOnlyReference(),
+            staticCollisionPathStarts: grid.GetStaticCollisionPathStartsRuntimeReadOnlyReference());
         FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
-            82005,
-            new FixVector2((Fix64)60f, (Fix64)40f),
+            -43009,
+            new FixVector2((Fix64)65f, (Fix64)40f),
             new FixVector2((Fix64)1.5f, (Fix64)1.5f));
         ProcessWorldBuildQueueUntilReady();
 
-        Vector3 start = grid.GetCellCenter(430, 301);
-        Vector3 goal = grid.GetCellCenter(486, 301);
-        const float mediumRadius = 0.396240234375f;
-        SimEntityContext ctx = CreateEntity(start, false, grid.AgentTypeId, mediumRadius);
-        Assert.IsTrue(
-            FlowFieldCrowdMovementSystem.TryPrepareNavigationRequestFixed(ctx, new FixVector2((Fix64)goal.x, (Fix64)goal.z), out string prepareFailure),
-            prepareFailure);
-
-        Fix64 dt = (Fix64)0.05f;
-        for (int frame = 1; frame <= 1200 && ctx.Position.x < goal.x - 0.2f; frame++)
+        GameObject cameraObject = new GameObject("LvTestGapInputCamera");
+        FixVector2 worldMove;
+        try
         {
-            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.05f);
-            Assert.IsTrue(
-                FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(
-                    ctx,
-                    new FixVector2((Fix64)goal.x, (Fix64)goal.z),
-                    (Fix64)3f,
-                    out FixVector2 velocity));
-            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+            Camera camera = cameraObject.AddComponent<Camera>();
+            camera.transform.rotation = Quaternion.Euler(0f, 45f, 0f);
+            worldMove = InputDirTranslator.TranslateAndQuantize(new Vector2(1f, 1f), camera);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(cameraObject);
+        }
+        Assert.Greater(worldMove.x.RawValue, 0);
+        Assert.LessOrEqual(Math.Abs(worldMove.y.RawValue), 1);
+
+        Fix64 heroRadius = Fix64.FromRaw(1623);
+        FixVector2 position = new FixVector2(Fix64.FromRaw(258472), Fix64.FromRaw(156244));
+        FixVector2 requestedPerTick = worldMove * (Fix64)0.25f;
+        bool contactedBuilding = false;
+        bool contactedGroundBoundary = false;
+        for (int frame = 1; frame <= 32; frame++)
+        {
             Assert.IsTrue(LogicStaticCollisionShadowService.TrySolveFixed(
                 grid.AgentTypeId,
-                ctx.PositionFixed,
-                velocity * dt,
-                (Fix64)mediumRadius,
+                position,
+                requestedPerTick,
+                heroRadius,
+                LogicStaticCollisionSlideMode.PreserveRemainingDistance,
                 out LogicStaticCollisionShadowResult collision));
-            Assert.IsTrue(collision.SolveResult.Success, collision.SolveResult.Failure.ToString());
-            ctx.PositionFixed += collision.SolveResult.ResolvedDisplacement;
-            FlowFieldCrowdMovementSystem.UpdateAgentForEditorTest(ctx, mediumRadius, grid.AgentTypeId);
+            Assert.IsTrue(collision.SolveResult.Success, $"frame={frame} failure={collision.SolveResult.Failure} position={position}");
+            contactedBuilding |= collision.ContactKind == LogicStaticCollisionContactKind.RuntimeObstacle
+                                 && collision.RuntimeObstacleStableId == -43009;
+            contactedGroundBoundary |= collision.ContactKind == LogicStaticCollisionContactKind.AuthoredBoundarySegment;
+            position += collision.SolveResult.ResolvedDisplacement;
         }
 
-        Assert.Greater(ctx.Position.x, goal.x - 0.2f, $"中型单位必须实际穿过箭坊与边界之间的 0.8m 通道。pos={ctx.Position} goal={goal}");
+        Assert.IsTrue(contactedBuilding, "用例必须实际接触箭坊圆角 Minkowski 边界，不能只验证空地移动。");
+        Assert.IsTrue(contactedGroundBoundary, "用例必须实际接触 Ground 原始边界，不能绕过 0.8m 通道。");
+        Assert.Greater(position.x.RawValue, ((Fix64)66.5f).RawValue, $"英雄必须实际穿过箭坊与边界之间的 0.8m 通道。position={position}");
+    }
+
+    [Test]
+    public void 静态碰撞几何单顶点Raw变化必须改变CommittedWorldSetHash()
+    {
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>(
+            "Assets/AAAGame/Tilemap/LvTest_FlowNavigationGrid_Medium.asset");
+        Assert.NotNull(grid);
+        Assert.IsTrue(grid.HasStaticCollisionGeometry);
+
+        FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
+        Assert.NotNull(derivedData);
+        Assert.IsTrue(derivedData.IsValid);
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = derivedData.ConfigSectorSizeInCells;
+        config.PortalNarrowWidthCells = derivedData.ConfigPortalNarrowWidthCells;
+        config.PortalMaxWindowWidthCells = derivedData.ConfigPortalMaxWindowWidthCells;
+        FlowNavigationGridAsset.FixedAuthorityMetadata fixedMetadata = grid.GetFixedAuthorityMetadata();
+        int[] pathStarts = grid.GetStaticCollisionPathStartsRuntimeReadOnlyReference();
+        FixVector2[] baselineVertices = (FixVector2[])grid.GetStaticCollisionVerticesRuntimeReadOnlyReference().Clone();
+        FixVector2[] perturbedVertices = (FixVector2[])baselineVertices.Clone();
+        perturbedVertices[0] = new FixVector2(
+            Fix64.FromRaw(checked(perturbedVertices[0].x.RawValue + 1)),
+            perturbedVertices[0].y);
+
+        ulong BuildCommittedHash(FixVector2[] vertices)
+        {
+            FlowFieldCrowdMovementSystem.SetConfig(config);
+            FlowFieldCrowdMovementSystem.SetAuthoredNavigationSourceFixed(
+                grid.AgentTypeId,
+                grid.Width,
+                grid.Height,
+                grid.CellSize,
+                grid.Origin,
+                fixedMetadata.CellSizeGridRaw,
+                fixedMetadata.OriginXGridRaw,
+                fixedMetadata.OriginZGridRaw,
+                grid.GetWalkableMaskRuntimeReadOnlyReference(),
+                grid.GetCellAnchorsRuntimeReadOnlyReferenceOrNull(),
+                grid.GetCellAnchorsFixedRuntimeReadOnlyReference(),
+                grid.GetCostFieldRuntimeReadOnlyReference(),
+                grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
+                derivedData,
+                useRuntimeReadOnlyReferences: false,
+                staticCollisionVertices: vertices,
+                staticCollisionPathStarts: pathStarts);
+            ProcessWorldBuildQueueUntilReady();
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestWorld());
+            Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+            return FlowFieldCrowdMovementSystem.GetEditorTestCommittedWorldSetHash();
+        }
+
+        ulong baselineHash = BuildCommittedHash(baselineVertices);
+
+        FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
+        FlowFieldCrowdMovementSystem.ClearEditorTestClock();
+        FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
+
+        ulong perturbedHash = BuildCommittedHash(perturbedVertices);
+
+        Assert.AreNotEqual(
+            baselineHash,
+            perturbedHash,
+            "静态碰撞原始几何是未来移动权威，任一顶点 raw 变化都必须进入 committed world set hash。");
     }
 
     [Test]

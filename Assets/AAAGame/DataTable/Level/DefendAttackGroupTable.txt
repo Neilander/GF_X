@@ -1,0 +1,4 @@
+#	防御出兵组表								
+#	ID		Identifier	LevelIdentifier	DefendRound	RouteIdentifier	Enemies	AfterGroupIdentifier	UniqueValues
+#	int		string	string	int	string	StringIntPair[]	string	Fix64[]
+#	行号	备注	代码内标识符	所属关卡标识	防御日，从1开始；超过最大日时重复最后一日并按无尽倍率成长	路线标识符	固定兵种与数量；来源据点被占领后整组不出兵且不向其他据点转移	前置出兵组；空表示从防御阶段开始计时	[0]前置结束后的额外延迟秒（无前置时为阶段开始延迟）；[1]组内单位出兵间隔秒；[2]预计本组总持续时间秒（含行军与交战）；[3]行军速度覆盖，0表示使用全局防御最低速度

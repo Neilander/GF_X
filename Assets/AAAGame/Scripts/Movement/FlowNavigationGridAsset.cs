@@ -5,6 +5,8 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "FlowNavigationGrid", menuName = "Movement/Flow Navigation Grid")]
 public sealed class FlowNavigationGridAsset : ScriptableObject
 {
+    private const int StaticCollisionGeometryVersion = 1;
+
     [SerializeField] private int _agentTypeId = int.MinValue + 1;
     [SerializeField] private int _width = 16;
     [SerializeField] private int _height = 16;
@@ -17,6 +19,9 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
     [SerializeField] private Vector3[] _sparseCellAnchorValues = Array.Empty<Vector3>();
     [SerializeField] private byte[] _neighborTraversalMask = Array.Empty<byte>();
     [SerializeField] private bool _hasAuthoredNeighborTraversalMask;
+    [SerializeField] private int _staticCollisionGeometryVersion;
+    [SerializeField] private int[] _staticCollisionPathStarts = Array.Empty<int>();
+    [SerializeField] private long[] _staticCollisionVertexFixedRaw = Array.Empty<long>();
     [SerializeField] private int _fixedAuthorityPayloadVersion;
     [SerializeField] private long _cellSizeGridRaw;
     [SerializeField] private long _originXGridRaw;
@@ -26,6 +31,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
 
     [NonSerialized] private Vector3[] _runtimeCellAnchorsCache;
     [NonSerialized] private FixVector2[] _runtimeCellAnchorsFixedCache;
+    [NonSerialized] private FixVector2[] _runtimeStaticCollisionVerticesCache;
 
     public int AgentTypeId => _agentTypeId;
     public int Width => _width;
@@ -34,6 +40,13 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
     public Vector3 Origin => _origin;
     public int CellCount => _width * _height;
     public bool HasDerivedNavigationData => _derivedNavigationData != null && _derivedNavigationData.IsValid;
+    public bool HasStaticCollisionGeometry => _staticCollisionGeometryVersion == StaticCollisionGeometryVersion
+                                              && _staticCollisionPathStarts != null
+                                              && _staticCollisionPathStarts.Length >= 2
+                                              && _staticCollisionVertexFixedRaw != null
+                                              && (_staticCollisionVertexFixedRaw.Length & 1) == 0
+                                              && _staticCollisionPathStarts[0] == 0
+                                              && _staticCollisionPathStarts[_staticCollisionPathStarts.Length - 1] * 2 == _staticCollisionVertexFixedRaw.Length;
     public bool HasFixedAuthorityPayload => _fixedAuthorityPayloadVersion == NavigationGridFixedMath.AuthorityPayloadVersion
                                             && _cellSizeGridRaw > 0
                                             && _sparseCellAnchorIndices != null
@@ -535,6 +548,69 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         return _hasAuthoredNeighborTraversalMask ? _neighborTraversalMask : null;
     }
 
+    public void SetStaticCollisionGeometry(FixVector2[] vertices, int[] pathStarts)
+    {
+        if (vertices == null || vertices.Length < 3)
+            throw new InvalidOperationException("FlowNavigationGridAsset.SetStaticCollisionGeometry failed: vertices are missing.");
+        if (pathStarts == null || pathStarts.Length < 2 || pathStarts[0] != 0 || pathStarts[pathStarts.Length - 1] != vertices.Length)
+            throw new InvalidOperationException("FlowNavigationGridAsset.SetStaticCollisionGeometry failed: path starts are invalid.");
+
+        for (int pathIndex = 0; pathIndex < pathStarts.Length - 1; pathIndex++)
+        {
+            int start = pathStarts[pathIndex];
+            int end = pathStarts[pathIndex + 1];
+            if (start < 0 || end > vertices.Length || end - start < 3)
+                throw new InvalidOperationException($"FlowNavigationGridAsset.SetStaticCollisionGeometry failed: path {pathIndex} is invalid. start={start} end={end}.");
+            for (int i = start; i < end; i++)
+            {
+                if (vertices[i] == vertices[i + 1 < end ? i + 1 : start])
+                    throw new InvalidOperationException($"FlowNavigationGridAsset.SetStaticCollisionGeometry failed: path {pathIndex} contains a zero-length edge at vertex={i}.");
+            }
+        }
+
+        _staticCollisionGeometryVersion = StaticCollisionGeometryVersion;
+        _staticCollisionPathStarts = (int[])pathStarts.Clone();
+        _staticCollisionVertexFixedRaw = new long[vertices.Length * 2];
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            _staticCollisionVertexFixedRaw[i * 2] = vertices[i].x.RawValue;
+            _staticCollisionVertexFixedRaw[i * 2 + 1] = vertices[i].y.RawValue;
+        }
+        _runtimeStaticCollisionVerticesCache = null;
+        ValidateStaticCollisionGeometry("FlowNavigationGridAsset.SetStaticCollisionGeometry");
+    }
+
+    public void ClearStaticCollisionGeometry()
+    {
+        _staticCollisionGeometryVersion = 0;
+        _staticCollisionPathStarts = Array.Empty<int>();
+        _staticCollisionVertexFixedRaw = Array.Empty<long>();
+        _runtimeStaticCollisionVerticesCache = null;
+    }
+
+    public FixVector2[] GetStaticCollisionVerticesRuntimeReadOnlyReference()
+    {
+        ValidateStaticCollisionGeometry("FlowNavigationGridAsset.GetStaticCollisionVerticesRuntimeReadOnlyReference");
+        int vertexCount = _staticCollisionVertexFixedRaw.Length / 2;
+        if (_runtimeStaticCollisionVerticesCache == null || _runtimeStaticCollisionVerticesCache.Length != vertexCount)
+        {
+            _runtimeStaticCollisionVerticesCache = new FixVector2[vertexCount];
+            for (int i = 0; i < vertexCount; i++)
+            {
+                _runtimeStaticCollisionVerticesCache[i] = new FixVector2(
+                    Fix64.FromRaw(_staticCollisionVertexFixedRaw[i * 2]),
+                    Fix64.FromRaw(_staticCollisionVertexFixedRaw[i * 2 + 1]));
+            }
+        }
+        return _runtimeStaticCollisionVerticesCache;
+    }
+
+    public int[] GetStaticCollisionPathStartsRuntimeReadOnlyReference()
+    {
+        ValidateStaticCollisionGeometry("FlowNavigationGridAsset.GetStaticCollisionPathStartsRuntimeReadOnlyReference");
+        return _staticCollisionPathStarts;
+    }
+
     public DerivedNavigationData CreateDerivedNavigationDataCopy()
     {
         EnsureValidStorage();
@@ -763,6 +839,24 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
 
         _neighborTraversalMask = new byte[expectedLength];
         _hasAuthoredNeighborTraversalMask = false;
+    }
+
+    private void ValidateStaticCollisionGeometry(string caller)
+    {
+        if (!HasStaticCollisionGeometry)
+        {
+            throw new InvalidOperationException(
+                $"{caller} failed: deterministic static collision geometry is missing or invalid. Rebuild the FlowNavigationGridAsset.");
+        }
+
+        int vertexCount = _staticCollisionVertexFixedRaw.Length / 2;
+        for (int pathIndex = 0; pathIndex < _staticCollisionPathStarts.Length - 1; pathIndex++)
+        {
+            int start = _staticCollisionPathStarts[pathIndex];
+            int end = _staticCollisionPathStarts[pathIndex + 1];
+            if (start < 0 || end > vertexCount || end - start < 3)
+                throw new InvalidOperationException($"{caller} failed: deterministic static collision path {pathIndex} is invalid.");
+        }
     }
 
     private void ResetCellAnchorsToCenters()

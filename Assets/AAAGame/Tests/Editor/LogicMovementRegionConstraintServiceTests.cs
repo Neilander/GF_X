@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using AAAGame.Card;
 using AAAGame.MiniMap.FOG3;
 using NUnit.Framework;
@@ -118,9 +118,15 @@ public sealed class LogicMovementRegionConstraintServiceTests
             out LogicMovementRegionConstraintFailure failure);
 
         Assert.AreEqual(LogicMovementRegionConstraintFailure.EnemyStronghold, failure);
-        Assert.AreEqual(candidate.x.RawValue, resolved.x.RawValue);
+        Assert.Greater(resolved.x.RawValue, start.x.RawValue);
+        Assert.Less(resolved.x.RawValue, candidate.x.RawValue);
         Assert.Greater(resolved.y.RawValue, start.y.RawValue);
         Assert.Less(resolved.y.RawValue, candidate.y.RawValue);
+        Assert.IsTrue(LogicStrongholdMap.IsCircleClearOfForeignStrongholds(
+            resolved,
+            DistanceUnitConverter.ConvertToWorld(
+                player.GetProperty(CreatureMainProperty.CollisionRadius)),
+            EntitySideHelper.PlayerFactionId));
     }
 
     [Test]
@@ -184,7 +190,7 @@ public sealed class LogicMovementRegionConstraintServiceTests
         Assert.AreEqual(LogicMovementRegionConstraintFailure.EnemyStronghold, failure);
         Assert.Greater(resolved.x.RawValue, start.x.RawValue);
         Assert.Less(resolved.x.RawValue, start.x.RawValue + 128);
-        Assert.AreEqual(start.y.RawValue, resolved.y.RawValue);
+        Assert.Less(resolved.y.RawValue, start.y.RawValue);
         Assert.IsTrue(LogicStrongholdMap.IsCircleClearOfForeignStrongholds(
             resolved,
             collisionRadius,
@@ -211,7 +217,7 @@ public sealed class LogicMovementRegionConstraintServiceTests
         player.SetProperty(
             CreatureMainProperty.CollisionRadius,
             DistanceUnitConverter.ConvertFromWorld(collisionRadius));
-        Fix64 boundary = Fix64.One / (Fix64)2 + collisionRadius;
+        Fix64 halfExtent = Fix64.One / (Fix64)2;
         Fix64 approachDistance = Fix64.FromRaw(256);
         var directions = new[]
         {
@@ -227,7 +233,10 @@ public sealed class LogicMovementRegionConstraintServiceTests
 
         for (int i = 0; i < directions.Length; i++)
         {
-            FixVector2 direction = directions[i];
+            FixVector2 direction = directions[i].GetNormalized();
+            Fix64 boxSupportDistance = halfExtent
+                                       * (Fix64.Abs(direction.x) + Fix64.Abs(direction.y));
+            Fix64 boundary = boxSupportDistance + collisionRadius;
             FixVector2 start = direction * (boundary + approachDistance);
             FixVector2 candidate = direction * (boundary - approachDistance);
             Assert.IsTrue(

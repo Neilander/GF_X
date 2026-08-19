@@ -88,6 +88,20 @@ public static class LogicUnitConfigurator
 
         if (brain is SoldierAIBrain soldierBrain)
         {
+            if (entityParams.BrainType == BrainType.DefendEnemyAI)
+            {
+                bool hasRoutePositions = entityParams.DefendRouteWaypointsFixed != null;
+                bool hasRouteIds = entityParams.DefendRouteWaypointStrongholdIds != null;
+                if (hasRoutePositions != hasRouteIds)
+                    throw new InvalidOperationException("Defend route spawn parameters are incomplete.");
+                if (hasRoutePositions)
+                {
+                    soldierBrain.ConfigureDefendRoute(
+                        entityParams.DefendRouteWaypointsFixed,
+                        entityParams.DefendRouteWaypointStrongholdIds);
+                }
+            }
+
             bool returnToBirthEnabled = entityParams.Side == SideType.EnemySide
                                         && entityParams.BrainType != BrainType.DefendEnemyAI;
             soldierBrain.SetReturnToBirthEnabled(returnToBirthEnabled);

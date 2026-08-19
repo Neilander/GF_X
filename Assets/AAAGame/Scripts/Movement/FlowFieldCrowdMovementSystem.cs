@@ -20,6 +20,8 @@ public readonly struct AuthoredNavigationSourceData
     public readonly FixVector2[] CellNavAnchorsFixedXZ;
     public readonly byte[] CostField;
     public readonly byte[] NeighborTraversalMask;
+    public readonly FixVector2[] StaticCollisionVertices;
+    public readonly int[] StaticCollisionPathStarts;
     public readonly FlowNavigationGridAsset.DerivedNavigationData DerivedNavigationData;
     public readonly bool UseRuntimeReadOnlyReferences;
     public readonly long CellSizeGridRaw;
@@ -43,7 +45,9 @@ public readonly struct AuthoredNavigationSourceData
         long originXGridRaw = 0,
         long originZGridRaw = 0,
         FixVector2[] cellNavAnchorsFixedXZ = null,
-        bool hasFixedAuthorityPayload = false)
+        bool hasFixedAuthorityPayload = false,
+        FixVector2[] staticCollisionVertices = null,
+        int[] staticCollisionPathStarts = null)
     {
         AgentTypeId = agentTypeId;
         Width = width;
@@ -55,6 +59,8 @@ public readonly struct AuthoredNavigationSourceData
         CellNavAnchorsFixedXZ = cellNavAnchorsFixedXZ;
         CostField = costField;
         NeighborTraversalMask = neighborTraversalMask;
+        StaticCollisionVertices = staticCollisionVertices;
+        StaticCollisionPathStarts = staticCollisionPathStarts;
         DerivedNavigationData = derivedNavigationData;
         UseRuntimeReadOnlyReferences = useRuntimeReadOnlyReferences;
         CellSizeGridRaw = cellSizeGridRaw;
@@ -154,6 +160,8 @@ public static partial class FlowFieldCrowdMovementSystem
         public bool HasAuthorityGridMetadata;
         public bool[] BaseWalkableMask;
         public byte[] BaseNeighborTraversalMask;
+        public FixVector2[] StaticCollisionVertices;
+        public int[] StaticCollisionPathStarts;
         public byte[] SourceCostField;
         public bool[] WalkableMask;
         public byte[] CostField;
@@ -1294,6 +1302,8 @@ public static partial class FlowFieldCrowdMovementSystem
         public FixVector2[] CellNavAnchorsFixedXZ;
         public byte[] CostField;
         public byte[] NeighborTraversalMask;
+        public FixVector2[] StaticCollisionVertices;
+        public int[] StaticCollisionPathStarts;
         public FlowNavigationGridAsset.DerivedNavigationData DerivedNavigationData;
 
         public TestTerrainOverride Clone()
@@ -1317,6 +1327,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 CellNavAnchorsFixedXZ = CellNavAnchorsFixedXZ != null ? (FixVector2[])CellNavAnchorsFixedXZ.Clone() : null,
                 CostField = CostField != null ? (byte[])CostField.Clone() : null,
                 NeighborTraversalMask = NeighborTraversalMask != null ? (byte[])NeighborTraversalMask.Clone() : null,
+                StaticCollisionVertices = StaticCollisionVertices != null ? (FixVector2[])StaticCollisionVertices.Clone() : null,
+                StaticCollisionPathStarts = StaticCollisionPathStarts != null ? (int[])StaticCollisionPathStarts.Clone() : null,
                 DerivedNavigationData = DerivedNavigationData
             };
         }
@@ -2249,6 +2261,8 @@ public static partial class FlowFieldCrowdMovementSystem
         public bool HasAuthorityGridMetadata;
         public bool[] BaseWalkableMask;
         public byte[] BaseNeighborTraversalMask;
+        public FixVector2[] StaticCollisionVertices;
+        public int[] StaticCollisionPathStarts;
         public byte[] BaseCostField;
         public Vector3[] CellNavAnchors;
         public FixVector2[] CellNavAnchorsFixedXZ;
@@ -3094,7 +3108,9 @@ public static partial class FlowFieldCrowdMovementSystem
         byte[] costField,
         byte[] neighborTraversalMask,
         FlowNavigationGridAsset.DerivedNavigationData derivedNavigationData,
-        bool useRuntimeReadOnlyReferences)
+        bool useRuntimeReadOnlyReferences,
+        FixVector2[] staticCollisionVertices,
+        int[] staticCollisionPathStarts)
     {
         EnsureAuthoredNavigationMutationBoundary(nameof(SetAuthoredNavigationSourceFixed));
         TestTerrainOverride source = CreateTerrainOverride(
@@ -3113,7 +3129,9 @@ public static partial class FlowFieldCrowdMovementSystem
             originXGridRaw,
             originZGridRaw,
             cellNavAnchorsFixedXZ,
-            hasFixedAuthorityPayload: true);
+            hasFixedAuthorityPayload: true,
+            staticCollisionVertices: staticCollisionVertices,
+            staticCollisionPathStarts: staticCollisionPathStarts);
         _testTerrainOverride = source;
         AuthoredTerrainSources.Clear();
         AuthoredTerrainSources[source.AgentTypeId] = source;
@@ -3148,7 +3166,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 source.OriginXGridRaw,
                 source.OriginZGridRaw,
                 source.CellNavAnchorsFixedXZ,
-                source.HasFixedAuthorityPayload);
+                source.HasFixedAuthorityPayload,
+                staticCollisionVertices: source.StaticCollisionVertices,
+                staticCollisionPathStarts: source.StaticCollisionPathStarts);
             if (nextSources.ContainsKey(terrain.AgentTypeId))
                 throw new InvalidOperationException($"SetAuthoredNavigationSources failed: duplicate agentTypeId={terrain.AgentTypeId}.");
 
@@ -3219,6 +3239,8 @@ public static partial class FlowFieldCrowdMovementSystem
             BaseWalkableMask = (bool[])source.WalkableMask.Clone(),
             BaseCostField = source.CostField != null ? (byte[])source.CostField.Clone() : null,
             BaseNeighborTraversalMask = source.NeighborTraversalMask != null ? (byte[])source.NeighborTraversalMask.Clone() : null,
+            StaticCollisionVertices = source.StaticCollisionVertices != null ? (FixVector2[])source.StaticCollisionVertices.Clone() : null,
+            StaticCollisionPathStarts = source.StaticCollisionPathStarts != null ? (int[])source.StaticCollisionPathStarts.Clone() : null,
             CellNavAnchors = source.CellNavAnchors != null ? (Vector3[])source.CellNavAnchors.Clone() : null,
             HasProvidedCellNavAnchors = source.CellNavAnchors != null,
             HasProvidedNeighborTraversalMask = source.NeighborTraversalMask != null,
@@ -3261,7 +3283,9 @@ public static partial class FlowFieldCrowdMovementSystem
         long originZGridRaw = 0,
         FixVector2[] cellNavAnchorsFixedXZ = null,
         bool hasFixedAuthorityPayload = false,
-        Fix64? agentRadiusOverrideFixed = null)
+        Fix64? agentRadiusOverrideFixed = null,
+        FixVector2[] staticCollisionVertices = null,
+        int[] staticCollisionPathStarts = null)
     {
         if (agentTypeId == MAEntity.UnknownNavAgentTypeId)
             throw new InvalidOperationException("CreateTerrainOverride failed: explicit agentTypeId is Unknown.");
@@ -3283,11 +3307,19 @@ public static partial class FlowFieldCrowdMovementSystem
         if (neighborTraversalMask != null && neighborTraversalMask.Length != width * height)
             throw new InvalidOperationException(
                 $"CreateTerrainOverride failed: neighbor traversal length {neighborTraversalMask.Length} does not match {width}x{height}.");
+        bool hasStaticCollisionGeometry = staticCollisionVertices != null || staticCollisionPathStarts != null;
+        ValidateStaticCollisionGeometry(
+            staticCollisionVertices,
+            staticCollisionPathStarts,
+            hasStaticCollisionGeometry,
+            "CreateTerrainOverride");
         if (derivedNavigationData != null)
             ValidateDerivedNavigationDataMetadata(derivedNavigationData, agentTypeId, width, height, cellSize, origin, "CreateTerrainOverride");
 
         if (hasFixedAuthorityPayload)
         {
+            if (!hasStaticCollisionGeometry)
+                throw new InvalidOperationException("CreateTerrainOverride failed: fixed authored navigation requires deterministic static collision geometry.");
             if (cellSizeGridRaw <= 0)
                 throw new InvalidOperationException("CreateTerrainOverride failed: fixed authority cell size must be positive.");
             if (cellSizeGridRaw != NavigationGridFixedMath.FloatToGridRaw(cellSize)
@@ -3356,6 +3388,12 @@ public static partial class FlowFieldCrowdMovementSystem
             NeighborTraversalMask = neighborTraversalMask != null
                 ? useRuntimeReadOnlyReferences ? neighborTraversalMask : (byte[])neighborTraversalMask.Clone()
                 : null,
+            StaticCollisionVertices = hasStaticCollisionGeometry
+                ? useRuntimeReadOnlyReferences ? staticCollisionVertices : (FixVector2[])staticCollisionVertices.Clone()
+                : null,
+            StaticCollisionPathStarts = hasStaticCollisionGeometry
+                ? useRuntimeReadOnlyReferences ? staticCollisionPathStarts : (int[])staticCollisionPathStarts.Clone()
+                : null,
             DerivedNavigationData = derivedNavigationData
         };
     }
@@ -3381,6 +3419,32 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"{caller} failed: derived navigation data metadata does not match source. " +
                 $"source=(agent={agentTypeId},size={width}x{height},cell={cellSize:F4},origin={origin}) " +
                 $"derived=(agent={data.AgentTypeId},size={data.Width}x{data.Height},cell={data.CellSize:F4},origin={data.Origin}).");
+        }
+    }
+
+    private static void ValidateStaticCollisionGeometry(
+        FixVector2[] vertices,
+        int[] pathStarts,
+        bool isProvided,
+        string caller)
+    {
+        if (!isProvided)
+            return;
+        if (vertices == null || vertices.Length < 3)
+            throw new InvalidOperationException($"{caller} failed: static collision vertices are missing.");
+        if (pathStarts == null || pathStarts.Length < 2 || pathStarts[0] != 0 || pathStarts[pathStarts.Length - 1] != vertices.Length)
+            throw new InvalidOperationException($"{caller} failed: static collision path starts are invalid.");
+        for (int pathIndex = 0; pathIndex < pathStarts.Length - 1; pathIndex++)
+        {
+            int start = pathStarts[pathIndex];
+            int end = pathStarts[pathIndex + 1];
+            if (start < 0 || end > vertices.Length || end - start < 3)
+                throw new InvalidOperationException($"{caller} failed: static collision path {pathIndex} is invalid. start={start} end={end}.");
+            for (int i = start; i < end; i++)
+            {
+                if (vertices[i] == vertices[i + 1 < end ? i + 1 : start])
+                    throw new InvalidOperationException($"{caller} failed: static collision path {pathIndex} contains a zero-length edge at vertex={i}.");
+            }
         }
     }
 
@@ -3540,6 +3604,8 @@ public static partial class FlowFieldCrowdMovementSystem
             Origin = source.Origin,
             BaseWalkableMask = (bool[])source.WalkableMask.Clone(),
             BaseNeighborTraversalMask = (byte[])source.NeighborTraversalMask.Clone(),
+            StaticCollisionVertices = source.StaticCollisionVertices != null ? (FixVector2[])source.StaticCollisionVertices.Clone() : null,
+            StaticCollisionPathStarts = source.StaticCollisionPathStarts != null ? (int[])source.StaticCollisionPathStarts.Clone() : null,
             SourceCostField = (byte[])source.CostField.Clone(),
             WalkableMask = (bool[])source.WalkableMask.Clone(),
             CostField = (byte[])source.CostField.Clone(),
@@ -8555,6 +8621,8 @@ public static partial class FlowFieldCrowdMovementSystem
             world.OriginZGridRaw,
             world.BaseWalkableMask,
             world.BaseNeighborTraversalMask,
+            world.StaticCollisionVertices,
+            world.StaticCollisionPathStarts,
             ResolveStaticCollisionObstacleSnapshot());
         return true;
     }
@@ -16201,6 +16269,12 @@ public static partial class FlowFieldCrowdMovementSystem
             job.BaseNeighborTraversalMask = terrainSource.NeighborTraversalMask != null
                 ? (byte[])terrainSource.NeighborTraversalMask.Clone()
                 : null;
+            job.StaticCollisionVertices = terrainSource.StaticCollisionVertices != null
+                ? (FixVector2[])terrainSource.StaticCollisionVertices.Clone()
+                : null;
+            job.StaticCollisionPathStarts = terrainSource.StaticCollisionPathStarts != null
+                ? (int[])terrainSource.StaticCollisionPathStarts.Clone()
+                : null;
             job.CellNavAnchors = terrainSource.CellNavAnchors != null
                 ? (Vector3[])terrainSource.CellNavAnchors.Clone()
                 : null;
@@ -16255,6 +16329,8 @@ public static partial class FlowFieldCrowdMovementSystem
             BaseNeighborTraversalMask = job.BaseNeighborTraversalMask != null && job.BaseNeighborTraversalMask.Length == job.Width * job.Height
                 ? (byte[])job.BaseNeighborTraversalMask.Clone()
                 : null,
+            StaticCollisionVertices = job.StaticCollisionVertices,
+            StaticCollisionPathStarts = job.StaticCollisionPathStarts,
             SourceCostField = job.BaseCostField != null && job.BaseCostField.Length == job.Width * job.Height
                 ? (byte[])job.BaseCostField.Clone()
                 : null,
@@ -17328,6 +17404,8 @@ public static partial class FlowFieldCrowdMovementSystem
                         Origin = source.Origin,
                         BaseWalkableMask = source.BaseWalkableMask,
                         BaseNeighborTraversalMask = source.BaseNeighborTraversalMask,
+                        StaticCollisionVertices = source.StaticCollisionVertices,
+                        StaticCollisionPathStarts = source.StaticCollisionPathStarts,
                         SourceCostField = source.SourceCostField,
                         SectorCostFields = null,
                         CellNavAnchors = source.CellNavAnchors,
@@ -18160,6 +18238,8 @@ public static partial class FlowFieldCrowdMovementSystem
             Origin = source.Origin,
             BaseWalkableMask = source.BaseWalkableMask,
             BaseNeighborTraversalMask = source.BaseNeighborTraversalMask,
+            StaticCollisionVertices = source.StaticCollisionVertices,
+            StaticCollisionPathStarts = source.StaticCollisionPathStarts,
             SourceCostField = source.SourceCostField,
             WalkableMask = RentCopiedBoolArray(source.WalkableMask),
             CostField = MaterializeMutableCostField(source),

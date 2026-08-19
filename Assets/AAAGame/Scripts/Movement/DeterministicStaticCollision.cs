@@ -75,6 +75,37 @@ internal readonly struct LogicStaticCollisionSourceData
         bool[] baseWalkableMask,
         byte[] baseNeighborTraversalMask,
         LogicStaticCollisionObstacle[] runtimeObstacles)
+        : this(
+            agentTypeId,
+            worldVersion,
+            width,
+            height,
+            cellSizeGridRaw,
+            encodedCenterClearanceFixedRaw,
+            originXGridRaw,
+            originYGridRaw,
+            baseWalkableMask,
+            baseNeighborTraversalMask,
+            null,
+            null,
+            runtimeObstacles)
+    {
+    }
+
+    public LogicStaticCollisionSourceData(
+        int agentTypeId,
+        int worldVersion,
+        int width,
+        int height,
+        long cellSizeGridRaw,
+        long encodedCenterClearanceFixedRaw,
+        long originXGridRaw,
+        long originYGridRaw,
+        bool[] baseWalkableMask,
+        byte[] baseNeighborTraversalMask,
+        FixVector2[] boundaryVertices,
+        int[] boundaryPathStarts,
+        LogicStaticCollisionObstacle[] runtimeObstacles)
     {
         if (cellSizeGridRaw <= 0)
             throw new ArgumentOutOfRangeException(nameof(cellSizeGridRaw), cellSizeGridRaw, "Cell size raw must be positive.");
@@ -90,6 +121,8 @@ internal readonly struct LogicStaticCollisionSourceData
         OriginYGridRaw = originYGridRaw;
         BaseWalkableMask = baseWalkableMask;
         BaseNeighborTraversalMask = baseNeighborTraversalMask;
+        BoundaryVertices = boundaryVertices;
+        BoundaryPathStarts = boundaryPathStarts;
         RuntimeObstacles = runtimeObstacles ?? Array.Empty<LogicStaticCollisionObstacle>();
     }
 
@@ -103,6 +136,8 @@ internal readonly struct LogicStaticCollisionSourceData
     public long OriginYGridRaw { get; }
     public bool[] BaseWalkableMask { get; }
     public byte[] BaseNeighborTraversalMask { get; }
+    public FixVector2[] BoundaryVertices { get; }
+    public int[] BoundaryPathStarts { get; }
     public LogicStaticCollisionObstacle[] RuntimeObstacles { get; }
 }
 
@@ -115,6 +150,14 @@ public sealed class LogicStaticCollisionWorld
     private readonly long m_CellSizeGridRaw;
     private readonly long m_OriginXGridRaw;
     private readonly long m_OriginYGridRaw;
+    private readonly FixVector2[] m_BoundaryVertices;
+    private readonly int[] m_BoundaryPathStarts;
+    private readonly int[] m_BoundaryNextVertex;
+    private readonly int[][] m_BoundarySegmentIndicesByCell;
+    private readonly Fix64[] m_BoundaryPathMinX;
+    private readonly Fix64[] m_BoundaryPathMaxX;
+    private readonly Fix64[] m_BoundaryPathMinY;
+    private readonly Fix64[] m_BoundaryPathMaxY;
 
     public LogicStaticCollisionWorld(
         int agentTypeId,
@@ -133,6 +176,8 @@ public sealed class LogicStaticCollisionWorld
             checked(origin.x.RawValue << GridToFixShift),
             checked(origin.y.RawValue << GridToFixShift),
             walkableMask,
+            null,
+            null,
             null)
     {
     }
@@ -155,7 +200,9 @@ public sealed class LogicStaticCollisionWorld
             checked(origin.x.RawValue << GridToFixShift),
             checked(origin.y.RawValue << GridToFixShift),
             walkableMask,
-            neighborTraversalMask)
+            neighborTraversalMask,
+            null,
+            null)
     {
     }
 
@@ -176,6 +223,8 @@ public sealed class LogicStaticCollisionWorld
             FloatToGridRaw(origin.x),
             FloatToGridRaw(origin.z),
             walkableMask,
+            null,
+            null,
             null)
     {
     }
@@ -189,7 +238,9 @@ public sealed class LogicStaticCollisionWorld
         long originXGridRaw,
         long originYGridRaw,
         bool[] walkableMask,
-        byte[] neighborTraversalMask)
+        byte[] neighborTraversalMask,
+        FixVector2[] boundaryVertices = null,
+        int[] boundaryPathStarts = null)
     {
         if (width <= 0)
             throw new ArgumentOutOfRangeException(nameof(width), width, "Collision world width must be positive.");
@@ -211,6 +262,7 @@ public sealed class LogicStaticCollisionWorld
                 $"Collision world neighbor traversal mask length {neighborTraversalMask.Length} does not match {width}x{height}.",
                 nameof(neighborTraversalMask));
         }
+        ValidateBoundaryGeometry(boundaryVertices, boundaryPathStarts);
 
         AgentTypeId = agentTypeId;
         WorldVersion = worldVersion;
@@ -225,6 +277,18 @@ public sealed class LogicStaticCollisionWorld
         m_NeighborTraversalMask = neighborTraversalMask != null
             ? (byte[])neighborTraversalMask.Clone()
             : null;
+        m_BoundaryVertices = boundaryVertices != null ? (FixVector2[])boundaryVertices.Clone() : null;
+        m_BoundaryPathStarts = boundaryPathStarts != null ? (int[])boundaryPathStarts.Clone() : null;
+        if (m_BoundaryVertices != null)
+        {
+            BuildBoundaryGeometryRuntimeData(
+                out m_BoundaryNextVertex,
+                out m_BoundarySegmentIndicesByCell,
+                out m_BoundaryPathMinX,
+                out m_BoundaryPathMaxX,
+                out m_BoundaryPathMinY,
+                out m_BoundaryPathMaxY);
+        }
     }
 
     public int AgentTypeId { get; }
@@ -237,6 +301,58 @@ public sealed class LogicStaticCollisionWorld
     public Fix64 MinCenterY => Origin.y;
     public Fix64 MaxWorldX => GridRawToFix64(checked(m_OriginXGridRaw + checked((long)Width * m_CellSizeGridRaw)));
     public Fix64 MaxWorldY => GridRawToFix64(checked(m_OriginYGridRaw + checked((long)Height * m_CellSizeGridRaw)));
+    public bool HasBoundaryGeometry => m_BoundaryVertices != null;
+    public int BoundarySegmentCount => m_BoundaryVertices?.Length ?? 0;
+
+    internal void GetBoundarySegment(int segmentIndex, out FixVector2 start, out FixVector2 end)
+    {
+        if (!HasBoundaryGeometry || segmentIndex < 0 || segmentIndex >= m_BoundaryVertices.Length)
+            throw new ArgumentOutOfRangeException(nameof(segmentIndex));
+        start = m_BoundaryVertices[segmentIndex];
+        end = m_BoundaryVertices[m_BoundaryNextVertex[segmentIndex]];
+    }
+
+    internal int[] GetBoundarySegmentIndicesForCell(int x, int y)
+    {
+        if (!HasBoundaryGeometry || x < 0 || x >= Width || y < 0 || y >= Height)
+            return Array.Empty<int>();
+        return m_BoundarySegmentIndicesByCell[GetIndex(x, y)];
+    }
+
+    internal bool ContainsPointInBoundaryGeometry(FixVector2 point)
+    {
+        if (!HasBoundaryGeometry)
+            throw new InvalidOperationException("Static collision world has no boundary geometry.");
+
+        bool inside = false;
+        for (int pathIndex = 0; pathIndex < m_BoundaryPathStarts.Length - 1; pathIndex++)
+        {
+            if (point.x < m_BoundaryPathMinX[pathIndex]
+                || point.x > m_BoundaryPathMaxX[pathIndex]
+                || point.y < m_BoundaryPathMinY[pathIndex]
+                || point.y > m_BoundaryPathMaxY[pathIndex])
+            {
+                continue;
+            }
+
+            int start = m_BoundaryPathStarts[pathIndex];
+            int end = m_BoundaryPathStarts[pathIndex + 1];
+            bool insidePath = false;
+            for (int i = start; i < end; i++)
+            {
+                FixVector2 a = m_BoundaryVertices[i];
+                FixVector2 b = m_BoundaryVertices[m_BoundaryNextVertex[i]];
+                if ((a.y > point.y) == (b.y > point.y))
+                    continue;
+                Fix64 intersectionX = a.x + (point.y - a.y) * (b.x - a.x) / (b.y - a.y);
+                if (point.x < intersectionX)
+                    insidePath = !insidePath;
+            }
+            if (insidePath)
+                inside = !inside;
+        }
+        return inside;
+    }
 
     public bool IsWalkable(int x, int y)
     {
@@ -314,6 +430,89 @@ public sealed class LogicStaticCollisionWorld
         return FloorDivRaw(checked(worldRaw - m_OriginYGridRaw), m_CellSizeGridRaw);
     }
 
+    private static void ValidateBoundaryGeometry(FixVector2[] vertices, int[] pathStarts)
+    {
+        bool provided = vertices != null || pathStarts != null;
+        if (!provided)
+            return;
+        if (vertices == null || vertices.Length < 3)
+            throw new ArgumentException("Collision boundary vertices are missing.", nameof(vertices));
+        if (pathStarts == null || pathStarts.Length < 2 || pathStarts[0] != 0 || pathStarts[pathStarts.Length - 1] != vertices.Length)
+            throw new ArgumentException("Collision boundary path starts are invalid.", nameof(pathStarts));
+        for (int pathIndex = 0; pathIndex < pathStarts.Length - 1; pathIndex++)
+        {
+            int start = pathStarts[pathIndex];
+            int end = pathStarts[pathIndex + 1];
+            if (start < 0 || end > vertices.Length || end - start < 3)
+                throw new ArgumentException($"Collision boundary path {pathIndex} is invalid. start={start} end={end}.", nameof(pathStarts));
+            for (int i = start; i < end; i++)
+            {
+                if (vertices[i] == vertices[i + 1 < end ? i + 1 : start])
+                    throw new ArgumentException($"Collision boundary path {pathIndex} contains a zero-length edge at vertex={i}.", nameof(vertices));
+            }
+        }
+    }
+
+    private void BuildBoundaryGeometryRuntimeData(
+        out int[] nextVertex,
+        out int[][] segmentIndicesByCell,
+        out Fix64[] pathMinX,
+        out Fix64[] pathMaxX,
+        out Fix64[] pathMinY,
+        out Fix64[] pathMaxY)
+    {
+        nextVertex = new int[m_BoundaryVertices.Length];
+        int pathCount = m_BoundaryPathStarts.Length - 1;
+        pathMinX = new Fix64[pathCount];
+        pathMaxX = new Fix64[pathCount];
+        pathMinY = new Fix64[pathCount];
+        pathMaxY = new Fix64[pathCount];
+        var buckets = new List<int>[checked(Width * Height)];
+        for (int pathIndex = 0; pathIndex < pathCount; pathIndex++)
+        {
+            int start = m_BoundaryPathStarts[pathIndex];
+            int end = m_BoundaryPathStarts[pathIndex + 1];
+            Fix64 minX = m_BoundaryVertices[start].x;
+            Fix64 maxX = minX;
+            Fix64 minY = m_BoundaryVertices[start].y;
+            Fix64 maxY = minY;
+            for (int i = start; i < end; i++)
+            {
+                int next = i + 1 < end ? i + 1 : start;
+                nextVertex[i] = next;
+                FixVector2 a = m_BoundaryVertices[i];
+                FixVector2 b = m_BoundaryVertices[next];
+                minX = Fix64.Min(minX, a.x);
+                maxX = Fix64.Max(maxX, a.x);
+                minY = Fix64.Min(minY, a.y);
+                maxY = Fix64.Max(maxY, a.y);
+
+                int minCellX = Clamp(WorldToGridX(Fix64.Min(a.x, b.x)), 0, Width - 1);
+                int maxCellX = Clamp(WorldToGridX(Fix64.Max(a.x, b.x)), 0, Width - 1);
+                int minCellY = Clamp(WorldToGridY(Fix64.Min(a.y, b.y)), 0, Height - 1);
+                int maxCellY = Clamp(WorldToGridY(Fix64.Max(a.y, b.y)), 0, Height - 1);
+                for (int y = minCellY; y <= maxCellY; y++)
+                {
+                    for (int x = minCellX; x <= maxCellX; x++)
+                    {
+                        int cellIndex = GetIndex(x, y);
+                        if (buckets[cellIndex] == null)
+                            buckets[cellIndex] = new List<int>();
+                        buckets[cellIndex].Add(i);
+                    }
+                }
+            }
+            pathMinX[pathIndex] = minX;
+            pathMaxX[pathIndex] = maxX;
+            pathMinY[pathIndex] = minY;
+            pathMaxY[pathIndex] = maxY;
+        }
+
+        segmentIndicesByCell = new int[buckets.Length][];
+        for (int i = 0; i < buckets.Length; i++)
+            segmentIndicesByCell[i] = buckets[i] != null ? buckets[i].ToArray() : Array.Empty<int>();
+    }
+
     private static long FloatToGridRaw(float value)
     {
         return NavigationGridFixedMath.FloatToGridRaw(value);
@@ -331,6 +530,11 @@ public sealed class LogicStaticCollisionWorld
         if (remainder < 0)
             quotient--;
         return checked((int)quotient);
+    }
+
+    private static int Clamp(int value, int min, int max)
+    {
+        return value < min ? min : value > max ? max : value;
     }
 }
 
@@ -766,6 +970,18 @@ public static class DeterministicStaticCollisionSolver
         if (runtimeObstacleRadius < Fix64.Zero)
             throw new ArgumentOutOfRangeException(nameof(runtimeObstacleRadius));
 
+        if (world.HasBoundaryGeometry)
+        {
+            return world.ContainsPointInBoundaryGeometry(center)
+                   && !TryFindBoundaryGeometryPenetration(world, center, radius, out _)
+                   && !TryFindRuntimeObstaclePenetration(
+                       world,
+                       runtimeObstacles,
+                       center,
+                       runtimeObstacleRadius,
+                       out _);
+        }
+
         Fix64 minX = world.Origin.x + radius;
         Fix64 maxX = world.MaxWorldX - radius;
         Fix64 minY = world.Origin.y + radius;
@@ -818,6 +1034,30 @@ public static class DeterministicStaticCollisionSolver
     {
         for (int iteration = 0; iteration < MaxPenetrationIterations; iteration++)
         {
+            if (world.HasBoundaryGeometry)
+            {
+                if (!world.ContainsPointInBoundaryGeometry(position))
+                    return false;
+                if (TryFindBoundaryGeometryPenetration(world, position, radius, out Penetration geometryBoundary))
+                {
+                    startedOverlapping = true;
+                    position += geometryBoundary.Normal * (geometryBoundary.Depth + s_Epsilon);
+                    continue;
+                }
+                if (TryFindRuntimeObstaclePenetration(
+                        world,
+                        runtimeObstacles,
+                        position,
+                        runtimeObstacleRadius,
+                        out Penetration geometryRuntimeObstacle))
+                {
+                    startedOverlapping = true;
+                    position += geometryRuntimeObstacle.Normal * (geometryRuntimeObstacle.Depth + s_Epsilon);
+                    continue;
+                }
+                return true;
+            }
+
             if (TryFindWorldBoundaryPenetration(world, position, radius, out Penetration boundary))
             {
                 startedOverlapping = true;
@@ -1044,6 +1284,104 @@ public static class DeterministicStaticCollisionSolver
             out penetration);
     }
 
+    private static bool TryFindBoundaryGeometryPenetration(
+        LogicStaticCollisionWorld world,
+        FixVector2 position,
+        Fix64 radius,
+        out Penetration penetration)
+    {
+        bool found = false;
+        penetration = default;
+        GetCellRange(world, position, position, radius, out int minCellX, out int maxCellX, out int minCellY, out int maxCellY);
+        for (int y = minCellY; y <= maxCellY; y++)
+        {
+            for (int x = minCellX; x <= maxCellX; x++)
+            {
+                int[] segmentIndices = world.GetBoundarySegmentIndicesForCell(x, y);
+                for (int i = 0; i < segmentIndices.Length; i++)
+                {
+                    int segmentIndex = segmentIndices[i];
+                    world.GetBoundarySegment(segmentIndex, out FixVector2 start, out FixVector2 end);
+                    FixVector2 edge = end - start;
+                    Fix64 lengthSquared = FixVector2.SqrMagnitude(edge);
+                    if (lengthSquared <= Fix64.Zero)
+                    {
+                        SelectBoundaryPointPenetration(
+                            position,
+                            radius,
+                            start,
+                            checked(4 + segmentIndex),
+                            world,
+                            ref found,
+                            ref penetration);
+                        continue;
+                    }
+                    Fix64 projection = FixVector2.Dot(position - start, edge) / lengthSquared;
+                    projection = Fix64.Max(Fix64.Zero, Fix64.Min(Fix64.One, projection));
+                    FixVector2 closest = start + edge * projection;
+                    FixVector2 delta = position - closest;
+                    Fix64 distanceSquared = FixVector2.SqrMagnitude(delta);
+                    if (distanceSquared >= radius * radius)
+                        continue;
+
+                    Fix64 distance = Fix64.Sqrt(distanceSquared);
+                    FixVector2 normal;
+                    if (distance > Fix64.Zero)
+                    {
+                        normal = delta / distance;
+                    }
+                    else
+                    {
+                        FixVector2 perpendicular = NormalizeContactVector(new FixVector2(-edge.y, edge.x));
+                        normal = world.ContainsPointInBoundaryGeometry(position + perpendicular * s_Epsilon)
+                            ? perpendicular
+                            : -perpendicular;
+                    }
+                    SelectPenetration(
+                        new Penetration(radius - distance, normal, checked(4 + segmentIndex)),
+                        ref found,
+                        ref penetration);
+                }
+            }
+        }
+        return found;
+    }
+
+    private static void SelectBoundaryPointPenetration(
+        FixVector2 position,
+        Fix64 radius,
+        FixVector2 boundaryPoint,
+        int stableKey,
+        LogicStaticCollisionWorld world,
+        ref bool found,
+        ref Penetration penetration)
+    {
+        FixVector2 delta = position - boundaryPoint;
+        Fix64 distanceSquared = FixVector2.SqrMagnitude(delta);
+        if (distanceSquared >= radius * radius)
+            return;
+        Fix64 distance = Fix64.Sqrt(distanceSquared);
+        FixVector2 normal;
+        if (distance > Fix64.Zero)
+        {
+            normal = delta / distance;
+        }
+        else
+        {
+            if (world.ContainsPointInBoundaryGeometry(position + new FixVector2(s_Epsilon, Fix64.Zero)))
+                normal = new FixVector2(1, 0);
+            else if (world.ContainsPointInBoundaryGeometry(position - new FixVector2(s_Epsilon, Fix64.Zero)))
+                normal = new FixVector2(-1, 0);
+            else if (world.ContainsPointInBoundaryGeometry(position + new FixVector2(Fix64.Zero, s_Epsilon)))
+                normal = new FixVector2(0, 1);
+            else if (world.ContainsPointInBoundaryGeometry(position - new FixVector2(Fix64.Zero, s_Epsilon)))
+                normal = new FixVector2(0, -1);
+            else
+                throw new InvalidOperationException($"Static collision boundary point has no interior normal. key={stableKey}.");
+        }
+        SelectPenetration(new Penetration(radius - distance, normal, stableKey), ref found, ref penetration);
+    }
+
     private static bool TryFindTopologyEdgePenetration(
         LogicStaticCollisionWorld world,
         FixVector2 position,
@@ -1117,30 +1455,50 @@ public static class DeterministicStaticCollisionSolver
             switch (obstacle.Kind)
             {
                 case LogicStaticCollisionObstacleKind.Box:
-                    Fix64 minX = obstacle.Center.x - obstacle.HalfExtents.x - radius;
-                    Fix64 maxX = obstacle.Center.x + obstacle.HalfExtents.x + radius;
-                    Fix64 minY = obstacle.Center.y - obstacle.HalfExtents.y - radius;
-                    Fix64 maxY = obstacle.Center.y + obstacle.HalfExtents.y + radius;
-                    if (position.x <= minX || position.x >= maxX
-                        || position.y <= minY || position.y >= maxY)
+                    Fix64 minX = obstacle.Center.x - obstacle.HalfExtents.x;
+                    Fix64 maxX = obstacle.Center.x + obstacle.HalfExtents.x;
+                    Fix64 minY = obstacle.Center.y - obstacle.HalfExtents.y;
+                    Fix64 maxY = obstacle.Center.y + obstacle.HalfExtents.y;
+                    bool strictlyInside = position.x > minX && position.x < maxX
+                                          && position.y > minY && position.y < maxY;
+                    bool insideOrOn = position.x >= minX && position.x <= maxX
+                                      && position.y >= minY && position.y <= maxY;
+                    if (strictlyInside || (radius > Fix64.Zero && insideOrOn))
                     {
+                        SelectPenetration(
+                            new Penetration(position.x - minX + radius, new FixVector2(-1, 0), obstacleKey),
+                            ref found,
+                            ref penetration);
+                        SelectPenetration(
+                            new Penetration(maxX - position.x + radius, new FixVector2(1, 0), obstacleKey + 1),
+                            ref found,
+                            ref penetration);
+                        SelectPenetration(
+                            new Penetration(position.y - minY + radius, new FixVector2(0, -1), obstacleKey + 2),
+                            ref found,
+                            ref penetration);
+                        SelectPenetration(
+                            new Penetration(maxY - position.y + radius, new FixVector2(0, 1), obstacleKey + 3),
+                            ref found,
+                            ref penetration);
                         break;
                     }
 
+                    FixVector2 closest = new FixVector2(
+                        Fix64.Max(minX, Fix64.Min(maxX, position.x)),
+                        Fix64.Max(minY, Fix64.Min(maxY, position.y)));
+                    FixVector2 boxDelta = position - closest;
+                    Fix64 boxDistanceSquared = FixVector2.SqrMagnitude(boxDelta);
+                    if (boxDistanceSquared >= radius * radius)
+                        break;
+                    Fix64 boxDistance = Fix64.Sqrt(boxDistanceSquared);
+                    if (boxDistance <= Fix64.Zero)
+                        throw new InvalidOperationException($"Rounded box penetration produced no normal. obstacle={obstacle.StableId}.");
                     SelectPenetration(
-                        new Penetration(position.x - minX, new FixVector2(-1, 0), obstacleKey),
-                        ref found,
-                        ref penetration);
-                    SelectPenetration(
-                        new Penetration(maxX - position.x, new FixVector2(1, 0), obstacleKey + 1),
-                        ref found,
-                        ref penetration);
-                    SelectPenetration(
-                        new Penetration(position.y - minY, new FixVector2(0, -1), obstacleKey + 2),
-                        ref found,
-                        ref penetration);
-                    SelectPenetration(
-                        new Penetration(maxY - position.y, new FixVector2(0, 1), obstacleKey + 3),
+                        new Penetration(
+                            radius - boxDistance,
+                            boxDelta / boxDistance,
+                            ResolveRoundedBoxFeatureKey(position, minX, maxX, minY, maxY, obstacleKey)),
                         ref found,
                         ref penetration);
                     break;
@@ -1194,6 +1552,22 @@ public static class DeterministicStaticCollisionSolver
     {
         bool found = false;
         hit = default;
+        if (world.HasBoundaryGeometry)
+        {
+            TrySelectBoundaryGeometryHit(world, start, displacement, radius, ref found, ref hit);
+            if (TryFindEarliestRuntimeObstacleHit(
+                    runtimeObstacles,
+                    start,
+                    displacement,
+                    runtimeObstacleRadius,
+                    GetRuntimeObstacleStableKeyBase(world),
+                    out SweepHit geometryRuntimeHit))
+            {
+                SelectHit(geometryRuntimeHit, ref found, ref hit);
+            }
+            return found;
+        }
+
         TrySelectBoundaryHit(world, start, displacement, radius, ref found, ref hit);
 
         FixVector2 end = start + displacement;
@@ -1411,6 +1785,140 @@ public static class DeterministicStaticCollisionSolver
         return true;
     }
 
+    private static void TrySelectBoundaryGeometryHit(
+        LogicStaticCollisionWorld world,
+        FixVector2 start,
+        FixVector2 displacement,
+        Fix64 radius,
+        ref bool found,
+        ref SweepHit hit)
+    {
+        FixVector2 end = start + displacement;
+        GetCellRange(world, start, end, radius, out int minCellX, out int maxCellX, out int minCellY, out int maxCellY);
+        for (int y = minCellY; y <= maxCellY; y++)
+        {
+            for (int x = minCellX; x <= maxCellX; x++)
+            {
+                int[] segmentIndices = world.GetBoundarySegmentIndicesForCell(x, y);
+                for (int i = 0; i < segmentIndices.Length; i++)
+                {
+                    int segmentIndex = segmentIndices[i];
+                    world.GetBoundarySegment(segmentIndex, out FixVector2 segmentStart, out FixVector2 segmentEnd);
+                    if (TrySweepPointSegmentCapsule(
+                            start,
+                            displacement,
+                            segmentStart,
+                            segmentEnd,
+                            radius,
+                            checked(4 + segmentIndex),
+                            out SweepHit candidate))
+                    {
+                        SelectHit(candidate, ref found, ref hit);
+                    }
+                }
+            }
+        }
+    }
+
+    private static bool TrySweepPointSegmentCapsule(
+        FixVector2 start,
+        FixVector2 displacement,
+        FixVector2 segmentStart,
+        FixVector2 segmentEnd,
+        Fix64 radius,
+        int stableKey,
+        out SweepHit hit)
+    {
+        bool found = false;
+        hit = default;
+        FixVector2 edge = segmentEnd - segmentStart;
+        Fix64 edgeLengthSquared = FixVector2.SqrMagnitude(edge);
+        if (edgeLengthSquared <= Fix64.Zero)
+        {
+            if (!TrySweepPointCircle(start, displacement, segmentStart, radius, stableKey, out hit)
+                || FixVector2.Dot(displacement, hit.Normal) >= Fix64.Zero)
+            {
+                hit = default;
+                return false;
+            }
+            return true;
+        }
+
+        if (TrySweepPointCircle(start, displacement, segmentStart, radius, stableKey, out SweepHit startCap)
+            && FixVector2.Dot(displacement, startCap.Normal) < Fix64.Zero)
+        {
+            SelectHit(startCap, ref found, ref hit);
+        }
+        if (TrySweepPointCircle(start, displacement, segmentEnd, radius, stableKey, out SweepHit endCap)
+            && FixVector2.Dot(displacement, endCap.Normal) < Fix64.Zero)
+        {
+            SelectHit(endCap, ref found, ref hit);
+        }
+
+        FixVector2 normal = NormalizeContactVector(new FixVector2(-edge.y, edge.x));
+        Fix64 signedStart = FixVector2.Dot(start - segmentStart, normal);
+        Fix64 signedVelocity = FixVector2.Dot(displacement, normal);
+        if (signedVelocity < Fix64.Zero)
+        {
+            TrySelectSegmentSideHit(
+                start,
+                displacement,
+                segmentStart,
+                edge,
+                edgeLengthSquared,
+                normal,
+                radius,
+                signedStart,
+                signedVelocity,
+                stableKey,
+                ref found,
+                ref hit);
+        }
+        else if (signedVelocity > Fix64.Zero)
+        {
+            TrySelectSegmentSideHit(
+                start,
+                displacement,
+                segmentStart,
+                edge,
+                edgeLengthSquared,
+                -normal,
+                -radius,
+                signedStart,
+                signedVelocity,
+                stableKey,
+                ref found,
+                ref hit);
+        }
+        return found;
+    }
+
+    private static void TrySelectSegmentSideHit(
+        FixVector2 start,
+        FixVector2 displacement,
+        FixVector2 segmentStart,
+        FixVector2 edge,
+        Fix64 edgeLengthSquared,
+        FixVector2 contactNormal,
+        Fix64 targetSignedDistance,
+        Fix64 signedStart,
+        Fix64 signedVelocity,
+        int stableKey,
+        ref bool found,
+        ref SweepHit hit)
+    {
+        Fix64 time = (targetSignedDistance - signedStart) / signedVelocity;
+        if (time < Fix64.Zero || time > Fix64.One)
+            return;
+        FixVector2 contact = start + displacement * time;
+        Fix64 edgeProjection = FixVector2.Dot(contact - segmentStart, edge) / edgeLengthSquared;
+        if (edgeProjection < Fix64.Zero || edgeProjection > Fix64.One)
+            return;
+        if (FixVector2.Dot(displacement, contactNormal) >= Fix64.Zero)
+            return;
+        SelectHit(new SweepHit(time, contactNormal, stableKey), ref found, ref hit);
+    }
+
     private static bool TryFindEarliestRuntimeObstacleHit(
         IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
         FixVector2 start,
@@ -1430,13 +1938,14 @@ public static class DeterministicStaticCollisionSolver
             switch (obstacle.Kind)
             {
                 case LogicStaticCollisionObstacleKind.Box:
-                    hasHit = TrySweepPointAabb(
+                    hasHit = TrySweepPointRoundedBox(
                         start,
                         displacement,
-                        obstacle.Center.x - obstacle.HalfExtents.x - radius,
-                        obstacle.Center.x + obstacle.HalfExtents.x + radius,
-                        obstacle.Center.y - obstacle.HalfExtents.y - radius,
-                        obstacle.Center.y + obstacle.HalfExtents.y + radius,
+                        obstacle.Center.x - obstacle.HalfExtents.x,
+                        obstacle.Center.x + obstacle.HalfExtents.x,
+                        obstacle.Center.y - obstacle.HalfExtents.y,
+                        obstacle.Center.y + obstacle.HalfExtents.y,
+                        radius,
                         obstacleKey,
                         out candidate);
                     break;
@@ -1464,6 +1973,160 @@ public static class DeterministicStaticCollisionSolver
         return found;
     }
 
+    private static int ResolveRoundedBoxFeatureKey(
+        FixVector2 position,
+        Fix64 minX,
+        Fix64 maxX,
+        Fix64 minY,
+        Fix64 maxY,
+        int stableKeyBase)
+    {
+        if (position.x < minX)
+        {
+            if (position.y < minY)
+                return stableKeyBase + 4;
+            if (position.y > maxY)
+                return stableKeyBase + 7;
+            return stableKeyBase;
+        }
+        if (position.x > maxX)
+        {
+            if (position.y < minY)
+                return stableKeyBase + 5;
+            if (position.y > maxY)
+                return stableKeyBase + 6;
+            return stableKeyBase + 1;
+        }
+        return position.y < minY ? stableKeyBase + 2 : stableKeyBase + 3;
+    }
+
+    private static bool TrySweepPointRoundedBox(
+        FixVector2 start,
+        FixVector2 displacement,
+        Fix64 minX,
+        Fix64 maxX,
+        Fix64 minY,
+        Fix64 maxY,
+        Fix64 radius,
+        int stableKeyBase,
+        out SweepHit hit)
+    {
+        bool found = false;
+        hit = default;
+        if (displacement.x > Fix64.Zero)
+        {
+            TrySelectAxisAlignedSideHit(
+                start,
+                displacement,
+                minX - radius,
+                minY,
+                maxY,
+                true,
+                new FixVector2(-1, 0),
+                stableKeyBase,
+                ref found,
+                ref hit);
+        }
+        else if (displacement.x < Fix64.Zero)
+        {
+            TrySelectAxisAlignedSideHit(
+                start,
+                displacement,
+                maxX + radius,
+                minY,
+                maxY,
+                true,
+                new FixVector2(1, 0),
+                stableKeyBase + 1,
+                ref found,
+                ref hit);
+        }
+        if (displacement.y > Fix64.Zero)
+        {
+            TrySelectAxisAlignedSideHit(
+                start,
+                displacement,
+                minY - radius,
+                minX,
+                maxX,
+                false,
+                new FixVector2(0, -1),
+                stableKeyBase + 2,
+                ref found,
+                ref hit);
+        }
+        else if (displacement.y < Fix64.Zero)
+        {
+            TrySelectAxisAlignedSideHit(
+                start,
+                displacement,
+                maxY + radius,
+                minX,
+                maxX,
+                false,
+                new FixVector2(0, 1),
+                stableKeyBase + 3,
+                ref found,
+                ref hit);
+        }
+
+        TrySelectRoundedBoxCornerHit(start, displacement, new FixVector2(minX, minY), radius, -1, -1, stableKeyBase + 4, ref found, ref hit);
+        TrySelectRoundedBoxCornerHit(start, displacement, new FixVector2(maxX, minY), radius, 1, -1, stableKeyBase + 5, ref found, ref hit);
+        TrySelectRoundedBoxCornerHit(start, displacement, new FixVector2(maxX, maxY), radius, 1, 1, stableKeyBase + 6, ref found, ref hit);
+        TrySelectRoundedBoxCornerHit(start, displacement, new FixVector2(minX, maxY), radius, -1, 1, stableKeyBase + 7, ref found, ref hit);
+        return found;
+    }
+
+    private static void TrySelectAxisAlignedSideHit(
+        FixVector2 start,
+        FixVector2 displacement,
+        Fix64 plane,
+        Fix64 rangeMin,
+        Fix64 rangeMax,
+        bool vertical,
+        FixVector2 normal,
+        int stableKey,
+        ref bool found,
+        ref SweepHit hit)
+    {
+        Fix64 axisDisplacement = vertical ? displacement.x : displacement.y;
+        Fix64 axisStart = vertical ? start.x : start.y;
+        Fix64 time = (plane - axisStart) / axisDisplacement;
+        if (time < Fix64.Zero || time > Fix64.One)
+            return;
+        Fix64 contactCoordinate = vertical
+            ? start.y + displacement.y * time
+            : start.x + displacement.x * time;
+        if (contactCoordinate < rangeMin || contactCoordinate > rangeMax)
+            return;
+        SelectHit(new SweepHit(time, normal, stableKey), ref found, ref hit);
+    }
+
+    private static void TrySelectRoundedBoxCornerHit(
+        FixVector2 start,
+        FixVector2 displacement,
+        FixVector2 corner,
+        Fix64 radius,
+        int expectedNormalXSign,
+        int expectedNormalYSign,
+        int stableKey,
+        ref bool found,
+        ref SweepHit hit)
+    {
+        if (!TrySweepPointCircle(start, displacement, corner, radius, stableKey, out SweepHit candidate))
+            return;
+        if (expectedNormalXSign < 0 && candidate.Normal.x > Fix64.Zero
+            || expectedNormalXSign > 0 && candidate.Normal.x < Fix64.Zero
+            || expectedNormalYSign < 0 && candidate.Normal.y > Fix64.Zero
+            || expectedNormalYSign > 0 && candidate.Normal.y < Fix64.Zero)
+        {
+            return;
+        }
+        if (FixVector2.Dot(displacement, candidate.Normal) >= Fix64.Zero)
+            return;
+        SelectHit(candidate, ref found, ref hit);
+    }
+
     private static bool TrySweepPointCircle(
         FixVector2 start,
         FixVector2 displacement,
@@ -1472,30 +2135,95 @@ public static class DeterministicStaticCollisionSolver
         int stableKey,
         out SweepHit hit)
     {
-        Fix64 a = FixVector2.Dot(displacement, displacement);
-        if (a <= Fix64.Zero)
+        if (radius <= Fix64.Zero)
+        {
+            hit = default;
+            return false;
+        }
+
+        long displacementXRaw = displacement.x.RawValue;
+        long displacementYRaw = displacement.y.RawValue;
+        long displacementLengthSquaredRaw = checked(
+            checked(displacementXRaw * displacementXRaw)
+            + checked(displacementYRaw * displacementYRaw));
+        if (displacementLengthSquaredRaw <= 0)
         {
             hit = default;
             return false;
         }
 
         FixVector2 relativeStart = start - center;
-        Fix64 b = (Fix64)2 * FixVector2.Dot(relativeStart, displacement);
-        Fix64 c = FixVector2.Dot(relativeStart, relativeStart) - radius * radius;
-        Fix64 discriminant = b * b - (Fix64)4 * a * c;
-        if (discriminant < Fix64.Zero)
+        Fix64 radiusSquared = radius * radius;
+        Fix64 startDistanceSquared = FixVector2.SqrMagnitude(relativeStart);
+        long projectionNumeratorRaw = checked(-checked(
+            checked(relativeStart.x.RawValue * displacementXRaw)
+            + checked(relativeStart.y.RawValue * displacementYRaw)));
+        if (projectionNumeratorRaw <= 0 && startDistanceSquared >= radiusSquared)
         {
             hit = default;
             return false;
         }
 
-        Fix64 time = (-b - Fix64.Sqrt(discriminant)) / ((Fix64)2 * a);
-        if (time < Fix64.Zero || time > Fix64.One)
+        long closestTimeRaw;
+        if (projectionNumeratorRaw <= 0)
+        {
+            closestTimeRaw = 0;
+        }
+        else if (projectionNumeratorRaw >= displacementLengthSquaredRaw)
+        {
+            closestTimeRaw = Fix64.One.RawValue;
+        }
+        else
+        {
+            long floorTimeRaw = ResolveUnitRatioRaw(
+                projectionNumeratorRaw,
+                displacementLengthSquaredRaw);
+            long ceilTimeRaw = Math.Min(Fix64.One.RawValue, checked(floorTimeRaw + 1));
+            Fix64 floorDistanceSquared = EvaluateSweepCircleDistanceSquared(
+                relativeStart,
+                displacement,
+                floorTimeRaw);
+            Fix64 ceilDistanceSquared = EvaluateSweepCircleDistanceSquared(
+                relativeStart,
+                displacement,
+                ceilTimeRaw);
+            closestTimeRaw = floorDistanceSquared <= ceilDistanceSquared ? floorTimeRaw : ceilTimeRaw;
+        }
+
+        Fix64 closestDistanceSquared = EvaluateSweepCircleDistanceSquared(
+            relativeStart,
+            displacement,
+            closestTimeRaw);
+        if (closestDistanceSquared >= radiusSquared)
         {
             hit = default;
             return false;
         }
 
+        // Search the Q12 time lattice for the last non-penetrating sample before first entry.
+        long clearTimeRaw = 0;
+        long penetratingTimeRaw = closestTimeRaw;
+        if (startDistanceSquared < radiusSquared)
+        {
+            penetratingTimeRaw = 0;
+        }
+        else
+        {
+            while (penetratingTimeRaw - clearTimeRaw > 1)
+            {
+                long middleTimeRaw = clearTimeRaw + (penetratingTimeRaw - clearTimeRaw) / 2;
+                Fix64 middleDistanceSquared = EvaluateSweepCircleDistanceSquared(
+                    relativeStart,
+                    displacement,
+                    middleTimeRaw);
+                if (middleDistanceSquared < radiusSquared)
+                    penetratingTimeRaw = middleTimeRaw;
+                else
+                    clearTimeRaw = middleTimeRaw;
+            }
+        }
+
+        Fix64 time = Fix64.FromRaw(clearTimeRaw);
         FixVector2 contactDelta = start + displacement * time - center;
         if (contactDelta == FixVector2.Zero)
         {
@@ -1503,12 +2231,61 @@ public static class DeterministicStaticCollisionSolver
             return false;
         }
 
-        hit = new SweepHit(time, contactDelta.GetNormalized(), stableKey);
+        hit = new SweepHit(time, NormalizeContactVector(contactDelta), stableKey);
         return true;
+    }
+
+    private static long ResolveUnitRatioRaw(long numerator, long denominator)
+    {
+        if (numerator < 0)
+            throw new ArgumentOutOfRangeException(nameof(numerator));
+        if (denominator <= 0)
+            throw new ArgumentOutOfRangeException(nameof(denominator));
+        if (numerator >= denominator)
+            throw new ArgumentOutOfRangeException(nameof(numerator), "Fixed sweep unit ratio must be less than one.");
+
+        long remainder = numerator;
+        long result = 0;
+        for (int bit = 0; bit < Fix64.FRACTIONAL_PLACES; bit++)
+        {
+            result <<= 1;
+            long complement = denominator - remainder;
+            if (remainder >= complement)
+            {
+                remainder -= complement;
+                result |= 1;
+            }
+            else
+            {
+                remainder *= 2;
+            }
+        }
+        return result;
+    }
+
+    private static Fix64 EvaluateSweepCircleDistanceSquared(
+        FixVector2 relativeStart,
+        FixVector2 displacement,
+        long timeRaw)
+    {
+        if (timeRaw < 0 || timeRaw > Fix64.One.RawValue)
+            throw new ArgumentOutOfRangeException(nameof(timeRaw));
+        FixVector2 delta = relativeStart + displacement * Fix64.FromRaw(timeRaw);
+        return FixVector2.SqrMagnitude(delta);
+    }
+
+    private static FixVector2 NormalizeContactVector(FixVector2 value)
+    {
+        Fix64 magnitude = FixVector2.Magnitude(value);
+        if (magnitude <= Fix64.Zero)
+            throw new InvalidOperationException("Static collision contact normal cannot be zero.");
+        return value / magnitude;
     }
 
     private static int GetRuntimeObstacleStableKeyBase(LogicStaticCollisionWorld world)
     {
+        if (world.HasBoundaryGeometry)
+            return checked(4 + world.BoundarySegmentCount);
         return checked(GetTopologyEdgeStableKeyBase(world) + checked(world.Width * world.Height) * 4);
     }
 
@@ -1686,6 +2463,7 @@ public enum LogicStaticCollisionContactKind
     AuthoredGridCell = 2,
     AuthoredTraversalEdge = 3,
     RuntimeObstacle = 4,
+    AuthoredBoundarySegment = 5,
 }
 
 public readonly struct LogicStaticCollisionShadowResult
@@ -1705,6 +2483,7 @@ public readonly struct LogicStaticCollisionShadowResult
         ContactKind = LogicStaticCollisionContactKind.None;
         ContactCellX = -1;
         ContactCellY = -1;
+        ContactBoundarySegmentIndex = -1;
         RuntimeObstacleStableId = 0;
         int stableKey = solveResult.FirstHitStableKey;
         if (stableKey < 0)
@@ -1712,6 +2491,27 @@ public readonly struct LogicStaticCollisionShadowResult
         if (stableKey < 4)
         {
             ContactKind = LogicStaticCollisionContactKind.WorldBoundary;
+            return;
+        }
+
+        if (world.HasBoundaryGeometry)
+        {
+            int runtimeKeyBase = checked(4 + world.BoundarySegmentCount);
+            if (stableKey < runtimeKeyBase)
+            {
+                ContactKind = LogicStaticCollisionContactKind.AuthoredBoundarySegment;
+                ContactBoundarySegmentIndex = stableKey - 4;
+                return;
+            }
+
+            int geometryObstacleIndex = (stableKey - runtimeKeyBase) / 8;
+            if (geometryObstacleIndex < 0 || geometryObstacleIndex >= runtimeObstacles.Count)
+            {
+                throw new InvalidOperationException(
+                    $"Static collision hit key {stableKey} resolved invalid runtime obstacle index {geometryObstacleIndex}/{runtimeObstacles.Count}.");
+            }
+            ContactKind = LogicStaticCollisionContactKind.RuntimeObstacle;
+            RuntimeObstacleStableId = runtimeObstacles[geometryObstacleIndex].StableId;
             return;
         }
 
@@ -1750,6 +2550,7 @@ public readonly struct LogicStaticCollisionShadowResult
     public LogicStaticCollisionContactKind ContactKind { get; }
     public int ContactCellX { get; }
     public int ContactCellY { get; }
+    public int ContactBoundarySegmentIndex { get; }
     public int RuntimeObstacleStableId { get; }
 
     public Vector3 ResolvedDisplacement => new Vector3(
@@ -1771,6 +2572,8 @@ public static class LogicStaticCollisionShadowService
         public long OriginYGridRaw;
         public bool[] BaseWalkableMask;
         public byte[] BaseNeighborTraversalMask;
+        public FixVector2[] BoundaryVertices;
+        public int[] BoundaryPathStarts;
         public LogicStaticCollisionWorld World;
 
         public bool Matches(LogicStaticCollisionSourceData source)
@@ -1783,7 +2586,9 @@ public static class LogicStaticCollisionShadowService
                    && OriginXGridRaw == source.OriginXGridRaw
                    && OriginYGridRaw == source.OriginYGridRaw
                    && ReferenceEquals(BaseWalkableMask, source.BaseWalkableMask)
-                   && ReferenceEquals(BaseNeighborTraversalMask, source.BaseNeighborTraversalMask);
+                   && ReferenceEquals(BaseNeighborTraversalMask, source.BaseNeighborTraversalMask)
+                   && ReferenceEquals(BoundaryVertices, source.BoundaryVertices)
+                   && ReferenceEquals(BoundaryPathStarts, source.BoundaryPathStarts);
         }
     }
 
@@ -1871,9 +2676,9 @@ public static class LogicStaticCollisionShadowService
             return false;
 
         LogicStaticCollisionWorld world = ResolveWorld(agentTypeId, source);
-        Fix64 effectiveRadius = Fix64.Max(
-            Fix64.Zero,
-            radius - Fix64.FromRaw(source.EncodedCenterClearanceFixedRaw));
+        Fix64 effectiveRadius = source.BoundaryVertices != null
+            ? radius
+            : Fix64.Max(Fix64.Zero, radius - Fix64.FromRaw(source.EncodedCenterClearanceFixedRaw));
         LogicStaticCollisionSolveResult solveResult = DeterministicStaticCollisionSolver.SolveCircle(
             world,
             start,
@@ -1945,7 +2750,9 @@ public static class LogicStaticCollisionShadowService
             source.OriginXGridRaw,
             source.OriginYGridRaw,
             source.BaseWalkableMask,
-            source.BaseNeighborTraversalMask);
+            source.BaseNeighborTraversalMask,
+            source.BoundaryVertices,
+            source.BoundaryPathStarts);
         s_Worlds[requestedAgentTypeId] = new CachedWorld
         {
             Version = source.WorldVersion,
@@ -1957,6 +2764,8 @@ public static class LogicStaticCollisionShadowService
             OriginYGridRaw = source.OriginYGridRaw,
             BaseWalkableMask = source.BaseWalkableMask,
             BaseNeighborTraversalMask = source.BaseNeighborTraversalMask,
+            BoundaryVertices = source.BoundaryVertices,
+            BoundaryPathStarts = source.BoundaryPathStarts,
             World = world,
         };
         return world;

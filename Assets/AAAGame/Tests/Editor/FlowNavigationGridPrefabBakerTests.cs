@@ -405,6 +405,16 @@ public sealed class FlowNavigationGridPrefabBakerTests
             Assert.AreEqual(metadata.OriginXGridRaw, derivedData.OriginXGridRaw, path);
             Assert.AreEqual(metadata.OriginZGridRaw, derivedData.OriginZGridRaw, path);
             Assert.AreEqual(asset.CellCount, asset.GetCellAnchorsFixedRuntimeReadOnlyReference().Length, path);
+            if (path.EndsWith("_Medium.asset", StringComparison.Ordinal))
+            {
+                Assert.IsTrue(asset.HasStaticCollisionGeometry, $"Primary navigation asset must own the raw Ground collision geometry: {path}");
+                Assert.Greater(asset.GetStaticCollisionVerticesRuntimeReadOnlyReference().Length, 2, path);
+                Assert.Greater(asset.GetStaticCollisionPathStartsRuntimeReadOnlyReference().Length, 1, path);
+            }
+            else
+            {
+                Assert.IsFalse(asset.HasStaticCollisionGeometry, $"Derived movement-type asset must not duplicate raw Ground collision geometry: {path}");
+            }
         }
     }
 
@@ -495,6 +505,7 @@ public sealed class FlowNavigationGridPrefabBakerTests
             ground.transform.SetParent(root.transform, false);
             ground.transform.position = new Vector3(2f, -0.05f, 2f);
             ground.transform.localScale = new Vector3(4f, 0.1f, 4f);
+            ReplacePrimitiveGroundCollider(ground);
 
             GameObject obstacle = GameObject.CreatePrimitive(PrimitiveType.Cube);
             obstacle.name = "Obstacle";
@@ -522,6 +533,7 @@ public sealed class FlowNavigationGridPrefabBakerTests
             ground.transform.SetParent(root.transform, false);
             ground.transform.position = new Vector3(2.5f, -0.05f, 1.5f);
             ground.transform.localScale = new Vector3(5f, 0.1f, 3f);
+            ReplacePrimitiveGroundCollider(ground);
 
             GameObject lowerWall = GameObject.CreatePrimitive(PrimitiveType.Cube);
             lowerWall.name = "LowerWall";
@@ -556,6 +568,7 @@ public sealed class FlowNavigationGridPrefabBakerTests
             ground.transform.SetParent(root.transform, false);
             ground.transform.position = new Vector3(0.8f, -0.05f, 0.5f);
             ground.transform.localScale = new Vector3(0.36f, 0.1f, 0.3f);
+            ReplacePrimitiveGroundCollider(ground);
 
             PrefabUtility.SaveAsPrefabAsset(root, TempPrefabPath);
         }
@@ -576,6 +589,7 @@ public sealed class FlowNavigationGridPrefabBakerTests
             ground.transform.SetParent(root.transform, false);
             ground.transform.position = new Vector3(1f, -0.05f, 0.5f);
             ground.transform.localScale = new Vector3(2f, 0.1f, 1f);
+            ReplacePrimitiveGroundCollider(ground);
 
             GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
             wall.name = "Divider";
@@ -603,6 +617,7 @@ public sealed class FlowNavigationGridPrefabBakerTests
             ground.transform.SetParent(root.transform, false);
             ground.transform.position = new Vector3(1f, surfaceHeight - 0.05f, 1f);
             ground.transform.localScale = new Vector3(2f, 0.1f, 2f);
+            ReplacePrimitiveGroundCollider(ground);
 
             PrefabUtility.SaveAsPrefabAsset(root, TempPrefabPath);
         }
@@ -658,6 +673,7 @@ public sealed class FlowNavigationGridPrefabBakerTests
             ground.transform.SetParent(root.transform, false);
             ground.transform.position = new Vector3(1f, -0.05f, 1f);
             ground.transform.localScale = new Vector3(3f, 0.1f, 3f);
+            ReplacePrimitiveGroundCollider(ground);
 
             PrefabUtility.SaveAsPrefabAsset(root, TempPrefabPath);
         }
@@ -673,6 +689,18 @@ public sealed class FlowNavigationGridPrefabBakerTests
             if (!AssetDatabase.Contains(configuration))
                 UnityEngine.Object.DestroyImmediate(configuration);
         }
+    }
+
+    private static void ReplacePrimitiveGroundCollider(GameObject ground)
+    {
+        MeshFilter meshFilter = ground.GetComponent<MeshFilter>();
+        Assert.IsNotNull(meshFilter);
+        Assert.IsNotNull(meshFilter.sharedMesh);
+        Collider primitiveCollider = ground.GetComponent<Collider>();
+        Assert.IsNotNull(primitiveCollider);
+        UnityEngine.Object.DestroyImmediate(primitiveCollider);
+        MeshCollider meshCollider = ground.AddComponent<MeshCollider>();
+        meshCollider.sharedMesh = meshFilter.sharedMesh;
     }
 
     private static void EnsureTempFolder()

@@ -406,6 +406,8 @@ public static partial class FlowFieldCrowdMovementSystem
             payloadBytes
             + GetArrayPayloadBytes(world.BaseWalkableMask, sizeof(byte))
             + GetArrayPayloadBytes(world.BaseNeighborTraversalMask, sizeof(byte))
+            + GetArrayPayloadBytes(world.StaticCollisionVertices, sizeof(long) * 2)
+            + GetArrayPayloadBytes(world.StaticCollisionPathStarts, sizeof(int))
             + GetArrayPayloadBytes(world.SourceCostField, sizeof(byte))
             + GetArrayPayloadBytes(world.WalkableMask, sizeof(byte))
             + GetArrayPayloadBytes(world.CostField, sizeof(byte))
@@ -1629,6 +1631,8 @@ public static partial class FlowFieldCrowdMovementSystem
 
         AddAuthorityOptionalBoolArray(hasher, world.BaseWalkableMask);
         AddAuthorityOptionalByteArray(hasher, world.BaseNeighborTraversalMask);
+        AddAuthorityOptionalNavigationAnchors(hasher, world.StaticCollisionVertices);
+        AddAuthorityOptionalIntArray(hasher, world.StaticCollisionPathStarts);
         AddAuthorityOptionalByteArray(hasher, world.SourceCostField);
         AddAuthorityOptionalBoolArray(hasher, world.WalkableMask);
         AddAuthorityOptionalByteArray(hasher, world.CostField);
@@ -1800,6 +1804,8 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(job.AgentRadiusFixedRaw);
         AddBoolArray(hasher, job.BaseWalkableMask);
         AddByteArray(hasher, job.BaseNeighborTraversalMask);
+        AddNavigationAnchorFixedXZArray(hasher, job.StaticCollisionVertices);
+        AddIntArray(hasher, job.StaticCollisionPathStarts);
         AddByteArray(hasher, job.BaseCostField);
         AddNavigationAnchorFixedXZArray(hasher, job.CellNavAnchorsFixedXZ);
         AddAuthorityCircleObstacleSnapshot(hasher, job.CircleObstacles);
@@ -2364,6 +2370,10 @@ public static partial class FlowFieldCrowdMovementSystem
             yield return token;
         foreach (NavigationWorldHashToken token in EnumerateByteArrayHashTokens(world.BaseNeighborTraversalMask))
             yield return token;
+        foreach (NavigationWorldHashToken token in EnumerateFixVector2ArrayHashTokens(world.StaticCollisionVertices))
+            yield return token;
+        foreach (NavigationWorldHashToken token in EnumerateIntArrayHashTokens(world.StaticCollisionPathStarts))
+            yield return token;
         foreach (NavigationWorldHashToken token in EnumerateByteArrayHashTokens(world.SourceCostField))
             yield return token;
         foreach (NavigationWorldHashToken token in EnumerateBoolArrayHashTokens(world.WalkableMask))
@@ -2506,6 +2516,23 @@ public static partial class FlowFieldCrowdMovementSystem
             yield return NavigationWorldHashToken.FromInt(values[i]);
     }
 
+    private static IEnumerable<NavigationWorldHashToken> EnumerateFixVector2ArrayHashTokens(FixVector2[] values)
+    {
+        if (values == null)
+        {
+            yield return NavigationWorldHashToken.FromInt(-1);
+            yield break;
+        }
+
+        int count = values.Length;
+        yield return NavigationWorldHashToken.FromInt(count);
+        for (int i = 0; i < count; i++)
+        {
+            yield return NavigationWorldHashToken.FromLong(values[i].x.RawValue);
+            yield return NavigationWorldHashToken.FromLong(values[i].y.RawValue);
+        }
+    }
+
     private static IEnumerable<NavigationWorldHashToken> EnumerateVector2IntArrayHashTokens(Vector2Int[] values)
     {
         int count = values?.Length ?? 0;
@@ -2560,6 +2587,8 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("Cannot hash a navigation world with incomplete fixed navigation anchors.");
         AddBoolArray(hasher, world.BaseWalkableMask);
         AddByteArray(hasher, world.BaseNeighborTraversalMask);
+        AddNavigationAnchorFixedXZArray(hasher, world.StaticCollisionVertices);
+        AddIntArray(hasher, world.StaticCollisionPathStarts);
         AddByteArray(hasher, world.SourceCostField);
         AddBoolArray(hasher, world.WalkableMask);
         AddByteArray(hasher, world.CostField);

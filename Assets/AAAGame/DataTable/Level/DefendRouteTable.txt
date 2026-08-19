@@ -1,0 +1,4 @@
+#	防御路线表					
+#	ID		Identifier	LevelIdentifier	SourceStrongholdId	WaypointStrongholdIds
+#	int		string	string	string	string[]
+#	行号	备注	代码内标识符	所属关卡标识	固定出兵来源据点ID	固定途经据点ID，按行军顺序填写，玩家基地隐含为最终目标

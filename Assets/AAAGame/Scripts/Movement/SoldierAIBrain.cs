@@ -99,6 +99,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     private int _combatApproachTargetId = int.MinValue;
     private int _combatApproachRefreshFrame = -1;
     private int _combatApproachDiagnosticFrame = -1;
+    private FixVector2[] _defendRouteWaypointsFixed;
+    private string[] _defendRouteWaypointStrongholdIds;
+    private int _defendRouteWaypointIndex;
+    private const long DefendRouteBaseArrivalRadiusRaw = 6144;
 
     /// <summary>
     /// 领袖通过 EntityRegistry.GetClosestLeader 惰性获取。
@@ -108,6 +112,18 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     public void SetBirthPositionFixed(FixVector2 worldPos)
     {
         _birthPosition = worldPos;
+    }
+
+    public void ConfigureDefendRoute(FixVector2[] waypointsFixed, string[] waypointStrongholdIds)
+    {
+        if (waypointsFixed == null || waypointStrongholdIds == null)
+            throw new System.InvalidOperationException("SoldierAIBrain defend route requires waypoint positions and IDs.");
+        if (waypointsFixed.Length == 0 || waypointsFixed.Length != waypointStrongholdIds.Length)
+            throw new System.InvalidOperationException("SoldierAIBrain defend route waypoint arrays are empty or mismatched.");
+
+        _defendRouteWaypointsFixed = (FixVector2[])waypointsFixed.Clone();
+        _defendRouteWaypointStrongholdIds = (string[])waypointStrongholdIds.Clone();
+        _defendRouteWaypointIndex = 0;
     }
 
     public void ConfigureReturnFromGameConfig()
@@ -158,6 +174,9 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         _combatApproachTargetId = int.MinValue;
         _combatApproachRefreshFrame = -1;
         _combatApproachTargetPoint = FixVector2.Zero;
+        _defendRouteWaypointsFixed = null;
+        _defendRouteWaypointStrongholdIds = null;
+        _defendRouteWaypointIndex = 0;
         State = SoldierState.Idle;
 
         self.BuffComp?.RemoveBuff(ReturningBuffId);
@@ -197,6 +216,15 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         hasher.Add(_combatApproachTargetPoint.y.RawValue);
         hasher.Add(_combatApproachTargetId);
         hasher.Add(_combatApproachRefreshFrame);
+        hasher.Add(_defendRouteWaypointIndex);
+        int routeCount = _defendRouteWaypointsFixed?.Length ?? 0;
+        hasher.Add(routeCount);
+        for (int i = 0; i < routeCount; i++)
+        {
+            hasher.Add(_defendRouteWaypointsFixed[i].x.RawValue);
+            hasher.Add(_defendRouteWaypointsFixed[i].y.RawValue);
+            hasher.Add(_defendRouteWaypointStrongholdIds[i]);
+        }
     }
 
     private static int GetLogicId(IEntityContext entity)
@@ -454,6 +482,20 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
     private void TickIdle(IEntityContext self, Fix64 dt)
     {
+        if (_defendRouteWaypointsFixed != null)
+        {
+            AdvanceDefendRouteWaypoint(self);
+            if (_defendRouteWaypointIndex < _defendRouteWaypointsFixed.Length)
+            {
+                self.MoveComp.MoveToFixed(_defendRouteWaypointsFixed[_defendRouteWaypointIndex]);
+            }
+            else
+            {
+                self.MoveComp.StopMove();
+            }
+            return;
+        }
+
         // 敌方专属：远离出生点 + 周围无敌 → 温和走回家（不挂返航 buff，可被 UpdateState 切回 Combat）
         if (!_birthPosition.HasValue)
         {
@@ -502,6 +544,28 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 $"[{self.CharacterKey}] Idle soft-return MoveTo birth={_birthPosition.Value} from={self.LogicFramePositionFixed()} distFromHome={(float)distFromHome:F2}");
         }
         self.MoveComp.MoveToFixed(_birthPosition.Value);
+    }
+
+    private void AdvanceDefendRouteWaypoint(IEntityContext self)
+    {
+        while (_defendRouteWaypointIndex < _defendRouteWaypointsFixed.Length)
+        {
+            string strongholdId = _defendRouteWaypointStrongholdIds[_defendRouteWaypointIndex];
+            if (string.IsNullOrWhiteSpace(strongholdId))
+            {
+                if (FixVector2.Distance(self.LogicFramePositionFixed(), _defendRouteWaypointsFixed[_defendRouteWaypointIndex])
+                    > Fix64.FromRaw(DefendRouteBaseArrivalRadiusRaw))
+                    return;
+            }
+            else
+            {
+                if (!LogicStrongholdMap.TryResolveStrongholdId(self.LogicFramePositionFixed(), out string currentStrongholdId)
+                    || !string.Equals(currentStrongholdId, strongholdId, System.StringComparison.Ordinal))
+                    return;
+            }
+
+            _defendRouteWaypointIndex++;
+        }
     }
 
     private Fix64 GetSoftReturnRatio()

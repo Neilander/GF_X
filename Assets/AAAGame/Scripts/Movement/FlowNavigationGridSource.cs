@@ -87,6 +87,10 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
         List<FlowNavigationGridAsset> grids = CollectConfiguredGrids();
         if (grids.Count == 0)
             throw new InvalidOperationException("FlowNavigationGridSource.ApplyToFlowField failed: no grid is configured.");
+        if (_grid == null || grids[0] != _grid)
+            throw new InvalidOperationException("FlowNavigationGridSource.ApplyToFlowField failed: primary navigation grid is missing.");
+        FixVector2[] staticCollisionVertices = _grid.GetStaticCollisionVerticesRuntimeReadOnlyReference();
+        int[] staticCollisionPathStarts = _grid.GetStaticCollisionPathStartsRuntimeReadOnlyReference();
 
         if (grids.Count == 1)
         {
@@ -108,7 +112,9 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
                 grid.GetCostFieldRuntimeReadOnlyReference(),
                 grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
                 derivedData,
-                useRuntimeReadOnlyReferences: true);
+                useRuntimeReadOnlyReferences: true,
+                staticCollisionVertices: staticCollisionVertices,
+                staticCollisionPathStarts: staticCollisionPathStarts);
             s_AppliedSourceInstanceId = GetInstanceID();
             LogSourceLifecycle("apply-single", grids);
             stopwatch.Stop();
@@ -147,7 +153,9 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
                 originXGridRaw: fixedMetadata.OriginXGridRaw,
                 originZGridRaw: fixedMetadata.OriginZGridRaw,
                 cellNavAnchorsFixedXZ: grid.GetCellAnchorsFixedRuntimeReadOnlyReference(),
-                hasFixedAuthorityPayload: true);
+                hasFixedAuthorityPayload: true,
+                staticCollisionVertices: staticCollisionVertices,
+                staticCollisionPathStarts: staticCollisionPathStarts);
         }
 
         FlowFieldCrowdMovementSystem.SetAuthoredNavigationSources(sources);
