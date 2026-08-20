@@ -49,23 +49,25 @@ public class PhaseManager : GameFrameworkComponent
                 throw new InvalidOperationException($"PhaseManager found a null preset point at level index {i}.");
             if (point.PointType != EntityPresetPointType.Unit)
                 continue;
-            if (!UnitTypeHelper.TryParseUnitTypeAndLevel(point.Identifier, out UnitType unitType, out int unitLevel))
+            if (!UnitTypeHelper.TryParseUnitType(point.Identifier, out UnitType unitType))
             {
                 throw new InvalidOperationException(
                     $"PhaseManager invade spawn point has invalid unit identifier. point={point.name} identifier={point.Identifier}.");
             }
-            if (point.UnitSpawnCount <= 0)
+            if (point.UnitStrengthValue <= Fix64.Zero)
             {
                 throw new InvalidOperationException(
-                    $"PhaseManager invade authored spawn count is not positive. point={point.name} count={point.UnitSpawnCount}.");
+                    $"PhaseManager invade authored strength value is not positive. point={point.name} raw={point.UnitStrengthValue.RawValue}.");
             }
+            if (point.UnitCountGrowthWeight < Fix64.Zero || point.UnitCountGrowthWeight > Fix64.One)
+                throw new InvalidOperationException($"PhaseManager invade count growth weight is outside zero to one. point={point.name} raw={point.UnitCountGrowthWeight.RawValue}.");
 
             Vector3 authoredPosition = point.Position;
             s_InvadeSpawnPoints.Add(new InvadeSpawnPointDefinition(
                 new FixVector2((Fix64)authoredPosition.x, (Fix64)authoredPosition.z),
                 unitType,
-                unitLevel,
-                point.UnitSpawnCount,
+                point.UnitStrengthValue,
+                point.UnitCountGrowthWeight,
                 string.IsNullOrWhiteSpace(point.name) ? "<unnamed>" : point.name));
         }
         s_InvadeSpawnPoints.Sort(CompareInvadeSpawnPointDefinitions);
@@ -453,6 +455,14 @@ public class PhaseManager : GameFrameworkComponent
         if (!s_InvadeSpawnPointsConfigured)
             throw new InvalidOperationException("PhaseManager cannot spawn invade enemies before level spawn points are configured.");
 
+        int currentDay = Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
+        LevelTable level = LogicRuntimeDataTableCache.GetLevelRequired(LevelSelectionService.SelectedLevelIdentifier);
+        if (level.ExpectedDays <= 0)
+            throw new InvalidOperationException($"Level '{level.Identifier}' has invalid expected days {level.ExpectedDays}.");
+        EnemyStrengthRuntimeConfig.ValidateCurveOrder(level.ExpectedDays);
+        EnemyStrengthRuntimeSettings settings = EnemyStrengthRuntimeConfig.Read(EnemyStrengthContext.Garrison);
+        Fix64 initialStrengthScale = LevelTagRuntime.GetEnemyInitialStrengthScale(EnemyStrengthContext.Garrison);
+        Fix64 growthSpeedScale = LevelTagRuntime.GetEnemyGrowthSpeedScale(EnemyStrengthContext.Garrison);
         var spawnPlans = new List<InvadeSpawnPlan>();
         for (int i = 0; i < s_InvadeSpawnPoints.Count; i++)
         {
@@ -480,17 +490,33 @@ public class PhaseManager : GameFrameworkComponent
             {
                 continue;
             }
-            int count = LevelTagRuntime.ModifyEnemySpawnCount(point.AuthoredCount);
-            if (count <= 0)
-                throw new InvalidOperationException($"PhaseManager invade spawn count is not positive. point={point.Name} count={count}.");
-
-            spawnPlans.Add(new InvadeSpawnPlan(
-                position,
-                point.UnitType,
-                point.UnitLevel,
-                count,
-                strongholdId,
-                point.Name));
+            BuildingTable armyBuilding = LogicRuntimeDataTableCache.GetArmyBuilding(point.UnitType)
+                ?? throw new InvalidOperationException($"PhaseManager cannot resolve army building for unit '{point.UnitType}'. point={point.Name}.");
+            EnemyUnitStrengthValueResolver.Result unitValues = EnemyUnitStrengthValueResolver.ResolveFromArmyBuilding(
+                armyBuilding,
+                settings.LevelTwoValueScale,
+                settings.LevelThreeValueScale);
+            IReadOnlyList<EnemySquadCompositionEntry> composition = EnemySquadStrengthResolver.Resolve(
+                point.AuthoredStrengthValue,
+                point.CountGrowthWeight,
+                currentDay,
+                level.ExpectedDays,
+                initialStrengthScale,
+                growthSpeedScale,
+                unitValues.EffectiveValues,
+                settings.Curve,
+                settings.SquadValue);
+            for (int compositionIndex = 0; compositionIndex < composition.Count; compositionIndex++)
+            {
+                EnemySquadCompositionEntry entry = composition[compositionIndex];
+                spawnPlans.Add(new InvadeSpawnPlan(
+                    position,
+                    point.UnitType,
+                    entry.Level,
+                    entry.Count,
+                    strongholdId,
+                    point.Name));
+            }
         }
         spawnPlans.Sort(CompareInvadeSpawnPlans);
 
@@ -546,9 +572,6 @@ public class PhaseManager : GameFrameworkComponent
         int unitType = left.UnitType.CompareTo(right.UnitType);
         if (unitType != 0)
             return unitType;
-        int level = left.UnitLevel.CompareTo(right.UnitLevel);
-        if (level != 0)
-            return level;
         int x = left.Position.x.RawValue.CompareTo(right.Position.x.RawValue);
         if (x != 0)
             return x;
@@ -563,9 +586,6 @@ public class PhaseManager : GameFrameworkComponent
         int unitType = left.UnitType.CompareTo(right.UnitType);
         if (unitType != 0)
             return unitType;
-        int level = left.UnitLevel.CompareTo(right.UnitLevel);
-        if (level != 0)
-            return level;
         int x = left.Position.x.RawValue.CompareTo(right.Position.x.RawValue);
         if (x != 0)
             return x;
@@ -578,21 +598,21 @@ public class PhaseManager : GameFrameworkComponent
         public InvadeSpawnPointDefinition(
             FixVector2 position,
             UnitType unitType,
-            int unitLevel,
-            int authoredCount,
+            Fix64 authoredStrengthValue,
+            Fix64 countGrowthWeight,
             string name)
         {
             Position = position;
             UnitType = unitType;
-            UnitLevel = unitLevel;
-            AuthoredCount = authoredCount;
+            AuthoredStrengthValue = authoredStrengthValue;
+            CountGrowthWeight = countGrowthWeight;
             Name = name;
         }
 
         public FixVector2 Position { get; }
         public UnitType UnitType { get; }
-        public int UnitLevel { get; }
-        public int AuthoredCount { get; }
+        public Fix64 AuthoredStrengthValue { get; }
+        public Fix64 CountGrowthWeight { get; }
         public string Name { get; }
     }
 

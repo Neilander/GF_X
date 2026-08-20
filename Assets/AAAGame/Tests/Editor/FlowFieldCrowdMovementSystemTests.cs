@@ -13743,7 +13743,7 @@ public class FlowFieldCrowdMovementSystemTests
                     || point.PointType != EntityPresetPointType.Unit
                     || !string.Equals(point.Identifier, "Unit_Scapegoat", StringComparison.Ordinal))
                     continue;
-                if (point.UnitSpawnCount <= 0)
+                if (point.UnitStrengthValue <= Fix64.Zero)
                     continue;
 
                 Vector3 position = point.Position;
@@ -13755,7 +13755,7 @@ public class FlowFieldCrowdMovementSystemTests
                 unitSpawns.Add(new Lv3UnitSpawnPreset
                 {
                     Position = position,
-                    Count = point.UnitSpawnCount
+                    Count = ResolveAuthoredScapegoatCount(point)
                 });
             }
 
@@ -13789,6 +13789,31 @@ public class FlowFieldCrowdMovementSystemTests
         {
             UnityEditor.PrefabUtility.UnloadPrefabContents(root);
         }
+    }
+
+    private static int ResolveAuthoredScapegoatCount(EntityPresetPoint point)
+    {
+        var curve = new EnemyStrengthCurveSettings((Fix64)0.10m, (Fix64)0.25m);
+        var value = new EnemySquadValueSettings(6, (Fix64)0.45m, (Fix64)8m);
+        Fix64[] levelValues = { Fix64.One, (Fix64)1.8m, (Fix64)2.25m };
+        IReadOnlyList<EnemySquadCompositionEntry> composition = EnemySquadStrengthResolver.Resolve(
+            point.UnitStrengthValue,
+            point.UnitCountGrowthWeight,
+            1,
+            8,
+            Fix64.One,
+            Fix64.One,
+            levelValues,
+            curve,
+            value);
+        int count = 0;
+        for (int i = 0; i < composition.Count; i++)
+        {
+            if (composition[i].Level != 1)
+                throw new InvalidOperationException("Lv3 authored Scapegoat preset no longer resolves to its original level-one composition.");
+            count = checked(count + composition[i].Count);
+        }
+        return count;
     }
 
     private static Rect ResolveStrongholdBlueprintBounds(GameObject levelRoot, string layerName)

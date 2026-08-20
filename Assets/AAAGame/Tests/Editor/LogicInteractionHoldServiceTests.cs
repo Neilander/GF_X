@@ -57,8 +57,8 @@ public sealed class LogicInteractionHoldServiceTests
             var panel = panelObject.GetComponent<UnityEngine.RectTransform>();
             panel.SetParent(parent, false);
             panel.anchorMin = panel.anchorMax = panel.pivot = new UnityEngine.Vector2(0.5f, 0.5f);
-            panel.sizeDelta = new UnityEngine.Vector2(624f, 464f);
-            var target = new UnityEngine.Rect(-80f, -79f, 160f, 158f);
+            panel.sizeDelta = new UnityEngine.Vector2(624.96f, 624.86f);
+            var target = new UnityEngine.Rect(-98.12f, -95.38f, 196.24f, 190.76f);
 
             BuildingPanelScreenClamp.PlaceBesideTargetBounds(
                 panel,

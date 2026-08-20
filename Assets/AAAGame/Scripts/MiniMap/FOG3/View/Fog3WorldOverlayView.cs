@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.Rendering;
 
 namespace AAAGame.MiniMap.FOG3
@@ -358,7 +358,9 @@ namespace AAAGame.MiniMap.FOG3
             float maxX = bounds.max.x;
             float minZ = bounds.min.z;
             float maxZ = bounds.max.z;
-            float y = overlayHeight + 0.01f;
+            float y = terrainInfo.BackgroundFogCoverWorldY.HasValue
+                ? terrainInfo.BackgroundFogCoverWorldY.Value - terrainInfo.Origin.y + Mathf.Max(0f, settings.SurfaceOffset)
+                : overlayHeight + 0.01f;
             float innerOverlap = Mathf.Max(0f, settings.OutsideMaskInnerOverlap);
 
             outsideMaterial = CreateTransparentMaterial("FOG3_OutsideMaskMaterial", settings.OutsideColor, 150);
@@ -892,6 +894,9 @@ namespace AAAGame.MiniMap.FOG3
 
             if (closestTerrainHit < 0)
             {
+                if (terrainInfo.BackgroundFogCoverWorldY.HasValue)
+                    return terrainInfo.BackgroundFogCoverWorldY.Value;
+
                 throw new System.InvalidOperationException(
                     $"FOG3 terrain projection found no terrain surface at ({worldX:F2}, {worldZ:F2}). source={terrainInfo.SourceName}.");
             }

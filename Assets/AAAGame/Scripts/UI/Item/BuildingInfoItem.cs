@@ -5,7 +5,7 @@ using TMPro;
 
 public partial class BuildingInfoItem : UIItemBase
 {
-    public const float DetailPanelCenterOffset = 120f;
+    public const float DetailPanelCenterOffset = 102f;
     public const float DetailPanelWidth = DetailPanelCenterOffset * 2f;
     public const float UnitPanelCenterOffset = DetailPanelCenterOffset;
 
@@ -287,23 +287,25 @@ public partial class BuildingInfoItem : UIItemBase
         if (!m_UnitPanel.gameObject.activeSelf)
             return;
 
-        const float contentWidth = 202f;
+        const float contentWidth = 178f;
         const float topPadding = 12f;
         const float bottomPadding = 12f;
         const float titleHeight = 28f;
         const float titleGap = 4f;
         const float contentGap = 6f;
         const float cellHeight = 20f;
-        const float spacing = 4f;
+        const float spacing = 2f;
         const int columnCount = 2;
 
         m_UnitName.enableAutoSizing = true;
         m_UnitName.fontSizeMin = 14f;
         m_UnitName.fontSizeMax = 20f;
         m_UnitName.enableWordWrapping = false;
-        m_UnitDesc.enableAutoSizing = false;
-        m_UnitDesc.fontSize = 12.5f;
+        m_UnitDesc.enableAutoSizing = true;
+        m_UnitDesc.fontSizeMin = 7f;
+        m_UnitDesc.fontSizeMax = 11.5f;
         m_UnitDesc.enableWordWrapping = true;
+        m_UnitDesc.margin = Vector4.zero;
 
         bool hasDescription = !string.IsNullOrWhiteSpace(m_UnitDesc.text);
         m_UnitDesc.gameObject.SetActive(hasDescription);
@@ -341,8 +343,8 @@ public partial class BuildingInfoItem : UIItemBase
 
         SetRect(
             m_UnitPanel,
-            new Vector2(427f, (mainPanelHeight - detailHeight) * 0.5f),
-            new Vector2(230f, detailHeight));
+            new Vector2(409f, (mainPanelHeight - detailHeight) * 0.5f),
+            new Vector2(194f, detailHeight));
 
         float cursor = detailHeight * 0.5f - topPadding;
         SetRect(m_UnitName.rectTransform, new Vector2(0f, cursor - titleHeight * 0.5f), new Vector2(contentWidth, titleHeight));

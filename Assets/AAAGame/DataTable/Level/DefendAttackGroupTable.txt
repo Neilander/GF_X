@@ -1,22 +1,17 @@
-#	防御出兵组表									
-#	ID		Identifier	LevelIdentifier	DefendRound	RouteIdentifier	Enemies	AfterGroupIdentifier	StartDelaySeconds	ExpectedEngagementSeconds
-#	int		string	string	int	string	StringIntPair[]	string	Fix64	Fix64
-#	行号	备注	代码内标识符	所属关卡标识	防御日，从1开始；超过最大日时重复最后一日并按无尽倍率成长	路线标识符	固定兵种与数量；来源据点被占领后整组不出兵且不向其他据点转移	前置出兵组；空表示从防御阶段开始计时	前置组固定出兵窗口结束后的延迟秒；无前置时为防御阶段开始延迟	从本组计时基准到预计接战时刻的秒数；固定出兵后，关卡内按当前首个玩家中转据点的导航距离反推移速
-	1		LvTest_D1_SouthEast	LvTest	1	LvTest_Route_SouthEast	[Unit_Poacher_Lv3,1]		0	15
-	2		LvTest_D1_SouthWest	LvTest	1	LvTest_Route_SouthWest	[Unit_BoneButcher,1]		0	12
-	3		LvTest_D1_West	LvTest	1	LvTest_Route_West	[Unit_Poacher_Lv3,1]		0	18
-	4		Lv_1_D2_East	Lv_1	2	Lv_1_Route_East	[Unit_HiredBodyguard,2]		0	12
-	5		Lv_1_D2_North	Lv_1	2	Lv_1_Route_North	[Unit_HiredBodyguard,1]		0	15
-	6		Lv_1_D2_West	Lv_1	2	Lv_1_Route_West	[Unit_HiredBodyguard,1]		0	18
-	7		Lv_1_D3_East	Lv_1	3	Lv_1_Route_East	[Unit_HiredBodyguard,2]		0	12
-	8		Lv_1_D3_North	Lv_1	3	Lv_1_Route_North	[Unit_HiredBodyguard,2]		0	15
-	9		Lv_1_D3_West	Lv_1	3	Lv_1_Route_West	[Unit_HiredBodyguard,2]		0	18
-	10		Lv_1_D4_East	Lv_1	4	Lv_1_Route_East	[Unit_HiredBodyguard,3]		0	12
-	11		Lv_1_D4_North	Lv_1	4	Lv_1_Route_North	[Unit_HiredBodyguard,3]		0	15
-	12		Lv_1_D4_West	Lv_1	4	Lv_1_Route_West	[Unit_HiredBodyguard,2]		0	18
-	13		Lv_2_D1_SouthEast	Lv_2	1	TP2	[Unit_CanMaker_Lv3,1]		0	18
-	14		Lv_2_D1_SouthWest	Lv_2	1	TP3	[Unit_CanMaker_Lv3,1]		0	15
-	15		Lv_2_D1_West	Lv_2	1	TP0	[Unit_BoneButcher,1]		0	12
-	16		Lv_3_D1_East	Lv_3	1	Lv_3_Route_East	[Unit_Intern,2]		0	17
-	17		Lv_3_D1_North	Lv_3	1	Lv_3_Route_North	[Unit_BoneButcher_Lv2,1],[Unit_Intern,1]		0	14
-	18		Lv_3_D1_SouthEast	Lv_3	1	Lv_3_Route_SouthEast	[Unit_Intern,2]		0	20
+#	防御出兵组表												
+#	ID		Identifier	LevelIdentifier	ActiveDays	RouteIdentifier	UnitIdentifier	InitialStrengthValue	CountGrowthWeight	AfterGroupIdentifier	StartDelaySeconds	ExpectedEngagementSeconds	Suffix
+#	int		string	string	int[]	string	string	Fix64	Fix64	string	Fix64	Fix64	string
+#	行号	备注	代码内标识符，由路线名和后缀派生；编辑器中只编辑后缀	所属关卡标识	启用防御日；编辑器顶部选择天数后勾选，不生成按日实例	路线标识符	单一兵种标识，不包含等级	初始橙髓等价战力；由兵种、数量和等级的非线性价值换算	新增强度在数量成长中的分配权重，0=全投等级，1=全投数量	前置小队；前置与本小队必须在同一天启用	前置小队固定出兵窗口结束后的延迟秒；无前置时为防御阶段开始延迟	从本小队计时基准到预计接战时刻的秒数	命名后缀，可空；同关卡同路线多小队时必须唯一
+	1		LvTest_Route_SouthEast	LvTest	2	LvTest_Route_SouthEast	Unit_Poacher	31.5	0.2		0	15	
+	2		LvTest_Route_SouthWest	LvTest	2	LvTest_Route_SouthWest	Unit_BoneButcher	7	0.25		0	12	
+	3		LvTest_Route_West	LvTest	2	LvTest_Route_West	Unit_Poacher	31.5	0.2		0	18	
+	4		Lv_1_Route_East	Lv_1	2,3,4	Lv_1_Route_East	Unit_HiredBodyguard	5.1875	0.8		0	12	
+	5		Lv_1_Route_North	Lv_1	2,3,4	Lv_1_Route_North	Unit_HiredBodyguard	2.5	0.8		0	15	
+	6		Lv_1_Route_West	Lv_1	2,3,4	Lv_1_Route_West	Unit_HiredBodyguard	2.5	0.8		0	18	
+	7		TP2	Lv_2	2	TP2	Unit_CanMaker	5.625	0.75		0	18	
+	8		TP3	Lv_2	2	TP3	Unit_CanMaker	5.625	0.75		0	15	
+	9		TP0	Lv_2	2	TP0	Unit_BoneButcher	7	0.25		0	12	
+	10		Lv_3_Route_East	Lv_3	2	Lv_3_Route_East	Unit_Intern	1.0375	0.9		0	17	
+	11		Lv_3_Route_North_BoneButcher	Lv_3	2	Lv_3_Route_North	Unit_BoneButcher	18.9	0.25		0	14	BoneButcher
+	12		Lv_3_Route_North_Intern	Lv_3	2	Lv_3_Route_North	Unit_Intern	0.5	0.9		0	14	Intern
+	13		Lv_3_Route_SouthEast	Lv_3	2	Lv_3_Route_SouthEast	Unit_Intern	1.0375	0.9		0	20	

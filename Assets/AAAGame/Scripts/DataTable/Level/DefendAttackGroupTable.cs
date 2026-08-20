@@ -29,7 +29,7 @@ public class DefendAttackGroupTable : DataRowBase
     }
 
         /// <summary>
-        /// 代码内标识符
+        /// 代码内标识符，由路线名和后缀派生；编辑器中只编辑后缀
         /// </summary>
         public string Identifier
         {
@@ -47,9 +47,9 @@ public class DefendAttackGroupTable : DataRowBase
         }
 
         /// <summary>
-        /// 防御日，从1开始；超过最大日时重复最后一日并按无尽倍率成长
+        /// 启用防御日；编辑器顶部选择天数后勾选，不生成按日实例
         /// </summary>
-        public int DefendRound
+        public int[] ActiveDays
         {
             get;
             private set;
@@ -65,16 +65,34 @@ public class DefendAttackGroupTable : DataRowBase
         }
 
         /// <summary>
-        /// 固定兵种与数量；来源据点被占领后整组不出兵且不向其他据点转移
+        /// 单一兵种标识，不包含等级
         /// </summary>
-        public StringIntPair[] Enemies
+        public string UnitIdentifier
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 前置出兵组；空表示从防御阶段开始计时
+        /// 初始橙髓等价战力；由兵种、数量和等级的非线性价值换算
+        /// </summary>
+        public Fix64 InitialStrengthValue
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 新增强度在数量成长中的分配权重，0=全投等级，1=全投数量
+        /// </summary>
+        public Fix64 CountGrowthWeight
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 前置小队；前置与本小队必须在同一天启用
         /// </summary>
         public string AfterGroupIdentifier
         {
@@ -83,7 +101,7 @@ public class DefendAttackGroupTable : DataRowBase
         }
 
         /// <summary>
-        /// 前置组固定出兵窗口结束后的延迟秒；无前置时为防御阶段开始延迟
+        /// 前置小队固定出兵窗口结束后的延迟秒；无前置时为防御阶段开始延迟
         /// </summary>
         public Fix64 StartDelaySeconds
         {
@@ -92,9 +110,18 @@ public class DefendAttackGroupTable : DataRowBase
         }
 
         /// <summary>
-        /// 从本组计时基准到预计接战时刻的秒数；固定出兵后，关卡内按当前首个玩家中转据点的导航距离反推移速
+        /// 从本小队计时基准到预计接战时刻的秒数
         /// </summary>
         public Fix64 ExpectedEngagementSeconds
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 命名后缀，可空；同关卡同路线多小队时必须唯一
+        /// </summary>
+        public string Suffix
         {
             get;
             private set;
@@ -114,12 +141,15 @@ public class DefendAttackGroupTable : DataRowBase
             index++;
             Identifier = columnStrings[index++];
             LevelIdentifier = columnStrings[index++];
-            DefendRound = DataTableExtension.ParseInt(columnStrings[index++]);
+            ActiveDays = DataTableExtension.ParseArray<int>(columnStrings[index++]);
             RouteIdentifier = columnStrings[index++];
-            Enemies = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
+            UnitIdentifier = columnStrings[index++];
+            InitialStrengthValue = DataTableExtension.ParseFix64(columnStrings[index++]);
+            CountGrowthWeight = DataTableExtension.ParseFix64(columnStrings[index++]);
             AfterGroupIdentifier = columnStrings[index++];
             StartDelaySeconds = DataTableExtension.ParseFix64(columnStrings[index++]);
             ExpectedEngagementSeconds = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Suffix = columnStrings[index++];
 
             return true;
         }
@@ -133,12 +163,15 @@ public class DefendAttackGroupTable : DataRowBase
                     m_Id = binaryReader.Read7BitEncodedInt32();
                     Identifier = binaryReader.ReadString();
                     LevelIdentifier = binaryReader.ReadString();
-                    DefendRound = binaryReader.Read7BitEncodedInt32();
+                    ActiveDays = binaryReader.ReadArray<int>();
                     RouteIdentifier = binaryReader.ReadString();
-                    Enemies = binaryReader.ReadStringIntPairArray();
+                    UnitIdentifier = binaryReader.ReadString();
+                    InitialStrengthValue = binaryReader.ReadFix64();
+                    CountGrowthWeight = binaryReader.ReadFix64();
                     AfterGroupIdentifier = binaryReader.ReadString();
                     StartDelaySeconds = binaryReader.ReadFix64();
                     ExpectedEngagementSeconds = binaryReader.ReadFix64();
+                    Suffix = binaryReader.ReadString();
                 }
             }
 

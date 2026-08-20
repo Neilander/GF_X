@@ -26,7 +26,7 @@
 	"__smartColor": "#ADADB5",
 	"__bgPos": null,
 	"externalRelPath": null,
-	"fieldInstances": [],
+	"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{ "id": "V_String", "params": ["CoastalCity"] }] }],
 	"layerInstances": [
 		{
 			"__identifier": "Entities",
@@ -111,7 +111,8 @@
 							"id": "V_String",
 							"params": ["Unit_Scapegoat"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [6] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 7.125, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [7.125] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.9, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.9] }] }
 					],
 					"__worldX": 3704,
 					"__worldY": 1064
@@ -317,7 +318,8 @@
 							"id": "V_String",
 							"params": ["Unit_BoneButcher"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 3, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [3] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 22.575, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [22.575] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.25, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.25] }] }
 					],
 					"__worldX": 3480,
 					"__worldY": 760
@@ -408,7 +410,8 @@
 							"id": "V_String",
 							"params": ["Unit_Scapegoat"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [6] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 7.125, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [7.125] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.9, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.9] }] }
 					],
 					"__worldX": 3784,
 					"__worldY": 1032
@@ -568,7 +571,8 @@
 							"id": "V_String",
 							"params": ["Unit_BoneButcher"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 3, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [3] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 22.575, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [22.575] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.25, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.25] }] }
 					],
 					"__worldX": 4280,
 					"__worldY": 1112
@@ -590,7 +594,8 @@
 							"id": "V_String",
 							"params": ["Unit_BoneButcher"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 2, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [2] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 14.525, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [14.525] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.25, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.25] }] }
 					],
 					"__worldX": 4344,
 					"__worldY": 1160
@@ -727,7 +732,8 @@
 							"id": "V_String",
 							"params": ["Unit_Scapegoat"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 5.75, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5.75] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.9, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.9] }] }
 					],
 					"__worldX": 3704,
 					"__worldY": 360
@@ -749,7 +755,8 @@
 							"id": "V_String",
 							"params": ["Unit_Scapegoat"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 5.75, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5.75] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.9, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.9] }] }
 					],
 					"__worldX": 3864,
 					"__worldY": 408
@@ -771,7 +778,8 @@
 							"id": "V_String",
 							"params": ["Unit_Scapegoat"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 5.75, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5.75] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.9, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.9] }] }
 					],
 					"__worldX": 3688,
 					"__worldY": 440
@@ -793,7 +801,8 @@
 							"id": "V_String",
 							"params": ["Unit_Scapegoat"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 5.75, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5.75] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.9, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.9] }] }
 					],
 					"__worldX": 3848,
 					"__worldY": 488
@@ -933,7 +942,8 @@
 							"id": "V_String",
 							"params": ["Unit_Courier"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 4.6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [4.6] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.8, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.8] }] }
 					],
 					"__worldX": 4184,
 					"__worldY": 680
@@ -955,7 +965,8 @@
 							"id": "V_String",
 							"params": ["Unit_CanMaker"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 7.416667, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [7.416667] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.75, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.75] }] }
 					],
 					"__worldX": 4392,
 					"__worldY": 760
@@ -977,7 +988,8 @@
 							"id": "V_String",
 							"params": ["Unit_CanMaker"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 7.416667, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [7.416667] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.75, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.75] }] }
 					],
 					"__worldX": 4344,
 					"__worldY": 616
@@ -999,7 +1011,8 @@
 							"id": "V_String",
 							"params": ["Unit_Courier"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 4.6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [4.6] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.8, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.8] }] }
 					],
 					"__worldX": 4200,
 					"__worldY": 760
@@ -1021,7 +1034,8 @@
 							"id": "V_String",
 							"params": ["Unit_Courier"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 4.6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [4.6] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.8, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.8] }] }
 					],
 					"__worldX": 4264,
 					"__worldY": 648
@@ -1043,7 +1057,8 @@
 							"id": "V_String",
 							"params": ["Unit_Courier"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 4.6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [4.6] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.8, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.8] }] }
 					],
 					"__worldX": 4296,
 					"__worldY": 760
@@ -1065,7 +1080,8 @@
 							"id": "V_String",
 							"params": ["Unit_Courier"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 4.6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [4.6] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.8, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.8] }] }
 					],
 					"__worldX": 4248,
 					"__worldY": 712
@@ -1087,7 +1103,8 @@
 							"id": "V_String",
 							"params": ["Unit_Scapegoat"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 5.75, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5.75] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.9, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.9] }] }
 					],
 					"__worldX": 3784,
 					"__worldY": 440
@@ -1109,7 +1126,8 @@
 							"id": "V_String",
 							"params": ["Unit_BoneButcher"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 3, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [3] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 22.575, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [22.575] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.25, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.25] }] }
 					],
 					"__worldX": 4408,
 					"__worldY": 1096

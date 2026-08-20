@@ -252,7 +252,11 @@ public sealed class BuildingPanelPresentationTests
         GridLayoutGroup unitGrid = unitProperties.GetComponent<GridLayoutGroup>();
         Assert.IsNotNull(unitGrid);
         Assert.AreEqual(2, unitGrid.constraintCount);
-        Assert.AreEqual(230f, ((RectTransform)unitPanel).rect.width, 0.01f);
+        Assert.AreEqual(194f, ((RectTransform)unitPanel).rect.width, 0.01f);
+        Assert.AreEqual(2f, unitGrid.spacing.x, 0.01f);
+        TMP_Text unitDesc = FindChild(unitPanel, "UnitDesc").GetComponent<TMP_Text>();
+        Assert.IsTrue(unitDesc.enableAutoSizing);
+        Assert.AreEqual(Vector4.zero, unitDesc.margin);
         Assert.IsFalse(unitPanel.gameObject.activeSelf);
 
         GameObject instance = UnityEngine.Object.Instantiate(prefab);
@@ -386,8 +390,8 @@ public sealed class BuildingPanelPresentationTests
 
             RectTransform detail = detailObject.GetComponent<RectTransform>();
             detail.SetParent(panel, false);
-            detail.sizeDelta = new Vector2(230f, 220f);
-            detail.anchoredPosition = new Vector2(427f, 0f);
+            detail.sizeDelta = new Vector2(194f, 220f);
+            detail.anchoredPosition = new Vector2(409f, 0f);
             Vector3 originalScale = panel.localScale;
 
             BuildingPanelScreenClamp.ClampToParent(panel, parent);

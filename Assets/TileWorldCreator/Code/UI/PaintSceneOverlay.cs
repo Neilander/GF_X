@@ -150,22 +150,54 @@ namespace GiantGrey.TileWorldCreator
         {
             if (!undoPerfomed) return;
 
-            for (int i = 0; i < stream.length; ++i)
+            try
             {
-                if (stream.GetEventType(i) == ObjectChangeKind.ChangeAssetObjectProperties)
+                var changedConfigurations = new HashSet<Configuration>();
+                for (int i = 0; i < stream.length; ++i)
                 {
+                    if (stream.GetEventType(i) != ObjectChangeKind.ChangeAssetObjectProperties)
+                        continue;
+
                     stream.GetChangeAssetObjectPropertiesEvent(i, out var e);
-                    var changedObj = EditorUtility.InstanceIDToObject(e.instanceId);
-                    if (changedObj is BlueprintLayer)
-                    {
-                        var managers = GameObject.FindObjectsByType<TileWorldCreatorManager>(
-                            FindObjectsInactive.Include, FindObjectsSortMode.InstanceID);
-                        if (selectedManager < managers.Length)
-                            managers[selectedManager].GenerateCompleteMap();
-                    }
+                    if (EditorUtility.InstanceIDToObject(e.instanceId) is BlueprintLayer blueprintLayer &&
+                        blueprintLayer.GetAsset() != null)
+                        changedConfigurations.Add(blueprintLayer.GetAsset());
                 }
+
+                TileWorldCreatorManager[] availableManagers = GameObject.FindObjectsByType<TileWorldCreatorManager>(
+                    FindObjectsInactive.Include, FindObjectsSortMode.InstanceID);
+                foreach (TileWorldCreatorManager changedManager in GetManagersToRebuild(
+                             changedConfigurations,
+                             availableManagers,
+                             EditorCoroutines.HasActiveCoroutines))
+                    changedManager.GenerateCompleteMap();
             }
-            undoPerfomed = false;
+            finally
+            {
+                undoPerfomed = false;
+            }
+        }
+
+        private static List<TileWorldCreatorManager> GetManagersToRebuild(
+            IEnumerable<Configuration> changedConfigurations,
+            IEnumerable<TileWorldCreatorManager> availableManagers,
+            bool buildActive)
+        {
+            if (buildActive)
+                return new List<TileWorldCreatorManager>();
+
+            var changedConfigurationSet = new HashSet<Configuration>(changedConfigurations);
+            var result = new List<TileWorldCreatorManager>();
+            var scheduledConfigurations = new HashSet<Configuration>();
+            foreach (TileWorldCreatorManager availableManager in availableManagers)
+            {
+                if (availableManager != null &&
+                    changedConfigurationSet.Contains(availableManager.configuration) &&
+                    scheduledConfigurations.Add(availableManager.configuration))
+                    result.Add(availableManager);
+            }
+
+            return result;
         }
 
         private void OnSceneChanged(Scene oldScene, Scene newScene)

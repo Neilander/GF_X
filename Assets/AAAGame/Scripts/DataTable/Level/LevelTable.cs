@@ -343,6 +343,15 @@ public class LevelTable : DataRowBase
             private set;
         }
 
+        /// <summary>
+        /// 敌军成长曲线预期天数；该日为曲线斜率最高点，之后增速快速放缓
+        /// </summary>
+        public int ExpectedDays
+        {
+            get;
+            private set;
+        }
+
         public override bool ParseDataRow(string dataRowString, object userData)
         {
             string[] columnStrings = dataRowString.Split(DataTableExtension.DataSplitSeparators);
@@ -390,6 +399,7 @@ public class LevelTable : DataRowBase
             VariableRuleIdentifier = columnStrings[index++];
             UnlockArchetype = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
             DefaultArchetype = DataTableExtension.ParseEnum<Archetype>(columnStrings[index++]);
+            ExpectedDays = DataTableExtension.ParseInt(columnStrings[index++]);
 
             return true;
         }
@@ -436,6 +446,7 @@ public class LevelTable : DataRowBase
                     VariableRuleIdentifier = binaryReader.ReadString();
                     UnlockArchetype = binaryReader.ReadArray<Archetype>();
                     DefaultArchetype = binaryReader.ReadEnum<Archetype>();
+                    ExpectedDays = binaryReader.Read7BitEncodedInt32();
                 }
             }
 

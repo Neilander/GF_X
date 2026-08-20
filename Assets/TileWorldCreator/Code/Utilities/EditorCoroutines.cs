@@ -31,6 +31,8 @@ namespace GiantGrey.TileWorldCreator.Utilities {
 		}
  
 		static readonly List<Coroutine> coroutines = new List<Coroutine> ();
+
+		public static bool HasActiveCoroutines => coroutines.Count > 0;
  
 		public static void Execute (IEnumerator enumerator, System.Action<bool> OnUpdate = null) 
 		{

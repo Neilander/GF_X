@@ -225,14 +225,6 @@ public class LogicFrameRuntimeTests
         Assert.AreEqual(62UL, checked(DefendPhaseRuntime.GetEditorTestTickCount(Fix64.One) * 2UL));
     }
 
-    [TestCase(3, 1.5f, 5)]
-    [TestCase(3, 1.25f, 4)]
-    [TestCase(1, 0.25f, 1)]
-    public void DefendWaveGrowthUsesFixedRoundToNearest(int count, float scale, int expected)
-    {
-        Assert.AreEqual(expected, DefendPhaseRuntime.GetEditorTestScaledSpawnCount(count, (Fix64)scale));
-    }
-
     [Test]
     public void DefendSpawnWeights_PreserveFractionalRatio()
     {

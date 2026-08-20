@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 using System;
 using System.Collections;
@@ -76,6 +76,11 @@ namespace AAAGame.MiniMap.FOG3
                 out int[] platformHeights,
                 out bool[] slopeMask,
                 out Fog3SlopeCellInfo[] slopeCells);
+            ResolveEnvironmentBackground(
+                manager,
+                out float? backgroundSurfaceWorldY,
+                out float? backgroundFogCoverWorldY,
+                out Bounds? backgroundWorldBounds);
 
             if (settings.UseTileWorldBlueprintLayerAsWalkable && !string.IsNullOrEmpty(settings.TileWorldWalkableLayerName))
             {
@@ -90,6 +95,20 @@ namespace AAAGame.MiniMap.FOG3
                 ApplyPhysicsWalkableMask(walkable, width, height, cellSize, origin, settings);
             }
 
+            if (backgroundWorldBounds.HasValue)
+            {
+                ExpandTerrainToEnvironmentBackground(
+                    backgroundWorldBounds.Value,
+                    cellSize,
+                    ref width,
+                    ref height,
+                    ref origin,
+                    ref walkable,
+                    ref platformHeights,
+                    ref slopeMask,
+                    ref slopeCells);
+            }
+
             terrainInfo = new Fog3TerrainInfo(
                 width,
                 height,
@@ -100,8 +119,104 @@ namespace AAAGame.MiniMap.FOG3
                 slopeMask,
                 slopeCells,
                 platformEdgeInset,
+                backgroundSurfaceWorldY,
+                backgroundFogCoverWorldY,
                 "TileWorldCreator");
             return true;
+        }
+
+        private static void ResolveEnvironmentBackground(
+            GiantGrey.TileWorldCreator.TileWorldCreatorManager manager,
+            out float? surfaceWorldY,
+            out float? fogCoverWorldY,
+            out Bounds? worldBounds)
+        {
+            LevelEnvironmentBackground[] backgrounds = manager.GetComponentsInChildren<LevelEnvironmentBackground>(true);
+            if (backgrounds.Length == 0)
+            {
+                surfaceWorldY = null;
+                fogCoverWorldY = null;
+                worldBounds = null;
+                return;
+            }
+            if (backgrounds.Length != 1)
+            {
+                throw new InvalidOperationException(
+                    $"Fog3 TileWorld terrain supports exactly one LevelEnvironmentBackground, actual={backgrounds.Length}.");
+            }
+
+            surfaceWorldY = backgrounds[0].SurfaceWorldY;
+            fogCoverWorldY = backgrounds[0].FogCoverWorldY;
+            worldBounds = backgrounds[0].WorldBounds;
+        }
+
+        private static void ExpandTerrainToEnvironmentBackground(
+            Bounds backgroundWorldBounds,
+            float cellSize,
+            ref int width,
+            ref int height,
+            ref Vector3 origin,
+            ref bool[] revealableMask,
+            ref int[] platformHeights,
+            ref bool[] slopeMask,
+            ref Fog3SlopeCellInfo[] slopeCells)
+        {
+            int minimumGridX = ResolveAlignedGridLine(backgroundWorldBounds.min.x, origin.x, cellSize, "minimum X");
+            int minimumGridY = ResolveAlignedGridLine(backgroundWorldBounds.min.z, origin.z, cellSize, "minimum Z");
+            int maximumGridX = ResolveAlignedGridLine(backgroundWorldBounds.max.x, origin.x, cellSize, "maximum X");
+            int maximumGridY = ResolveAlignedGridLine(backgroundWorldBounds.max.z, origin.z, cellSize, "maximum Z");
+            if (minimumGridX > 0 || minimumGridY > 0 || maximumGridX < width || maximumGridY < height)
+            {
+                throw new InvalidOperationException(
+                    $"Environment background bounds do not contain the TileWorld grid. " +
+                    $"background=({minimumGridX},{minimumGridY})..({maximumGridX},{maximumGridY}), terrain={width}x{height}.");
+            }
+
+            int expandedWidth = checked(maximumGridX - minimumGridX);
+            int expandedHeight = checked(maximumGridY - minimumGridY);
+            if (expandedWidth <= 0 || expandedHeight <= 0)
+                throw new InvalidOperationException("Environment background grid bounds must have positive area.");
+            if (expandedWidth == width && expandedHeight == height && minimumGridX == 0 && minimumGridY == 0)
+                return;
+
+            int offsetX = checked(-minimumGridX);
+            int offsetY = checked(-minimumGridY);
+            int expandedLength = checked(expandedWidth * expandedHeight);
+            bool[] expandedRevealableMask = CreateFilledMask(expandedWidth, expandedHeight, true);
+            var expandedPlatformHeights = new int[expandedLength];
+            var expandedSlopeMask = new bool[expandedLength];
+            var expandedSlopeCells = new Fog3SlopeCellInfo[expandedLength];
+            Array.Fill(expandedPlatformHeights, -1);
+
+            for (int y = 0; y < height; y++)
+            {
+                int sourceIndex = y * width;
+                int destinationIndex = offsetX + (y + offsetY) * expandedWidth;
+                Array.Copy(platformHeights, sourceIndex, expandedPlatformHeights, destinationIndex, width);
+                Array.Copy(slopeMask, sourceIndex, expandedSlopeMask, destinationIndex, width);
+                Array.Copy(slopeCells, sourceIndex, expandedSlopeCells, destinationIndex, width);
+            }
+
+            origin += new Vector3(minimumGridX * cellSize, 0f, minimumGridY * cellSize);
+            width = expandedWidth;
+            height = expandedHeight;
+            revealableMask = expandedRevealableMask;
+            platformHeights = expandedPlatformHeights;
+            slopeMask = expandedSlopeMask;
+            slopeCells = expandedSlopeCells;
+        }
+
+        private static int ResolveAlignedGridLine(float worldPosition, float gridOrigin, float cellSize, string boundaryName)
+        {
+            float gridPosition = (worldPosition - gridOrigin) / cellSize;
+            int rounded = Mathf.RoundToInt(gridPosition);
+            if (!Mathf.Approximately(gridPosition, rounded))
+            {
+                throw new InvalidOperationException(
+                    $"Environment background {boundaryName} is not aligned to the TileWorld grid. gridPosition={gridPosition}.");
+            }
+
+            return rounded;
         }
 
         private static float ResolvePlatformEdgeInset(

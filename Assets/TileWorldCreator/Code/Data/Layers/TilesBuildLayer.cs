@@ -196,6 +196,11 @@ namespace GiantGrey.TileWorldCreator
         // private BlueprintLayer blueprintLayer;
         private GameObject owner;
 
+#if UNITY_EDITOR
+        [System.NonSerialized]
+        private bool editorGenerationActive;
+#endif
+
         public TilesBuildLayer()
         {
             tileLayers.Add(new TileLayers());
@@ -324,6 +329,15 @@ namespace GiantGrey.TileWorldCreator
 
         public override void ResetLayer(TileWorldCreatorManager _manager)
         {
+#if UNITY_EDITOR
+            if (!Application.isPlaying && editorGenerationActive)
+            {
+                throw new System.InvalidOperationException(
+                    $"TileWorldCreator build layer '{layerName}' was reset before its previous editor generation completed. " +
+                    $"configuration={configuration?.name ?? "<null>"}, manager={manager?.name ?? "<null>"}.");
+            }
+#endif
+
             serializedTiles = new List<TileData>();
             serializedWorldPositions = new List<Vector2>();
 
@@ -437,6 +451,20 @@ namespace GiantGrey.TileWorldCreator
                 return;
             }
 
+#if UNITY_EDITOR
+            if (!Application.isPlaying)
+            {
+                if (editorGenerationActive)
+                {
+                    throw new System.InvalidOperationException(
+                        $"TileWorldCreator build layer '{layerName}' was executed again before its previous editor generation completed. " +
+                        $"configuration={_configuration?.name ?? "<null>"}, manager={_manager?.name ?? "<null>"}.");
+                }
+
+                editorGenerationActive = true;
+            }
+#endif
+
             configuration = _configuration;
 
             uint _seed;
@@ -471,6 +499,9 @@ namespace GiantGrey.TileWorldCreator
 
             if (_layer == null)
             {
+#if UNITY_EDITOR
+                editorGenerationActive = false;
+#endif
                 UnityEngine.Debug.Log(layerName + " - Assigned blueprint layer not found: " + assignedBlueprintLayerGuid + " - Please try to reselect it");
                 return;
             }
@@ -1030,72 +1061,79 @@ namespace GiantGrey.TileWorldCreator
                     manager.StartCoroutine(InstantiateByClusters(sortedTileMap.Values.ToList()));
                 }
             }
+#if UNITY_EDITOR
+            else if (!Application.isPlaying)
+            {
+                editorGenerationActive = false;
+            }
+#endif
 
         }
 
         IEnumerator InstantiateByClusters(List<SortedTiles> _sortedTiles)
         {
-#if UNITY_EDITOR
-            if (!Application.isPlaying)
+            try
             {
-                EditorUtility.DisplayProgressBar("Instantiating tiles", "Please wait...", 0f);
-            }
+#if UNITY_EDITOR
+                if (!Application.isPlaying)
+                {
+                    EditorUtility.DisplayProgressBar("Instantiating tiles", "Please wait...", 0f);
+                }
 #endif
 
-            for (int c = 0; c < modifiedClusters.Count; c++)
-            {
-                var _cluster = FindCluster(modifiedClusters[c], false);
-                if (_cluster != null)
+                for (int c = 0; c < modifiedClusters.Count; c++)
                 {
-                    if (Application.isPlaying)
-                    {
-                        GameObject.DestroyImmediate(_cluster);
-                    }
-                    else
+                    var _cluster = FindCluster(modifiedClusters[c], false);
+                    if (_cluster != null)
                     {
                         GameObject.DestroyImmediate(_cluster);
                     }
                 }
+
+                for (int t = 0; t < tileLayers.Count; t++)
+                {
+                    if (!useMultiLayers && t > 0)
+                    {
+                        continue;
+                    }
+
+                    for (int i = 0; i < _sortedTiles.Count; i++)
+                    {
+                        for (int j = 0; j < _sortedTiles[i].tiles.Count; j++)
+                        {
+                            if (_sortedTiles[i].tiles[j].tileType == TilePreset.TileType.DUALGRD_fill && tileLayers[t].ignoreFillTiles) continue;
+                            if (_sortedTiles[i].tiles[j].tileType == TilePreset.TileType.NRMGRD_fill && tileLayers[t].ignoreFillTiles) continue;
+
+                            InstantiateTile(_sortedTiles[i].tiles[j], _sortedTiles[i].clusterID, t);
+
+                        }
+#if UNITY_EDITOR
+                        if (!Application.isPlaying)
+                        {
+                            EditorUtility.DisplayProgressBar("Instantiating tiles", "Please wait...", (float)i / (float)_sortedTiles.Count);
+                        }
+#endif
+                    }
+                }
+
+#if UNITY_EDITOR
+                EditorUtility.ClearProgressBar();
+#endif
+
+                yield return null;
+
+                // Merge clusters
+                MergeClusters();
             }
-
-
-            for (int t = 0; t < tileLayers.Count; t++)
+            finally
             {
-                if (!useMultiLayers && t > 0)
-                {
-                    continue;
-                }
-
-                for (int i = 0; i < _sortedTiles.Count; i++)
-                {
-                    for (int j = 0; j < _sortedTiles[i].tiles.Count; j++)
-                    {
-                        if (_sortedTiles[i].tiles[j].tileType == TilePreset.TileType.DUALGRD_fill && tileLayers[t].ignoreFillTiles) continue;
-                        if (_sortedTiles[i].tiles[j].tileType == TilePreset.TileType.NRMGRD_fill && tileLayers[t].ignoreFillTiles) continue;
-
-                        InstantiateTile(_sortedTiles[i].tiles[j], _sortedTiles[i].clusterID, t);
-
-                    }
 #if UNITY_EDITOR
-                    if (!Application.isPlaying)
-                    {
-                        EditorUtility.DisplayProgressBar("Instantiating tiles", "Please wait...", (float)i / (float)_sortedTiles.Count);
-                    }
-#endif
-
-                   
+                if (!Application.isPlaying)
+                {
+                    editorGenerationActive = false;
                 }
+#endif
             }
-
-#if UNITY_EDITOR
-            EditorUtility.ClearProgressBar();
-#endif
-
-            yield return null;
-
-            // Merge clusters
-           
-            MergeClusters();
         }
 
         // public void AnimationComplete(Vector2 _position)

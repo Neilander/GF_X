@@ -26,7 +26,7 @@
 	"__smartColor": "#ADADB5",
 	"__bgPos": null,
 	"externalRelPath": null,
-	"fieldInstances": [],
+	"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{ "id": "V_String", "params": ["CoastalCity"] }] }],
 	"layerInstances": [
 		{
 			"__identifier": "Entities",
@@ -157,7 +157,8 @@
 							"id": "V_String",
 							"params": ["Unit_Scapegoat"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 4.45, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [4.45] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.9, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.9] }] }
 					],
 					"__worldX": 696,
 					"__worldY": 744
@@ -179,7 +180,8 @@
 							"id": "V_String",
 							"params": ["Unit_Scapegoat"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 4.45, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [4.45] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.9, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.9] }] }
 					],
 					"__worldX": 824,
 					"__worldY": 456
@@ -201,7 +203,8 @@
 							"id": "V_String",
 							"params": ["Unit_Scapegoat"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 4.45, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [4.45] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.9, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.9] }] }
 					],
 					"__worldX": 776,
 					"__worldY": 424
@@ -683,7 +686,8 @@
 							"id": "V_String",
 							"params": ["Unit_HiredBodyguard"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 2, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [2] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 5.1875, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5.1875] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.8, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.8] }] }
 					],
 					"__worldX": 216,
 					"__worldY": 664
@@ -705,7 +709,8 @@
 							"id": "V_String",
 							"params": ["Unit_HiredBodyguard"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 1, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [1] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 2.5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [2.5] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.8, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.8] }] }
 					],
 					"__worldX": 232,
 					"__worldY": 632
@@ -727,7 +732,8 @@
 							"id": "V_String",
 							"params": ["Unit_HiredBodyguard"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 2, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [2] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 5.1875, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5.1875] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.8, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.8] }] }
 					],
 					"__worldX": 440,
 					"__worldY": 376
@@ -749,7 +755,8 @@
 							"id": "V_String",
 							"params": ["Unit_HiredBodyguard"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 3, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [3] }] }
+						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 8.0625, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [8.0625] }] },
+						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.8, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.8] }] }
 					],
 					"__worldX": 504,
 					"__worldY": 440

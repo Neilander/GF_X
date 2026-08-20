@@ -515,9 +515,9 @@ public static class LevelTagRuntime
         return total;
     }
 
-    public static int ModifyEnemySpawnCount(int baseCount)
+    public static Fix64 GetEnemyInitialStrengthScale(EnemyStrengthContext context)
     {
-        Fix64 result = (Fix64)Mathf.Max(0, baseCount);
+        Fix64 result = Fix64.One;
         foreach (LevelTagTable tag in ResolveActiveTags())
         {
             switch (tag.Identifier)
@@ -529,7 +529,17 @@ public static class LevelTagRuntime
             }
         }
 
-        return Mathf.Max(0, (int)Fix64.Ceiling(result));
+        if (result <= Fix64.Zero)
+            throw new InvalidOperationException($"Enemy initial strength scale is not positive. context={context} raw={result.RawValue}.");
+        return result;
+    }
+
+    public static Fix64 GetEnemyGrowthSpeedScale(EnemyStrengthContext context)
+    {
+        Fix64 result = Fix64.One;
+        if (result <= Fix64.Zero)
+            throw new InvalidOperationException($"Enemy growth speed scale is not positive. context={context} raw={result.RawValue}.");
+        return result;
     }
 
     private static void AddUnitModules(LevelTagTable tag, CharacterDataDetail row, UnitType unitType, int ownerFactionId, List<BuffCallback> modules)

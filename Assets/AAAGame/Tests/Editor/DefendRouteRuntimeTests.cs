@@ -556,10 +556,9 @@ public sealed class DefendRouteRuntimeTests
 
             foreach (object group in groups)
             {
-                int defendRound = (int)groupType.GetField("DefendRound", flags).GetValue(group);
                 string routeIdentifier = (string)groupType.GetField("RouteIdentifier", flags).GetValue(group);
                 string suffix = (string)groupType.GetField("Suffix", flags).GetValue(group);
-                string expected = $"D{defendRound}_{routeIdentifier}";
+                string expected = routeIdentifier;
                 if (!string.IsNullOrEmpty(suffix))
                     expected += $"_{suffix}";
                 Assert.AreEqual(expected, groupType.GetField("Identifier", flags).GetValue(group));
@@ -594,6 +593,34 @@ public sealed class DefendRouteRuntimeTests
             if (window != null)
                 UnityEngine.Object.DestroyImmediate(window);
         }
+    }
+
+    [Test]
+    public void FirstDefenseGroupsUseRealDayTwoForBuildBeforeInvadeLevels()
+    {
+        string[] lines = File.ReadAllLines(
+            "Assets/AAAGame/DataTable/Level/DefendAttackGroupTable.txt");
+        int matchedGroups = 0;
+        foreach (string line in lines.Skip(4))
+        {
+            string[] columns = line.Split('	');
+            if (columns.Length < 6)
+                throw new InvalidDataException($"Malformed defense group row: '{line}'.");
+            string levelIdentifier = columns[4];
+            if (levelIdentifier != "Lv_2"
+                && levelIdentifier != "Lv_3"
+                && levelIdentifier != "LvTest")
+            {
+                continue;
+            }
+
+            string[] activeDays = columns[5].Split(',');
+            CollectionAssert.Contains(activeDays, "2", $"First defense group is not active on real Day 2: {line}");
+            CollectionAssert.DoesNotContain(activeDays, "1", $"BuildBeforeInvade cannot reach defense on Day 1: {line}");
+            matchedGroups++;
+        }
+
+        Assert.That(matchedGroups, Is.EqualTo(10));
     }
 
     [Test]

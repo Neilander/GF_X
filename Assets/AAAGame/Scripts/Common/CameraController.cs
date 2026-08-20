@@ -49,6 +49,8 @@ public class CameraController : MonoBehaviour
     bool edgePanActivated;
     Vector3 currentPanOffset;
     Vector3 panOffsetVelocity;
+    LevelEntity cameraBoundsLevel;
+    LevelCameraBounds levelCameraBounds;
 
 
     private void Awake()
@@ -91,7 +93,7 @@ public class CameraController : MonoBehaviour
         if (!CanRunScreenEdgePan())
         {
             ResetEdgePanState(false);
-            followProxy.position = target.position + currentPanOffset;
+            UpdateFollowProxyPosition();
             return;
         }
 
@@ -115,7 +117,7 @@ public class CameraController : MonoBehaviour
 
         Vector3 targetOffset = edgePanActivated ? CalculateEdgePanOffset(mousePos) : Vector3.zero;
         currentPanOffset = Vector3.SmoothDamp(currentPanOffset, targetOffset, ref panOffsetVelocity, panSmoothTime);
-        followProxy.position = target.position + currentPanOffset;
+        UpdateFollowProxyPosition();
 
         if (logScreenEdgePan && lastEdgePanActivated != edgePanActivated)
         {
@@ -210,7 +212,7 @@ public class CameraController : MonoBehaviour
             followProxy = proxyGo.transform;
         }
 
-        followProxy.position = target.position + currentPanOffset;
+        UpdateFollowProxyPosition();
     }
 
     private void ResetEdgePanState(bool snapToCenter)
@@ -230,8 +232,31 @@ public class CameraController : MonoBehaviour
 
         if (target != null && followProxy != null)
         {
-            followProxy.position = target.position + currentPanOffset;
+            UpdateFollowProxyPosition();
         }
+    }
+
+    private void UpdateFollowProxyPosition()
+    {
+        Vector3 desiredPosition = target.position + currentPanOffset;
+        LevelEntity activeLevel = LevelEntity.ActiveLevelEntity;
+        if (activeLevel == null)
+        {
+            followProxy.position = desiredPosition;
+            return;
+        }
+
+        if (cameraBoundsLevel != activeLevel || levelCameraBounds == null)
+        {
+            LevelCameraBounds[] bounds = activeLevel.GetComponentsInChildren<LevelCameraBounds>(true);
+            if (bounds.Length != 1)
+                throw new System.InvalidOperationException(
+                    $"Active level requires exactly one LevelCameraBounds component. count={bounds.Length}.");
+            cameraBoundsLevel = activeLevel;
+            levelCameraBounds = bounds[0];
+        }
+
+        followProxy.position = levelCameraBounds.ClampWorldPoint(desiredPosition);
     }
 
     private bool CanRunScreenEdgePan()

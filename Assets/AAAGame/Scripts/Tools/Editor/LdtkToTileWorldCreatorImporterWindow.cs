@@ -27,6 +27,10 @@ namespace AAAGame.Tools.Editor
         private const string PlatformDualControlLayerPrefix = "__LDtkDualControl_Plane_H";
         private const string SlopeLayerName = "Slope";
         private const string WaterLayerName = "Water";
+        private const string EnvironmentTypeFieldName = "EnvironmentType";
+        private const string EnvironmentBackgroundName = "Environment Background";
+        private const string CoastalCityWaterMaterialPath = "Assets/TileWorldCreator/Tiles URP/BaseBlockTiles/Materials/matBaseBlockTilesWater.mat";
+        private const int CoastalCityBackgroundPaddingCells = 64;
         private const string StrongholdLayerName = "SH";
         private const string WallLayerName = "Wall";
         private const string WallForbiddenLayerName = "NoWall";
@@ -48,6 +52,10 @@ namespace AAAGame.Tools.Editor
         private const string RampPrefabPath = "Assets/AAAGame/Models/SlopePlaceholder/Ramp.prefab";
         private const string LastLdtkPathPreference = "AAAGame.LdtkToTileWorldCreator.LastLdtkPath";
         private const float SourceActionButtonWidth = 220f;
+        private const double BuildCompletionTimeoutSeconds = 600d;
+        private const int RequiredIdleBuildUpdates = 2;
+
+        private static readonly HashSet<int> PendingBuildConfigurationIds = new HashSet<int>();
 
         [SerializeField]
         private UnityEngine.Object ldtkLevelAsset;
@@ -119,6 +127,7 @@ namespace AAAGame.Tools.Editor
             try
             {
                 ConfigureWallGridAuthoring(prefabRoot, plan);
+                ConfigureLevelCameraBounds(prefabRoot, plan);
                 PrefabUtility.SaveAsPrefabAsset(prefabRoot, prefabPath);
             }
             finally
@@ -317,6 +326,7 @@ namespace AAAGame.Tools.Editor
 
         private void ImportCore(bool generateBuildLayers, ref bool cleanupDeferred)
         {
+            var totalTimer = System.Diagnostics.Stopwatch.StartNew();
             lastReport = string.Empty;
 
             if (!TryGetLdtkPath(out string ldtkPath))
@@ -346,6 +356,33 @@ namespace AAAGame.Tools.Editor
                 return;
             }
 
+            if (generateBuildLayers && EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                const string message = "LDtk terrain generation cannot run while the Editor is entering or running Play mode.";
+                EditorUtility.DisplayDialog("LDtk import failed", message, "OK");
+                lastReport = message;
+                Debug.LogError("[LDtk Import] " + message);
+                return;
+            }
+
+            if (generateBuildLayers && GiantGrey.TileWorldCreator.Utilities.EditorCoroutines.HasActiveCoroutines)
+            {
+                const string message = "A TileWorldCreator editor build is still running. Wait for it to finish before starting another LDtk terrain generation.";
+                EditorUtility.DisplayDialog("LDtk import failed", message, "OK");
+                lastReport = message;
+                Debug.LogError("[LDtk Import] " + message);
+                return;
+            }
+
+            if (generateBuildLayers && PendingBuildConfigurationIds.Contains(configuration.GetInstanceID()))
+            {
+                string message = $"An LDtk build is already running for {AssetDatabase.GetAssetPath(configuration)}.";
+                EditorUtility.DisplayDialog("LDtk import failed", message, "OK");
+                lastReport = message;
+                Debug.LogError("[LDtk Import] " + message);
+                return;
+            }
+
             if (!TryLoadLevel(ldtkPath, out LdtkLevelJson level))
             {
                 return;
@@ -355,6 +392,7 @@ namespace AAAGame.Tools.Editor
             {
                 return;
             }
+            Debug.Log($"[LDtk Import Timing] stage=plan elapsedMs={totalTimer.ElapsedMilliseconds}");
 
             string templateSyncReport = string.Empty;
             if (!TrySyncBuildSettingsFromTemplate(out templateSyncReport))
@@ -403,6 +441,7 @@ namespace AAAGame.Tools.Editor
             }
 
             int clearedModifierCount = 0;
+            var cellImportTimer = System.Diagnostics.Stopwatch.StartNew();
             foreach (PlatformImport platform in plan.platforms)
             {
                 clearedModifierCount += ImportCells(platformLayers[platform.height], platform.cells, clearBlueprintModifiers);
@@ -420,46 +459,73 @@ namespace AAAGame.Tools.Editor
                 HashSet<Vector2> cells = GetStrongholdCellsForLayer(plan.strongholdComponentsByFaction, strongholdLayers[i]);
                 clearedModifierCount += ImportCells(strongholdLayers[i], cells, clearBlueprintModifiers);
             }
+            cellImportTimer.Stop();
+            Debug.Log($"[LDtk Import Timing] stage=blueprint elapsedMs={cellImportTimer.ElapsedMilliseconds}");
 
             if (generateBuildLayers)
             {
-                manager.ExecuteBuildLayers(ExecutionMode.FromScratch);
-                ScheduleSaveAfterBuild(
-                    configuration,
-                    () =>
-                    {
-                        try
+                var buildTimer = System.Diagnostics.Stopwatch.StartNew();
+                int configurationId = configuration.GetInstanceID();
+                if (!PendingBuildConfigurationIds.Add(configurationId))
+                    throw new InvalidOperationException($"An LDtk build is already running for {AssetDatabase.GetAssetPath(configuration)}.");
+
+                try
+                {
+                    manager.ExecuteBuildLayers(ExecutionMode.FromScratch);
+                    ScheduleSaveAfterBuild(
+                        configuration,
+                        () =>
                         {
-                            TerrainPrefabResult delayedTerrainResult = SaveTerrainPrefabFromManager();
-                            FlowNavigationGridImportResult delayedFlowGridResult = GenerateFlowNavigationGrid(plan, delayedTerrainResult.targetPath);
-                            EntityImportResult delayedEntityImportResult = ImportEntityPresetPointsIfRequested(plan, delayedTerrainResult.targetPath, delayedFlowGridResult.assets);
-                            delayedEntityImportResult.terrainResult = delayedTerrainResult;
-                            delayedEntityImportResult.flowNavigationGridResult = delayedFlowGridResult;
-                            AssetDatabase.SaveAssets();
-
-                            lastReport = BuildImportReport(ldtkPath, plan, strongholdLayers, true, clearedModifierCount, delayedEntityImportResult);
-                            if (!string.IsNullOrEmpty(ensureReport))
+                            try
                             {
-                                lastReport = ensureReport + "\n\n" + lastReport;
-                            }
+                                Debug.Log($"[LDtk Import Timing] stage=twc-build elapsedMs={buildTimer.ElapsedMilliseconds}");
+                                TerrainPrefabResult delayedTerrainResult = SaveTerrainPrefabFromManager(plan);
+                                FlowNavigationGridImportResult delayedFlowGridResult = GenerateFlowNavigationGrid(plan, delayedTerrainResult.targetPath);
+                                EntityImportResult delayedEntityImportResult = ImportEntityPresetPointsIfRequested(plan, delayedTerrainResult.targetPath, delayedFlowGridResult.assets);
+                                delayedEntityImportResult.terrainResult = delayedTerrainResult;
+                                delayedEntityImportResult.flowNavigationGridResult = delayedFlowGridResult;
+                                AssetDatabase.SaveAssets();
+                                totalTimer.Stop();
+                                Debug.Log($"[LDtk Import Timing] stage=total elapsedMs={totalTimer.ElapsedMilliseconds}");
 
-                            if (!string.IsNullOrEmpty(terrainLayerReport))
+                                lastReport = BuildImportReport(ldtkPath, plan, strongholdLayers, true, clearedModifierCount, delayedEntityImportResult);
+                                if (!string.IsNullOrEmpty(ensureReport))
+                                {
+                                    lastReport = ensureReport + "\n\n" + lastReport;
+                                }
+
+                                if (!string.IsNullOrEmpty(terrainLayerReport))
+                                {
+                                    lastReport = terrainLayerReport + "\n\n" + lastReport;
+                                }
+
+                                if (!string.IsNullOrEmpty(templateSyncReport))
+                                {
+                                    lastReport = templateSyncReport + "\n\n" + lastReport;
+                                }
+
+                                Debug.Log(lastReport);
+                            }
+                            finally
                             {
-                                lastReport = terrainLayerReport + "\n\n" + lastReport;
+                                PendingBuildConfigurationIds.Remove(configurationId);
+                                CleanupTemporaryManager();
                             }
-
-                            if (!string.IsNullOrEmpty(templateSyncReport))
-                            {
-                                lastReport = templateSyncReport + "\n\n" + lastReport;
-                            }
-
-                            Debug.Log(lastReport);
-                        }
-                        finally
+                        },
+                        error =>
                         {
+                            PendingBuildConfigurationIds.Remove(configurationId);
                             CleanupTemporaryManager();
-                        }
-                    });
+                            lastReport = error;
+                            Debug.LogError("[LDtk Import] " + error);
+                            EditorUtility.DisplayDialog("LDtk import failed", error, "OK");
+                        });
+                }
+                catch
+                {
+                    PendingBuildConfigurationIds.Remove(configurationId);
+                    throw;
+                }
                 cleanupDeferred = true;
 
                 lastReport = "[LDtk Import] TileWorldCreator build layers are generating. Terrain prefab and level prefab will be saved after the editor build pass finishes.";
@@ -941,8 +1007,12 @@ namespace AAAGame.Tools.Editor
             plan = null;
 
             if (!TryFindPlatformLdtkLayers(level, out List<PlatformLdtkLayer> platformLayers) ||
-                !TryFindLdtkLayer(level, WaterLayerName, out LdtkLayerInstance water) ||
                 !TryFindLdtkLayer(level, StrongholdLayerName, out LdtkLayerInstance stronghold))
+            {
+                return false;
+            }
+
+            if (!TryReadEnvironmentType(level, out LevelEnvironmentType environmentType))
             {
                 return false;
             }
@@ -958,6 +1028,10 @@ namespace AAAGame.Tools.Editor
             LdtkLayerInstance wallForbidden = FindOptionalIntGridLayer(
                 level,
                 WallForbiddenLayerName,
+                referenceLayer);
+            LdtkLayerInstance water = FindOptionalIntGridLayer(
+                level,
+                WaterLayerName,
                 referenceLayer);
             float cellSize = GetTileWorldCellSize();
             LdtkLayerInstance slope = level.layerInstances.FirstOrDefault(x =>
@@ -1064,15 +1138,46 @@ namespace AAAGame.Tools.Editor
                 gridSize = gridSize,
                 cellSize = cellSize,
                 pixelHeight = level.pxHei > 0 ? level.pxHei : height * gridSize,
+                environmentType = environmentType,
                 platforms = platformImports,
                 slopeCells = slopeCells,
-                waterCells = ReadIntGridCells(water, width, height),
+                waterCells = environmentType == LevelEnvironmentType.CoastalCity
+                    ? new HashSet<Vector2>()
+                    : ReadIntGridCells(water, width, height),
                 walkableWallCells = topPlatformHeights,
                 previewWallCells = previewWallCells,
                 presetWallCells = presetWallCells,
                 strongholdComponentsByFaction = strongholdComponentsByFaction,
                 entityPoints = ReadEntityPresetPoints(level, gridSize, cellSize)
             };
+
+            return true;
+        }
+
+        private static bool TryReadEnvironmentType(LdtkLevelJson level, out LevelEnvironmentType environmentType)
+        {
+            environmentType = default;
+            LdtkFieldInstance field = level.fieldInstances?.FirstOrDefault(item =>
+                item != null && string.Equals(item.__identifier, EnvironmentTypeFieldName, StringComparison.Ordinal));
+            if (field?.__value == null || field.__value.Type != JTokenType.String)
+            {
+                EditorUtility.DisplayDialog(
+                    "LDtk import failed",
+                    $"Missing required LDtk level field: {EnvironmentTypeFieldName}.",
+                    "OK");
+                return false;
+            }
+
+            string value = field.__value.Value<string>();
+            if (!Enum.TryParse(value, ignoreCase: false, out environmentType) ||
+                !Enum.IsDefined(typeof(LevelEnvironmentType), environmentType))
+            {
+                EditorUtility.DisplayDialog(
+                    "LDtk import failed",
+                    $"Unsupported {EnvironmentTypeFieldName}: {value}.",
+                    "OK");
+                return false;
+            }
 
             return true;
         }
@@ -2253,7 +2358,7 @@ namespace AAAGame.Tools.Editor
             return count;
         }
 
-        private TerrainPrefabResult SaveTerrainPrefabFromManager()
+        private TerrainPrefabResult SaveTerrainPrefabFromManager(ImportPlan plan)
         {
             if (manager == null)
             {
@@ -2280,16 +2385,177 @@ namespace AAAGame.Tools.Editor
 
             try
             {
+                var saveTimer = System.Diagnostics.Stopwatch.StartNew();
+                ValidatePlatformColliderMeshes(terrainClone);
+                ConfigureEnvironmentBackground(terrainClone, plan);
                 SaveGeneratedMeshes(terrainClone, terrainPrefabPath);
                 PrefabUtility.SaveAsPrefabAsset(terrainClone, terrainPrefabPath);
                 AssetDatabase.ImportAsset(terrainPrefabPath);
                 RemoveTerrainNavMeshSurfaces(terrainPrefabPath);
+                saveTimer.Stop();
+                Debug.Log($"[LDtk Import Timing] stage=terrain-prefab elapsedMs={saveTimer.ElapsedMilliseconds}");
                 return TerrainPrefabResult.Saved(terrainPrefabPath, CountTerrainNavMeshSurfaces(terrainPrefabPath));
             }
             finally
             {
                 DestroyImmediate(terrainClone);
             }
+        }
+
+        private static void ConfigureEnvironmentBackground(GameObject terrainRoot, ImportPlan plan)
+        {
+            if (terrainRoot == null)
+                throw new ArgumentNullException(nameof(terrainRoot));
+            if (plan == null)
+                throw new ArgumentNullException(nameof(plan));
+
+            Transform existing = terrainRoot.transform.Find(EnvironmentBackgroundName);
+            if (existing != null)
+                DestroyImmediate(existing.gameObject);
+
+            if (plan.environmentType != LevelEnvironmentType.CoastalCity)
+                return;
+
+            Material waterMaterial = AssetDatabase.LoadAssetAtPath<Material>(CoastalCityWaterMaterialPath);
+            if (waterMaterial == null)
+                throw new InvalidOperationException($"Coastal city water material is missing: {CoastalCityWaterMaterialPath}.");
+
+            float padding = CoastalCityBackgroundPaddingCells * plan.cellSize;
+            float halfCell = plan.cellSize * 0.5f;
+            float minX = -halfCell - padding;
+            float minZ = -halfCell - padding;
+            float maxX = (plan.width - 1) * plan.cellSize + halfCell + padding;
+            float maxZ = (plan.height - 1) * plan.cellSize + halfCell + padding;
+            Mesh mesh = CreateEnvironmentBackgroundMesh(minX, minZ, maxX, maxZ, plan.cellSize);
+            float maximumVerticalDisplacement = CalculateMaximumWaveVerticalDisplacement(waterMaterial);
+            Bounds meshBounds = mesh.bounds;
+            meshBounds.Expand(new Vector3(0f, maximumVerticalDisplacement * 2f, 0f));
+            mesh.bounds = meshBounds;
+
+            var background = new GameObject(EnvironmentBackgroundName);
+            background.transform.SetParent(terrainRoot.transform, false);
+            background.AddComponent<LevelEnvironmentBackground>()
+                .SetMaximumVerticalDisplacement(maximumVerticalDisplacement);
+            background.AddComponent<MeshFilter>().sharedMesh = mesh;
+            MeshRenderer renderer = background.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = waterMaterial;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            renderer.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+            renderer.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+        }
+
+        private static void ValidatePlatformColliderMeshes(GameObject terrainRoot)
+        {
+            if (terrainRoot == null)
+                throw new ArgumentNullException(nameof(terrainRoot));
+
+            foreach (MeshCollider collider in terrainRoot.GetComponentsInChildren<MeshCollider>(true))
+            {
+                if (!Regex.IsMatch(collider.name, @"^Build Plane_H[0-5]_Cluster_", RegexOptions.CultureInvariant))
+                    continue;
+
+                MeshFilter filter = collider.GetComponent<MeshFilter>();
+                if (filter == null || filter.sharedMesh == null || collider.sharedMesh == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Platform cluster {collider.name} must have both render and collider meshes.");
+                }
+
+                if (collider.sharedMesh != filter.sharedMesh)
+                {
+                    throw new InvalidOperationException(
+                        $"Platform cluster {collider.name} generated a separate collider mesh " +
+                        $"({collider.sharedMesh.vertexCount} vertices) although the build layer requires a shared mesh collider. " +
+                        "TileWorldCreator generation is incomplete or inconsistent; terrain export was stopped before writing assets.");
+                }
+            }
+        }
+
+        private static Mesh CreateEnvironmentBackgroundMesh(
+            float minX,
+            float minZ,
+            float maxX,
+            float maxZ,
+            float maximumVertexSpacing)
+        {
+            if (maximumVertexSpacing <= 0f || float.IsNaN(maximumVertexSpacing) || float.IsInfinity(maximumVertexSpacing))
+                throw new ArgumentOutOfRangeException(nameof(maximumVertexSpacing));
+            if (maxX <= minX || maxZ <= minZ)
+                throw new ArgumentException("Environment background bounds must have positive area.");
+
+            int segmentCountX = Mathf.Max(1, Mathf.CeilToInt((maxX - minX) / maximumVertexSpacing));
+            int segmentCountZ = Mathf.Max(1, Mathf.CeilToInt((maxZ - minZ) / maximumVertexSpacing));
+            int vertexCountX = checked(segmentCountX + 1);
+            int vertexCountZ = checked(segmentCountZ + 1);
+            var vertices = new Vector3[checked(vertexCountX * vertexCountZ)];
+            var normals = new Vector3[vertices.Length];
+            var uvs = new Vector2[vertices.Length];
+            var triangles = new int[checked(segmentCountX * segmentCountZ * 6)];
+
+            for (int z = 0; z < vertexCountZ; z++)
+            {
+                float worldZ = Mathf.Lerp(minZ, maxZ, (float)z / segmentCountZ);
+                for (int x = 0; x < vertexCountX; x++)
+                {
+                    float worldX = Mathf.Lerp(minX, maxX, (float)x / segmentCountX);
+                    int vertexIndex = x + z * vertexCountX;
+                    vertices[vertexIndex] = new Vector3(worldX, 0f, worldZ);
+                    normals[vertexIndex] = Vector3.up;
+                    uvs[vertexIndex] = new Vector2(worldX, worldZ);
+                }
+            }
+
+            int triangleIndex = 0;
+            for (int z = 0; z < segmentCountZ; z++)
+            {
+                for (int x = 0; x < segmentCountX; x++)
+                {
+                    int bottomLeft = x + z * vertexCountX;
+                    int topLeft = bottomLeft + vertexCountX;
+                    triangles[triangleIndex++] = bottomLeft;
+                    triangles[triangleIndex++] = topLeft;
+                    triangles[triangleIndex++] = bottomLeft + 1;
+                    triangles[triangleIndex++] = topLeft;
+                    triangles[triangleIndex++] = topLeft + 1;
+                    triangles[triangleIndex++] = bottomLeft + 1;
+                }
+            }
+
+            var mesh = new Mesh { name = "EnvironmentBackground" };
+            if (vertices.Length > ushort.MaxValue)
+                mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            mesh.vertices = vertices;
+            mesh.normals = normals;
+            mesh.uv = uvs;
+            mesh.triangles = triangles;
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static float CalculateMaximumWaveVerticalDisplacement(Material waterMaterial)
+        {
+            if (waterMaterial == null)
+                throw new ArgumentNullException(nameof(waterMaterial));
+
+            string[] waveProperties = { "_WaveA", "_WaveB", "_WaveC", "_WaveD" };
+            float maximumDisplacement = 0f;
+            foreach (string propertyName in waveProperties)
+            {
+                if (!waterMaterial.HasProperty(propertyName))
+                    throw new InvalidOperationException($"Water material is missing wave property {propertyName}.");
+
+                Vector4 wave = waterMaterial.GetVector(propertyName);
+                if (wave.w <= 0f || float.IsNaN(wave.z) || float.IsInfinity(wave.z) ||
+                    float.IsNaN(wave.w) || float.IsInfinity(wave.w))
+                {
+                    throw new InvalidOperationException($"Water material wave {propertyName} is invalid: {wave}.");
+                }
+
+                maximumDisplacement += Mathf.Abs(wave.z) * wave.w / (Mathf.PI * 2f);
+            }
+
+            return maximumDisplacement;
         }
 
         private static void RemoveTerrainNavMeshSurfaces(string terrainPrefabPath)
@@ -2501,7 +2767,10 @@ namespace AAAGame.Tools.Editor
                 prefabRoot.name = Path.GetFileNameWithoutExtension(targetPath);
                 EntityImportResult result = ImportEntityPresetPointsIntoRoot(prefabRoot.transform, plan.entityPoints, terrainPrefabPath, useUndo: false);
                 if (plan.walkableWallCells != null)
+                {
                     ConfigureWallGridAuthoring(prefabRoot, plan);
+                    ConfigureLevelCameraBounds(prefabRoot, plan);
+                }
                 if (flowNavigationGrids != null && flowNavigationGrids.Count > 0)
                 {
                     FlowNavigationGridAsset primaryGrid = flowNavigationGrids[0];
@@ -2553,7 +2822,8 @@ namespace AAAGame.Tools.Editor
                 EntityPresetPoint point = pointObject.GetComponent<EntityPresetPoint>();
                 point.Identifier = pointData.identifier;
                 point.PointType = pointData.pointType;
-                point.UnitSpawnCount = pointData.unitSpawnCount;
+                if (pointData.pointType == EntityPresetPointType.Unit)
+                    point.SetUnitStrength(pointData.unitStrengthValue, pointData.unitCountGrowthWeight);
                 point.TeleportationId = pointData.teleportationId;
                 point.SetDefendSpawnWeight(pointData.defendSpawnWeight);
                 point.DestinationId = pointData.destinationId;
@@ -2601,6 +2871,30 @@ namespace AAAGame.Tools.Editor
             WallGridCell[] presets = ConvertWallCells(plan.presetWallCells);
             authoring.SetData(plan.width, plan.height, plan.cellSize, walkable, previews, presets);
             EditorUtility.SetDirty(authoring);
+        }
+
+        private static void ConfigureLevelCameraBounds(GameObject prefabRoot, ImportPlan plan)
+        {
+            if (prefabRoot == null)
+                throw new ArgumentNullException(nameof(prefabRoot));
+            if (plan?.walkableWallCells == null || plan.walkableWallCells.Count == 0)
+                throw new InvalidOperationException("Level camera bounds require walkable platform cells.");
+
+            LevelCameraBounds[] existing = prefabRoot.GetComponentsInChildren<LevelCameraBounds>(true);
+            LevelCameraBounds bounds;
+            if (existing.Length == 0)
+                bounds = prefabRoot.AddComponent<LevelCameraBounds>();
+            else if (existing.Length == 1)
+                bounds = existing[0];
+            else
+                throw new InvalidOperationException($"Level prefab contains {existing.Length} LevelCameraBounds components.");
+
+            bounds.SetData(
+                plan.cellSize,
+                plan.walkableWallCells.Keys.Select(cell => new WallGridCell(
+                    Mathf.RoundToInt(cell.x),
+                    Mathf.RoundToInt(cell.y))));
+            EditorUtility.SetDirty(bounds);
         }
 
         private static WallGridCell[] ConvertWallCells(IEnumerable<Vector2> cells)
@@ -3145,7 +3439,8 @@ namespace AAAGame.Tools.Editor
             string entityType = entity.__identifier;
             EntityPresetPointType pointType;
             string identifier;
-            int unitSpawnCount = 0;
+            Fix64 unitStrengthValue = Fix64.Zero;
+            Fix64 unitCountGrowthWeight = Fix64.Zero;
             int teleportationId = 0;
             Fix64 defendSpawnWeight = Fix64.Zero;
             int destinationId = 0;
@@ -3158,7 +3453,12 @@ namespace AAAGame.Tools.Editor
             {
                 pointType = EntityPresetPointType.Unit;
                 identifier = GetFieldString(entity, "Identifier");
-                unitSpawnCount = GetFieldInt(entity, "Count", 0);
+                if (string.IsNullOrWhiteSpace(identifier))
+                    throw new InvalidOperationException("LDtk Soldier requires a non-empty Identifier field.");
+                if (!TryGetPositiveFixedField(entity, "StrengthValue", out unitStrengthValue))
+                    throw new InvalidOperationException($"LDtk Soldier '{identifier}' StrengthValue must be a finite positive number, actual={GetFieldValue(entity, "StrengthValue")}.");
+                if (!TryGetUnitIntervalFixedField(entity, "CountGrowthWeight", out unitCountGrowthWeight))
+                    throw new InvalidOperationException($"LDtk Soldier '{identifier}' CountGrowthWeight must be between zero and one, actual={GetFieldValue(entity, "CountGrowthWeight")}.");
             }
             else if (string.Equals(entityType, "Hero", StringComparison.OrdinalIgnoreCase))
             {
@@ -3225,7 +3525,8 @@ namespace AAAGame.Tools.Editor
             {
                 pointType = pointType,
                 identifier = identifier,
-                unitSpawnCount = unitSpawnCount,
+                unitStrengthValue = unitStrengthValue,
+                unitCountGrowthWeight = unitCountGrowthWeight,
                 teleportationId = teleportationId,
                 defendSpawnWeight = defendSpawnWeight,
                 destinationId = destinationId,
@@ -3391,6 +3692,16 @@ namespace AAAGame.Tools.Editor
             }
         }
 
+        private static bool TryGetPositiveFixedField(LdtkEntityInstance entity, string fieldName, out Fix64 value)
+        {
+            return TryGetNonNegativeFixedField(entity, fieldName, out value) && value > Fix64.Zero;
+        }
+
+        private static bool TryGetUnitIntervalFixedField(LdtkEntityInstance entity, string fieldName, out Fix64 value)
+        {
+            return TryGetNonNegativeFixedField(entity, fieldName, out value) && value <= Fix64.One;
+        }
+
         private static float GetFieldFloat(LdtkEntityInstance entity, string fieldName, float defaultValue)
         {
             JToken value = GetFieldValue(entity, fieldName);
@@ -3502,65 +3813,89 @@ namespace AAAGame.Tools.Editor
             }
         }
 
-        private static void ScheduleSaveAfterBuild(Configuration configuration, Action afterSave = null)
+        private static void ScheduleSaveAfterBuild(
+            Configuration configuration,
+            Action afterSave = null,
+            Action<string> onFailure = null)
         {
-            int framesLeft = 90;
+            double startedAt = EditorApplication.timeSinceStartup;
+            int idleUpdateCount = 0;
             EditorApplication.CallbackFunction update = null;
             update = () =>
             {
-                framesLeft--;
-                if (framesLeft > 0)
+                if (EditorApplication.timeSinceStartup - startedAt >= BuildCompletionTimeoutSeconds)
                 {
+                    EditorApplication.update -= update;
+                    onFailure?.Invoke(
+                        $"TileWorldCreator did not finish within {BuildCompletionTimeoutSeconds:0} seconds. " +
+                        "No terrain or navigation assets were saved.");
                     return;
                 }
 
+                if (GiantGrey.TileWorldCreator.Utilities.EditorCoroutines.HasActiveCoroutines)
+                {
+                    idleUpdateCount = 0;
+                    return;
+                }
+
+                idleUpdateCount++;
+                if (idleUpdateCount < RequiredIdleBuildUpdates)
+                    return;
+
                 EditorApplication.update -= update;
-                EditorUtility.SetDirty(configuration);
-                foreach (var folder in configuration.blueprintLayerFolders)
+                try
                 {
-                    if (folder?.blueprintLayers == null)
+                    EditorUtility.SetDirty(configuration);
+                    foreach (var folder in configuration.blueprintLayerFolders)
                     {
-                        continue;
-                    }
-
-                    foreach (var blueprintLayer in folder.blueprintLayers)
-                    {
-                        if (blueprintLayer == null)
+                        if (folder?.blueprintLayers == null)
                         {
                             continue;
                         }
 
-                        blueprintLayer.OnBeforeSerialize();
-                        EditorUtility.SetDirty(blueprintLayer);
-                    }
-                }
+                        foreach (var blueprintLayer in folder.blueprintLayers)
+                        {
+                            if (blueprintLayer == null)
+                            {
+                                continue;
+                            }
 
-                foreach (var folder in configuration.buildLayerFolders)
-                {
-                    if (folder?.buildLayers == null)
-                    {
-                        continue;
+                            blueprintLayer.OnBeforeSerialize();
+                            EditorUtility.SetDirty(blueprintLayer);
+                        }
                     }
 
-                    foreach (var buildLayer in folder.buildLayers)
+                    foreach (var folder in configuration.buildLayerFolders)
                     {
-                        if (buildLayer == null)
+                        if (folder?.buildLayers == null)
                         {
                             continue;
                         }
 
-                        if (buildLayer is ISerializationCallbackReceiver receiver)
+                        foreach (var buildLayer in folder.buildLayers)
                         {
-                            receiver.OnBeforeSerialize();
+                            if (buildLayer == null)
+                            {
+                                continue;
+                            }
+
+                            if (buildLayer is ISerializationCallbackReceiver receiver)
+                            {
+                                receiver.OnBeforeSerialize();
+                            }
+
+                            EditorUtility.SetDirty(buildLayer);
                         }
-
-                        EditorUtility.SetDirty(buildLayer);
                     }
-                }
 
-                AssetDatabase.SaveAssets();
-                Debug.Log("[LDtk Import] Build layers saved after TileWorldCreator editor generation.");
-                afterSave?.Invoke();
+                    AssetDatabase.SaveAssets();
+                    Debug.Log("[LDtk Import] Build layers saved after TileWorldCreator editor generation completed.");
+                    afterSave?.Invoke();
+                }
+                catch (Exception exception)
+                {
+                    onFailure?.Invoke("Failed to finalize the TileWorldCreator build: " + exception);
+                }
             };
 
             EditorApplication.update += update;
@@ -3573,6 +3908,7 @@ namespace AAAGame.Tools.Editor
             builder.AppendLine($"Source: {path}");
             builder.AppendLine($"Size: {plan.width} x {plan.height}");
             builder.AppendLine($"TWC cell size: {plan.cellSize}");
+            builder.AppendLine($"Environment: {plan.environmentType}");
             foreach (PlatformImport platform in plan.platforms)
             {
                 builder.AppendLine($"Plane_H{platform.height} cells: {platform.cells.Count}");
@@ -3580,6 +3916,7 @@ namespace AAAGame.Tools.Editor
 
             builder.AppendLine($"Slope cells: {plan.slopeCells.Count}");
             builder.AppendLine($"Water cells: {plan.waterCells.Count}");
+            builder.AppendLine($"Automatic background: {(plan.environmentType == LevelEnvironmentType.CoastalCity ? "single water mesh" : "none")}");
             builder.AppendLine($"SH components: {GetStrongholdComponentCount(plan.strongholdComponentsByFaction)}");
             builder.AppendLine($"Cleared blueprint modifiers: {clearedModifierCount}");
             builder.AppendLine($"Generated build layers: {generatedBuildLayers}");
@@ -3672,6 +4009,7 @@ namespace AAAGame.Tools.Editor
             public string identifier;
             public int pxWid;
             public int pxHei;
+            public LdtkFieldInstance[] fieldInstances;
             public LdtkLayerInstance[] layerInstances;
         }
 
@@ -3714,6 +4052,7 @@ namespace AAAGame.Tools.Editor
             public int gridSize;
             public float cellSize;
             public int pixelHeight;
+            public LevelEnvironmentType environmentType;
             public List<PlatformImport> platforms;
             public HashSet<Vector2> slopeCells;
             public HashSet<Vector2> waterCells;
@@ -3722,6 +4061,12 @@ namespace AAAGame.Tools.Editor
             public HashSet<Vector2> presetWallCells;
             public Dictionary<int, List<StrongholdComponent>> strongholdComponentsByFaction;
             public List<EntityPresetPointData> entityPoints;
+        }
+
+        private enum LevelEnvironmentType
+        {
+            CoastalCity,
+            Void,
         }
 
         private sealed class PlatformLdtkLayer
@@ -3741,7 +4086,8 @@ namespace AAAGame.Tools.Editor
         {
             public EntityPresetPointType pointType;
             public string identifier;
-            public int unitSpawnCount;
+            public Fix64 unitStrengthValue;
+            public Fix64 unitCountGrowthWeight;
             public int teleportationId;
             public Fix64 defendSpawnWeight;
             public int destinationId;

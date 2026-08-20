@@ -9,7 +9,6 @@ public static class DefendPhaseRuntime
     private const string DefendEnemyMinSpeedConfigKey = "DefendPhaseEnemyMinSpeed";
     private const string DefendEnemyMaxSpeedConfigKey = "DefendPhaseEnemyMaxSpeed";
     private const string DefendEnemySpawnIntervalConfigKey = "DefendPhaseEnemyArriveInterval";
-    private const string DefendEndlessGrowthRateConfigKey = "DefendPhaseEnemyEndlessGrowthRate";
     private static readonly Fix64 MinWorldSpeed = Fix64.FromRaw(5);
     private static readonly Fix64 NavigationPointProbeRadius = Fix64.FromRaw(10240);
     private const string TutorialLevelIdentifier = "Lv_1";
@@ -23,7 +22,6 @@ public static class DefendPhaseRuntime
     private static readonly Dictionary<string, DefendRouteDefinition> s_DefendRoutesByIdentifier =
         new(StringComparer.Ordinal);
     private static readonly List<DefendAttackGroupDefinition> s_DefendAttackGroups = new();
-    private static int s_MaxConfiguredDefendRound;
     private static readonly List<TutorialTriggeredSpawnPoint> s_TutorialTriggeredSpawnPoints = new();
     private static readonly HashSet<int> s_AliveEnemyLogicEntityIds = new();
     private static readonly List<int> s_DeterministicAliveEnemyIds = new();
@@ -49,7 +47,6 @@ public static class DefendPhaseRuntime
     private static Fix64 s_MaxSpeedWorld;
     private static Fix64 s_SpawnIntervalSeconds;
     private static Fix64 s_WaypointArrivalRadiusWorld;
-    private static Fix64 s_EndlessGrowthRate;
     private static decimal s_DistanceConversionRate;
     private static bool s_TutorialFirstDefenseConsumed;
     private static bool s_TutorialFirstDefenseWaiting;
@@ -72,20 +69,22 @@ public static class DefendPhaseRuntime
                 ?? throw new InvalidOperationException($"Tutorial spawn preset {i} is null.");
             if (point.PointType != EntityPresetPointType.Unit)
                 continue;
-            if (!UnitTypeHelper.TryParseUnitTypeAndLevel(point.Identifier, out UnitType unitType, out int unitLevel))
+            if (!UnitTypeHelper.TryParseUnitType(point.Identifier, out UnitType unitType))
             {
                 throw new InvalidOperationException(
                     $"Tutorial spawn point has invalid unit identifier. point={point.name} identifier={point.Identifier}.");
             }
-            if (point.UnitSpawnCount <= 0)
-                throw new InvalidOperationException($"Tutorial spawn point '{point.name}' has a non-positive count.");
+            if (point.UnitStrengthValue <= Fix64.Zero)
+                throw new InvalidOperationException($"Tutorial spawn point '{point.name}' has a non-positive strength value.");
+            if (point.UnitCountGrowthWeight < Fix64.Zero || point.UnitCountGrowthWeight > Fix64.One)
+                throw new InvalidOperationException($"Tutorial spawn point '{point.name}' has an invalid count growth weight.");
 
             Vector3 position = point.Position;
             s_TutorialTriggeredSpawnPoints.Add(new TutorialTriggeredSpawnPoint(
                 new FixVector2((Fix64)position.x, (Fix64)position.z),
                 unitType,
-                unitLevel,
-                point.UnitSpawnCount,
+                point.UnitStrengthValue,
+                point.UnitCountGrowthWeight,
                 string.IsNullOrWhiteSpace(point.name) ? "<unnamed>" : point.name));
         }
         s_TutorialTriggeredSpawnPoints.Sort((left, right) =>
@@ -136,7 +135,6 @@ public static class DefendPhaseRuntime
         s_DefendSpawnPoints.Clear();
         s_DefendRoutesByIdentifier.Clear();
         s_DefendAttackGroups.Clear();
-        s_MaxConfiguredDefendRound = 0;
         s_ArchetypeCacheConfigured = false;
         s_SpawnPointCacheConfigured = false;
         s_WaveConfigConfigured = false;
@@ -146,7 +144,6 @@ public static class DefendPhaseRuntime
         s_MaxSpeedWorld = Fix64.Zero;
         s_SpawnIntervalSeconds = Fix64.Zero;
         s_WaypointArrivalRadiusWorld = Fix64.Zero;
-        s_EndlessGrowthRate = Fix64.Zero;
         s_DistanceConversionRate = decimal.Zero;
     }
 
@@ -190,7 +187,7 @@ public static class DefendPhaseRuntime
             return;
         }
 
-        s_DefendRoundIndex++;
+        s_DefendRoundIndex = Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
 
         List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForRound(s_DefendRoundIndex);
         if (groups.Count == 0)
@@ -260,31 +257,49 @@ public static class DefendPhaseRuntime
             throw new InvalidOperationException("Tutorial first defense resolved a non-positive assigned speed.");
 
         int spawnedCount = 0;
+        int currentDay = Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
+        LevelTable level = LogicRuntimeDataTableCache.GetLevelRequired(ResolveCurrentLevelIdentifier());
+        EnemyStrengthRuntimeSettings strengthSettings = EnemyStrengthRuntimeConfig.Read(EnemyStrengthContext.DefenseWave);
+        Fix64 initialStrengthScale = LevelTagRuntime.GetEnemyInitialStrengthScale(EnemyStrengthContext.DefenseWave);
+        Fix64 growthSpeedScale = LevelTagRuntime.GetEnemyGrowthSpeedScale(EnemyStrengthContext.DefenseWave);
         for (int i = 0; i < s_TutorialTriggeredSpawnPoints.Count; i++)
         {
             TutorialTriggeredSpawnPoint point = s_TutorialTriggeredSpawnPoints[i];
             if (LogicStrongholdMap.TryResolveStrongholdId(point.Position, out _))
                 continue;
 
-            bool spawned = ClusterSpawnSystem.SpawnClusterFixed(
-                point.Position,
-                point.Count,
-                TutorialEnemyClusterRadius,
-                TutorialEnemyClusterMinDistance,
+            IReadOnlyList<EnemySquadCompositionEntry> composition = ResolveSquadComposition(
                 point.UnitType,
-                SideType.EnemySide,
-                BrainType.DefendEnemyAI,
-                sourceStrongholdId: strongholdId,
-                unitLevel: point.UnitLevel,
-                spawned: entityId =>
-                {
-                    TrackSpawnedDefendEnemy(entityId, "Tutorial first defense");
-                    ReleaseTrackedDefendEnemySpawnSpeed(entityId, "tutorial spawn", null);
-                    spawnedCount++;
-                },
-                configureParams: entityParams => entityParams.DefendAssignedSpeed = assignedSpeed);
-            if (!spawned)
-                throw new InvalidOperationException($"Tutorial first defense failed to spawn point '{point.Name}'.");
+                point.InitialStrengthValue,
+                point.CountGrowthWeight,
+                currentDay,
+                level.ExpectedDays,
+                initialStrengthScale,
+                growthSpeedScale,
+                strengthSettings);
+            for (int entryIndex = 0; entryIndex < composition.Count; entryIndex++)
+            {
+                EnemySquadCompositionEntry entry = composition[entryIndex];
+                bool spawned = ClusterSpawnSystem.SpawnClusterFixed(
+                    point.Position,
+                    entry.Count,
+                    TutorialEnemyClusterRadius,
+                    TutorialEnemyClusterMinDistance,
+                    point.UnitType,
+                    SideType.EnemySide,
+                    BrainType.DefendEnemyAI,
+                    sourceStrongholdId: strongholdId,
+                    unitLevel: entry.Level,
+                    spawned: entityId =>
+                    {
+                        TrackSpawnedDefendEnemy(entityId, "Tutorial first defense");
+                        ReleaseTrackedDefendEnemySpawnSpeed(entityId, "tutorial spawn", null);
+                        spawnedCount++;
+                    },
+                    configureParams: entityParams => entityParams.DefendAssignedSpeed = assignedSpeed);
+                if (!spawned)
+                    throw new InvalidOperationException($"Tutorial first defense failed to spawn point '{point.Name}'.");
+            }
         }
 
         if (spawnedCount == 0)
@@ -391,7 +406,8 @@ public static class DefendPhaseRuntime
         results.Clear();
         RequirePreparedRuntime();
 
-        List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForRound(Mathf.Max(1, s_DefendRoundIndex + 1));
+        int previewDay = Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
+        List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForRound(previewDay);
         if (groups.Count == 0)
             return false;
 
@@ -404,15 +420,11 @@ public static class DefendPhaseRuntime
             for (int j = 0; j < group.Enemies.Count; j++)
             {
                 DefendAttackEntry entry = group.Enemies[j];
-                int count = LevelTagRuntime.ModifyEnemySpawnCount(entry.Count);
-                if (count <= 0)
-                    continue;
-
                 FixVector2 spawnPosition = group.Route.SourcePoint.Position;
                 results.Add(new DefendPreviewSpawnEntry(
                     entry.UnitType,
                     entry.UnitLevel,
-                    count,
+                    entry.Count,
                     new Vector3((float)spawnPosition.x, 0f, (float)spawnPosition.y),
                     group.Route.SourceStrongholdId));
             }
@@ -678,7 +690,6 @@ public static class DefendPhaseRuntime
         s_WaveConfigConfigured = false;
         s_DefendRoutesByIdentifier.Clear();
         s_DefendAttackGroups.Clear();
-        s_MaxConfiguredDefendRound = 0;
         s_DefendSpawnPoints.Clear();
 
         EntityPresetPoint[] points = levelEntity.GetComponentsInChildren<EntityPresetPoint>(true);
@@ -839,7 +850,6 @@ public static class DefendPhaseRuntime
         s_WaveConfigLevelIdentifier = levelIdentifier;
         s_DefendRoutesByIdentifier.Clear();
         s_DefendAttackGroups.Clear();
-        s_MaxConfiguredDefendRound = 0;
 
         var routeTable = GF.DataTable.GetDataTable<DefendRouteTable>()
                          ?? throw new InvalidOperationException("DefendRouteTable is required for defense configuration.");
@@ -945,12 +955,17 @@ public static class DefendPhaseRuntime
                 continue;
             if (string.IsNullOrWhiteSpace(row.Identifier))
                 throw new InvalidOperationException($"Defend attack group row {row.Id} has an empty identifier.");
-            if (row.DefendRound <= 0)
-                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has invalid round {row.DefendRound}.");
+            if (row.ActiveDays == null || row.ActiveDays.Length == 0)
+                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has no active days.");
+            ValidateActiveDays(row.Identifier, row.ActiveDays);
             if (!s_DefendRoutesByIdentifier.TryGetValue(row.RouteIdentifier, out DefendRouteDefinition route))
                 throw new InvalidOperationException($"Defend attack group '{row.Identifier}' references unknown route '{row.RouteIdentifier}'.");
-            if (row.Enemies == null || row.Enemies.Length == 0)
-                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has no enemies.");
+            if (!UnitTypeHelper.TryParseUnitType(row.UnitIdentifier, out UnitType unitType))
+                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has invalid unit '{row.UnitIdentifier}'.");
+            if (row.InitialStrengthValue <= Fix64.Zero)
+                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has non-positive initial strength value.");
+            if (row.CountGrowthWeight < Fix64.Zero || row.CountGrowthWeight > Fix64.One)
+                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has count growth weight outside zero to one.");
             if (row.StartDelaySeconds < Fix64.Zero || row.ExpectedEngagementSeconds <= Fix64.Zero)
             {
                 throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has invalid delay or expected engagement time.");
@@ -959,34 +974,29 @@ public static class DefendPhaseRuntime
             var group = new DefendAttackGroupDefinition
             {
                 Identifier = row.Identifier,
-                DefendRound = row.DefendRound,
+                DefendRound = row.ActiveDays[0],
+                ActiveDays = (int[])row.ActiveDays.Clone(),
                 Route = route,
+                UnitType = unitType,
+                InitialStrengthValue = row.InitialStrengthValue,
+                CountGrowthWeight = row.CountGrowthWeight,
                 AfterGroupIdentifier = string.IsNullOrWhiteSpace(row.AfterGroupIdentifier) ? null : row.AfterGroupIdentifier,
                 DelaySeconds = row.StartDelaySeconds,
                 ExpectedEngagementSeconds = row.ExpectedEngagementSeconds
             };
-            for (int enemyIndex = 0; enemyIndex < row.Enemies.Length; enemyIndex++)
-            {
-                StringIntPair pair = row.Enemies[enemyIndex];
-                if (!UnitTypeHelper.TryParseUnitTypeAndLevel(pair.str, out UnitType unitType, out int unitLevel))
-                    throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has invalid unit '{pair.str}'.");
-                if (pair.num <= 0)
-                    throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has non-positive count for '{pair.str}'.");
-                group.Enemies.Add(new DefendAttackEntry { UnitType = unitType, UnitLevel = unitLevel, Count = pair.num });
-            }
 
             if (!groupsByIdentifier.TryAdd(group.Identifier, group))
                 throw new InvalidOperationException($"Duplicate defend attack group identifier '{group.Identifier}'.");
             s_DefendAttackGroups.Add(group);
-            s_MaxConfiguredDefendRound = Mathf.Max(s_MaxConfiguredDefendRound, group.DefendRound);
         }
+
+        ValidateActivePredecessors(groupsByIdentifier);
 
         s_AgentTypeIdByUnitType.Clear();
         for (int groupIndex = 0; groupIndex < s_DefendAttackGroups.Count; groupIndex++)
         {
-            List<DefendAttackEntry> enemies = s_DefendAttackGroups[groupIndex].Enemies;
-            for (int entryIndex = 0; entryIndex < enemies.Count; entryIndex++)
-                s_AgentTypeIdByUnitType[enemies[entryIndex].UnitType] = AgentTypeHelper.ResolveNavAgentTypeId(enemies[entryIndex].UnitType);
+            UnitType unitType = s_DefendAttackGroups[groupIndex].UnitType;
+            s_AgentTypeIdByUnitType[unitType] = AgentTypeHelper.ResolveNavAgentTypeId(unitType);
         }
         Fix64 minSpeedProperty = ResolveFiniteConfigFixed(DefendEnemyMinSpeedConfigKey, Fix64.One);
         Fix64 maxSpeedProperty = ResolveFiniteConfigFixed(DefendEnemyMaxSpeedConfigKey, Fix64.One);
@@ -1001,8 +1011,10 @@ public static class DefendPhaseRuntime
         s_WaypointArrivalRadiusWorld = DistanceUnitConverter.ConvertToWorld(
             DistanceUnitConverter.ReadRequiredPositiveFixedConfig(
                 LogicUnitConfigurator.DefendRouteWaypointArrivalRadiusConfigKey));
-        s_EndlessGrowthRate = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(
-            DefendEndlessGrowthRateConfigKey);
+        LevelTable level = LogicRuntimeDataTableCache.GetLevelRequired(levelIdentifier);
+        if (level.ExpectedDays <= 0)
+            throw new InvalidOperationException($"Level '{levelIdentifier}' has invalid expected days {level.ExpectedDays}.");
+        EnemyStrengthRuntimeConfig.ValidateCurveOrder(level.ExpectedDays);
 
         for (int i = 0; i < s_DefendAttackGroups.Count; i++)
             ConfigureFixedSpawnWindow(s_DefendAttackGroups[i]);
@@ -1013,11 +1025,10 @@ public static class DefendPhaseRuntime
         ConfigureNavigationDistancePrewarmRequests();
         s_WaveConfigConfigured = true;
 
-        Log.Info("[DefendPhase] Defense routes loaded. level={0}, routes={1}, groups={2}, maxRound={3}",
+        Log.Info("[DefendPhase] Defense routes loaded. level={0}, routes={1}, groups={2}",
             levelIdentifier,
             s_DefendRoutesByIdentifier.Count,
-            s_DefendAttackGroups.Count,
-            s_MaxConfiguredDefendRound);
+            s_DefendAttackGroups.Count);
     }
 
     private static void ConfigureNavigationDistancePrewarmRequests()
@@ -1028,23 +1039,20 @@ public static class DefendPhaseRuntime
             DefendAttackGroupDefinition group = s_DefendAttackGroups[groupIndex];
             DefendRouteDefinition route = group.Route
                 ?? throw new InvalidOperationException($"Defend group '{group.Identifier}' has no route for navigation prewarm.");
-            for (int enemyIndex = 0; enemyIndex < group.Enemies.Count; enemyIndex++)
+            int agentTypeId = ResolveAgentTypeId(group.UnitType);
+            FixVector2 from = route.SourcePoint.Position;
+            for (int waypointIndex = 0; waypointIndex < route.WaypointsFixed.Length; waypointIndex++)
             {
-                int agentTypeId = ResolveAgentTypeId(group.Enemies[enemyIndex].UnitType);
-                FixVector2 from = route.SourcePoint.Position;
-                for (int waypointIndex = 0; waypointIndex < route.WaypointsFixed.Length; waypointIndex++)
-                {
-                    FixVector2 to = route.WaypointsFixed[waypointIndex];
-                    FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(from, to, agentTypeId);
-                    from = to;
-                }
-                if (route.UsesInitialGameEndTarget)
-                {
-                    FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(
-                        from,
-                        route.InitialGameEndTargetPosition,
-                        agentTypeId);
-                }
+                FixVector2 to = route.WaypointsFixed[waypointIndex];
+                FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(from, to, agentTypeId);
+                from = to;
+            }
+            if (route.UsesInitialGameEndTarget)
+            {
+                FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(
+                    from,
+                    route.InitialGameEndTargetPosition,
+                    agentTypeId);
             }
         }
     }
@@ -1147,8 +1155,6 @@ public static class DefendPhaseRuntime
         {
             if (!groupsByIdentifier.TryGetValue(group.AfterGroupIdentifier, out DefendAttackGroupDefinition predecessor))
                 throw new InvalidOperationException($"Defend attack group '{group.Identifier}' references unknown predecessor '{group.AfterGroupIdentifier}'.");
-            if (predecessor.DefendRound != group.DefendRound)
-                throw new InvalidOperationException($"Defend attack group '{group.Identifier}' predecessor must be in the same round.");
             start += ResolveGroupStartSeconds(predecessor, groupsByIdentifier, visiting)
                      + GetFixedSpawnWindowEndOffset(predecessor);
         }
@@ -1176,25 +1182,104 @@ public static class DefendPhaseRuntime
         return start != 0 ? start : string.CompareOrdinal(left.Identifier, right.Identifier);
     }
 
+    private static void ValidateActiveDays(string identifier, IReadOnlyList<int> activeDays)
+    {
+        var seen = new HashSet<int>();
+        int previous = 0;
+        for (int i = 0; i < activeDays.Count; i++)
+        {
+            int day = activeDays[i];
+            if (day <= 0 || !seen.Add(day) || day <= previous)
+                throw new InvalidOperationException($"Defend attack group '{identifier}' active days must be positive, unique, and ascending.");
+            previous = day;
+        }
+    }
+
+    private static void ValidateActivePredecessors(
+        IReadOnlyDictionary<string, DefendAttackGroupDefinition> groupsByIdentifier)
+    {
+        foreach (DefendAttackGroupDefinition group in groupsByIdentifier.Values)
+        {
+            if (string.IsNullOrWhiteSpace(group.AfterGroupIdentifier))
+                continue;
+            if (!groupsByIdentifier.TryGetValue(group.AfterGroupIdentifier, out DefendAttackGroupDefinition predecessor))
+                throw new InvalidOperationException($"Defend attack group '{group.Identifier}' references unknown predecessor '{group.AfterGroupIdentifier}'.");
+            for (int i = 0; i < group.ActiveDays.Length; i++)
+            {
+                if (!ContainsDay(predecessor.ActiveDays, group.ActiveDays[i]))
+                {
+                    throw new InvalidOperationException(
+                        $"Defend attack group '{group.Identifier}' is active on day {group.ActiveDays[i]} but predecessor " +
+                        $"'{predecessor.Identifier}' is not.");
+                }
+            }
+        }
+    }
+
+    private static bool ContainsDay(IReadOnlyList<int> activeDays, int day)
+    {
+        for (int i = 0; i < activeDays.Count; i++)
+        {
+            if (activeDays[i] == day)
+                return true;
+        }
+        return false;
+    }
+
+    private static IReadOnlyList<EnemySquadCompositionEntry> ResolveSquadComposition(
+        UnitType unitType,
+        Fix64 initialStrengthValue,
+        Fix64 countGrowthWeight,
+        int day,
+        int expectedDays,
+        Fix64 initialStrengthScale,
+        Fix64 growthSpeedScale,
+        EnemyStrengthRuntimeSettings settings)
+    {
+        BuildingTable building = LogicRuntimeDataTableCache.GetArmyBuilding(unitType)
+            ?? throw new InvalidOperationException($"Cannot resolve army building for enemy unit '{unitType}'.");
+        EnemyUnitStrengthValueResolver.Result unitValues = EnemyUnitStrengthValueResolver.ResolveFromArmyBuilding(
+            building,
+            settings.LevelTwoValueScale,
+            settings.LevelThreeValueScale);
+        return EnemySquadStrengthResolver.Resolve(
+            initialStrengthValue,
+            countGrowthWeight,
+            day,
+            expectedDays,
+            initialStrengthScale,
+            growthSpeedScale,
+            unitValues.EffectiveValues,
+            settings.Curve,
+            settings.SquadValue);
+    }
+
     private static List<DefendAttackGroupDefinition> ResolveAttackGroupsForRound(int roundIndex)
     {
         var result = new List<DefendAttackGroupDefinition>();
-        if (roundIndex <= 0 || s_MaxConfiguredDefendRound <= 0)
+        if (roundIndex <= 0)
             return result;
 
-        int configuredRound = Mathf.Min(roundIndex, s_MaxConfiguredDefendRound);
-        int overflowRounds = Mathf.Max(0, roundIndex - s_MaxConfiguredDefendRound);
-        Fix64 scale = overflowRounds > 0 ? Fix64.Pow(s_EndlessGrowthRate, overflowRounds) : Fix64.One;
+        LevelTable level = LogicRuntimeDataTableCache.GetLevelRequired(ResolveCurrentLevelIdentifier());
+        if (level.ExpectedDays <= 0)
+            throw new InvalidOperationException($"Level '{level.Identifier}' has invalid expected days {level.ExpectedDays}.");
+        EnemyStrengthRuntimeSettings strengthSettings = EnemyStrengthRuntimeConfig.Read(EnemyStrengthContext.DefenseWave);
+        Fix64 initialStrengthScale = LevelTagRuntime.GetEnemyInitialStrengthScale(EnemyStrengthContext.DefenseWave);
+        Fix64 growthSpeedScale = LevelTagRuntime.GetEnemyGrowthSpeedScale(EnemyStrengthContext.DefenseWave);
         for (int i = 0; i < s_DefendAttackGroups.Count; i++)
         {
             DefendAttackGroupDefinition source = s_DefendAttackGroups[i];
-            if (source.DefendRound != configuredRound)
+            if (!ContainsDay(source.ActiveDays, roundIndex))
                 continue;
             var clone = new DefendAttackGroupDefinition
             {
                 Identifier = source.Identifier,
                 DefendRound = roundIndex,
+                ActiveDays = source.ActiveDays,
                 Route = source.Route,
+                UnitType = source.UnitType,
+                InitialStrengthValue = source.InitialStrengthValue,
+                CountGrowthWeight = source.CountGrowthWeight,
                 AfterGroupIdentifier = source.AfterGroupIdentifier,
                 DelaySeconds = source.DelaySeconds,
                 ExpectedEngagementSeconds = source.ExpectedEngagementSeconds,
@@ -1203,14 +1288,23 @@ public static class DefendPhaseRuntime
                 StartSeconds = source.StartSeconds,
                 StartResolved = true
             };
-            for (int entryIndex = 0; entryIndex < source.Enemies.Count; entryIndex++)
+            IReadOnlyList<EnemySquadCompositionEntry> composition = ResolveSquadComposition(
+                source.UnitType,
+                source.InitialStrengthValue,
+                source.CountGrowthWeight,
+                roundIndex,
+                level.ExpectedDays,
+                initialStrengthScale,
+                growthSpeedScale,
+                strengthSettings);
+            for (int entryIndex = 0; entryIndex < composition.Count; entryIndex++)
             {
-                DefendAttackEntry entry = source.Enemies[entryIndex];
+                EnemySquadCompositionEntry entry = composition[entryIndex];
                 clone.Enemies.Add(new DefendAttackEntry
                 {
-                    UnitType = entry.UnitType,
-                    UnitLevel = entry.UnitLevel,
-                    Count = ScaleSpawnCount(entry.Count, scale)
+                    UnitType = source.UnitType,
+                    UnitLevel = entry.Level,
+                    Count = entry.Count
                 });
             }
             result.Add(clone);
@@ -1218,22 +1312,6 @@ public static class DefendPhaseRuntime
 
         return result;
     }
-
-    private static int ScaleSpawnCount(int count, Fix64 scale)
-    {
-        long scaledCountRaw = checked((long)count * Fix64.Max(Fix64.Zero, scale).RawValue);
-        long roundedCount = checked(scaledCountRaw + (1L << (Fix64.FRACTIONAL_PLACES - 1)))
-                            >> Fix64.FRACTIONAL_PLACES;
-        int scaledCount = checked((int)roundedCount);
-        return count > 0 && scaledCount <= 0 ? 1 : scaledCount;
-    }
-
-#if UNITY_EDITOR
-    public static int GetEditorTestScaledSpawnCount(int count, Fix64 scale)
-    {
-        return ScaleSpawnCount(count, scale);
-    }
-#endif
 
     private static List<PlannedSpawnEvent> BuildSpawnEvents(IReadOnlyList<DefendAttackGroupDefinition> groups)
     {
@@ -1259,8 +1337,7 @@ public static class DefendPhaseRuntime
             for (int entryIndex = 0; entryIndex < group.Enemies.Count; entryIndex++)
             {
                 DefendAttackEntry entry = group.Enemies[entryIndex];
-                int spawnCount = LevelTagRuntime.ModifyEnemySpawnCount(entry.Count);
-                for (int spawnIndex = 0; spawnIndex < spawnCount; spawnIndex++)
+                for (int spawnIndex = 0; spawnIndex < entry.Count; spawnIndex++)
                 {
                     candidates.Add(new WaveSpawnCandidate
                     {
@@ -1618,8 +1695,7 @@ public static class DefendPhaseRuntime
         if (s_MinSpeedWorld <= Fix64.Zero
             || s_MaxSpeedWorld < s_MinSpeedWorld
             || s_SpawnIntervalSeconds <= Fix64.Zero
-            || s_WaypointArrivalRadiusWorld <= Fix64.Zero
-            || s_EndlessGrowthRate <= Fix64.Zero)
+            || s_WaypointArrivalRadiusWorld <= Fix64.Zero)
         {
             throw new InvalidOperationException("DefendPhaseRuntime prepared config contains a non-positive value.");
         }
@@ -1820,7 +1896,11 @@ public static class DefendPhaseRuntime
         public readonly List<DefendAttackEntry> Enemies = new();
         public string Identifier;
         public int DefendRound;
+        public int[] ActiveDays;
         public DefendRouteDefinition Route;
+        public UnitType UnitType;
+        public Fix64 InitialStrengthValue;
+        public Fix64 CountGrowthWeight;
         public string AfterGroupIdentifier;
         public Fix64 DelaySeconds;
         public Fix64 ExpectedEngagementSeconds;
@@ -1880,19 +1960,24 @@ public static class DefendPhaseRuntime
 
     private sealed class TutorialTriggeredSpawnPoint
     {
-        public TutorialTriggeredSpawnPoint(FixVector2 position, UnitType unitType, int unitLevel, int count, string name)
+        public TutorialTriggeredSpawnPoint(
+            FixVector2 position,
+            UnitType unitType,
+            Fix64 initialStrengthValue,
+            Fix64 countGrowthWeight,
+            string name)
         {
             Position = position;
             UnitType = unitType;
-            UnitLevel = unitLevel;
-            Count = count;
+            InitialStrengthValue = initialStrengthValue;
+            CountGrowthWeight = countGrowthWeight;
             Name = name;
         }
 
         public FixVector2 Position { get; }
         public UnitType UnitType { get; }
-        public int UnitLevel { get; }
-        public int Count { get; }
+        public Fix64 InitialStrengthValue { get; }
+        public Fix64 CountGrowthWeight { get; }
         public string Name { get; }
     }
 }

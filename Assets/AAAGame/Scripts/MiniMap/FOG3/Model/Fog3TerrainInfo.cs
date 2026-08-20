@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 namespace AAAGame.MiniMap.FOG3
 {
@@ -72,6 +72,62 @@ namespace AAAGame.MiniMap.FOG3
             Fog3SlopeCellInfo[] slopeCells,
             float platformEdgeInset,
             string sourceName)
+            : this(
+                width,
+                height,
+                cellSize,
+                origin,
+                walkableMask,
+                platformHeights,
+                slopeMask,
+                slopeCells,
+                platformEdgeInset,
+                null,
+                sourceName)
+        {
+        }
+
+        public Fog3TerrainInfo(
+            int width,
+            int height,
+            float cellSize,
+            Vector3 origin,
+            bool[] walkableMask,
+            int[] platformHeights,
+            bool[] slopeMask,
+            Fog3SlopeCellInfo[] slopeCells,
+            float platformEdgeInset,
+            float? backgroundSurfaceWorldY,
+            string sourceName)
+            : this(
+                width,
+                height,
+                cellSize,
+                origin,
+                walkableMask,
+                platformHeights,
+                slopeMask,
+                slopeCells,
+                platformEdgeInset,
+                backgroundSurfaceWorldY,
+                backgroundSurfaceWorldY,
+                sourceName)
+        {
+        }
+
+        public Fog3TerrainInfo(
+            int width,
+            int height,
+            float cellSize,
+            Vector3 origin,
+            bool[] walkableMask,
+            int[] platformHeights,
+            bool[] slopeMask,
+            Fog3SlopeCellInfo[] slopeCells,
+            float platformEdgeInset,
+            float? backgroundSurfaceWorldY,
+            float? backgroundFogCoverWorldY,
+            string sourceName)
         {
             Width = Mathf.Max(1, width);
             Height = Mathf.Max(1, height);
@@ -81,6 +137,18 @@ namespace AAAGame.MiniMap.FOG3
 
             Origin = origin;
             PlatformEdgeInset = platformEdgeInset;
+            if (backgroundSurfaceWorldY.HasValue &&
+                (float.IsNaN(backgroundSurfaceWorldY.Value) || float.IsInfinity(backgroundSurfaceWorldY.Value)))
+            {
+                throw new System.ArgumentOutOfRangeException(nameof(backgroundSurfaceWorldY));
+            }
+            BackgroundSurfaceWorldY = backgroundSurfaceWorldY;
+            if (backgroundFogCoverWorldY.HasValue &&
+                (float.IsNaN(backgroundFogCoverWorldY.Value) || float.IsInfinity(backgroundFogCoverWorldY.Value)))
+            {
+                throw new System.ArgumentOutOfRangeException(nameof(backgroundFogCoverWorldY));
+            }
+            BackgroundFogCoverWorldY = backgroundFogCoverWorldY;
             SourceName = string.IsNullOrEmpty(sourceName) ? "Manual" : sourceName;
             WalkableMask = ValidateMask(walkableMask, Width * Height);
             PlatformHeights = ValidatePlatformHeights(platformHeights, Width * Height);
@@ -93,6 +161,8 @@ namespace AAAGame.MiniMap.FOG3
         public float CellSize { get; }
         public Vector3 Origin { get; }
         public float PlatformEdgeInset { get; }
+        public float? BackgroundSurfaceWorldY { get; }
+        public float? BackgroundFogCoverWorldY { get; }
         public string SourceName { get; }
         public bool[] WalkableMask { get; }
         public int[] PlatformHeights { get; }
