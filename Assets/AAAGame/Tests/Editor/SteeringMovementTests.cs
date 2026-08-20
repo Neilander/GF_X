@@ -3,6 +3,7 @@ using System;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Reflection;
+using AAAGame.MiniMap.FOG3;
 
 /// <summary>
 /// SteeringMovement 纯逻辑测试。
@@ -937,6 +938,38 @@ public class SteeringMovementTests
     }
 
     [Test]
+    public void SlopeUpperVision_OnlyRevealsHeightPlusOneInsideConfiguredRadiusForUnits()
+    {
+        Fog3MapData map = CreateSlopeUpperVisionMap();
+        LogicFactionVisionService.BindMap(map);
+        SimEntityContext revealer = MakeSoldier(new Vector3(1.5f, 0f, 0.5f), SideType.EnemySide);
+        SimEntityContext inRadiusHeightOne = MakeSoldier(new Vector3(3.5f, 0f, 0.5f), SideType.PlayerSide);
+        SimEntityContext outsideRadiusHeightOne = MakeSoldier(new Vector3(4.5f, 0f, 0.5f), SideType.PlayerSide);
+        SimEntityContext inRadiusHeightTwo = MakeSoldier(new Vector3(2.5f, 0f, 0.5f), SideType.PlayerSide);
+        EntityRegistry.Register(revealer);
+        EntityRegistry.Register(inRadiusHeightOne);
+        EntityRegistry.Register(outsideRadiusHeightOne);
+        EntityRegistry.Register(inRadiusHeightTwo);
+
+        Assert.IsTrue(LogicFactionVisionService.IsEntityVisibleToSide(SideType.EnemySide, inRadiusHeightOne));
+        Assert.IsFalse(LogicFactionVisionService.IsEntityVisibleToSide(SideType.EnemySide, outsideRadiusHeightOne));
+        Assert.IsFalse(LogicFactionVisionService.IsEntityVisibleToSide(SideType.EnemySide, inRadiusHeightTwo));
+    }
+
+    [Test]
+    public void SlopeUpperVision_DoesNotApplyToBuildings()
+    {
+        Fog3MapData map = CreateSlopeUpperVisionMap();
+        LogicFactionVisionService.BindMap(map);
+        SimBuildingContext revealer = MakeBuilding(new Vector3(1.5f, 0f, 0.5f), SideType.EnemySide);
+        SimEntityContext target = MakeSoldier(new Vector3(3.5f, 0f, 0.5f), SideType.PlayerSide);
+        EntityRegistry.Register(revealer);
+        EntityRegistry.Register(target);
+
+        Assert.IsFalse(LogicFactionVisionService.IsEntityVisibleToSide(SideType.EnemySide, target));
+    }
+
+    [Test]
     public void HeroAggro_UsesAttackRangeOnlyAndClearsPursuitWhenTargetLeavesRange()
     {
         SimHeroContext hero = MakeHero(Vector3.zero, SideType.PlayerSide);
@@ -1402,6 +1435,29 @@ public class SteeringMovementTests
         }
         Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestWorld());
         Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+    }
+
+    private static Fog3MapData CreateSlopeUpperVisionMap()
+    {
+        const int width = 8;
+        bool[] walkable = new bool[width];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        int[] heights = { 0, 0, 2, 1, 1, 1, 1, 1 };
+        bool[] slopes = new bool[width];
+        slopes[1] = true;
+        var slopeCells = new Fog3SlopeCellInfo[width];
+        slopeCells[1] = new Fog3SlopeCellInfo(1, 0, 0, 1, 1);
+        return new Fog3MapData(new Fog3TerrainInfo(
+            width,
+            1,
+            1f,
+            Vector3.zero,
+            walkable,
+            heights,
+            slopes,
+            slopeCells,
+            "SlopeUpperVisionTest"));
     }
 
     private SimHeroContext MakeHero(Vector3 position, SideType side)

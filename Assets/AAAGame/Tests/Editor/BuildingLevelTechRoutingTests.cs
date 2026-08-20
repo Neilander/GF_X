@@ -90,7 +90,8 @@ public sealed class BuildingLevelTechRoutingTests
     {
         foreach (BuildingTable row in LoadBuildingRows())
         {
-            if (row.Identifier.EndsWith("_Lv0", StringComparison.Ordinal))
+            if (row.Identifier.EndsWith("_Lv0", StringComparison.Ordinal)
+                || row.Type == BuilType.Wall)
                 continue;
 
             for (int level = 1; level <= 2; level++)

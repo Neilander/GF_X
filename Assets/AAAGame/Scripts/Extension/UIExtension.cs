@@ -238,31 +238,6 @@ public static class UIExtension
         }
     }
     /// <summary>
-    /// 显示Toast提示
-    /// </summary>
-    /// <param name="ui"></param>
-    /// <param name="text"></param>
-    /// <param name="duration"></param>
-    public static void ShowToast(this UIComponent ui, string text, ToastStyle style = ToastStyle.Blue, float duration = 2)
-    {
-        if (string.IsNullOrEmpty(text))
-        {
-            return;
-        }
-
-        var uiParams = UIParams.Create();
-        uiParams.Set<VarString>(ToastTips.P_Text, text);
-        uiParams.Set<VarFloat>(ToastTips.P_Duration, duration);
-        uiParams.Set<VarUInt32>(ToastTips.P_Style, (uint)style);
-        var tipsGroup = ui.GetUIGroup(Const.UIGroup.Tips.ToString());
-        if (tipsGroup.CurrentUIForm != null)
-        {
-            uiParams.SortOrder = ((tipsGroup.CurrentUIForm as UIForm).Logic as UIFormBase).Params.SortOrder + 1;
-        }
-        ui.OpenUIForm(UIViews.ToastTips, uiParams);
-    }
-
-    /// <summary>
     /// 显示侧边提示
     /// </summary>
     /// <param name="ui"></param>
@@ -755,12 +730,4 @@ public static class UIExtension
         return new Vector2(layoutElement.preferredWidth, layoutElement.preferredHeight);
     }
     #endregion
-    public enum ToastStyle : uint
-    {
-        Blue = 0,
-        Yellow = 1,
-        Green = 2,
-        Red = 3,
-        White = 4
-    }
 }

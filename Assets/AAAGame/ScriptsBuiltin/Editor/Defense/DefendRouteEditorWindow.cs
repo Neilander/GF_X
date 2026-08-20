@@ -18,29 +18,33 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     private const string ConfigExcelPath = "AAAGameData/Configs/GameConfig.xlsx";
     private const string RouteExcelPath = "AAAGameData/DataTables/Level/DefendRouteTable.xlsx";
     private const string GroupExcelPath = "AAAGameData/DataTables/Level/DefendAttackGroupTable.xlsx";
+    private const int DerivedIdentifierVersion = 1;
     private static readonly Regex EnemyPairRegex = new(@"\[([^,\]]+),([^\]]+)\]", RegexOptions.Compiled);
 
     private readonly List<LevelRecord> _levels = new();
-    private readonly List<RouteRecord> _routes = new();
-    private readonly List<GroupRecord> _groups = new();
+    [SerializeField] private List<RouteRecord> _routes = new();
+    [SerializeField] private List<GroupRecord> _groups = new();
     private readonly List<string> _unitIdentifiers = new();
     private readonly Dictionary<string, StrongholdInfo> _strongholds = new(StringComparer.Ordinal);
     private readonly List<DefenseTargetPreview> _initialDefenseTargets = new();
     private readonly Dictionary<string, RoutePreview> _routePreviewCache = new(StringComparer.Ordinal);
     private readonly List<string> _validationMessages = new();
-    private Vector2 _scroll;
-    private int _levelIndex;
-    private int _selectedRouteIndex = -1;
-    private int _selectedGroupIndex = -1;
-    private bool _showAllRoutes = true;
-    private bool _dirty;
-    private EditMode _editMode;
+    [SerializeField] private Vector2 _scroll;
+    [SerializeField] private int _levelIndex;
+    [SerializeField] private int _selectedRouteIndex = -1;
+    [SerializeField] private int _selectedGroupIndex = -1;
+    [SerializeField] private bool _showAllRoutes = true;
+    [SerializeField] private bool _dirty;
+    [SerializeField] private bool _draftInitialized;
+    [SerializeField] private List<string> _defaultRoutesInitializedLevels = new();
+    [SerializeField] private int _derivedIdentifierVersion;
+    [SerializeField] private EditMode _editMode;
     private GameObject _levelPrefab;
     private Vector3? _initialDefenseTargetPosition;
     private string _initialDefenseTargetLabel;
     private FlowNavigationGridAsset[] _previewNavigationGrids = Array.Empty<FlowNavigationGridAsset>();
     private FlowNavigationGridAsset _previewNavigationCollisionGrid;
-    private UnitSize _previewUnitSize = UnitSize.Small;
+    [SerializeField] private UnitSize _previewUnitSize = UnitSize.Small;
     private float _waypointArrivalRadiusWorld;
     private float _distanceConversionRate = 0.018f;
     private float _spawnIntervalSeconds = 0.8f;
@@ -64,8 +68,12 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     private void OnEnable()
     {
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+        SceneView.duringSceneGui -= DrawScenePreview;
         SceneView.duringSceneGui += DrawScenePreview;
-        ReloadAll();
+        if (_draftInitialized)
+            ReloadSupportingDataWithoutReplacingDraft();
+        else
+            ReloadAll();
     }
 
     private void OnDisable()
@@ -164,14 +172,12 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             return;
 
         RouteRecord route = routes[_selectedRouteIndex];
+        Dictionary<RouteRecord, string> previousRouteIdentifiers = CurrentRoutes()
+            .ToDictionary(x => x, x => x.Identifier);
+        Dictionary<GroupRecord, string> previousGroupIdentifiers = CurrentGroups()
+            .ToDictionary(x => x, x => x.Identifier);
         EditorGUI.BeginChangeCheck();
-        string previousIdentifier = route.Identifier;
-        route.Identifier = EditorGUILayout.TextField("路线 ID", route.Identifier);
-        if (!string.Equals(previousIdentifier, route.Identifier, StringComparison.Ordinal))
-        {
-            foreach (GroupRecord group in _groups.Where(x => string.Equals(x.RouteIdentifier, previousIdentifier, StringComparison.Ordinal)))
-                group.RouteIdentifier = route.Identifier;
-        }
+        EditorGUILayout.LabelField("路线 ID", route.Identifier);
         route.SourceTeleportationId = DrawTeleportationPopup("来源传送点", route.SourceTeleportationId, allowEmpty: false, enemyOnly: true);
         EditorGUILayout.Space(4f);
         EditorGUILayout.LabelField("固定途经传送点", EditorStyles.boldLabel);
@@ -203,8 +209,12 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         if (GUILayout.Button("添加途经传送点", GUILayout.Width(110f)))
             route.WaypointTeleportationIds.Add(availableTeleportationId);
         GUI.enabled = true;
+        route.Suffix = EditorGUILayout.TextField("路线后缀（可空）", route.Suffix ?? string.Empty);
         if (EditorGUI.EndChangeCheck())
+        {
+            RebuildDerivedIdentifiers(CurrentLevelIdentifier, previousRouteIdentifiers, previousGroupIdentifiers);
             MarkDirty();
+        }
 
         DrawRouteMetrics(route);
     }
@@ -213,7 +223,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     {
         List<GroupRecord> groups = CurrentGroups();
         DrawRecordSelector(
-            groups.Select(x => $"D{x.DefendRound}  {x.Identifier}").ToArray(),
+            groups.Select(x => x.Identifier).ToArray(),
             ref _selectedGroupIndex,
             "新增出兵组",
             AddGroup,
@@ -222,16 +232,15 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             return;
 
         GroupRecord group = groups[_selectedGroupIndex];
+        Dictionary<RouteRecord, string> previousRouteIdentifiers = CurrentRoutes()
+            .ToDictionary(x => x, x => x.Identifier);
+        Dictionary<GroupRecord, string> previousGroupIdentifiers = CurrentGroups()
+            .ToDictionary(x => x, x => x.Identifier);
         EditorGUI.BeginChangeCheck();
-        string previousIdentifier = group.Identifier;
-        group.Identifier = EditorGUILayout.TextField("出兵组 ID", group.Identifier);
-        if (!string.Equals(previousIdentifier, group.Identifier, StringComparison.Ordinal))
-        {
-            foreach (GroupRecord dependent in _groups.Where(x => string.Equals(x.AfterGroupIdentifier, previousIdentifier, StringComparison.Ordinal)))
-                dependent.AfterGroupIdentifier = group.Identifier;
-        }
+        EditorGUILayout.LabelField("出兵组 ID", group.Identifier);
         group.DefendRound = Mathf.Max(1, EditorGUILayout.IntField("防御日", group.DefendRound));
         group.RouteIdentifier = DrawRoutePopup("路线", group.RouteIdentifier);
+        group.Suffix = EditorGUILayout.TextField("出兵组后缀（可空）", group.Suffix ?? string.Empty);
         group.AfterGroupIdentifier = DrawPredecessorPopup(group);
         EditorGUILayout.Space(4f);
         EditorGUILayout.LabelField("兵种与固定数量", EditorStyles.boldLabel);
@@ -261,7 +270,10 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             "预计首次接战（秒）",
             group.ExpectedEngagementSeconds));
         if (EditorGUI.EndChangeCheck())
+        {
+            RebuildDerivedIdentifiers(CurrentLevelIdentifier, previousRouteIdentifiers, previousGroupIdentifiers);
             MarkDirty();
+        }
 
         DrawGroupTimeline(group);
     }
@@ -447,16 +459,17 @@ public sealed class DefendRouteEditorWindow : EditorWindow
 
     private void AddRoute()
     {
-        int suffix = 1;
-        string identifier;
-        do identifier = $"{CurrentLevelIdentifier}_Route_{suffix++}";
-        while (_routes.Any(x => string.Equals(x.Identifier, identifier, StringComparison.Ordinal)));
-        _routes.Add(new RouteRecord
+        string sourceTeleportationId = FirstEnemyTeleportationId();
+        var route = new RouteRecord
         {
-            Identifier = identifier,
             LevelIdentifier = CurrentLevelIdentifier,
-            SourceTeleportationId = FirstEnemyTeleportationId()
-        });
+            SourceTeleportationId = sourceTeleportationId
+        };
+        route.Suffix = CreateUniqueSuffix(
+            BuildRouteBaseIdentifier(route),
+            CurrentRoutes().Select(x => x.Identifier));
+        route.Identifier = BuildRouteIdentifier(route);
+        _routes.Add(route);
         _selectedRouteIndex = CurrentRoutes().Count - 1;
         MarkDirty();
     }
@@ -467,7 +480,9 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         if (_selectedRouteIndex < 0 || _selectedRouteIndex >= routes.Count)
             return;
         RouteRecord route = routes[_selectedRouteIndex];
-        if (_groups.Any(x => string.Equals(x.RouteIdentifier, route.Identifier, StringComparison.Ordinal)))
+        if (_groups.Any(x =>
+                string.Equals(x.LevelIdentifier, route.LevelIdentifier, StringComparison.Ordinal)
+                && string.Equals(x.RouteIdentifier, route.Identifier, StringComparison.Ordinal)))
         {
             EditorUtility.DisplayDialog("无法删除", "仍有出兵组引用这条路线。", "确定");
             return;
@@ -479,23 +494,25 @@ public sealed class DefendRouteEditorWindow : EditorWindow
 
     private void AddGroup()
     {
-        int suffix = 1;
-        string identifier;
-        do identifier = $"{CurrentLevelIdentifier}_Group_{suffix++}";
-        while (_groups.Any(x => string.Equals(x.Identifier, identifier, StringComparison.Ordinal)));
-        _groups.Add(new GroupRecord
+        RouteRecord route = CurrentRoutes().FirstOrDefault()
+            ?? throw new InvalidOperationException($"关卡 '{CurrentLevelIdentifier}' 没有路线，无法新增出兵组。");
+        var group = new GroupRecord
         {
-            Identifier = identifier,
             LevelIdentifier = CurrentLevelIdentifier,
             DefendRound = 1,
-            RouteIdentifier = CurrentRoutes().FirstOrDefault()?.Identifier ?? string.Empty,
+            RouteIdentifier = route.Identifier,
             DelaySeconds = 0f,
             ExpectedEngagementSeconds = 15f,
             Enemies = new List<EnemyRecord>
             {
                 new() { Identifier = _unitIdentifiers.FirstOrDefault() ?? string.Empty, Count = 1 }
             }
-        });
+        };
+        group.Suffix = CreateUniqueSuffix(
+            BuildGroupBaseIdentifier(group),
+            CurrentGroups().Select(x => x.Identifier));
+        group.Identifier = BuildGroupIdentifier(group);
+        _groups.Add(group);
         _selectedGroupIndex = CurrentGroups().Count - 1;
         MarkDirty();
     }
@@ -506,7 +523,9 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         if (_selectedGroupIndex < 0 || _selectedGroupIndex >= groups.Count)
             return;
         GroupRecord group = groups[_selectedGroupIndex];
-        if (_groups.Any(x => string.Equals(x.AfterGroupIdentifier, group.Identifier, StringComparison.Ordinal)))
+        if (_groups.Any(x =>
+                string.Equals(x.LevelIdentifier, group.LevelIdentifier, StringComparison.Ordinal)
+                && string.Equals(x.AfterGroupIdentifier, group.Identifier, StringComparison.Ordinal)))
         {
             EditorUtility.DisplayDialog("无法删除", "仍有出兵组把它设为前置组。", "确定");
             return;
@@ -523,16 +542,44 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             _levels.Clear();
             _routes.Clear();
             _groups.Clear();
+            _defaultRoutesInitializedLevels.Clear();
+            _derivedIdentifierVersion = 0;
             _unitIdentifiers.Clear();
             ReadLevels();
             ReadUnits();
             ReadConfigValues();
             ReadRoutes();
             ReadGroups();
+            bool identifiersMigrated = MigrateDerivedIdentifiers();
             _levelIndex = Mathf.Clamp(_levelIndex, 0, Mathf.Max(0, _levels.Count - 1));
             _selectedRouteIndex = -1;
             _selectedGroupIndex = -1;
-            _dirty = false;
+            _dirty = identifiersMigrated;
+            _draftInitialized = true;
+            LoadLevelGeometry();
+            ValidateAll();
+        }
+        catch (Exception exception)
+        {
+            Debug.LogException(exception);
+            _validationMessages.Clear();
+            _validationMessages.Add(exception.Message);
+        }
+        Repaint();
+    }
+
+    private void ReloadSupportingDataWithoutReplacingDraft()
+    {
+        try
+        {
+            _levels.Clear();
+            _unitIdentifiers.Clear();
+            ReadLevels();
+            ReadUnits();
+            ReadConfigValues();
+            if (_derivedIdentifierVersion < DerivedIdentifierVersion && MigrateDerivedIdentifiers())
+                _dirty = true;
+            _levelIndex = Mathf.Clamp(_levelIndex, 0, Mathf.Max(0, _levels.Count - 1));
             LoadLevelGeometry();
             ValidateAll();
         }
@@ -735,7 +782,44 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             _initialDefenseTargetPosition = _initialDefenseTargets[0].Position;
             _initialDefenseTargetLabel = _initialDefenseTargets[0].Label;
         }
+        EnsureDefaultRoutesForCurrentLevel();
         SceneView.RepaintAll();
+    }
+
+    private bool EnsureDefaultRoutesForCurrentLevel()
+    {
+        if (_defaultRoutesInitializedLevels.Contains(CurrentLevelIdentifier))
+            return false;
+
+        if (CurrentRoutes().Count > 0)
+        {
+            _defaultRoutesInitializedLevels.Add(CurrentLevelIdentifier);
+            EditorUtility.SetDirty(this);
+            return false;
+        }
+
+        List<StrongholdInfo> enemyStrongholds = EnemyStrongholdsByTeleportationId();
+        _defaultRoutesInitializedLevels.Add(CurrentLevelIdentifier);
+        foreach (StrongholdInfo stronghold in enemyStrongholds)
+        {
+            string teleportationId = stronghold.TeleportationId.ToString(CultureInfo.InvariantCulture);
+            _routes.Add(new RouteRecord
+            {
+                Identifier = teleportationId,
+                LevelIdentifier = CurrentLevelIdentifier,
+                SourceTeleportationId = teleportationId,
+                Suffix = string.Empty,
+                WaypointTeleportationIds = new List<string>()
+            });
+        }
+
+        if (enemyStrongholds.Count == 0)
+            return false;
+
+        _selectedRouteIndex = 0;
+        _dirty = true;
+        EditorUtility.SetDirty(this);
+        return true;
     }
 
     private void OpenLevelPrefab()
@@ -942,13 +1026,11 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     private void ValidateAll()
     {
         _validationMessages.Clear();
-        ValidateDuplicateIds(_routes.Select(x => x.Identifier), "路线");
-        ValidateDuplicateIds(_groups.Select(x => x.Identifier), "出兵组");
-        Dictionary<string, RouteRecord> routesById = _routes
-            .Where(x => !string.IsNullOrWhiteSpace(x.Identifier))
-            .GroupBy(x => x.Identifier, StringComparer.Ordinal)
-            .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
-        Dictionary<string, GroupRecord> groupsById = _groups
+        foreach (IGrouping<string, RouteRecord> levelRoutes in _routes.GroupBy(x => x.LevelIdentifier, StringComparer.Ordinal))
+            ValidateDuplicateIds(levelRoutes.Select(x => x.Identifier), $"关卡 '{levelRoutes.Key}' 的路线");
+        foreach (IGrouping<string, GroupRecord> levelGroups in _groups.GroupBy(x => x.LevelIdentifier, StringComparer.Ordinal))
+            ValidateDuplicateIds(levelGroups.Select(x => x.Identifier), $"关卡 '{levelGroups.Key}' 的出兵组");
+        Dictionary<string, GroupRecord> currentGroupsById = CurrentGroups()
             .Where(x => !string.IsNullOrWhiteSpace(x.Identifier))
             .GroupBy(x => x.Identifier, StringComparer.Ordinal)
             .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
@@ -957,6 +1039,8 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         {
             if (string.IsNullOrWhiteSpace(route.Identifier) || string.IsNullOrWhiteSpace(route.LevelIdentifier) || string.IsNullOrWhiteSpace(route.SourceTeleportationId))
                 AddValidation($"路线存在空的 ID、关卡或来源传送点：'{route.Identifier}'。");
+            if (!string.Equals(route.Identifier, BuildRouteIdentifier(route), StringComparison.Ordinal))
+                AddValidation($"路线 '{route.Identifier}' 的 ID 与传送点序列及后缀不一致。");
             if (!string.Equals(route.LevelIdentifier, CurrentLevelIdentifier, StringComparison.Ordinal))
                 continue;
             ValidateTeleportationOnRoute(route, route.SourceTeleportationId, "来源");
@@ -971,12 +1055,15 @@ public sealed class DefendRouteEditorWindow : EditorWindow
 
         foreach (GroupRecord group in _groups)
         {
+            if (!string.Equals(group.Identifier, BuildGroupIdentifier(group), StringComparison.Ordinal))
+                AddValidation($"出兵组 '{group.Identifier}' 的 ID 与防御日、路线及后缀不一致。");
             if (group.DefendRound <= 0)
                 AddValidation($"出兵组 '{group.Identifier}' 的防御日必须大于 0。");
-            if (!routesById.TryGetValue(group.RouteIdentifier, out RouteRecord route))
+            RouteRecord route = _routes.FirstOrDefault(x =>
+                string.Equals(x.LevelIdentifier, group.LevelIdentifier, StringComparison.Ordinal)
+                && string.Equals(x.Identifier, group.RouteIdentifier, StringComparison.Ordinal));
+            if (route == null)
                 AddValidation($"出兵组 '{group.Identifier}' 引用了未知路线 '{group.RouteIdentifier}'。");
-            else if (!string.Equals(route.LevelIdentifier, group.LevelIdentifier, StringComparison.Ordinal))
-                AddValidation($"出兵组 '{group.Identifier}' 与路线 '{route.Identifier}' 不属于同一关卡。");
             if (group.Enemies.Count == 0)
                 AddValidation($"出兵组 '{group.Identifier}' 没有兵种。");
             foreach (EnemyRecord enemy in group.Enemies)
@@ -1000,16 +1087,19 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             }
             if (!string.IsNullOrWhiteSpace(group.AfterGroupIdentifier))
             {
-                if (!groupsById.TryGetValue(group.AfterGroupIdentifier, out GroupRecord predecessor))
+                GroupRecord predecessor = _groups.FirstOrDefault(x =>
+                    string.Equals(x.LevelIdentifier, group.LevelIdentifier, StringComparison.Ordinal)
+                    && string.Equals(x.Identifier, group.AfterGroupIdentifier, StringComparison.Ordinal));
+                if (predecessor == null)
                     AddValidation($"出兵组 '{group.Identifier}' 引用了未知前置组 '{group.AfterGroupIdentifier}'。");
-                else if (predecessor.DefendRound != group.DefendRound || !string.Equals(predecessor.LevelIdentifier, group.LevelIdentifier, StringComparison.Ordinal))
-                    AddValidation($"出兵组 '{group.Identifier}' 的前置组必须属于同一关卡与防御日。");
+                else if (predecessor.DefendRound != group.DefendRound)
+                    AddValidation($"出兵组 '{group.Identifier}' 的前置组必须属于同一防御日。");
             }
         }
 
         foreach (GroupRecord group in CurrentGroups())
-            TryResolveGroupStart(group, groupsById, new HashSet<string>(StringComparer.Ordinal), out _);
-        ValidateCurrentWaveSchedules(groupsById);
+            TryResolveGroupStart(group, currentGroupsById, new HashSet<string>(StringComparer.Ordinal), out _);
+        ValidateCurrentWaveSchedules(currentGroupsById);
         Repaint();
         SceneView.RepaintAll();
     }
@@ -1132,6 +1222,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
                 Path.GetFullPath(GroupExcelPath)
             });
             _dirty = false;
+            EditorUtility.SetDirty(this);
             Debug.Log($"Defense route data saved. routes={_routes.Count}, groups={_groups.Count}.");
         }
         catch (Exception exception)
@@ -1197,6 +1288,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     private void MarkDirty()
     {
         _dirty = true;
+        EditorUtility.SetDirty(this);
         ValidateAll();
     }
 
@@ -1233,11 +1325,209 @@ public sealed class DefendRouteEditorWindow : EditorWindow
 
     private string FirstEnemyTeleportationId()
     {
-        return _strongholds.Values
-            .Where(x => x.FactionId != EntitySideHelper.PlayerFactionId && x.TeleportPosition.HasValue)
+        List<StrongholdInfo> enemyStrongholds = EnemyStrongholdsByTeleportationId();
+        if (enemyStrongholds.Count == 0)
+            throw new InvalidOperationException($"关卡 '{CurrentLevelIdentifier}' 没有可作为出兵来源的非玩家据点。");
+        return enemyStrongholds[0].TeleportationId.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private List<StrongholdInfo> EnemyStrongholdsByTeleportationId()
+    {
+        List<StrongholdInfo> enemyStrongholds = _strongholds.Values
+            .Where(x => x.FactionId != EntitySideHelper.PlayerFactionId)
             .OrderBy(x => x.TeleportationId)
-            .Select(x => x.TeleportationId.ToString(CultureInfo.InvariantCulture))
-            .FirstOrDefault() ?? string.Empty;
+            .ToList();
+        StrongholdInfo missingTeleportation = enemyStrongholds.FirstOrDefault(x => !x.TeleportPosition.HasValue);
+        if (missingTeleportation != null)
+        {
+            throw new InvalidOperationException(
+                $"关卡 '{CurrentLevelIdentifier}' 的非玩家据点 '{missingTeleportation.Identifier}' 缺少传送点，无法创建默认路线。");
+        }
+        IGrouping<int, StrongholdInfo> duplicateTeleportation = enemyStrongholds
+            .GroupBy(x => x.TeleportationId)
+            .FirstOrDefault(x => x.Count() > 1);
+        if (duplicateTeleportation != null)
+        {
+            throw new InvalidOperationException(
+                $"关卡 '{CurrentLevelIdentifier}' 的非玩家据点使用了重复的传送点 ID '{duplicateTeleportation.Key}'。");
+        }
+        return enemyStrongholds;
+    }
+
+    private bool MigrateDerivedIdentifiers()
+    {
+        bool changed = false;
+        var previousRouteIdentifiers = _routes.ToDictionary(x => x, x => x.Identifier);
+        var previousGroupIdentifiers = _groups.ToDictionary(x => x, x => x.Identifier);
+        foreach (IGrouping<string, RouteRecord> levelRoutes in _routes.GroupBy(x => x.LevelIdentifier, StringComparer.Ordinal))
+        {
+            var used = new HashSet<string>(StringComparer.Ordinal);
+            foreach (RouteRecord route in levelRoutes)
+            {
+                string baseIdentifier = BuildRouteBaseIdentifier(route);
+                route.Suffix = InferRouteSuffix(route.Identifier, baseIdentifier);
+                route.Suffix = CreateUniqueSuffix(baseIdentifier, used, route.Suffix);
+                string identifier = BuildRouteIdentifier(route);
+                changed |= !string.Equals(route.Identifier, identifier, StringComparison.Ordinal);
+                route.Identifier = identifier;
+                used.Add(identifier);
+            }
+        }
+
+        UpdateRouteReferences(previousRouteIdentifiers);
+        foreach (IGrouping<string, GroupRecord> levelGroups in _groups.GroupBy(x => x.LevelIdentifier, StringComparer.Ordinal))
+        {
+            var used = new HashSet<string>(StringComparer.Ordinal);
+            foreach (GroupRecord group in levelGroups)
+            {
+                string baseIdentifier = BuildGroupBaseIdentifier(group);
+                group.Suffix = InferSuffix(group.Identifier, baseIdentifier);
+                group.Suffix = CreateUniqueSuffix(baseIdentifier, used, group.Suffix);
+                string identifier = BuildGroupIdentifier(group);
+                changed |= !string.Equals(group.Identifier, identifier, StringComparison.Ordinal);
+                group.Identifier = identifier;
+                used.Add(identifier);
+            }
+        }
+        UpdatePredecessorReferences(previousGroupIdentifiers);
+        _derivedIdentifierVersion = DerivedIdentifierVersion;
+        EditorUtility.SetDirty(this);
+        return changed;
+    }
+
+    private void RebuildDerivedIdentifiers(
+        string levelIdentifier,
+        IReadOnlyDictionary<RouteRecord, string> previousRouteIdentifiers,
+        IReadOnlyDictionary<GroupRecord, string> previousGroupIdentifiers)
+    {
+        foreach (RouteRecord route in _routes.Where(x =>
+                     string.Equals(x.LevelIdentifier, levelIdentifier, StringComparison.Ordinal)))
+        {
+            route.Suffix = NormalizeSuffix(route.Suffix);
+            route.Identifier = BuildRouteIdentifier(route);
+        }
+        UpdateRouteReferences(previousRouteIdentifiers);
+        foreach (GroupRecord group in _groups.Where(x =>
+                     string.Equals(x.LevelIdentifier, levelIdentifier, StringComparison.Ordinal)))
+        {
+            group.Suffix = NormalizeSuffix(group.Suffix);
+            group.Identifier = BuildGroupIdentifier(group);
+        }
+        UpdatePredecessorReferences(previousGroupIdentifiers);
+    }
+
+    private void UpdateRouteReferences(IReadOnlyDictionary<RouteRecord, string> previousIdentifiers)
+    {
+        foreach (GroupRecord group in _groups)
+        {
+            RouteRecord route = previousIdentifiers.FirstOrDefault(x =>
+                string.Equals(x.Key.LevelIdentifier, group.LevelIdentifier, StringComparison.Ordinal)
+                && string.Equals(x.Value, group.RouteIdentifier, StringComparison.Ordinal)).Key;
+            if (route != null)
+                group.RouteIdentifier = route.Identifier;
+        }
+    }
+
+    private void UpdatePredecessorReferences(IReadOnlyDictionary<GroupRecord, string> previousIdentifiers)
+    {
+        foreach (GroupRecord group in _groups)
+        {
+            GroupRecord predecessor = previousIdentifiers.FirstOrDefault(x =>
+                string.Equals(x.Key.LevelIdentifier, group.LevelIdentifier, StringComparison.Ordinal)
+                && string.Equals(x.Value, group.AfterGroupIdentifier, StringComparison.Ordinal)).Key;
+            if (predecessor != null)
+                group.AfterGroupIdentifier = predecessor.Identifier;
+        }
+    }
+
+    private static string BuildRouteIdentifier(RouteRecord route)
+    {
+        return AppendSuffix(BuildRouteBaseIdentifier(route), route.Suffix);
+    }
+
+    private static string BuildRouteBaseIdentifier(RouteRecord route)
+    {
+        if (string.IsNullOrWhiteSpace(route.SourceTeleportationId))
+            return string.Empty;
+        return string.Join("_", new[] { route.SourceTeleportationId }
+            .Concat(route.WaypointTeleportationIds ?? new List<string>()));
+    }
+
+    private static string BuildGroupIdentifier(GroupRecord group)
+    {
+        return AppendSuffix(BuildGroupBaseIdentifier(group), group.Suffix);
+    }
+
+    private static string BuildGroupBaseIdentifier(GroupRecord group)
+    {
+        if (group.DefendRound <= 0 || string.IsNullOrWhiteSpace(group.RouteIdentifier))
+            return string.Empty;
+        return $"D{group.DefendRound}_{group.RouteIdentifier}";
+    }
+
+    private static string AppendSuffix(string baseIdentifier, string suffix)
+    {
+        if (string.IsNullOrWhiteSpace(baseIdentifier))
+            return string.Empty;
+        string normalizedSuffix = NormalizeSuffix(suffix);
+        return string.IsNullOrEmpty(normalizedSuffix)
+            ? baseIdentifier
+            : $"{baseIdentifier}_{normalizedSuffix}";
+    }
+
+    private static string InferSuffix(string identifier, string baseIdentifier)
+    {
+        if (string.Equals(identifier, baseIdentifier, StringComparison.Ordinal))
+            return string.Empty;
+        string prefix = $"{baseIdentifier}_";
+        return !string.IsNullOrEmpty(baseIdentifier)
+               && identifier != null
+               && identifier.StartsWith(prefix, StringComparison.Ordinal)
+            ? NormalizeSuffix(identifier.Substring(prefix.Length))
+            : string.Empty;
+    }
+
+    private static string InferRouteSuffix(string identifier, string baseIdentifier)
+    {
+        string suffix = InferSuffix(identifier, baseIdentifier);
+        if (!string.IsNullOrEmpty(suffix))
+            return suffix;
+        const string legacyMarker = "_Route_";
+        int markerIndex = identifier?.IndexOf(legacyMarker, StringComparison.Ordinal) ?? -1;
+        return markerIndex < 0
+            ? string.Empty
+            : NormalizeSuffix(identifier.Substring(markerIndex + legacyMarker.Length));
+    }
+
+    private static string NormalizeSuffix(string suffix)
+    {
+        return (suffix ?? string.Empty).Trim().Trim('_');
+    }
+
+    private static string CreateUniqueSuffix(string baseIdentifier, IEnumerable<string> identifiers)
+    {
+        return CreateUniqueSuffix(
+            baseIdentifier,
+            new HashSet<string>(identifiers.Where(x => !string.IsNullOrWhiteSpace(x)), StringComparer.Ordinal),
+            string.Empty);
+    }
+
+    private static string CreateUniqueSuffix(
+        string baseIdentifier,
+        HashSet<string> identifiers,
+        string preferredSuffix)
+    {
+        string normalizedPreferred = NormalizeSuffix(preferredSuffix);
+        if (!identifiers.Contains(AppendSuffix(baseIdentifier, normalizedPreferred)))
+            return normalizedPreferred;
+
+        int suffix = 2;
+        string candidateSuffix;
+        do candidateSuffix = string.IsNullOrEmpty(normalizedPreferred)
+            ? (suffix++).ToString(CultureInfo.InvariantCulture)
+            : $"{normalizedPreferred}_{suffix++}";
+        while (identifiers.Contains(AppendSuffix(baseIdentifier, candidateSuffix)));
+        return candidateSuffix;
     }
 
     private string FirstAvailableWaypointTeleportationId(RouteRecord route)
@@ -1446,32 +1736,38 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         (list[left], list[right]) = (list[right], list[left]);
     }
 
+    [Serializable]
     private sealed class LevelRecord
     {
         public string Identifier;
         public string PrefabPath;
     }
 
+    [Serializable]
     private sealed class RouteRecord
     {
         public string Identifier;
         public string LevelIdentifier;
         public string SourceTeleportationId;
+        public string Suffix;
         public List<string> WaypointTeleportationIds = new();
     }
 
+    [Serializable]
     private sealed class GroupRecord
     {
         public string Identifier;
         public string LevelIdentifier;
         public int DefendRound;
         public string RouteIdentifier;
+        public string Suffix;
         public List<EnemyRecord> Enemies = new();
         public string AfterGroupIdentifier;
         public float DelaySeconds;
         public float ExpectedEngagementSeconds;
     }
 
+    [Serializable]
     private sealed class EnemyRecord
     {
         public string Identifier;

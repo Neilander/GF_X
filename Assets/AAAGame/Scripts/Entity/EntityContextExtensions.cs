@@ -78,10 +78,6 @@ public static class EntityContextExtensions
             return false;
 
         // 检查是否处于战斗阶段（进攻阶段）
-        GamePhase currentPhase = LogicPhaseCommandService.GetRequiredCurrentPhase();
-        if (currentPhase != GamePhase.Invade && currentPhase != GamePhase.Defend)
-            return false;
-
         return true;
     }
 
@@ -142,7 +138,7 @@ public static class EntityContextExtensions
         if (self == null || target == null)
             return float.PositiveInfinity;
 
-        return (float)target.CombatShape.DistanceToSurface(self.PositionFixed);
+        return (float)LogicTargetGeometry.DistanceToSurface(target, self.PositionFixed);
     }
 
     public static bool TryGetTargetClosestPoint(this IEntityContext target, Vector3 origin, out Vector3 closestPoint)
@@ -152,7 +148,7 @@ public static class EntityContextExtensions
         if (target == null)
             return false;
 
-        FixVector2 closest = target.CombatShape.ClosestPoint(
+        FixVector2 closest = LogicTargetGeometry.ClosestPoint(target,
             new FixVector2((Fix64)origin.x, (Fix64)origin.z));
         closestPoint = new Vector3((float)closest.x, origin.y, (float)closest.y);
         return true;

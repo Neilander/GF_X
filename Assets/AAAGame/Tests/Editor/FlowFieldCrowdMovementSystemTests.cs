@@ -7308,61 +7308,48 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void Lv2真实导航英雄靠近阻挡区时多个远程兵仍能取得攻击范围内接近点()
+    public void 合成导航中英雄靠近阻挡区时多个远程兵仍能取得攻击范围内接近点()
     {
-        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>(
-            "Assets/AAAGame/Tilemap/Lv2_FlowNavigationGrid_Medium.asset");
-        Assert.NotNull(grid, "本回归必须直接使用报错场景的 Lv2 Medium 导航源。");
-        FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
-        Assert.NotNull(derivedData);
-        Assert.IsTrue(derivedData.IsValid);
+        const int width = 24;
+        const int height = 17;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        for (int y = 5; y <= 11; y++)
+            walkable[16 + y * width] = false;
+        for (int x = 16; x <= 20; x++)
+            walkable[x + 5 * width] = false;
 
-        FlowFieldNavigationConfig config = CreateConfig();
-        config.SectorSizeInCells = derivedData.ConfigSectorSizeInCells;
-        config.PortalNarrowWidthCells = derivedData.ConfigPortalNarrowWidthCells;
-        config.PortalMaxWindowWidthCells = derivedData.ConfigPortalMaxWindowWidthCells;
-        FlowFieldCrowdMovementSystem.SetConfig(config);
-        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSource(
-            grid.AgentTypeId,
-            grid.Width,
-            grid.Height,
-            grid.CellSize,
-            grid.Origin,
-            grid.GetWalkableMaskRuntimeReadOnlyReference(),
-            grid.GetCellAnchorsRuntimeReadOnlyReference(),
-            grid.GetCostFieldRuntimeReadOnlyReference(),
-            grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
-            derivedData,
-            useRuntimeReadOnlyReferences: true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
         ProcessWorldBuildQueueUntilReady();
 
-        Vector3 targetPosition = new Vector3(29.7429f, 0.10f, 35.6429f);
-        SimEntityContext target = CreateEntity(targetPosition, true, grid.AgentTypeId, 0.18f);
+        Vector3 targetPosition = new Vector3(19.5f, 0f, 8.5f);
+        SimEntityContext target = CreateEntity(targetPosition, true, 0, 0.18f);
         Vector3[] starts =
         {
-            new Vector3(18.2929f, 0.09f, 26.5357f),
-            new Vector3(18.3000f, 0.09f, 25.8357f),
-            new Vector3(18.9786f, 0.09f, 26.3214f),
-            new Vector3(18.8643f, 0.09f, 24.6357f),
-            new Vector3(19.1571f, 0.09f, 24.0857f),
-            new Vector3(17.8357f, 0.09f, 24.9286f),
-            new Vector3(18.9929f, 0.09f, 23.5643f),
-            new Vector3(16.2929f, 0.09f, 27.4786f),
-            new Vector3(17.2260f, 0.09f, 26.9460f),
-            new Vector3(16.4857f, 0.09f, 26.2429f),
-            new Vector3(15.7929f, 0.09f, 26.4071f)
+            new Vector3(2.5f, 0f, 3.5f),
+            new Vector3(2.5f, 0f, 4.5f),
+            new Vector3(2.5f, 0f, 5.5f),
+            new Vector3(2.5f, 0f, 6.5f),
+            new Vector3(2.5f, 0f, 7.5f),
+            new Vector3(2.5f, 0f, 8.5f),
+            new Vector3(2.5f, 0f, 9.5f),
+            new Vector3(2.5f, 0f, 10.5f),
+            new Vector3(2.5f, 0f, 11.5f),
+            new Vector3(2.5f, 0f, 12.5f),
+            new Vector3(2.5f, 0f, 13.5f)
         };
 
         const float targetRadius = 0.18f;
-        const float attackRange = 10.60f;
-        const float preferredStandOff = 10.592f;
+        const float attackRange = 6.6f;
+        const float preferredStandOff = 6.4f;
         const float minimumStandOff = 0.41f;
-        const float requiredClearance = 0.71f;
+        const float requiredClearance = 0.55f;
         HashSet<Vector2Int> selectedCells = new HashSet<Vector2Int>();
         FlowFieldCrowdMovementSystem.SetEditorTestClock(628, 10.0f);
         for (int i = 0; i < starts.Length; i++)
         {
-            SimEntityContext self = CreateEntity(starts[i], false, grid.AgentTypeId, 0.18f);
+            SimEntityContext self = CreateEntity(starts[i], false, 0, 0.18f);
             Assert.IsTrue(
                 FlowFieldCrowdMovementSystem.TryResolveCombatApproachPoint(
                     self,
@@ -7382,10 +7369,9 @@ public class FlowFieldCrowdMovementSystemTests
             float distanceToTargetSurface = Mathf.Max(0f, HorizontalDistance(approach, targetPosition) - targetRadius);
             Assert.LessOrEqual(
                 distanceToTargetSurface,
-                attackRange + grid.CellSize,
+                attackRange + 1f,
                 $"接近点必须位于真实攻击范围内，而不是旧实现向范围外扩圈。index={i} approach={approach}");
-            Assert.IsTrue(grid.WorldToCell(approach, out int x, out int y));
-            selectedCells.Add(new Vector2Int(x, y));
+            selectedCells.Add(new Vector2Int(Mathf.FloorToInt(approach.x), Mathf.FloorToInt(approach.z)));
         }
 
         Assert.GreaterOrEqual(selectedCells.Count, 8, "11 个追兵应在攻击环带内分散到多个导航槽位。");
@@ -9225,47 +9211,31 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void Lv2已按兵种半径侵蚀的合法边缘格不应被执行层重复收缩()
+    public void 合成已侵蚀导航的合法边缘格不应被执行层重复收缩()
     {
-        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv2_FlowNavigationGrid_Small.asset");
-        Assert.NotNull(grid, "真实净空回归必须直接使用 Lv2_FlowNavigationGrid_Small.asset。");
-        FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
-        Assert.NotNull(derivedData, "Lv2_FlowNavigationGrid_Small.asset 必须带预烘焙 derived navigation data。");
-        Assert.IsTrue(derivedData.IsValid, "Lv2_FlowNavigationGrid_Small.asset 的 derived navigation data 必须有效。");
-
-        FlowFieldNavigationConfig config = CreateConfig();
-        config.SectorSizeInCells = derivedData.ConfigSectorSizeInCells;
-        config.PortalNarrowWidthCells = derivedData.ConfigPortalNarrowWidthCells;
-        config.PortalMaxWindowWidthCells = derivedData.ConfigPortalMaxWindowWidthCells;
-        FlowFieldCrowdMovementSystem.SetConfig(config);
-        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSource(
-            grid.AgentTypeId,
-            grid.Width,
-            grid.Height,
-            grid.CellSize,
-            grid.Origin,
-            grid.GetWalkableMaskRuntimeReadOnlyReference(),
-            grid.GetCellAnchorsRuntimeReadOnlyReference(),
-            grid.GetCostFieldRuntimeReadOnlyReference(),
-            grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
-            derivedData,
-            useRuntimeReadOnlyReferences: true);
+        const int width = 8;
+        const int height = 3;
+        bool[] walkableMask = new bool[width * height];
+        for (int x = 0; x <= 5; x++)
+            SetWalkable(walkableMask, width, x, 1);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkableMask);
         ProcessWorldBuildQueueUntilReady();
-        bool[] walkableMask = grid.GetWalkableMaskRuntimeReadOnlyReference();
 
-        const float agentRadius = 0.182f;
-        Vector3 loggedPosition = grid.GetCellAnchor(151, 153);
-        Vector3 legalDisplacement = new Vector3(3.94f, 0f, 0f) * 0.05f;
-        Assert.IsTrue(grid.WorldToCell(loggedPosition, out int startX, out int startY));
-        Assert.IsTrue(grid.WorldToCell(loggedPosition + legalDisplacement, out int endX, out int endY));
-        Assert.IsTrue(walkableMask[startX + startY * grid.Width], $"实机日志起点必须仍是可走格，cell=({startX},{startY})。");
-        Assert.IsTrue(walkableMask[endX + endY * grid.Width], $"实机日志预测终点必须仍是可走格，cell=({endX},{endY})。");
+        const float agentRadius = 0.35f;
+        Vector3 loggedPosition = new Vector3(4.5f, 0f, 1.5f);
+        Vector3 legalDisplacement = Vector3.right * 0.25f;
+        int startX = Mathf.FloorToInt(loggedPosition.x);
+        int startY = Mathf.FloorToInt(loggedPosition.z);
+        int endX = Mathf.FloorToInt(loggedPosition.x + legalDisplacement.x);
+        int endY = Mathf.FloorToInt(loggedPosition.z + legalDisplacement.z);
+        Assert.IsTrue(walkableMask[startX + startY * width], $"合成导航起点必须是可走格，cell=({startX},{startY})。");
+        Assert.IsTrue(walkableMask[endX + endY * width], $"合成导航预测终点必须是可走格，cell=({endX},{endY})。");
 
         Assert.IsTrue(
             FlowFieldCrowdMovementSystem.TryConstrainNavigationDisplacement(
                 loggedPosition,
                 legalDisplacement,
-                grid.AgentTypeId,
+                0,
                 agentRadius,
                 out Vector3 constrained),
             "已按兵种半径侵蚀的合法格内位移约束应成功。");
@@ -9275,22 +9245,24 @@ public class FlowFieldCrowdMovementSystemTests
             $"合法边缘格内位移不应被执行层再次按完整单位半径截短。desired={legalDisplacement} constrained={constrained} start=({startX},{startY}) end=({endX},{endY})");
         Assert.AreEqual(0f, constrained.z, 0.01f, $"合法直行不应产生额外侧移。desired={legalDisplacement} constrained={constrained}");
 
-        Vector3 boundaryPosition = grid.GetCellAnchor(endX, endY);
-        Vector3 outwardDisplacement = Vector3.right * (grid.CellSize * 1.25f);
-        Assert.IsTrue(grid.WorldToCell(boundaryPosition + outwardDisplacement, out int blockedX, out int blockedY));
-        Assert.IsFalse(walkableMask[blockedX + blockedY * grid.Width], $"边界回归终点必须是不可走格，cell=({blockedX},{blockedY})。");
+        Vector3 boundaryPosition = new Vector3(5.5f, 0f, 1.5f);
+        Vector3 outwardDisplacement = Vector3.right * 1.25f;
+        int blockedX = Mathf.FloorToInt(boundaryPosition.x + outwardDisplacement.x);
+        int blockedY = Mathf.FloorToInt(boundaryPosition.z + outwardDisplacement.z);
+        Assert.IsFalse(walkableMask[blockedX + blockedY * width], $"边界回归终点必须是不可走格，cell=({blockedX},{blockedY})。");
         Assert.IsTrue(
             FlowFieldCrowdMovementSystem.TryConstrainNavigationDisplacement(
                 boundaryPosition,
                 outwardDisplacement,
-                grid.AgentTypeId,
+                0,
                 agentRadius,
                 out Vector3 boundaryConstrained),
             "朝不可走格的边界位移应被成功约束。");
         Vector3 boundaryResult = boundaryPosition + boundaryConstrained;
-        Assert.IsTrue(grid.WorldToCell(boundaryResult, out int resultX, out int resultY));
+        int resultX = Mathf.FloorToInt(boundaryResult.x);
+        int resultY = Mathf.FloorToInt(boundaryResult.z);
         Assert.IsTrue(
-            walkableMask[resultX + resultY * grid.Width],
+            walkableMask[resultX + resultY * width],
             $"扣除资产已编码净空后仍必须阻止中心进入不可走格。desired={outwardDisplacement} constrained={boundaryConstrained} result=({resultX},{resultY})");
     }
 

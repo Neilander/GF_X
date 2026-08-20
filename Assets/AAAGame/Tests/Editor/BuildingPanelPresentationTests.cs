@@ -251,7 +251,8 @@ public sealed class BuildingPanelPresentationTests
         Transform unitProperties = FindChild(unitPanel, "UnitPropertyList");
         GridLayoutGroup unitGrid = unitProperties.GetComponent<GridLayoutGroup>();
         Assert.IsNotNull(unitGrid);
-        Assert.AreEqual(3, unitGrid.constraintCount);
+        Assert.AreEqual(2, unitGrid.constraintCount);
+        Assert.AreEqual(230f, ((RectTransform)unitPanel).rect.width, 0.01f);
         Assert.IsFalse(unitPanel.gameObject.activeSelf);
 
         GameObject instance = UnityEngine.Object.Instantiate(prefab);
@@ -385,8 +386,8 @@ public sealed class BuildingPanelPresentationTests
 
             RectTransform detail = detailObject.GetComponent<RectTransform>();
             detail.SetParent(panel, false);
-            detail.sizeDelta = new Vector2(360f, 220f);
-            detail.anchoredPosition = new Vector2(492f, 0f);
+            detail.sizeDelta = new Vector2(230f, 220f);
+            detail.anchoredPosition = new Vector2(427f, 0f);
             Vector3 originalScale = panel.localScale;
 
             BuildingPanelScreenClamp.ClampToParent(panel, parent);

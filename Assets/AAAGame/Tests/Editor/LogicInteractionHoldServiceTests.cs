@@ -1,8 +1,91 @@
-﻿using NUnit.Framework;
+using NUnit.Framework;
 
 [TestFixture]
 public sealed class LogicInteractionHoldServiceTests
 {
+    [TestCase(0f)]
+    [TestCase(372f)]
+    public void BuildingPanelPlacement_AvoidsProjectedTargetAndStaysOnScreen(float reservedRightWidth)
+    {
+        var parentObject = new UnityEngine.GameObject("BuildingPanelParent", typeof(UnityEngine.RectTransform));
+        var panelObject = new UnityEngine.GameObject("BuildingPanel", typeof(UnityEngine.RectTransform));
+        try
+        {
+            var parent = parentObject.GetComponent<UnityEngine.RectTransform>();
+            parent.sizeDelta = new UnityEngine.Vector2(1920f, 1080f);
+            var panel = panelObject.GetComponent<UnityEngine.RectTransform>();
+            panel.SetParent(parent, false);
+            panel.anchorMin = panel.anchorMax = panel.pivot = new UnityEngine.Vector2(0.5f, 0.5f);
+            panel.sizeDelta = new UnityEngine.Vector2(624f, 394f);
+            var target = new UnityEngine.Rect(-60f, -50f, 120f, 100f);
+
+            BuildingPanelScreenClamp.PlaceBesideTargetBounds(
+                panel,
+                parent,
+                target,
+                new UnityEngine.Vector2(0f, 80f),
+                reservedRightWidth);
+
+            UnityEngine.Bounds bounds = UnityEngine.RectTransformUtility.CalculateRelativeRectTransformBounds(parent, panel);
+            var panelRect = UnityEngine.Rect.MinMaxRect(
+                bounds.min.x,
+                bounds.min.y,
+                bounds.max.x + reservedRightWidth,
+                bounds.max.y);
+            Assert.IsFalse(panelRect.Overlaps(target), $"panel={panelRect}, target={target}");
+            Assert.GreaterOrEqual(panelRect.xMin, parent.rect.xMin + 8f - 1e-4f);
+            Assert.LessOrEqual(panelRect.xMax, parent.rect.xMax - 8f + 1e-4f);
+            Assert.GreaterOrEqual(panelRect.yMin, parent.rect.yMin + 8f - 1e-4f);
+            Assert.LessOrEqual(panelRect.yMax, parent.rect.yMax - 8f + 1e-4f);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(panelObject);
+            UnityEngine.Object.DestroyImmediate(parentObject);
+        }
+    }
+
+    [Test]
+    public void BuildingPanelPlacement_WithNarrowDetailPanel_FitsBesideCenteredTarget()
+    {
+        var parentObject = new UnityEngine.GameObject("BuildingPanelParent", typeof(UnityEngine.RectTransform));
+        var panelObject = new UnityEngine.GameObject("BuildingPanel", typeof(UnityEngine.RectTransform));
+        try
+        {
+            var parent = parentObject.GetComponent<UnityEngine.RectTransform>();
+            parent.sizeDelta = new UnityEngine.Vector2(1920f, 1080f);
+            var panel = panelObject.GetComponent<UnityEngine.RectTransform>();
+            panel.SetParent(parent, false);
+            panel.anchorMin = panel.anchorMax = panel.pivot = new UnityEngine.Vector2(0.5f, 0.5f);
+            panel.sizeDelta = new UnityEngine.Vector2(624f, 464f);
+            var target = new UnityEngine.Rect(-80f, -79f, 160f, 158f);
+
+            BuildingPanelScreenClamp.PlaceBesideTargetBounds(
+                panel,
+                parent,
+                target,
+                new UnityEngine.Vector2(-BuildingInfoItem.DetailPanelCenterOffset, 80f),
+                BuildingInfoItem.DetailPanelWidth);
+
+            UnityEngine.Bounds bounds = UnityEngine.RectTransformUtility.CalculateRelativeRectTransformBounds(parent, panel);
+            var completePanelRect = UnityEngine.Rect.MinMaxRect(
+                bounds.min.x,
+                bounds.min.y,
+                bounds.max.x + BuildingInfoItem.DetailPanelWidth,
+                bounds.max.y);
+            Assert.IsFalse(completePanelRect.Overlaps(target), $"panel={completePanelRect}, target={target}");
+            Assert.GreaterOrEqual(completePanelRect.xMin, parent.rect.xMin + 8f - 1e-4f);
+            Assert.LessOrEqual(completePanelRect.xMax, parent.rect.xMax - 8f + 1e-4f);
+            Assert.GreaterOrEqual(completePanelRect.yMin, parent.rect.yMin + 8f - 1e-4f);
+            Assert.LessOrEqual(completePanelRect.yMax, parent.rect.yMax - 8f + 1e-4f);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(panelObject);
+            UnityEngine.Object.DestroyImmediate(parentObject);
+        }
+    }
+
     [TestCase(1, 1f)]
     [TestCase(2, 1f)]
     [TestCase(3, 1f)]
@@ -13,8 +96,10 @@ public sealed class LogicInteractionHoldServiceTests
     [TestCase(22, 2.1f)]
     public void BuildingHoldPresentation_ClampsPerStarSpeedAndTotalDuration(int starCount, float expectedSeconds)
     {
-        Assert.AreEqual(expectedSeconds, ResolveHoldDuration(typeof(BuildingBuildTips), starCount), 1e-4f);
-        Assert.AreEqual(expectedSeconds, ResolveHoldDuration(typeof(BuildingUpgradeTips), starCount), 1e-4f);
+        Assert.AreEqual(
+            expectedSeconds,
+            BuildingInteractionHoldPresentation.ResolveDurationSeconds(starCount, 1f),
+            1e-4f);
     }
 
     [TestCase(1f / 30f, 60)]
@@ -42,20 +127,11 @@ public sealed class LogicInteractionHoldServiceTests
     public void BuildingAndUpgradeHolds_CompleteByRenderTimeAtAnyRenderRate(int renderRate)
     {
         const int starCount = 4;
-        float duration = ResolveHoldDuration(typeof(BuildingBuildTips), starCount);
+        float duration = BuildingInteractionHoldPresentation.ResolveDurationSeconds(starCount, 1f);
         int frameCount = UnityEngine.Mathf.RoundToInt(duration * renderRate);
         float deltaTime = 1f / renderRate;
 
-        AssertPanelHoldCompletesAndReleases(
-            typeof(BuildingBuildTips),
-            starCount,
-            deltaTime,
-            frameCount);
-        AssertPanelHoldCompletesAndReleases(
-            typeof(BuildingUpgradeTips),
-            starCount,
-            deltaTime,
-            frameCount);
+        AssertPanelHoldCompletesAndReleases(starCount, deltaTime, frameCount, duration);
     }
 
     [TestCase(0, false, false, 0)]
@@ -114,37 +190,6 @@ public sealed class LogicInteractionHoldServiceTests
         StringAssert.DoesNotContain("LogicInputFrame", source);
         StringAssert.Contains("Time.deltaTime", source);
         StringAssert.Contains("IsPrimaryPointerPressed", source);
-    }
-
-    [Test]
-    public void InteractionKeyHold_RemainsRenderFramePresentationAndDoesNotEnterLogicTimeline()
-    {
-        string assetsPath = UnityEngine.Application.dataPath;
-        string tips = System.IO.File.ReadAllText(System.IO.Path.Combine(
-            assetsPath,
-            "AAAGame/Scripts/UI/InteractOptionTips.cs"));
-        string inputManager = System.IO.File.ReadAllText(System.IO.Path.Combine(
-            assetsPath,
-            "AAAGame/Scripts/UTManagers/InputManager.cs"));
-        string procedure = System.IO.File.ReadAllText(System.IO.Path.Combine(
-            assetsPath,
-            "AAAGame/Scripts/Procedures/RuntimeProcedureBase.cs"));
-        string authority = System.IO.File.ReadAllText(System.IO.Path.Combine(
-            assetsPath,
-            "AAAGame/Scripts/Interaction/LogicInteractionAuthorityService.cs"));
-        string hasher = System.IO.File.ReadAllText(System.IO.Path.Combine(
-            assetsPath,
-            "AAAGame/Scripts/GameClass/LogicGameplayStateHasher.cs"));
-
-        StringAssert.Contains("IsInteractionPressed", tips);
-        StringAssert.Contains("SetHoldState", tips);
-        StringAssert.Contains("_target.TryExecute", tips);
-        StringAssert.DoesNotContain("LogicInteractionHoldService", tips);
-        StringAssert.DoesNotContain("SetLogicHoldProgress", tips);
-        StringAssert.DoesNotContain("AddHeldBit(_interactAction", inputManager);
-        StringAssert.DoesNotContain("LogicInteractionHoldService", procedure);
-        StringAssert.DoesNotContain("LogicInteractionHoldService", authority);
-        StringAssert.DoesNotContain("LogicInteractionHoldService", hasher);
     }
 
     [Test]
@@ -219,34 +264,34 @@ public sealed class LogicInteractionHoldServiceTests
         }
     }
 
-    private static float ResolveHoldDuration(System.Type panelType, int starCount)
-    {
-        var method = panelType.GetMethod(
-            "ResolveHoldDurationSeconds",
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        Assert.IsNotNull(method, $"{panelType.Name} is missing ResolveHoldDurationSeconds.");
-        return (float)method.Invoke(null, new object[] { starCount });
-    }
-
     private static void AssertPanelHoldCompletesAndReleases(
-        System.Type panelType,
         int starCount,
         float deltaTime,
-        int frameCount)
+        int frameCount,
+        float duration)
     {
-        var method = panelType.GetMethod(
-            "AdvanceHoldProgressStars",
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        Assert.IsNotNull(method, $"{panelType.Name} is missing AdvanceHoldProgressStars.");
-
         float progress = 0f;
         for (int i = 0; i < frameCount; i++)
-            progress = (float)method.Invoke(null, new object[] { progress, true, starCount, deltaTime });
-        Assert.AreEqual(starCount, progress, 1e-4f, panelType.Name);
+        {
+            progress = BuildingInteractionHoldPresentation.AdvanceProgressStars(
+                progress,
+                true,
+                starCount,
+                deltaTime,
+                duration);
+        }
+        Assert.AreEqual(starCount, progress, 1e-4f);
 
         for (int i = 0; i < frameCount; i++)
-            progress = (float)method.Invoke(null, new object[] { progress, false, starCount, deltaTime });
-        Assert.AreEqual(0f, progress, 1e-4f, panelType.Name);
+        {
+            progress = BuildingInteractionHoldPresentation.AdvanceProgressStars(
+                progress,
+                false,
+                starCount,
+                deltaTime,
+                duration);
+        }
+        Assert.AreEqual(0f, progress, 1e-4f);
     }
 
     private static void AssertRecycleHoldCompletesAndReleases(

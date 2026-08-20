@@ -79,6 +79,7 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     private BuildingExtraProps _extraProps; // 引用逻辑层按 BuildingInstanceId 管理的状态
     private readonly List<ColliderState> _collisionBlockingColliderStates = new List<ColliderState>();
     private bool _blocksLogicMovement = true;
+    public bool IsInteractionPresentationReady { get; private set; }
 
     public LogicCombatShape GetRequiredWorldCombatShape()
     {
@@ -110,8 +111,17 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
 
     protected override void OnShow(object userData)
     {
+        IsInteractionPresentationReady = false;
         base.OnShow(userData);
         OwnerFactionID = LogicState.OwnerFactionId;
+
+        if (LogicWallRuntime.IsWallBuilding(buildingData))
+        {
+            WallBranchView wallView = GetComponent<WallBranchView>()
+                                      ?? throw new System.InvalidOperationException(
+                                          $"Wall prefab is missing WallBranchView. building={buildingData.Identifier}.");
+            wallView.Initialize(this);
+        }
 
         RegisterOutlineRenderers();
 
@@ -132,10 +142,12 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         ApplyCollisionBlockingPresentation(LogicState.BlocksLogicMovement);
         SetPermanentStealthVisibility(LogicState.IsPermanentStealth);
 
-        if (HasUpgrade)
+        if (LogicInteractionOptionService.HasVisibleOptions(LogicState))
         {
             EnsureInteractionHost();
         }
+
+        IsInteractionPresentationReady = true;
 
     }
 
@@ -210,7 +222,9 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
 
     protected override void OnHide(bool isShutdown, object userData)
     {
+        IsInteractionPresentationReady = false;
         UnsubscribeLv0PhaseVisibilityEvents();
+        GetComponent<WallBranchView>()?.ClearGenerated();
         RestorePhaseVisibility();
         SetStealthVisualState(false, false, 1f, refreshPhaseVisibility: false);
         SetOwnershipVisualColor(false, default);

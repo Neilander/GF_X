@@ -302,6 +302,301 @@ public sealed class DefendRouteRuntimeTests
     }
 
     [Test]
+    public void DefenseEditorDraftSurvivesDomainReloadSerializationAndOnEnable()
+    {
+        Type windowType = AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType("DefendRouteEditorWindow", false))
+            .FirstOrDefault(type => type != null);
+        Assert.NotNull(windowType);
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic;
+
+        UnityEditor.EditorWindow original = null;
+        UnityEditor.EditorWindow restored = null;
+        try
+        {
+            original = (UnityEditor.EditorWindow)UnityEngine.ScriptableObject.CreateInstance(windowType);
+            System.Collections.IList originalRoutes =
+                (System.Collections.IList)windowType.GetField("_routes", flags).GetValue(original);
+            System.Collections.IList originalGroups =
+                (System.Collections.IList)windowType.GetField("_groups", flags).GetValue(original);
+            originalRoutes.Clear();
+            originalGroups.Clear();
+
+            Type routeType = windowType.GetNestedType(
+                "RouteRecord",
+                System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(routeType);
+            object route = Activator.CreateInstance(routeType, true);
+            routeType.GetField("Identifier", flags).SetValue(route, "1_0_Unsaved");
+            routeType.GetField("LevelIdentifier", flags).SetValue(route, "Lv_1");
+            routeType.GetField("SourceTeleportationId", flags).SetValue(route, "1");
+            routeType.GetField("Suffix", flags).SetValue(route, "Unsaved");
+            var waypoints = (List<string>)routeType.GetField("WaypointTeleportationIds", flags).GetValue(route);
+            waypoints.Add("0");
+            originalRoutes.Add(route);
+            windowType.GetField("_draftInitialized", flags).SetValue(original, true);
+            windowType.GetField("_derivedIdentifierVersion", flags).SetValue(original, 1);
+            windowType.GetField("_dirty", flags).SetValue(original, true);
+
+            string serialized = UnityEditor.EditorJsonUtility.ToJson(original);
+            StringAssert.Contains("1_0_Unsaved", serialized);
+
+            restored = (UnityEditor.EditorWindow)UnityEngine.ScriptableObject.CreateInstance(windowType);
+            UnityEditor.EditorJsonUtility.FromJsonOverwrite(serialized, restored);
+            windowType.GetMethod("OnEnable", flags).Invoke(restored, null);
+
+            System.Collections.IList restoredRoutes =
+                (System.Collections.IList)windowType.GetField("_routes", flags).GetValue(restored);
+            Assert.AreEqual(1, restoredRoutes.Count);
+            Assert.AreEqual(
+                "1_0_Unsaved",
+                routeType.GetField("Identifier", flags).GetValue(restoredRoutes[0]));
+            Assert.IsTrue((bool)windowType.GetField("_dirty", flags).GetValue(restored));
+        }
+        finally
+        {
+            if (original != null)
+                UnityEngine.Object.DestroyImmediate(original);
+            if (restored != null)
+                UnityEngine.Object.DestroyImmediate(restored);
+        }
+    }
+
+    [Test]
+    public void DefenseEditorInitializesOneEmptyRoutePerNonPlayerTeleportation()
+    {
+        Type windowType = AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType("DefendRouteEditorWindow", false))
+            .FirstOrDefault(type => type != null);
+        Assert.NotNull(windowType);
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic;
+
+        UnityEditor.EditorWindow window = null;
+        try
+        {
+            window = (UnityEditor.EditorWindow)UnityEngine.ScriptableObject.CreateInstance(windowType);
+            windowType.GetMethod("OnEnable", flags).Invoke(window, null);
+
+            System.Collections.IList levels =
+                (System.Collections.IList)windowType.GetField("_levels", flags).GetValue(window);
+            int levelIndex = Enumerable.Range(0, levels.Count).Single(index =>
+                string.Equals(
+                    (string)levels[index].GetType().GetField("Identifier", flags).GetValue(levels[index]),
+                    "Lv_2",
+                    StringComparison.Ordinal));
+            windowType.GetField("_levelIndex", flags).SetValue(window, levelIndex);
+
+            System.Collections.IList routes =
+                (System.Collections.IList)windowType.GetField("_routes", flags).GetValue(window);
+            for (int i = routes.Count - 1; i >= 0; i--)
+            {
+                object route = routes[i];
+                if (string.Equals(
+                        (string)route.GetType().GetField("LevelIdentifier", flags).GetValue(route),
+                        "Lv_2",
+                        StringComparison.Ordinal))
+                {
+                    routes.RemoveAt(i);
+                }
+            }
+            var initializedLevels = (List<string>)windowType
+                .GetField("_defaultRoutesInitializedLevels", flags)
+                .GetValue(window);
+            initializedLevels.Remove("Lv_2");
+
+            windowType.GetMethod("LoadLevelGeometry", flags).Invoke(window, null);
+
+            var expectedSourceIds = new List<string>();
+            var strongholds = (System.Collections.IDictionary)windowType
+                .GetField("_strongholds", flags)
+                .GetValue(window);
+            foreach (System.Collections.DictionaryEntry entry in strongholds)
+            {
+                object stronghold = entry.Value;
+                Type strongholdType = stronghold.GetType();
+                int factionId = (int)strongholdType.GetField("FactionId", flags).GetValue(stronghold);
+                if (factionId == EntitySideHelper.PlayerFactionId)
+                    continue;
+                object teleportPosition = strongholdType.GetField("TeleportPosition", flags).GetValue(stronghold);
+                Assert.NotNull(
+                    teleportPosition,
+                    $"非玩家据点 '{entry.Key}' 必须有传送点才能创建默认路线。");
+                int teleportationId = (int)strongholdType.GetField("TeleportationId", flags).GetValue(stronghold);
+                expectedSourceIds.Add(teleportationId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            expectedSourceIds.Sort(StringComparer.Ordinal);
+
+            Type routeType = windowType.GetNestedType(
+                "RouteRecord",
+                System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(routeType);
+            List<object> currentRoutes = routes.Cast<object>()
+                .Where(route => string.Equals(
+                    (string)routeType.GetField("LevelIdentifier", flags).GetValue(route),
+                    "Lv_2",
+                    StringComparison.Ordinal))
+                .ToList();
+            Assert.AreEqual(expectedSourceIds.Count, currentRoutes.Count);
+            CollectionAssert.AreEqual(
+                expectedSourceIds,
+                currentRoutes
+                    .Select(route => (string)routeType.GetField("SourceTeleportationId", flags).GetValue(route))
+                    .OrderBy(identifier => identifier, StringComparer.Ordinal)
+                    .ToList());
+            foreach (object route in currentRoutes)
+            {
+                string sourceId = (string)routeType.GetField("SourceTeleportationId", flags).GetValue(route);
+                Assert.AreEqual(
+                    sourceId,
+                    routeType.GetField("Identifier", flags).GetValue(route));
+                Assert.IsEmpty(
+                    (List<string>)routeType.GetField("WaypointTeleportationIds", flags).GetValue(route));
+            }
+
+            int initializedRouteCount = currentRoutes.Count;
+            windowType.GetMethod("LoadLevelGeometry", flags).Invoke(window, null);
+            Assert.AreEqual(
+                initializedRouteCount,
+                routes.Cast<object>().Count(route => string.Equals(
+                    (string)routeType.GetField("LevelIdentifier", flags).GetValue(route),
+                    "Lv_2",
+                    StringComparison.Ordinal)));
+
+            windowType.GetMethod("AddRoute", flags).Invoke(window, null);
+            object manuallyAddedRoute = routes.Cast<object>().Last(route => string.Equals(
+                (string)routeType.GetField("LevelIdentifier", flags).GetValue(route),
+                "Lv_2",
+                StringComparison.Ordinal));
+            string manualIdentifier = (string)routeType.GetField("Identifier", flags).GetValue(manuallyAddedRoute);
+            string manualSourceIdentifier = (string)routeType
+                .GetField("SourceTeleportationId", flags)
+                .GetValue(manuallyAddedRoute);
+            StringAssert.StartsWith(manualSourceIdentifier, manualIdentifier);
+            StringAssert.DoesNotContain("Lv_2", manualIdentifier);
+            StringAssert.DoesNotContain("_Route_", manualIdentifier);
+
+            object sameIdentifierInAnotherLevel = Activator.CreateInstance(routeType, true);
+            routeType.GetField("Identifier", flags).SetValue(sameIdentifierInAnotherLevel, manualIdentifier);
+            routeType.GetField("LevelIdentifier", flags).SetValue(sameIdentifierInAnotherLevel, "OtherLevel");
+            routeType.GetField("SourceTeleportationId", flags).SetValue(sameIdentifierInAnotherLevel, "0");
+            routes.Add(sameIdentifierInAnotherLevel);
+            windowType.GetMethod("ValidateAll", flags).Invoke(window, null);
+            var validationMessages = (List<string>)windowType
+                .GetField("_validationMessages", flags)
+                .GetValue(window);
+            Assert.IsFalse(validationMessages.Any(message =>
+                message.Contains("路线 ID 重复", StringComparison.Ordinal)
+                && message.Contains($"'{manualIdentifier}'", StringComparison.Ordinal)));
+
+            for (int i = routes.Count - 1; i >= 0; i--)
+            {
+                if (string.Equals(
+                        (string)routeType.GetField("LevelIdentifier", flags).GetValue(routes[i]),
+                        "Lv_2",
+                        StringComparison.Ordinal))
+                {
+                    routes.RemoveAt(i);
+                }
+            }
+            windowType.GetMethod("LoadLevelGeometry", flags).Invoke(window, null);
+            Assert.IsFalse(routes.Cast<object>().Any(route => string.Equals(
+                (string)routeType.GetField("LevelIdentifier", flags).GetValue(route),
+                "Lv_2",
+                StringComparison.Ordinal)));
+        }
+        finally
+        {
+            if (window != null)
+                UnityEngine.Object.DestroyImmediate(window);
+        }
+    }
+
+    [Test]
+    public void DefenseEditorExposesOnlySuffixesAndDerivesEveryIdentifier()
+    {
+        Type windowType = AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType("DefendRouteEditorWindow", false))
+            .FirstOrDefault(type => type != null);
+        Assert.NotNull(windowType);
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic;
+
+        UnityEditor.EditorWindow window = null;
+        try
+        {
+            window = (UnityEditor.EditorWindow)UnityEngine.ScriptableObject.CreateInstance(windowType);
+            windowType.GetMethod("OnEnable", flags).Invoke(window, null);
+            Type routeType = windowType.GetNestedType("RouteRecord", System.Reflection.BindingFlags.NonPublic);
+            Type groupType = windowType.GetNestedType("GroupRecord", System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(routeType);
+            Assert.NotNull(groupType);
+
+            System.Collections.IList routes =
+                (System.Collections.IList)windowType.GetField("_routes", flags).GetValue(window);
+            System.Collections.IList groups =
+                (System.Collections.IList)windowType.GetField("_groups", flags).GetValue(window);
+            foreach (object route in routes)
+            {
+                string sourceId = (string)routeType.GetField("SourceTeleportationId", flags).GetValue(route);
+                var waypoints = (List<string>)routeType.GetField("WaypointTeleportationIds", flags).GetValue(route);
+                string suffix = (string)routeType.GetField("Suffix", flags).GetValue(route);
+                string expected = string.Join("_", new[] { sourceId }.Concat(waypoints));
+                if (!string.IsNullOrEmpty(suffix))
+                    expected += $"_{suffix}";
+                Assert.AreEqual(expected, routeType.GetField("Identifier", flags).GetValue(route));
+            }
+
+            foreach (object group in groups)
+            {
+                int defendRound = (int)groupType.GetField("DefendRound", flags).GetValue(group);
+                string routeIdentifier = (string)groupType.GetField("RouteIdentifier", flags).GetValue(group);
+                string suffix = (string)groupType.GetField("Suffix", flags).GetValue(group);
+                string expected = $"D{defendRound}_{routeIdentifier}";
+                if (!string.IsNullOrEmpty(suffix))
+                    expected += $"_{suffix}";
+                Assert.AreEqual(expected, groupType.GetField("Identifier", flags).GetValue(group));
+            }
+
+            Assert.IsFalse(routes.Cast<object>()
+                .GroupBy(route => new
+                {
+                    Level = (string)routeType.GetField("LevelIdentifier", flags).GetValue(route),
+                    Identifier = (string)routeType.GetField("Identifier", flags).GetValue(route)
+                })
+                .Any(group => group.Count() > 1));
+            Assert.IsFalse(groups.Cast<object>()
+                .GroupBy(group => new
+                {
+                    Level = (string)groupType.GetField("LevelIdentifier", flags).GetValue(group),
+                    Identifier = (string)groupType.GetField("Identifier", flags).GetValue(group)
+                })
+                .Any(group => group.Count() > 1));
+
+            string source = File.ReadAllText(
+                "Assets/AAAGame/ScriptsBuiltin/Editor/Defense/DefendRouteEditorWindow.cs");
+            string routeUi = ExtractSourceBlock(source, "private void DrawRoutes()", "private void DrawGroups()");
+            string groupUi = ExtractSourceBlock(source, "private void DrawGroups()", "private void DrawRecordSelector(");
+            StringAssert.Contains("TextField(\"路线后缀（可空）\"", routeUi);
+            StringAssert.Contains("TextField(\"出兵组后缀（可空）\"", groupUi);
+            StringAssert.DoesNotContain("route.Identifier = EditorGUILayout.TextField", routeUi);
+            StringAssert.DoesNotContain("group.Identifier = EditorGUILayout.TextField", groupUi);
+        }
+        finally
+        {
+            if (window != null)
+                UnityEngine.Object.DestroyImmediate(window);
+        }
+    }
+
+    [Test]
     public void DefenseWaveScheduleStartsOnlyAfterPrewarmAndUsesTheNextLogicFrame()
     {
         string source = File.ReadAllText(

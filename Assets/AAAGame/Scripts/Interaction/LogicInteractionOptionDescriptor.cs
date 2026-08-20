@@ -78,13 +78,8 @@ public static class LogicInteractionOptionDescriptorFactory
         var candidates = new List<BuildingData>();
         foreach (BuildingData candidate in BuildingDataModel.GetAllBuildingData())
         {
-            if (candidate == null
-                || candidate.Lv != 1
-                || candidate.Type != ownerData.Type
-                || candidate.Arche == Archetype.None)
-            {
+            if (!BuildingDataModel.CanConstructAt(ownerData, candidate))
                 continue;
-            }
             candidates.Add(candidate);
         }
         candidates.Sort((left, right) => string.Compare(left.Identifier, right.Identifier, StringComparison.Ordinal));

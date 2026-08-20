@@ -606,8 +606,6 @@ public void Attack(Fix64 deltaTime)
     {
         if (_hasAttackStartFrame && _lastAttackStartFrame == currentFrame)
             return;
-        if (!CanStartAttackFromBuffs())
-            return;
 
         if (_ctx.Brain == null)
         {
@@ -662,6 +660,12 @@ public void Attack(Fix64 deltaTime)
             }
             return;
         }
+
+        // Attack-start buffs are evaluated only after a concrete, in-range target
+        // has been established.  A targetless building is a normal idle state;
+        // target-dependent buffs must not treat it as a malformed attack.
+        if (!CanStartAttackFromBuffs())
+            return;
 
         LockAttackTargets(target, activeWeapon, range);
         if (_lockedTargets.Count == 0)

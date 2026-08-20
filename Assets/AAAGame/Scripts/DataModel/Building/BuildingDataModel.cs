@@ -69,6 +69,21 @@ public class BuildingDataModel : DataModelBase
         return buildingDataModel.buildingDataDic.Values;
     }
 
+    public static bool IsLv1ConstructionTarget(BuildingData candidate)
+    {
+        return candidate != null
+               && candidate.Lv == 1
+               && (candidate.Arche != Archetype.None || candidate.Type == BuilType.Wall);
+    }
+
+    public static bool CanConstructAt(BuildingData owner, BuildingData candidate)
+    {
+        return owner != null
+               && owner.Lv == 0
+               && IsLv1ConstructionTarget(candidate)
+               && candidate.Type == owner.Type;
+    }
+
     public static string GetRequiredStartingBaseIdentifier(Archetype archetype)
     {
         return ResolveStartingBaseIdentifier(LogicRuntimeDataTableCache.BuildingRows, archetype);
@@ -142,7 +157,7 @@ public class BuildingDataModel : DataModelBase
         }
         else
         {
-            const int maxLv = 3;
+            int maxLv = row.Type == BuilType.Wall ? 1 : 3;
             for (int lv = 1; lv <= maxLv; lv++)
             {
                 WeaponData weaponData = ResolveWeaponData(row, lv);

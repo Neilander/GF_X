@@ -28,6 +28,8 @@ namespace AAAGame.Tools.Editor
         private const string SlopeLayerName = "Slope";
         private const string WaterLayerName = "Water";
         private const string StrongholdLayerName = "SH";
+        private const string WallLayerName = "Wall";
+        private const string WallForbiddenLayerName = "NoWall";
         private const string EntityLayerName = "Entities";
         private const string LevelPrefabTemplatePath = "Assets/AAAGame/Prefabs/Entity/Level/Level_2.prefab";
         private const string LevelPrefabFolderPath = "Assets/AAAGame/Prefabs/Entity/Level";
@@ -72,6 +74,61 @@ namespace AAAGame.Tools.Editor
         {
             var window = GetWindow<LdtkToTileWorldCreatorImporterWindow>("LDtk To TWC");
             window.minSize = new Vector2(460f, 360f);
+        }
+
+        [MenuItem("Tools/Buildings/Sync Wall Authoring From LDtk")]
+        private static void SyncWallAuthoringFromLdtk()
+        {
+            const string levelFolder = "Assets/AAAGame/Tilemap/Ldtk/City";
+            string[] sourcePaths = Directory.GetFiles(levelFolder, "*.ldtkl", SearchOption.TopDirectoryOnly)
+                .Select(path => path.Replace('\\', '/'))
+                .Where(path => !Path.GetFileNameWithoutExtension(path).EndsWith("_Backup", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            if (sourcePaths.Length == 0)
+                throw new InvalidOperationException($"No LDtk level files were found in {levelFolder}.");
+
+            var importer = CreateInstance<LdtkToTileWorldCreatorImporterWindow>();
+            try
+            {
+                for (int i = 0; i < sourcePaths.Length; i++)
+                    importer.SyncWallAuthoringForLevel(sourcePaths[i]);
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+            }
+            finally
+            {
+                DestroyImmediate(importer);
+            }
+        }
+
+        private void SyncWallAuthoringForLevel(string ldtkPath)
+        {
+            ldtkLevelAsset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(ldtkPath)
+                             ?? throw new InvalidOperationException($"LDtk level asset is missing: {ldtkPath}.");
+            string levelName = Path.GetFileNameWithoutExtension(ldtkPath);
+            configuration = AssetDatabase.LoadAssetAtPath<Configuration>($"Assets/AAAGame/Tilemap/{levelName}.asset")
+                            ?? throw new InvalidOperationException($"TWC configuration is missing for {ldtkPath}.");
+            if (!TryLoadLevel(ldtkPath, out LdtkLevelJson level) || !TryBuildImportPlan(level, out ImportPlan plan))
+                throw new InvalidOperationException($"Failed to build the wall import plan for {ldtkPath}.");
+
+            string prefabPath = GetDefaultLevelPrefabPath();
+            if (AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath) == null)
+                throw new InvalidOperationException($"Level prefab is missing for {ldtkPath}: {prefabPath}.");
+            GameObject prefabRoot = PrefabUtility.LoadPrefabContents(prefabPath);
+            try
+            {
+                ConfigureWallGridAuthoring(prefabRoot, plan);
+                PrefabUtility.SaveAsPrefabAsset(prefabRoot, prefabPath);
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(prefabRoot);
+            }
+
+            Debug.Log(
+                $"[Wall Authoring Sync] source={ldtkPath} prefab={prefabPath} " +
+                $"walkable={plan.walkableWallCells.Count} preview={plan.previewWallCells.Count} preset={plan.presetWallCells.Count}");
         }
 
         private void OnEnable()
@@ -894,6 +951,14 @@ namespace AAAGame.Tools.Editor
             int width = referenceLayer.__cWid;
             int height = referenceLayer.__cHei;
             int gridSize = referenceLayer.__gridSize;
+            LdtkLayerInstance wall = FindOptionalIntGridLayer(
+                level,
+                WallLayerName,
+                referenceLayer);
+            LdtkLayerInstance wallForbidden = FindOptionalIntGridLayer(
+                level,
+                WallForbiddenLayerName,
+                referenceLayer);
             float cellSize = GetTileWorldCellSize();
             LdtkLayerInstance slope = level.layerInstances.FirstOrDefault(x =>
                 x != null &&
@@ -903,7 +968,9 @@ namespace AAAGame.Tools.Editor
                 EditorUtility.DisplayDialog("LDtk import failed", "Slope must be an IntGrid layer.", "OK");
                 return false;
             }
-            var validatedLayers = platformLayers.Select(x => x.layer).Concat(new[] { water, stronghold }).ToList();
+            var validatedLayers = platformLayers.Select(x => x.layer)
+                .Concat(new[] { water, stronghold, wall, wallForbidden })
+                .ToList();
             if (slope != null)
             {
                 validatedLayers.Add(slope);
@@ -927,6 +994,10 @@ namespace AAAGame.Tools.Editor
                 })
                 .OrderBy(x => x.height)
                 .ToList();
+
+            Dictionary<Vector2, int> topPlatformHeights = LdtkSlopeLayoutResolver.GetTopPlatformHeights(
+                platformImports.Select(platform =>
+                    new KeyValuePair<int, IEnumerable<Vector2>>(platform.height, platform.cells)));
 
             foreach (PlatformImport platform in platformImports)
             {
@@ -968,6 +1039,24 @@ namespace AAAGame.Tools.Editor
                 return false;
             }
 
+            topPlatformHeights = LdtkSlopeLayoutResolver.GetTopPlatformHeights(
+                platformImports.Select(platform =>
+                    new KeyValuePair<int, IEnumerable<Vector2>>(platform.height, platform.cells)));
+            HashSet<Vector2> presetWallCells = ReadIntGridCells(wall, width, height);
+            HashSet<Vector2> forbiddenWallCells = ReadIntGridCells(wallForbidden, width, height);
+            if (!TryResolveWallCells(
+                    strongholdComponentsByFaction,
+                    topPlatformHeights,
+                    slopeCells,
+                    presetWallCells,
+                    forbiddenWallCells,
+                    out HashSet<Vector2> previewWallCells,
+                    out string wallError))
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", wallError, "OK");
+                return false;
+            }
+
             plan = new ImportPlan
             {
                 width = width,
@@ -978,6 +1067,9 @@ namespace AAAGame.Tools.Editor
                 platforms = platformImports,
                 slopeCells = slopeCells,
                 waterCells = ReadIntGridCells(water, width, height),
+                walkableWallCells = topPlatformHeights,
+                previewWallCells = previewWallCells,
+                presetWallCells = presetWallCells,
                 strongholdComponentsByFaction = strongholdComponentsByFaction,
                 entityPoints = ReadEntityPresetPoints(level, gridSize, cellSize)
             };
@@ -2408,6 +2500,8 @@ namespace AAAGame.Tools.Editor
             {
                 prefabRoot.name = Path.GetFileNameWithoutExtension(targetPath);
                 EntityImportResult result = ImportEntityPresetPointsIntoRoot(prefabRoot.transform, plan.entityPoints, terrainPrefabPath, useUndo: false);
+                if (plan.walkableWallCells != null)
+                    ConfigureWallGridAuthoring(prefabRoot, plan);
                 if (flowNavigationGrids != null && flowNavigationGrids.Count > 0)
                 {
                     FlowNavigationGridAsset primaryGrid = flowNavigationGrids[0];
@@ -2477,6 +2571,142 @@ namespace AAAGame.Tools.Editor
 
             EditorUtility.SetDirty(root.gameObject);
             return result;
+        }
+
+        private static void ConfigureWallGridAuthoring(GameObject prefabRoot, ImportPlan plan)
+        {
+            if (prefabRoot == null)
+                throw new ArgumentNullException(nameof(prefabRoot));
+            if (plan == null || plan.walkableWallCells == null || plan.previewWallCells == null || plan.presetWallCells == null)
+                throw new InvalidOperationException("Wall grid import data is incomplete.");
+
+            WallGridAuthoring[] existing = prefabRoot.GetComponentsInChildren<WallGridAuthoring>(true);
+            WallGridAuthoring authoring;
+            if (existing.Length == 0)
+                authoring = prefabRoot.AddComponent<WallGridAuthoring>();
+            else if (existing.Length == 1)
+                authoring = existing[0];
+            else
+                throw new InvalidOperationException($"Level prefab contains {existing.Length} WallGridAuthoring components.");
+
+            WallGridHeightCell[] walkable = plan.walkableWallCells
+                .OrderBy(pair => Mathf.RoundToInt(pair.Key.y))
+                .ThenBy(pair => Mathf.RoundToInt(pair.Key.x))
+                .Select(pair => new WallGridHeightCell(
+                    Mathf.RoundToInt(pair.Key.x),
+                    Mathf.RoundToInt(pair.Key.y),
+                    pair.Value))
+                .ToArray();
+            WallGridCell[] previews = ConvertWallCells(plan.previewWallCells);
+            WallGridCell[] presets = ConvertWallCells(plan.presetWallCells);
+            authoring.SetData(plan.width, plan.height, plan.cellSize, walkable, previews, presets);
+            EditorUtility.SetDirty(authoring);
+        }
+
+        private static WallGridCell[] ConvertWallCells(IEnumerable<Vector2> cells)
+        {
+            return cells
+                .Select(cell => new WallGridCell(Mathf.RoundToInt(cell.x), Mathf.RoundToInt(cell.y)))
+                .OrderBy(cell => cell)
+                .ToArray();
+        }
+
+        private static bool TryResolveWallCells(
+            Dictionary<int, List<StrongholdComponent>> strongholdComponentsByFaction,
+            Dictionary<Vector2, int> topPlatformHeights,
+            HashSet<Vector2> slopeCells,
+            HashSet<Vector2> presetWallCells,
+            HashSet<Vector2> forbiddenWallCells,
+            out HashSet<Vector2> previewWallCells,
+            out string error)
+        {
+            previewWallCells = new HashSet<Vector2>();
+            error = string.Empty;
+            if (strongholdComponentsByFaction == null || topPlatformHeights == null
+                || slopeCells == null || presetWallCells == null || forbiddenWallCells == null)
+                throw new ArgumentNullException(nameof(strongholdComponentsByFaction));
+
+            var allStrongholdCells = new HashSet<Vector2>();
+            foreach (List<StrongholdComponent> components in strongholdComponentsByFaction.Values)
+            {
+                for (int i = 0; i < components.Count; i++)
+                    allStrongholdCells.UnionWith(components[i].cells);
+            }
+            var groundOrSlope = new HashSet<Vector2>(topPlatformHeights.Keys);
+            groundOrSlope.UnionWith(slopeCells);
+            Vector2[] directions =
+            {
+                Vector2.right,
+                Vector2.left,
+                Vector2.up,
+                Vector2.down,
+            };
+
+            foreach (Vector2 cell in allStrongholdCells)
+            {
+                bool outer = false;
+                bool surroundedByTerrain = true;
+                for (int i = 0; i < directions.Length; i++)
+                {
+                    Vector2 neighbor = cell + directions[i];
+                    outer |= !allStrongholdCells.Contains(neighbor);
+                    surroundedByTerrain &= groundOrSlope.Contains(neighbor);
+                }
+                if (outer && surroundedByTerrain && topPlatformHeights.ContainsKey(cell))
+                    previewWallCells.Add(cell);
+            }
+
+            foreach (Vector2 cell in presetWallCells)
+            {
+                if (!allStrongholdCells.Contains(cell) || !topPlatformHeights.ContainsKey(cell))
+                {
+                    error = $"Preset wall cell {FormatCell(cell)} must be walkable and inside a stronghold.";
+                    return false;
+                }
+            }
+            foreach (Vector2 cell in forbiddenWallCells)
+            {
+                if (!allStrongholdCells.Contains(cell))
+                {
+                    error = $"NoWall cell {FormatCell(cell)} is outside every stronghold.";
+                    return false;
+                }
+            }
+
+            previewWallCells.ExceptWith(forbiddenWallCells);
+            previewWallCells.ExceptWith(presetWallCells);
+            return true;
+        }
+
+        private static LdtkLayerInstance FindOptionalIntGridLayer(
+            LdtkLevelJson level,
+            string layerName,
+            LdtkLayerInstance referenceLayer)
+        {
+            if (level == null)
+                throw new ArgumentNullException(nameof(level));
+            if (referenceLayer == null)
+                throw new ArgumentNullException(nameof(referenceLayer));
+            LdtkLayerInstance layer = level.layerInstances.FirstOrDefault(x =>
+                x != null && string.Equals(x.__identifier, layerName, StringComparison.OrdinalIgnoreCase));
+            if (layer == null)
+            {
+                return new LdtkLayerInstance
+                {
+                    __identifier = layerName,
+                    __type = "IntGrid",
+                    __cWid = referenceLayer.__cWid,
+                    __cHei = referenceLayer.__cHei,
+                    __gridSize = referenceLayer.__gridSize,
+                    intGridCsv = new int[checked(referenceLayer.__cWid * referenceLayer.__cHei)],
+                };
+            }
+            if (!string.Equals(layer.__type, "IntGrid", StringComparison.OrdinalIgnoreCase)
+                || layer.intGridCsv == null)
+            {
+                throw new InvalidOperationException($"Optional LDtk layer {layerName} must be an IntGrid layer.");
+            }
+            return layer;
         }
 
         private static int ClearExistingEntityPresetPoints(Transform root, bool useUndo)
@@ -3487,6 +3717,9 @@ namespace AAAGame.Tools.Editor
             public List<PlatformImport> platforms;
             public HashSet<Vector2> slopeCells;
             public HashSet<Vector2> waterCells;
+            public Dictionary<Vector2, int> walkableWallCells;
+            public HashSet<Vector2> previewWallCells;
+            public HashSet<Vector2> presetWallCells;
             public Dictionary<int, List<StrongholdComponent>> strongholdComponentsByFaction;
             public List<EntityPresetPointData> entityPoints;
         }

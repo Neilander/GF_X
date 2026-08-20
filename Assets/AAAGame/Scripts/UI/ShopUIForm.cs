@@ -379,7 +379,6 @@ public partial class ShopUIForm : UIFormBase
     //    if (!isFree && GF.UserData.MONEY < skinPrice)
     //    {
     //        var tips = Utility.Text.Format(GF.Localization.GetLocalString("You need {0} coins more to unlock the next one."), skinPrice - GF.UserData.MONEY);
-    //        GF.AD.ShowToast(tips);
     //        return;
     //    }
     //    var pageIdx = GetCarInPage(nextUnlockCar);

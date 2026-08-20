@@ -2,9 +2,18 @@ using System;
 
 public readonly struct TargetPriority : IComparable<TargetPriority>
 {
-    public TargetPriority(int taunt, bool inRange, int special, bool currentAttack, bool alert, Fix64 distance, int id)
+    public TargetPriority(
+        int taunt,
+        int subTaunt,
+        bool inRange,
+        int special,
+        bool currentAttack,
+        bool alert,
+        Fix64 distance,
+        int id)
     {
-        DoubledTauntLevel = taunt;
+        TauntLevel = taunt;
+        SubTauntLevel = subTaunt;
         InsideAttackRange = inRange;
         SpecialTargetingPriority = special;
         CurrentAttackTarget = currentAttack;
@@ -13,7 +22,8 @@ public readonly struct TargetPriority : IComparable<TargetPriority>
         TargetId = id;
     }
 
-    public int DoubledTauntLevel { get; }
+    public int TauntLevel { get; }
+    public int SubTauntLevel { get; }
     public bool InsideAttackRange { get; }
     public int SpecialTargetingPriority { get; }
     public bool CurrentAttackTarget { get; }
@@ -23,7 +33,9 @@ public readonly struct TargetPriority : IComparable<TargetPriority>
 
     public int CompareTo(TargetPriority other)
     {
-        int result = DoubledTauntLevel.CompareTo(other.DoubledTauntLevel);
+        int result = TauntLevel.CompareTo(other.TauntLevel);
+        if (result != 0) return result;
+        result = SubTauntLevel.CompareTo(other.SubTauntLevel);
         if (result != 0) return result;
         result = InsideAttackRange.CompareTo(other.InsideAttackRange);
         if (result != 0) return result;
@@ -51,9 +63,9 @@ public static class TargetPriorityUtility
         if (attacker == null) throw new ArgumentNullException(nameof(attacker));
         if (target == null) throw new ArgumentNullException(nameof(target));
         bool inRange = distance <= attackRange;
-        int doubledTaunt = checked(target.TauntLevel * 2 - (target.IsLogicBuilding() ? 1 : 0));
         return new TargetPriority(
-            doubledTaunt,
+            target.TauntLevel,
+            LogicWallRuntime.ResolveSubTauntLevel(target),
             inRange,
             GetSpecialTargetingPriority(attacker, target),
             inRange && ReferenceEquals(target, currentTarget),

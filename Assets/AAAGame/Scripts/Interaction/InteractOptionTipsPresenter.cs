@@ -7,13 +7,12 @@ using System.Collections.Generic;
 using Stopwatch = System.Diagnostics.Stopwatch;
 
 /// <summary>
-/// 监听交互焦点变化，打开/关闭交互提示UI（InteractOptionTips）。
+/// 监听交互焦点变化，打开/关闭建筑专用面板。
 /// 挂在任意常驻对象上（例如 UI Root / Player）。
 /// </summary>
 public class InteractOptionTipsPresenter : MonoBehaviour
 {
     private bool _subscribed;
-    private int _tipsFormId = -1;
     private int _buildTipsFormId = -1;
     private int _upgradeTipsFormId = -1;
     private int _infoTipsFormId = -1;
@@ -105,11 +104,9 @@ public class InteractOptionTipsPresenter : MonoBehaviour
 
         if (target == null)
         {
-            CloseInteractTips();
             CloseBuildTips();
             CloseUpgradeTips();
             CloseInfoTips();
-            _tipsFormId = -1;
             _buildTipsFormId = -1;
             _upgradeTipsFormId = -1;
             _infoTipsFormId = -1;
@@ -119,7 +116,6 @@ public class InteractOptionTipsPresenter : MonoBehaviour
 
         if (ShouldShowBuildTips(target))
         {
-            CloseInteractTips();
             CloseUpgradeTips();
             CloseInfoTips();
             long buildTipsStartTicks = Stopwatch.GetTimestamp();
@@ -130,7 +126,6 @@ public class InteractOptionTipsPresenter : MonoBehaviour
 
         if (ShouldShowUpgradeTips(target))
         {
-            CloseInteractTips();
             CloseBuildTips();
             CloseInfoTips();
             OpenOrUpdateUpgradeTips(target);
@@ -139,7 +134,6 @@ public class InteractOptionTipsPresenter : MonoBehaviour
 
         if (ShouldShowInfoTips(target))
         {
-            CloseInteractTips();
             CloseBuildTips();
             CloseUpgradeTips();
             OpenOrUpdateInfoTips(target);
@@ -149,27 +143,8 @@ public class InteractOptionTipsPresenter : MonoBehaviour
         CloseBuildTips();
         CloseUpgradeTips();
         CloseInfoTips();
-
-        if (_tipsFormId > 0 && GF.UI.HasUIForm(_tipsFormId))
-        {
-            var uiForm = GF.UI.GetUIForm(_tipsFormId) as UIForm;
-            var logic = uiForm != null ? uiForm.Logic as InteractOptionTips : null;
-            if (logic != null)
-            {
-                Debug.Log($"[Interact Tips] Update tips target={target.Transform.name}");
-                logic.ApplyTarget(target);
-                return;
-            }
-
-            GF.UI.Close(_tipsFormId);
-            _tipsFormId = -1;
-        }
-
-        var uiParams = UIParams.Create();
-
-        Debug.Log($"[Interact Tips] Open tips for target={target.Transform.name}");
-        uiParams.Set(InteractOptionTips.P_TargetHost, target);
-        _tipsFormId = GF.UI.OpenUIForm(UIViews.InteractOptionTips, uiParams);
+        throw new InvalidOperationException(
+            $"Interaction target '{target.Transform.name}' has no dedicated presentation panel.");
     }
 
     private static BuildingEntity ResolveTargetBuilding(InteractionHost target)
@@ -255,6 +230,9 @@ public class InteractOptionTipsPresenter : MonoBehaviour
         if (building == null || building.buildingData == null || building.buildingData.Lv != 0)
             return false;
 
+        if (RequiresWallMergePanel(building))
+            return false;
+
         BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
         return buildManager != null && buildManager.HasConstructOption(building);
     }
@@ -263,6 +241,10 @@ public class InteractOptionTipsPresenter : MonoBehaviour
     {
         if (target == null)
             return false;
+
+        BuildingEntity building = ResolveTargetBuilding(target);
+        if (building != null && RequiresWallMergePanel(building))
+            return true;
 
         List<IInteractionOption> options = new();
         target.GetOptions(options);
@@ -273,6 +255,19 @@ public class InteractOptionTipsPresenter : MonoBehaviour
         }
 
         return false;
+    }
+
+    private static bool RequiresWallMergePanel(BuildingEntity building)
+    {
+        if (building == null || !LogicWallRuntime.IsWallPreviewBuilding(building.buildingData))
+            return false;
+        if (!LogicWallRuntime.TryGetPreviewCell(building.LogicEntityId, out WallGridCell wallCell))
+        {
+            throw new InvalidOperationException(
+                $"Wall preview {building.LogicEntityId.Value} has no registered wall cell.");
+        }
+
+        return LogicWallRuntime.GetAdjacentBranches(wallCell, building.OwnerFactionID).Count > 0;
     }
 
     private static bool ShouldShowInfoTips(InteractionHost target)
@@ -289,16 +284,6 @@ public class InteractOptionTipsPresenter : MonoBehaviour
         }
 
         return false;
-    }
-
-    private void CloseInteractTips()
-    {
-        if (_tipsFormId > 0 && GF.UI.HasUIForm(_tipsFormId))
-            GF.UI.Close(_tipsFormId);
-        else
-            GF.UI.CloseUIForms(UIViews.InteractOptionTips);
-
-        _tipsFormId = -1;
     }
 
     private void CloseBuildTips()

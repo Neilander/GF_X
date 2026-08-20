@@ -150,7 +150,8 @@ public static class MAEntityFactory
         int logicQuarterTurns = 0,
         bool isGameEndConditionBuilding = false,
         bool isNavigationStaticBaked = false,
-        bool currentInteractionFrameLifecycle = false)
+        bool currentInteractionFrameLifecycle = false,
+        LogicWallBranchDefinition wallBranch = null)
     {
         var viewPosition = new Vector3((float)position.x, viewY, (float)position.y);
         EntityParams entityParams = CreateBuildingEntityParams(
@@ -163,7 +164,8 @@ public static class MAEntityFactory
             logicQuarterTurns,
             isGameEndConditionBuilding,
             isNavigationStaticBaked,
-            currentInteractionFrameLifecycle);
+            currentInteractionFrameLifecycle,
+            wallBranch);
         int viewRequestId = LogicEntityViewSpawnQueue.EnqueueBuilding(
             buildingData.PrefabPath,
             Const.EntityGroup.Building,
@@ -186,7 +188,8 @@ public static class MAEntityFactory
         int logicQuarterTurns,
         bool isGameEndConditionBuilding,
         bool isNavigationStaticBaked,
-        bool currentInteractionFrameLifecycle)
+        bool currentInteractionFrameLifecycle,
+        LogicWallBranchDefinition wallBranch)
     {
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
             throw new System.ArgumentException("MAEntityFactory.ShowBuilding failed: buildingInstanceId is empty.", nameof(buildingInstanceId));
@@ -226,7 +229,8 @@ public static class MAEntityFactory
                 ownerFactionId,
                 logicQuarterTurns,
                 isGameEndConditionBuilding,
-                isNavigationStaticBaked),
+                isNavigationStaticBaked,
+                wallBranch),
             currentInteractionFrameLifecycle);
 
         return entityParams;

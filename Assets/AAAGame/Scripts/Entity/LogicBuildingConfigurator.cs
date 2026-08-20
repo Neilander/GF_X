@@ -20,7 +20,8 @@ public static class LogicBuildingConfigurator
         int ownerFactionId,
         int logicQuarterTurns,
         bool isGameEndConditionBuilding = false,
-        bool isNavigationStaticBaked = false)
+        bool isNavigationStaticBaked = false,
+        LogicWallBranchDefinition wallBranch = null)
     {
         if (state == null)
             throw new ArgumentNullException(nameof(state));
@@ -44,12 +45,14 @@ public static class LogicBuildingConfigurator
         var properties = new CreaturePropertyManager(property => GetPropertyConfigValue(buildingData, property, tutorialLevel));
         state.Configure(null, properties, MAEntity.UnknownNavAgentTypeId, true, new BuildingAIBrain(), false, false);
 
-        LogicCombatShape combatShape = BuildingCombatShapeCatalog.LoadRequired()
-            .ResolveRequired(buildingData.PrefabPath, state.Position, logicQuarterTurns);
-        IReadOnlyList<LogicCombatShape> obstacleShapes = ResolveLogicObstacleShapes(
+        LogicCombatShape combatShape = ResolveCombatShape(
             buildingData,
             state.Position,
-            logicQuarterTurns);
+            logicQuarterTurns,
+            wallBranch);
+        IReadOnlyList<LogicCombatShape> obstacleShapes = LogicWallRuntime.IsWallBuilding(buildingData)
+            ? Array.Empty<LogicCombatShape>()
+            : ResolveLogicObstacleShapes(buildingData, state.Position, logicQuarterTurns);
         bool noAttack = buildingData.Weapon == null || buildingData.Weapon.Atk <= Fix64.Zero;
         LogicInteractionOptionDescriptor[] interactionOptions = LogicInteractionOptionDescriptorFactory.Create(
             state.EntityId,
@@ -70,6 +73,9 @@ public static class LogicBuildingConfigurator
             armySupplyPerUnit,
             isGameEndConditionBuilding,
             isNavigationStaticBaked);
+
+        if (wallBranch != null)
+            LogicWallRuntime.RegisterBranch(state.EntityId, wallBranch);
 
         var moveComp = new NoMoveComp();
         state.SetMoveComp(moveComp);
@@ -104,6 +110,33 @@ public static class LogicBuildingConfigurator
             ? Array.Empty<LogicCombatShape>()
             : BuildingLogicObstacleShapeCatalog.LoadRequired()
                 .ResolveRequired(buildingData.PrefabPath, position, logicQuarterTurns);
+    }
+
+    private static LogicCombatShape ResolveCombatShape(
+        BuildingData buildingData,
+        FixVector2 position,
+        int logicQuarterTurns,
+        LogicWallBranchDefinition wallBranch)
+    {
+        if (!LogicWallRuntime.IsWallBuilding(buildingData))
+            return BuildingCombatShapeCatalog.LoadRequired()
+                .ResolveRequired(buildingData.PrefabPath, position, logicQuarterTurns);
+
+        Fix64 halfCell = (Fix64)BuildingFootprint.GridCellWorldSize / (Fix64)2;
+        if (wallBranch == null)
+            return LogicCombatShape.AxisAlignedBox(position, new FixVector2(halfCell, halfCell));
+
+        FixVector2 minimum = LogicWallRuntime.GetCellWorldCenter(wallBranch.Cells[0]);
+        FixVector2 maximum = minimum;
+        for (int i = 1; i < wallBranch.Cells.Count; i++)
+        {
+            FixVector2 center = LogicWallRuntime.GetCellWorldCenter(wallBranch.Cells[i]);
+            minimum = new FixVector2(Fix64.Min(minimum.x, center.x), Fix64.Min(minimum.y, center.y));
+            maximum = new FixVector2(Fix64.Max(maximum.x, center.x), Fix64.Max(maximum.y, center.y));
+        }
+        return LogicCombatShape.AxisAlignedBox(
+            (minimum + maximum) / (Fix64)2,
+            (maximum - minimum) / (Fix64)2 + new FixVector2(halfCell, halfCell));
     }
 
     private static void AddLogicInitialBuffs(LogicEntityState state, BuildingData buildingData)

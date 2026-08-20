@@ -10,6 +10,7 @@ public static class LogicFactionVisionService
     public const string DamageAlertAllyRadiusConfigKey = "DamageAlertAllyRadius";
     public const string DamageAlertTargetDurationConfigKey = "DamageAlertTargetDuration";
     public const string MinimumAggroCandidateRangeConfigKey = "MinimumAggroCandidateRange";
+    public const string SlopeUpperVisionRadiusConfigKey = "SlopeUpperVisionRadius";
 
     private const string HeroVisionRadiusConfigKey = "HeroVisionRadius";
     private const string UnitVisionRadiusConfigKey = "UnitVisionRadius";
@@ -181,9 +182,13 @@ public static class LogicFactionVisionService
                 continue;
             if (!TryResolveEntityVisionRadius(revealer, out Fix64 radius))
                 continue;
-            if (FixVector2.SqrMagnitude(target.PositionFixed - revealer.PositionFixed) > radius * radius)
-                continue;
-            if (HasLineOfSight(revealer.PositionFixed, target.PositionFixed))
+            Fix64 distanceSquared = FixVector2.SqrMagnitude(target.PositionFixed - revealer.PositionFixed);
+            if (distanceSquared <= radius * radius
+                && HasLineOfSight(revealer.PositionFixed, target.PositionFixed))
+            {
+                return true;
+            }
+            if (HasSlopeUpperVision(revealer, target.PositionFixed, distanceSquared))
                 return true;
         }
 
@@ -283,6 +288,25 @@ public static class LogicFactionVisionService
         if (!s_MapData.WorldToGrid(target, out int targetX, out int targetY))
             return false;
         return !s_MapData.IsVisionBlockedByHigherPlatform(viewer, targetX, targetY);
+    }
+
+    private static bool HasSlopeUpperVision(
+        IEntityContext revealer,
+        FixVector2 targetPosition,
+        Fix64 distanceSquared)
+    {
+        if (s_MapData == null || revealer.IsLogicBuilding())
+            return false;
+        FixVector2 revealerPosition = revealer.PositionFixed;
+        if (!s_MapData.WorldToGrid(revealerPosition, out int viewerX, out int viewerY)
+            || !s_MapData.IsSlope(viewerX, viewerY)
+            || !s_MapData.WorldToGrid(targetPosition, out _, out _))
+            return false;
+        int viewerHeight = s_MapData.GetVisionHeight(revealerPosition);
+        if (s_MapData.GetVisionHeight(targetPosition) != viewerHeight + 1)
+            return false;
+        Fix64 radius = ReadWorldDistance(SlopeUpperVisionRadiusConfigKey);
+        return distanceSquared <= radius * radius;
     }
 
     private static int ResolveHeight(FixVector2 position) => s_MapData != null ? s_MapData.GetVisionHeight(position) : 0;

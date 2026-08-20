@@ -353,6 +353,18 @@ public static class LogicAgentCollisionShadowService
                 }
             }
 
+            FixVector2 wallPosition = LogicWallRuntime.ResolveMotion(
+                entity,
+                frameStart,
+                staticPosition,
+                body.Radius);
+            if (wallPosition != staticPosition)
+            {
+                s_StaticProjectionChangedEntityIds.Add(body.EntityId.Value);
+                s_StaticCorrections[i] += wallPosition - staticPosition;
+                staticPosition = wallPosition;
+            }
+
             FixVector2 resolvedPosition = staticPosition;
             LogicMovementRegionConstraintFailure regionFailure = LogicMovementRegionConstraintFailure.None;
             long regionStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;

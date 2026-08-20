@@ -267,7 +267,6 @@ public class ADComponent : GameFrameworkComponent//, IAppsFlyerConversionData
     //        }
     //        else
     //        {
-    //            ShowToast(GF.Localization.GetLocalString("Sponsor on the road~"));
     //        }
     //    }
     //    else
@@ -529,26 +528,6 @@ public class ADComponent : GameFrameworkComponent//, IAppsFlyerConversionData
 #elif UNITY_IOS
         //Application.OpenURL(GF.UserData.Config.constTable.appStoreUrl);
 #endif
-    }
-    /// <summary>
-    /// ShowToast
-    /// </summary>
-    /// <param name="message">内容</param>
-    /// <param name="duration">显示多久(秒)</param>
-    public void ShowToast(string content, params object[] args)
-    {
-        string message = Utility.Text.Format(content, args);
-
-        if (activity != null)
-        {
-            AndroidJavaClass jc = new AndroidJavaClass("android.widget.Toast");
-            AndroidJavaObject toast = jc.CallStatic<AndroidJavaObject>("makeText", activity, message, 2000);
-            toast.Call("show");
-        }
-        else
-        {
-            GF.UI.ShowToast(message);
-        }
     }
     /// <summary>
     /// 切换到后台

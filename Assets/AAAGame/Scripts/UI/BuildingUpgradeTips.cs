@@ -22,10 +22,6 @@ public partial class BuildingUpgradeTips : UIFormBase
     private const string ConditionUniqueTechTextId = "Building_Upgrade_Cond_UniqueTech";
     private const string ObtainSkillTextId = "Building_Skill_Obtain_Format";
     private const string UpgradeSkillTextId = "Building_Skill_Upgrade_Format";
-    private const float HoldPerStarMinSeconds = 0.1f;
-    private const float HoldPerStarMaxSeconds = 0.4f;
-    private const float HoldAlignedDurationSeconds = 2f;
-    private const float HoldDurationMinSeconds = 1f;
     private const float RecycleHoldDurationSeconds = 2f;
     private const float MinimumInfoHeight = 176f;
     private const float HeaderHeight = 72f;
@@ -62,6 +58,9 @@ public partial class BuildingUpgradeTips : UIFormBase
     private float m_UpgradeInfoHeight = MinimumInfoHeight;
     private float m_StableConditionHeight;
     private bool m_ReserveDetailPanelSpace;
+    private bool m_IsWallMerge;
+    private BuildingData m_WallCurrentData;
+    private BuildingData m_WallMergedData;
 
     private UpgradeOptionBinding m_SelectedBinding;
     private UpgradeOptionBinding m_HoldBinding;
@@ -132,6 +131,7 @@ public partial class BuildingUpgradeTips : UIFormBase
     private void RefreshView()
     {
         CacheTemplates();
+        ResolveWallMergeMode();
         RefreshLevelTitle();
         ClearAllSpawnedItems();
         ClearRuntimeState();
@@ -156,6 +156,19 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (item == null)
             return;
 
+        if (m_IsWallMerge)
+        {
+            string wallName = BuildingPanelPresentation.GetBuildingName(m_WallCurrentData);
+            string wallDesc = BuildingPanelPresentation.GetDescription(m_WallCurrentData);
+            item.SetData(string.Empty, wallName, wallDesc);
+            item.SetPreviewVisible(false);
+            item.SetPriceVisible(false);
+            item.SetProgressVisible(false);
+            PopulateWallProperties(item, m_WallCurrentData);
+            m_CurrentInfoHeight = item.ApplyPanelLayout(reservePreviewColumn: true, reserveProgressRow: true);
+            return;
+        }
+
         ComposeCurrentInfoText(m_TargetBuilding, out string name, out string desc);
         item.SetData(string.Empty, name, desc);
         item.SetPreviewVisible(false);
@@ -171,6 +184,18 @@ public partial class BuildingUpgradeTips : UIFormBase
     {
         if (m_TargetBuilding == null || m_TargetBuilding.buildingData == null)
             return;
+
+        if (m_IsWallMerge)
+        {
+            m_UpgradeBindings.Add(new UpgradeOptionBinding
+            {
+                OptionIndex = 0,
+                ActionName = "Player/Build1",
+                UpgradeBuildingId = LogicWallRuntime.BuiltBuildingId,
+                UpgradeBuildingData = m_WallMergedData,
+            });
+            return;
+        }
 
         TechManager techManager = GameEntry.GetComponent<TechManager>();
         if (techManager == null)
@@ -339,6 +364,26 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         m_SelectedBinding.PreviewItem = preview;
 
+        if (m_IsWallMerge)
+        {
+            string wallKeyText = InputGetKeyText.GetKeyText(m_SelectedBinding.ActionName);
+            preview.SetData(
+                wallKeyText,
+                BuildingPanelPresentation.GetBuildingName(m_WallMergedData),
+                BuildingPanelPresentation.GetDescription(m_WallMergedData));
+            preview.SetPreviewVisible(false);
+            preview.SetExecutable(IsSelectedOptionExecutable());
+            preview.SetCoinReservesVisible(false);
+            int wallCost = ResolveOptionCost(m_SelectedBinding);
+            PopulatePrice(preview, wallCost);
+            PopulateWallProperties(preview, m_WallMergedData);
+            SpawnProgressStars(m_SelectedBinding, Mathf.Max(1, wallCost));
+            m_UpgradeInfoHeight = preview.ApplyPanelLayout(
+                reservePreviewColumn: true,
+                reserveProgressRow: true);
+            return;
+        }
+
         string keyText = InputGetKeyText.GetKeyText(m_SelectedBinding.ActionName);
         string name = ComposePreviewName(m_TargetBuilding, m_SelectedBinding);
         BuildingData previewData = m_SelectedBinding.UpgradeBuildingData
@@ -384,6 +429,8 @@ public partial class BuildingUpgradeTips : UIFormBase
     {
         if (binding == null)
             throw new ArgumentNullException(nameof(binding));
+        if (m_IsWallMerge)
+            return;
 
         // 条件1：基地等级条件（非 Base/Tech 建筑升级到 n 级）
         if (m_TargetBuilding != null && m_TargetBuilding.buildingData != null)
@@ -765,7 +812,7 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         int starCount = Mathf.Max(1, m_HoldBinding.Stars.Count);
         bool pressing = IsBindingPressed(m_HoldBinding);
-        m_HoldProgressStars = AdvanceHoldProgressStars(
+        m_HoldProgressStars = BuildingInteractionHoldPresentation.AdvanceConfiguredProgressStars(
             m_HoldProgressStars,
             pressing,
             starCount,
@@ -812,19 +859,6 @@ public partial class BuildingUpgradeTips : UIFormBase
             ResetHoldState();
     }
 
-    private static float AdvanceHoldProgressStars(
-        float current,
-        bool pressing,
-        int starCount,
-        float deltaTime)
-    {
-        float duration = ResolveHoldDurationSeconds(starCount);
-        float delta = (starCount / Mathf.Max(0.01f, duration)) * deltaTime;
-        return pressing
-            ? Mathf.Min(starCount, current + delta)
-            : Mathf.Max(0f, current - delta);
-    }
-
     private UpgradeOptionBinding ResolvePressedBinding()
     {
         UpgradeOptionBinding selected = m_SelectedBinding;
@@ -852,6 +886,27 @@ public partial class BuildingUpgradeTips : UIFormBase
     {
         if (m_SelectedBinding == null || m_TargetBuilding == null)
             return;
+
+        if (m_IsWallMerge)
+        {
+            BuildManager buildManager = GameEntry.GetComponent<BuildManager>()
+                                        ?? throw new InvalidOperationException(
+                                            "BuildManager is unavailable while completing a wall construction hold.");
+            bool wallSuccess = buildManager.ConstructBuilding(
+                m_TargetBuilding,
+                LogicWallRuntime.BuiltBuildingId);
+            if (wallSuccess)
+            {
+                m_IsAwaitingTargetTransition = true;
+                IngameCoinPreviewState.CommitPreviewDeduction(
+                    GetInstanceID(),
+                    m_TargetBuilding.LogicEntityId,
+                    LogicInteractionActionKind.ConstructBuilding);
+            }
+            else
+                RefreshView();
+            return;
+        }
 
         TechManager techManager = GameEntry.GetComponent<TechManager>();
         if (techManager == null)
@@ -991,14 +1046,14 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (parent == null)
             return;
 
-        Vector3 uiPos = GF.UI.PositionWorldToUI(m_TargetHost.GetPromptPosition(), parent);
         Vector2 detailOffset = m_ReserveDetailPanelSpace
             ? Vector2.left * BuildingInfoItem.DetailPanelCenterOffset
             : Vector2.zero;
-        varUpgradePanel.anchoredPosition = (Vector2)uiPos + uiOffset + detailOffset;
-        BuildingPanelScreenClamp.ClampToParent(
+        BuildingPanelScreenClamp.PlaceBesideTarget(
             varUpgradePanel,
             parent,
+            m_TargetHost.transform,
+            uiOffset + detailOffset,
             m_ReserveDetailPanelSpace ? BuildingInfoItem.DetailPanelWidth : 0f);
     }
 
@@ -1104,6 +1159,9 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (m_TargetHost == null || m_TargetBuilding == null || m_TargetBuilding.buildingData == null)
             return false;
 
+        if (m_IsWallMerge)
+            return true;
+
         BuildingData data = m_TargetBuilding.buildingData;
         if (data.Lv <= 0)
             return false;
@@ -1149,6 +1207,14 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (m_SelectedBinding == null || m_TargetBuilding == null)
             return false;
 
+        if (m_IsWallMerge)
+        {
+            BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
+            return buildManager != null && buildManager.IsConstructOptionExecutable(
+                m_TargetBuilding,
+                LogicWallRuntime.BuiltBuildingId);
+        }
+
         TechManager techManager = GameEntry.GetComponent<TechManager>();
         if (techManager == null)
             return false;
@@ -1160,6 +1226,14 @@ public partial class BuildingUpgradeTips : UIFormBase
     {
         if (binding == null || m_TargetBuilding == null)
             return false;
+
+        if (m_IsWallMerge)
+        {
+            BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
+            return buildManager != null && buildManager.IsConstructOptionExecutable(
+                m_TargetBuilding,
+                LogicWallRuntime.BuiltBuildingId);
+        }
 
         TechManager techManager = GameEntry.GetComponent<TechManager>();
         if (techManager == null)
@@ -1280,12 +1354,7 @@ public partial class BuildingUpgradeTips : UIFormBase
 
     private static float ResolveHoldDurationSeconds(int starCount)
     {
-        if (starCount <= 1)
-            return HoldDurationMinSeconds;
-
-        float perStarSeconds = HoldAlignedDurationSeconds / (starCount - 1f);
-        perStarSeconds = Mathf.Clamp(perStarSeconds, HoldPerStarMinSeconds, HoldPerStarMaxSeconds);
-        return Mathf.Max(HoldDurationMinSeconds, perStarSeconds * (starCount - 1f));
+        return BuildingInteractionHoldPresentation.ResolveConfiguredDurationSeconds(starCount);
     }
 
     private bool IsActionPressed(string actionName)
@@ -1565,6 +1634,19 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (m_TargetBuilding?.buildingData == null)
             return;
 
+        if (m_IsWallMerge)
+        {
+            m_CurrentLevelTitleText.text = LogicWallRuntime.TryGetPreviewCell(
+                m_TargetBuilding.LogicEntityId,
+                out WallGridCell cell)
+                ? ResolveLongestAdjacentWallCellCount(cell, m_TargetBuilding.OwnerFactionID).ToString()
+                : throw new InvalidOperationException("Wall merge target lost its preview cell.");
+            m_NextLevelTitleText.text = LogicWallRuntime.BuildMergedCells(
+                cell,
+                m_TargetBuilding.OwnerFactionID).Count.ToString();
+            return;
+        }
+
         int currentLevel = m_TargetBuilding.buildingData.Lv;
         m_CurrentLevelTitleText.text = BuildingPanelPresentation.GetBuildingLevelTitle(currentLevel);
         m_NextLevelTitleText.text = BuildingPanelPresentation.GetBuildingLevelTitle(currentLevel + 1);
@@ -1589,6 +1671,49 @@ public partial class BuildingUpgradeTips : UIFormBase
         m_ReserveDetailPanelSpace = false;
         ResetHoldState();
         ResetRecycleHoldState();
+    }
+
+    private void ResolveWallMergeMode()
+    {
+        m_IsWallMerge = false;
+        m_WallCurrentData = null;
+        m_WallMergedData = null;
+        if (!LogicWallRuntime.IsWallPreviewBuilding(m_TargetBuilding?.buildingData))
+            return;
+        if (!LogicWallRuntime.TryGetPreviewCell(m_TargetBuilding.LogicEntityId, out WallGridCell cell))
+            throw new InvalidOperationException("Wall preview building has no registered wall cell.");
+        int longest = ResolveLongestAdjacentWallCellCount(cell, m_TargetBuilding.OwnerFactionID);
+        if (longest <= 0)
+            return;
+        BuildingData perCell = BuildingDataModel.GetBuildingData(LogicWallRuntime.BuiltBuildingId)
+                               ?? throw new InvalidOperationException("Lv1 wall building data is missing.");
+        m_IsWallMerge = true;
+        m_WallCurrentData = LogicWallRuntime.CreateBranchBuildingData(perCell, longest);
+        m_WallMergedData = LogicWallRuntime.CreateBranchBuildingData(
+            perCell,
+            LogicWallRuntime.BuildMergedCells(cell, m_TargetBuilding.OwnerFactionID).Count);
+    }
+
+    private static int ResolveLongestAdjacentWallCellCount(WallGridCell cell, int ownerFactionId)
+    {
+        int longest = 0;
+        IReadOnlyList<LogicEntityId> adjacent = LogicWallRuntime.GetAdjacentBranches(cell, ownerFactionId);
+        for (int i = 0; i < adjacent.Count; i++)
+            longest = Math.Max(longest, LogicWallRuntime.GetRequiredBranch(adjacent[i]).CellCount);
+        return longest;
+    }
+
+    private void PopulateWallProperties(BuildingInfoItem item, BuildingData data)
+    {
+        if (item == null || data == null)
+            throw new ArgumentNullException(item == null ? nameof(item) : nameof(data));
+        Transform root = item.PropertyListRoot != null ? item.PropertyListRoot.transform : null;
+        if (root == null)
+            throw new InvalidOperationException("Wall upgrade item has no property root.");
+        var stats = new List<BuildingPanelStat>();
+        BuildingPanelPresentation.CollectBuildingCombatStats(data, null, stats);
+        for (int i = 0; i < stats.Count; i++)
+            SpawnGlyphProperty(root, stats[i]);
     }
 
     private void UpdateExecutableStates()

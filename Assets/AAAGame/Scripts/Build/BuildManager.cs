@@ -53,13 +53,10 @@ public class BuildManager : GameFrameworkComponent
         if (!TutorialManager.IsConstructOptionAllowed(target))
             return false;
 
-        if (target.Lv != 1 || target.Type != owner.BuildingData.Type)
+        if (!BuildingDataModel.CanConstructAt(owner.BuildingData, target))
             return false;
 
-        if (target.Arche == Archetype.None)
-            return false;
-
-        if (!GetPlayerUnlockedBaseArches().Contains(target.Arche))
+        if (target.Type != BuilType.Wall && !GetPlayerUnlockedBaseArches().Contains(target.Arche))
             return false;
 
         return true;
@@ -73,17 +70,15 @@ public class BuildManager : GameFrameworkComponent
 
         HashSet<Archetype> unlockedArches = null;
         if (requireUnlockedArche)
-        {
             unlockedArches = GetPlayerUnlockedBaseArches();
-            if (unlockedArches.Count == 0)
-                return results;
-        }
 
         foreach (var data in GetCachedLv0ConstructCandidates(owner.BuildingData.Type))
         {
             if (data == null)
                 continue;
-            if (requireUnlockedArche && !unlockedArches.Contains(data.Arche))
+            if (requireUnlockedArche
+                && data.Arche != Archetype.None
+                && !unlockedArches.Contains(data.Arche))
                 continue;
 
             results.Add(data);
@@ -130,6 +125,19 @@ public class BuildManager : GameFrameworkComponent
     {
         EnsureInteractionApplyWindow();
         int cost = GetBuildingCost(buildBuildingId, owner);
+        BuildingData targetData = BuildingDataModel.GetBuildingData(buildBuildingId);
+        if (LogicWallRuntime.IsWallBuilding(targetData))
+        {
+            LogicEntityId wallEntityId = LogicWallRuntime.ConstructAtPreview(owner, targetData, cost);
+            if (!wallEntityId.IsValid)
+                return false;
+            InGameDataModel.RecordBuildingPhaseModification(
+                owner.BuildingInstanceId,
+                owner.BuildingData.Identifier,
+                cost);
+            m_PendingPresentationAudio.Enqueue("buildNormal");
+            return true;
+        }
         bool built = BuildBuildingInternalFixed(
             buildBuildingId,
             owner.PositionFixed,
@@ -410,6 +418,29 @@ public class BuildManager : GameFrameworkComponent
         BuildingData buildingData = BuildingDataModel.GetBuildingData(checkpoint.BuildingIdentifier)
                                     ?? throw new InvalidOperationException(
                                         $"Stage checkpoint references unknown building '{checkpoint.BuildingIdentifier}'.");
+        LogicWallBranchDefinition wallBranch = null;
+        if (LogicWallRuntime.IsWallBuilding(buildingData))
+        {
+            if (checkpoint.WallCells.Count == 0)
+                throw new InvalidOperationException($"Wall checkpoint '{checkpoint.BuildingInstanceId}' has no cells.");
+            if (buildingData.Lv == 0)
+            {
+                if (checkpoint.WallCells.Count != 1 || checkpoint.WallGateCells.Count != 0)
+                    throw new InvalidOperationException($"Wall preview checkpoint '{checkpoint.BuildingInstanceId}' has invalid geometry.");
+            }
+            else
+            {
+                wallBranch = new LogicWallBranchDefinition(
+                    checkpoint.WallCells,
+                    checkpoint.WallGateCells,
+                    checkpoint.OwnerFactionId);
+                buildingData = LogicWallRuntime.CreateBranchBuildingData(buildingData, wallBranch.CellCount);
+            }
+        }
+        else if (checkpoint.WallCells.Count != 0 || checkpoint.WallGateCells.Count != 0)
+        {
+            throw new InvalidOperationException($"Non-wall checkpoint '{checkpoint.BuildingInstanceId}' contains wall geometry.");
+        }
 
         string resolvedStrongholdId = null;
         LogicStrongholdMap.TryResolveStrongholdId(checkpoint.Position, out resolvedStrongholdId);
@@ -420,19 +451,27 @@ public class BuildManager : GameFrameworkComponent
         }
 
         int quarterTurns = ResolveBuildingQuarterTurns(checkpoint.Forward);
+        float viewY = wallBranch != null
+            ? LogicWallRuntime.GetCellViewY(wallBranch.Cells[0])
+            : LogicWallRuntime.IsWallBuilding(buildingData)
+                ? LogicWallRuntime.GetCellViewY(checkpoint.WallCells[0])
+                : 0f;
         LogicEntityId entityId = MAEntityFactory.ShowBuildingFixed(
             buildingData,
             checkpoint.Position,
-            0f,
+            viewY,
             checkpoint.BuildingInstanceId,
             checkpoint.StrongholdId,
             checkpoint.OwnerFactionId,
             quarterTurns,
             checkpoint.IsGameEndConditionBuilding,
             checkpoint.IsNavigationStaticBaked,
-            false);
+            false,
+            wallBranch);
         if (!entityId.IsValid)
             throw new InvalidOperationException($"Failed to restore stage checkpoint building '{checkpoint.BuildingInstanceId}'.");
+        if (LogicWallRuntime.IsWallBuilding(buildingData) && buildingData.Lv == 0)
+            LogicWallRuntime.RegisterPreview(checkpoint.WallCells[0], entityId);
 
         ApplyStageCheckpointBuildingProperties(checkpoint);
         return entityId;
@@ -658,7 +697,7 @@ public class BuildManager : GameFrameworkComponent
 
         foreach (var data in BuildingDataModel.GetAllBuildingData())
         {
-            if (data == null || data.Lv != 1 || data.Arche == Archetype.None)
+            if (!BuildingDataModel.IsLv1ConstructionTarget(data))
                 continue;
 
             // 移除尚未配备 unit prefab 的兵营在建造列表中的展示。

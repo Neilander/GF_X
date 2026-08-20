@@ -126,7 +126,9 @@ namespace AAAGame.Card
                     throw new InvalidOperationException($"LogicCardPlacementAuthority found a null registry entity at index {i}.");
                 if (!TryGetRevealRadius(entity, out Fix64 radius))
                     continue;
-                AddActualVisibilityCircle(entity.PositionFixed, radius, CanExploreHiddenFog(entity, hasGhostHero));
+                bool canExploreHiddenFog = CanExploreHiddenFog(entity, hasGhostHero);
+                AddActualVisibilityCircle(entity.PositionFixed, radius, canExploreHiddenFog);
+                AddSlopeUpperVisibility(entity, canExploreHiddenFog);
             }
             LogicFactionVisionService.VisitStationaryReveals(
                 SideType.PlayerSide,
@@ -136,6 +138,19 @@ namespace AAAGame.Card
         private static void AddDamageAlertVisibilityCircle(FixVector2 position, Fix64 radius, int sourceHeight)
         {
             AddActualVisibilityCircle(position, radius, true, sourceHeight);
+        }
+
+        private static void AddSlopeUpperVisibility(IEntityContext entity, bool canExploreHiddenFog)
+        {
+            if (entity.IsLogicBuilding()
+                || !TryWorldToCell(entity.PositionFixed, out int x, out int y)
+                || !s_MapData.IsSlope(x, y))
+            {
+                return;
+            }
+            Fix64 radius = ResolveVisionRadius(LogicFactionVisionService.SlopeUpperVisionRadiusConfigKey);
+            int upperHeight = s_MapData.GetVisionHeight(entity.PositionFixed) + 1;
+            AddActualVisibilityCircle(entity.PositionFixed, radius, canExploreHiddenFog, upperHeight);
         }
 
         public static LogicCardPlacementInvalidReason Evaluate(

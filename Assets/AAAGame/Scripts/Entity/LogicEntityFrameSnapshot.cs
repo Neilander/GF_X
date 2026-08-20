@@ -205,20 +205,21 @@ public static class LogicEntityFrameSnapshotService
     public static Fix64 GetRequiredTargetSurfaceDistance(IEntityContext self, IEntityContext target)
     {
         LogicEntityFrameState selfState = GetRequiredCurrent(self);
-        LogicEntityFrameState targetState = GetRequiredCurrent(target);
-        return targetState.CombatShape.DistanceToSurface(selfState.Position);
+        GetRequiredCurrent(target);
+        return LogicTargetGeometry.DistanceToSurface(target, selfState.Position);
     }
 
     public static FixVector2 GetRequiredTargetClosestPoint(IEntityContext self, IEntityContext target)
     {
         LogicEntityFrameState selfState = GetRequiredCurrent(self);
-        LogicEntityFrameState targetState = GetRequiredCurrent(target);
-        return targetState.CombatShape.ClosestPoint(selfState.Position);
+        GetRequiredCurrent(target);
+        return LogicTargetGeometry.ClosestPoint(target, selfState.Position);
     }
 
     public static Fix64 GetRequiredTargetSurfaceDistanceFromPoint(IEntityContext target, FixVector2 point)
     {
-        return GetRequiredCurrent(target).CombatShape.DistanceToSurface(point);
+        GetRequiredCurrent(target);
+        return LogicTargetGeometry.DistanceToSurface(target, point);
     }
 
     public static void BeginTimeline()
@@ -306,7 +307,7 @@ public static class LogicEntityFrameReadExtensions
             return LogicEntityFrameSnapshotService.GetRequiredTargetClosestPoint(self, target);
 
         FixVector2 origin = self.LogicFramePositionFixed();
-        return target.CombatShape.ClosestPoint(origin);
+        return LogicTargetGeometry.ClosestPoint(target, origin);
     }
 
     public static Fix64 LogicFrameDistanceFromPointToSurfaceFixed(this IEntityContext target, FixVector2 point)
@@ -316,7 +317,7 @@ public static class LogicEntityFrameReadExtensions
         if (LogicFrameRuntime.IsTicking)
             return LogicEntityFrameSnapshotService.GetRequiredTargetSurfaceDistanceFromPoint(target, point);
 
-        return target.CombatShape.DistanceToSurface(point);
+        return LogicTargetGeometry.DistanceToSurface(target, point);
     }
 
     public static float LogicFrameCenterDistance(this IEntityContext self, IEntityContext target)
@@ -345,7 +346,7 @@ public static class LogicEntityFrameReadExtensions
         if (self == null || target == null)
             return Fix64.FromRaw(long.MaxValue);
         if (!LogicFrameRuntime.IsTicking)
-            return target.CombatShape.DistanceToSurface(self.PositionFixed);
+            return LogicTargetGeometry.DistanceToSurface(target, self.PositionFixed);
 
         return LogicEntityFrameSnapshotService.GetRequiredTargetSurfaceDistance(self, target);
     }

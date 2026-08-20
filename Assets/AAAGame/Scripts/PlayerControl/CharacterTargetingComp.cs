@@ -317,7 +317,54 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
                 out _,
                 out string failureReason,
                 out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind failureKind))
+        {
+            if (LogicWallRuntime.TryGetBranch(target.LogicEntityId, out _)
+                || !LogicWallRuntime.HasBuiltWalls)
+                return true;
+            if (!FlowFieldCrowdMovementSystem.TryEstimateWallDetourToAttackAreaFixed(
+                    _ctx,
+                    target,
+                    attackRange,
+                    out Fix64 noWallDistance,
+                    out Fix64 wallDistance,
+                    out bool wallPathReachable,
+                    out string wallFailureReason,
+                    out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind wallFailureKind))
+            {
+                switch (wallFailureKind)
+                {
+                    case FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.PendingRuntimeUpdate:
+                        waitForNavigation = true;
+                        return false;
+                    case FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.Unreachable:
+                        GameDebugSettings.Log(
+                            DebugCategory.Targeting,
+                            $"[{_ctx.CharacterKey}] Skip wall-path-unreachable aggro candidate target={target.CharacterKey} " +
+                            $"reason={wallFailureReason}");
+                        return false;
+                    case FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.Unavailable:
+                        throw new InvalidOperationException(
+                            $"Wall detour query unavailable. self={_ctx.CharacterKey} target={target.CharacterKey} " +
+                            $"reason={wallFailureReason}");
+                    default:
+                        throw new InvalidOperationException(
+                            $"Wall detour query failed without a handled reason. self={_ctx.CharacterKey} " +
+                            $"target={target.CharacterKey} kind={wallFailureKind} reason={wallFailureReason}");
+                }
+            }
+
+            Fix64 detourThreshold = LogicFactionVisionService.ReadWorldDistance(LogicWallRuntime.DetourThresholdConfigKey);
+            if (!wallPathReachable || wallDistance - noWallDistance > detourThreshold)
+            {
+                GameDebugSettings.Log(
+                    DebugCategory.Targeting,
+                    $"[{_ctx.CharacterKey}] Skip wall-detour aggro candidate target={target.CharacterKey} " +
+                    $"noWall={noWallDistance} withWall={wallDistance} threshold={detourThreshold} " +
+                    $"wallReachable={wallPathReachable}");
+                return false;
+            }
             return true;
+        }
 
         switch (failureKind)
         {

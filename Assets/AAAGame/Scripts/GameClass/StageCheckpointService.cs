@@ -24,6 +24,36 @@ public sealed class StageBuildingCheckpoint
         IsGameEndConditionBuilding = building.IsGameEndConditionBuilding;
         IsNavigationStaticBaked = building.IsNavigationStaticBaked;
 
+        if (LogicWallRuntime.IsWallBuilding(building.BuildingData))
+        {
+            if (building.BuildingData.Lv == 0)
+            {
+                if (!LogicWallRuntime.TryGetPreviewCell(building.LogicEntityId, out WallGridCell previewCell))
+                    throw new InvalidOperationException($"Wall preview {building.LogicEntityId.Value} has no registered cell.");
+                WallCells = Array.AsReadOnly(new[] { previewCell });
+                WallGateCells = Array.AsReadOnly(Array.Empty<WallGridCell>());
+            }
+            else
+            {
+                LogicWallBranchDefinition branch = LogicWallRuntime.GetRequiredBranch(building.LogicEntityId);
+                var cells = new WallGridCell[branch.Cells.Count];
+                var gates = new List<WallGridCell>();
+                for (int i = 0; i < cells.Length; i++)
+                {
+                    cells[i] = branch.Cells[i];
+                    if (branch.IsGateCell(cells[i]))
+                        gates.Add(cells[i]);
+                }
+                WallCells = Array.AsReadOnly(cells);
+                WallGateCells = Array.AsReadOnly(gates.ToArray());
+            }
+        }
+        else
+        {
+            WallCells = Array.AsReadOnly(Array.Empty<WallGridCell>());
+            WallGateCells = Array.AsReadOnly(Array.Empty<WallGridCell>());
+        }
+
         BuildingExtraProps props = building.ProductionProps
                                    ?? throw new InvalidOperationException($"Stage checkpoint building production state is missing. instance='{BuildingInstanceId}'.");
         ArmyForce = props.ArmyForce;
@@ -44,6 +74,8 @@ public sealed class StageBuildingCheckpoint
     public FixVector2 Forward { get; }
     public bool IsGameEndConditionBuilding { get; }
     public bool IsNavigationStaticBaked { get; }
+    public ReadOnlyCollection<WallGridCell> WallCells { get; }
+    public ReadOnlyCollection<WallGridCell> WallGateCells { get; }
     public Fix64 ArmyForce { get; }
     public Fix64 Production { get; }
     public Fix64 DynamicProduction { get; }
@@ -65,6 +97,18 @@ public sealed class StageBuildingCheckpoint
         hasher.Add(Forward.y.RawValue);
         hasher.Add(IsGameEndConditionBuilding);
         hasher.Add(IsNavigationStaticBaked);
+        hasher.Add(WallCells.Count);
+        for (int i = 0; i < WallCells.Count; i++)
+        {
+            hasher.Add(WallCells[i].X);
+            hasher.Add(WallCells[i].Y);
+        }
+        hasher.Add(WallGateCells.Count);
+        for (int i = 0; i < WallGateCells.Count; i++)
+        {
+            hasher.Add(WallGateCells[i].X);
+            hasher.Add(WallGateCells[i].Y);
+        }
         hasher.Add(ArmyForce.RawValue);
         hasher.Add(Production.RawValue);
         hasher.Add(DynamicProduction.RawValue);

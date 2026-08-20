@@ -10,6 +10,7 @@ public static class BuildingFootprint
     {
         return buildingType switch
         {
+            BuilType.Wall => 1,
             BuilType.Prod => 2,
             BuilType.Def => 2,
             BuilType.Army => 3,

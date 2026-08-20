@@ -3,29 +3,18 @@
 #	int		int	string	bool	int	bool	bool
 #		备注	显示顺序,相对于Group,每个Group间隔100		覆盖同组界面时是否隐藏对方	UI组Id	返回键触发关闭界面	是否屏蔽角色控制
 #	主界面(顶层)							
-	1	主菜单	1	MenuUIForm	True	1	False	False
-	2	游戏界面	1	GameUIForm	True	1	False	False
-	4	顶部资源栏	2	Topbar	False	1	False	False
-	19	人口栏	3	SupplyUIForm	False	1	False	False
-	21	侧边提示	4	SideTipsUIForm	False	1	False	False
-	22	局内顶部界面	1	InGameUIForm	False	1	False	False
-	23	行动目标	3	GoalUIForm	False	1	False	False
-	16	卡牌面板	3	CardUIForm	False	1	False	False
-	17	小地图	2	MinimapUI	False	1	False	False
-	20	迷雾UI	2	FogUI	False	1	False	False
+	1	侧边提示	4	SideTipsUIForm	False	1	False	False
+	2	局内顶部界面	1	InGameUIForm	False	1	False	False
+	3	行动目标	3	GoalUIForm	False	1	False	False
+	4	卡牌面板	3	CardUIForm	False	1	False	False
+	5	小地图	2	MinimapUI	False	1	False	False
+	6	迷雾UI	2	FogUI	False	1	False	False
 #	对话框(中层)							
-	5	设置	1	SettingDialog	True	2	True	True
-	6	评分	2	RatingDialog	True	2	True	True
-	7	服务条款	2	TermsOfServiceDialog	True	2	True	True
-	8	通用提示对话框	3	CommonDialog	True	2	False	True
-	9	语言设置	2	LanguagesDialog	False	2	True	True
-	3	游戏结算	3	GameOverUIForm	True	2	False	True
-	27	选关面板	4	LevelSwitchUIForm	True	2	True	True
-	28	关卡tag面板	5	LvEnterDialog	True	2	True	True
+	7	游戏结算	3	GameOverUIForm	True	2	False	True
+	8	选关面板	4	LevelSwitchUIForm	True	2	True	True
+	9	关卡tag面板	5	LvEnterDialog	True	2	True	True
 #	提示(顶层)							
-	10	吐司提示	1	ToastTips	False	3	False	False
-	12	交互选项	2	InteractOptionTips	False	3	False	False
-	24	建筑建造面板	2	BuildingBuildTips	True	3	False	False
-	25	建筑升级面板	2	BuildingUpgradeTips	True	3	False	False
-	26	建筑信息面板	2	BuildingInfoTips	True	3	False	False
-	29	Story AVG	6	StoryUIForm	True	2	False	True
+	10	建筑建造面板	2	BuildingBuildTips	True	3	False	False
+	11	建筑升级面板	2	BuildingUpgradeTips	True	3	False	False
+	12	建筑信息面板	2	BuildingInfoTips	True	3	False	False
+	13	Story AVG	6	StoryUIForm	True	2	False	True

@@ -199,6 +199,38 @@ public class DirectAtkCompTests
     }
 
     [Test]
+    public void 无目标时攻击前Buff不应抛错或启动攻击()
+    {
+        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        attacker.Brain = new ScriptedBrain { Attack = true };
+
+        var moveComp = new SimMoveComp();
+        moveComp.Init(attacker);
+        attacker.MoveComp = moveComp;
+
+        attacker.WeaponComp = new WeaponComp(MeleeWeapon().ToWeapon("BlindSpotNoTargetWeapon"));
+        var atkComp = new DirectAtkComp();
+        atkComp.Init(attacker);
+        attacker.AtkComp = atkComp;
+
+        var buffComp = new AAAGame.Scripts.BuffSystem.CharacterBuffComp();
+        attacker.BuffComp = buffComp;
+        buffComp.Init(attacker);
+        Assert.IsTrue(buffComp.AddBuff(
+            BuffData.Create(
+                "blind_spot_no_target",
+                Fix64.Zero,
+                true,
+                1,
+                new List<BuffCallback> { new BlindSpotRangeBuff((Fix64)100f) }),
+            attacker));
+
+        Assert.DoesNotThrow(() => StartAttack(atkComp));
+        Assert.AreEqual(DirectAtkComp.AtkState.Idle, atkComp.State);
+        Assert.AreEqual(0, atkComp.AttackCount);
+    }
+
+    [Test]
     public void 前摇结束后造成伤害()
     {
         var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);

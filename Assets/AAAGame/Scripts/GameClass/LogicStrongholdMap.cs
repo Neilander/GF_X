@@ -234,6 +234,21 @@ public static class LogicStrongholdMap
         return s_StrongholdIdByCell.TryGetValue(new Cell(x, y), out strongholdId);
     }
 
+    public static FixVector2 ResolveCellWorldCenter(int x, int y)
+    {
+        EnsureInitialized();
+        Fix64 localX = NavigationGridFixedMath.GridRawToFix64(
+            checked((long)x * s_CellSizeGridRaw));
+        Fix64 localY = NavigationGridFixedMath.GridRawToFix64(
+            checked((long)y * s_CellSizeGridRaw));
+        FixVector2 offset = s_LocalXAxis * localX + s_LocalZAxis * localY;
+        return new FixVector2(
+            NavigationGridFixedMath.GridRawToFix64(
+                checked(s_OriginXGridRaw + NavigationGridFixedMath.Fix64ToGridRaw(offset.x))),
+            NavigationGridFixedMath.GridRawToFix64(
+                checked(s_OriginZGridRaw + NavigationGridFixedMath.Fix64ToGridRaw(offset.y))));
+    }
+
     public static bool TryGetOwnerFactionId(string strongholdId, out int ownerFactionId)
     {
         EnsureInitialized();

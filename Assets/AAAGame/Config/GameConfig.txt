@@ -61,3 +61,6 @@
 	DefendReturnMoveSpeedBonus	驻守单位返航固定移速加成	250
 	PlayerOutOfCombatMoveSpeedBonus	我方单位脱战固定移速加成	500
 	DefendRouteWaypointArrivalRadius	防御路线中转传送点抵达半径（码数）	100
+	WallDetourDistanceThreshold	追击目标时允许的绕墙额外距离（码数）	500
+	SlopeUpperVisionRadius	斜坡上单位额外获得高度+1地面视野的半径（码数）	50
+	BuildingInteractionHoldMinimumDuration	建造与升级星星读条最短时间（秒）	1

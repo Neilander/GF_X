@@ -56,6 +56,8 @@ public sealed class InteractionManager : MonoBehaviour
             return null;
         BuildingEntity building = view as BuildingEntity
                                   ?? throw new InvalidOperationException($"Interaction target view {targetId.Value} is not a BuildingEntity.");
+        if (!building.IsInteractionPresentationReady)
+            return null;
         InteractionHost host = building.GetComponent<InteractionHost>();
         if (host == null || !host.IsInteractable())
         {

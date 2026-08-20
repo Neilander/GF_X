@@ -5,7 +5,7 @@ using TMPro;
 
 public partial class BuildingInfoItem : UIItemBase
 {
-    public const float DetailPanelCenterOffset = 186f;
+    public const float DetailPanelCenterOffset = 120f;
     public const float DetailPanelWidth = DetailPanelCenterOffset * 2f;
     public const float UnitPanelCenterOffset = DetailPanelCenterOffset;
 
@@ -287,7 +287,7 @@ public partial class BuildingInfoItem : UIItemBase
         if (!m_UnitPanel.gameObject.activeSelf)
             return;
 
-        const float contentWidth = 332f;
+        const float contentWidth = 202f;
         const float topPadding = 12f;
         const float bottomPadding = 12f;
         const float titleHeight = 28f;
@@ -295,7 +295,7 @@ public partial class BuildingInfoItem : UIItemBase
         const float contentGap = 6f;
         const float cellHeight = 20f;
         const float spacing = 4f;
-        const int columnCount = 3;
+        const int columnCount = 2;
 
         m_UnitName.enableAutoSizing = true;
         m_UnitName.fontSizeMin = 14f;
@@ -341,8 +341,8 @@ public partial class BuildingInfoItem : UIItemBase
 
         SetRect(
             m_UnitPanel,
-            new Vector2(492f, (mainPanelHeight - detailHeight) * 0.5f),
-            new Vector2(360f, detailHeight));
+            new Vector2(427f, (mainPanelHeight - detailHeight) * 0.5f),
+            new Vector2(230f, detailHeight));
 
         float cursor = detailHeight * 0.5f - topPadding;
         SetRect(m_UnitName.rectTransform, new Vector2(0f, cursor - titleHeight * 0.5f), new Vector2(contentWidth, titleHeight));

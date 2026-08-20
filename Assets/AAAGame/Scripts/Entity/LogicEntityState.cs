@@ -115,6 +115,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     private static readonly ICapability DisabledCapabilityLocker = new StateCapabilityLocker();
     private static readonly ICapability GhostCapabilityLocker = new StateCapabilityLocker();
     private const string HeroGhostBuffId = "hero_ghost_state";
+    private const string BuildPhaseInvincibleSourceId = "logic_build_phase";
+    private const string BuildPhaseDisarmBuffId = "logic_build_phase_disarm";
     private const string MinimumDamagePerHitConfigKey = "MinimumDamagePerHit";
     private readonly Dictionary<ICapability, List<ICapability>> m_CapabilityLockers = new();
     private readonly HashSet<string> m_InvincibleSources = new();
@@ -550,7 +552,11 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         }
         m_TargetingComp.CurrentTarget = null;
         if (wasDisabled)
+        {
+            if (LogicWallRuntime.TryGetBranch(EntityId, out _))
+                LogicWallRuntime.SetBranchActive(EntityId, true);
             BuildingDisabledChanged?.Invoke(false, null);
+        }
     }
 
     public void SetBrain(IControlBrain brain) => m_Brain = brain;
@@ -565,6 +571,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         Side = side;
         if (oldOwnerFactionId != ownerFactionId)
         {
+            if (LogicWallRuntime.TryGetBranch(EntityId, out _))
+                LogicWallRuntime.UpdateBranchOwner(EntityId, ownerFactionId);
             OwnerFactionChanged?.Invoke(oldOwnerFactionId, ownerFactionId);
             LogicBuildingOwnershipEventService.Publish(this, oldOwnerFactionId, ownerFactionId);
         }
@@ -626,6 +634,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         else
             EntityRegistry.Register(this);
         LogicPhaseCommandService.PhaseApplied += OnLogicPhaseApplied;
+        if (LogicPhaseCommandService.IsActive && LogicPhaseCommandService.IsInitialized)
+            RefreshBuildPhaseCombatState(LogicPhaseCommandService.GetRequiredCurrentPhase());
 
         if (UsesFlowNavigationAgent)
         {
@@ -661,6 +671,9 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
 
         LogicPhaseCommandService.PhaseApplied -= OnLogicPhaseApplied;
 
+        if (LogicWallRuntime.IsInitialized)
+            LogicWallRuntime.TryUnregisterBranch(EntityId);
+
         if (IsBuildingEntity && m_RegisteredObstacleIds.Count > 0)
         {
             if (isShutdown)
@@ -688,7 +701,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     {
         if (!Alive || damage <= Fix64.Zero)
             return;
-        if (m_InvincibleSources.Count > 0)
+        if (m_BuffComp.HasBuff(InvincibleStateBuff.BuffId))
             return;
 
         if (IsBuildingEntity && modType == HealthModifyType.reduce)
@@ -848,6 +861,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         EnsureConfigured();
         if (!IsLogicActive || m_FrameActive || deltaTime != LogicFrameRuntime.FixedDeltaTime)
             throw new InvalidOperationException($"LogicEntityState.BeginLogicFrame failed. entity={EntityId.Value}.");
+        if (LogicPhaseCommandService.IsActive && LogicPhaseCommandService.IsInitialized)
+            RefreshBuildPhaseCombatState(LogicPhaseCommandService.GetRequiredCurrentPhase());
         m_FrameActive = true;
         m_NextPhase = MAEntityLogicFramePhase.BaseAndBuffs;
     }
@@ -972,6 +987,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         if (oldPhase == newPhase)
             return;
 
+        RefreshBuildPhaseCombatState(newPhase);
+
         if (IsHeroEntity)
         {
             if (InGameDataModel.IsBuildPhase(newPhase))
@@ -990,6 +1007,43 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         }
     }
 
+    private void RefreshBuildPhaseCombatState(GamePhase phase)
+    {
+        bool shouldProtect = InGameDataModel.IsBuildPhase(phase);
+        bool isProtected = m_InvincibleSources.Contains(BuildPhaseInvincibleSourceId);
+        bool isDisarmed = m_BuffComp.HasBuff(BuildPhaseDisarmBuffId);
+        if (isProtected != isDisarmed)
+        {
+            throw new InvalidOperationException(
+                $"Build phase combat buffs are inconsistent. entity={EntityId.Value}, invincible={isProtected}, disarmed={isDisarmed}.");
+        }
+        if (shouldProtect == isProtected)
+            return;
+
+        if (shouldProtect)
+        {
+            if (!RegisterInvincibleSource(BuildPhaseInvincibleSourceId))
+                throw new InvalidOperationException($"Build phase invincibility was already registered. entity={EntityId.Value}.");
+            if (!m_BuffComp.AddBuff(
+                    BuffData.Create(
+                        BuildPhaseDisarmBuffId,
+                        Fix64.Zero,
+                        true,
+                        1,
+                        new List<BuffCallback> { new DisarmedStateBuff() }),
+                    this))
+            {
+                throw new InvalidOperationException($"Build phase disarm buff was rejected. entity={EntityId.Value}.");
+            }
+            return;
+        }
+
+        if (!m_BuffComp.RemoveBuff(BuildPhaseDisarmBuffId))
+            throw new InvalidOperationException($"Build phase disarm buff is missing during removal. entity={EntityId.Value}.");
+        if (!UnregisterInvincibleSource(BuildPhaseInvincibleSourceId))
+            throw new InvalidOperationException($"Build phase invincibility source is missing during removal. entity={EntityId.Value}.");
+    }
+
     private CreaturePropertyManager RequireProperties()
     {
         return m_CreatureProperties
@@ -1006,6 +1060,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         LockComp(m_TargetingComp, DisabledCapabilityLocker);
         m_CombatCapabilitiesLockedForDisabled = true;
         m_BuffComp.OnHostDead();
+        if (LogicWallRuntime.TryGetBranch(EntityId, out _))
+            LogicWallRuntime.SetBranchActive(EntityId, false);
         BuildingDisabledChanged?.Invoke(true, attacker);
         LogicBuildingDisabledEventService.Publish(this, attacker);
     }

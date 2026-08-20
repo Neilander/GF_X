@@ -15,11 +15,16 @@ internal static class LvTestBuildInteractionDiagnosticRunner
     private const string LevelIdentifier = "LvTest";
     private const string RequestRelativePath = "Logs/RunLvTestBuildInteractionDiagnostic.request";
     private const string ResultRelativePath = "Logs/LvTestBuildInteractionDiagnosticResult.txt";
+    private const string WallOnlyRequestToken = "wall";
     private const string SessionPrefix = "Avenge.LvTestBuildInteractionDiagnostic.";
     private const string RunningKey = SessionPrefix + "Running";
     private const string StateKey = SessionPrefix + "State";
     private const string StartedUtcKey = SessionPrefix + "StartedUtc";
+    private const string WallOnlyKey = SessionPrefix + "WallOnly";
+    private const string WallGeneratedVisualRootName = "_WallGeneratedView";
+    private const string WallBrickTextureResourceName = "WallBrickTexture";
     private const double RuntimeIssueTimeoutSeconds = 90.0;
+    private const double WallFocusTimeoutSeconds = 30.0;
     private const double ViewBindingTimeoutSeconds = 5.0;
     private const double EditorPauseDurationSeconds = 3.0;
     private const double EditorPauseResumeTimeoutSeconds = 5.0;
@@ -46,12 +51,17 @@ internal static class LvTestBuildInteractionDiagnosticRunner
     private static bool s_EditorPauseRebaseObserved;
     private static bool s_EditorPauseFirstFrameValidated;
     private static int s_EditorPauseCatchUpCount;
+    private static LogicEntityId s_WallApproachTargetId;
+    private static double s_WallFocusDeadline;
+    private static string s_RuntimeError;
 
     private enum RunnerState
     {
         WaitingForPlay,
         WaitingForStartupProcedure,
         WaitingForRuntime,
+        WaitingForWallFocus,
+        WaitingForWallPanel,
         WaitingForEditorPauseResume,
         WaitingForRuntimeIssues,
         Finishing,
@@ -61,12 +71,25 @@ internal static class LvTestBuildInteractionDiagnosticRunner
     {
         EditorApplication.update -= Update;
         EditorApplication.update += Update;
-        if (TryConsumeRunRequest())
-            EditorApplication.delayCall += Run;
+        if (TryConsumeRunRequest(out bool wallOnly))
+            EditorApplication.delayCall += wallOnly ? RunWallPreview : Run;
     }
 
     [MenuItem("Tools/Diagnostics/Run LvTest Build Interaction Diagnostic")]
     public static void Run()
+    {
+        SessionState.SetBool(WallOnlyKey, false);
+        StartRun();
+    }
+
+    [MenuItem("Tools/Diagnostics/Run LvTest Wall Preview Diagnostic")]
+    public static void RunWallPreview()
+    {
+        SessionState.SetBool(WallOnlyKey, true);
+        StartRun();
+    }
+
+    private static void StartRun()
     {
         if (SessionState.GetBool(RunningKey, false))
             throw new InvalidOperationException("An LvTest build interaction diagnostic is already running.");
@@ -106,6 +129,9 @@ internal static class LvTestBuildInteractionDiagnosticRunner
 
         try
         {
+            if (!string.IsNullOrEmpty(s_RuntimeError))
+                throw new InvalidOperationException("Runtime error during LvTest diagnostic:" + Environment.NewLine + s_RuntimeError);
+
             RunnerState state = (RunnerState)SessionState.GetInt(StateKey, (int)RunnerState.WaitingForPlay);
             if (!EditorApplication.isPlaying)
             {
@@ -127,6 +153,12 @@ internal static class LvTestBuildInteractionDiagnosticRunner
                     break;
                 case RunnerState.WaitingForRuntime:
                     DiagnoseWhenRuntimeReady();
+                    break;
+                case RunnerState.WaitingForWallFocus:
+                    DiagnoseWallFocus();
+                    break;
+                case RunnerState.WaitingForWallPanel:
+                    DiagnoseWallPanel();
                     break;
                 case RunnerState.WaitingForEditorPauseResume:
                     DiagnoseEditorPauseResume();
@@ -188,9 +220,12 @@ internal static class LvTestBuildInteractionDiagnosticRunner
         report.Append("unlockedArchetypes=").AppendLine(CollectUnlockedArchetypes());
 
         int lv0Count = 0;
-        int playerOwnedCount = 0;
-        int playerVisibleHostCount = 0;
-        int foreignVisibleHostCount = 0;
+        int ordinaryLv0Count = 0;
+        int playerOwnedOrdinaryCount = 0;
+        int playerVisibleOrdinaryHostCount = 0;
+        int foreignVisibleOrdinaryHostCount = 0;
+        int wallPreviewCount = 0;
+        int registeredWallPreviewCount = 0;
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
@@ -202,8 +237,19 @@ internal static class LvTestBuildInteractionDiagnosticRunner
             }
 
             lv0Count++;
-            if (state.OwnerFactionId == EntitySideHelper.PlayerFactionId)
-                playerOwnedCount++;
+            bool isWallPreview = LogicWallRuntime.IsWallBuilding(state.BuildingData);
+            if (isWallPreview)
+            {
+                wallPreviewCount++;
+                if (LogicWallRuntime.TryGetPreviewCell(state.LogicEntityId, out _))
+                    registeredWallPreviewCount++;
+            }
+            else
+            {
+                ordinaryLv0Count++;
+                if (state.OwnerFactionId == EntitySideHelper.PlayerFactionId)
+                    playerOwnedOrdinaryCount++;
+            }
 
             List<BuildingData> allCandidates = buildManager.GetLv0ConstructCandidates(state, requireUnlockedArche: false);
             List<BuildingData> unlockedCandidates = buildManager.GetLv0ConstructCandidates(state, requireUnlockedArche: true);
@@ -212,12 +258,12 @@ internal static class LvTestBuildInteractionDiagnosticRunner
             bool hasBoundView = LogicEntityLifecycleService.TryGetBoundView(state.LogicEntityId, out MAEntity view) && view != null;
             InteractionHost host = hasBoundView ? view.GetComponent<InteractionHost>() : null;
             bool hostHasVisibleOptions = host != null && host.HasVisibleOptions();
-            if (hostHasVisibleOptions)
+            if (!isWallPreview && hostHasVisibleOptions)
             {
                 if (state.OwnerFactionId == EntitySideHelper.PlayerFactionId)
-                    playerVisibleHostCount++;
+                    playerVisibleOrdinaryHostCount++;
                 else
-                    foreignVisibleHostCount++;
+                    foreignVisibleOrdinaryHostCount++;
             }
 
             report.Append("LV0 entity=").Append(state.LogicEntityId.Value)
@@ -251,20 +297,57 @@ internal static class LvTestBuildInteractionDiagnosticRunner
 
         if (lv0Count == 0)
             throw new InvalidOperationException("LvTest runtime contains no Lv0 building points.");
-        if (playerOwnedCount == 0)
+        if (playerOwnedOrdinaryCount == 0)
             throw new InvalidOperationException("LvTest runtime contains no player-owned Lv0 building points.");
-        if (playerVisibleHostCount != playerOwnedCount)
+        if (playerVisibleOrdinaryHostCount != playerOwnedOrdinaryCount)
         {
             throw new InvalidOperationException(
-                $"LvTest player Lv0 build permissions are incomplete. playerOwned={playerOwnedCount}, visibleHosts={playerVisibleHostCount}.");
+                $"LvTest player ordinary Lv0 build permissions are incomplete. playerOwned={playerOwnedOrdinaryCount}, visibleHosts={playerVisibleOrdinaryHostCount}.");
         }
-        if (foreignVisibleHostCount != 0)
-            throw new InvalidOperationException($"LvTest exposes {foreignVisibleHostCount} foreign Lv0 interaction hosts.");
+        if (foreignVisibleOrdinaryHostCount != 0)
+            throw new InvalidOperationException($"LvTest exposes {foreignVisibleOrdinaryHostCount} foreign ordinary Lv0 interaction hosts.");
+        if (wallPreviewCount == 0 || registeredWallPreviewCount != wallPreviewCount)
+        {
+            throw new InvalidOperationException(
+                $"LvTest wall previews are not fully registered. entities={wallPreviewCount}, registered={registeredWallPreviewCount}.");
+        }
+
+        IEntityContext player = EntityRegistry.Player
+                                ?? throw new InvalidOperationException("LvTest wall preview diagnostic requires the player hero.");
+        int farHiddenWallCount = 0;
+        int horizontalWallCount = 0;
+        int verticalWallCount = 0;
+        int cornerWallCount = 0;
+        Fix64 nearestDistance = Fix64.FromRaw(long.MaxValue);
+        LogicEntityId nearestPlayerWallId = default;
+        ValidateWallPreviewPresentations(
+            player,
+            default,
+            ref farHiddenWallCount,
+            ref horizontalWallCount,
+            ref verticalWallCount,
+            ref cornerWallCount,
+            ref nearestDistance,
+            ref nearestPlayerWallId);
+        if (farHiddenWallCount == 0)
+            throw new InvalidOperationException("LvTest has no out-of-range hidden wall preview to validate.");
+        if (!nearestPlayerWallId.IsValid)
+            throw new InvalidOperationException("LvTest has no player-owned wall preview to approach.");
 
         report.Append("SUMMARY lv0=").Append(lv0Count)
-            .Append(" playerOwned=").Append(playerOwnedCount)
-            .Append(" playerVisibleHosts=").Append(playerVisibleHostCount)
-            .Append(" foreignVisibleHosts=").Append(foreignVisibleHostCount)
+            .Append(" ordinary=").Append(ordinaryLv0Count)
+            .Append(" playerOwnedOrdinary=").Append(playerOwnedOrdinaryCount)
+            .Append(" playerVisibleOrdinaryHosts=").Append(playerVisibleOrdinaryHostCount)
+            .Append(" foreignVisibleOrdinaryHosts=").Append(foreignVisibleOrdinaryHostCount)
+            .Append(" wallPreviews=").Append(wallPreviewCount)
+            .Append(" registeredWallPreviews=").Append(registeredWallPreviewCount)
+            .AppendLine();
+        report.Append("WALL_INITIAL farHidden=").Append(farHiddenWallCount)
+            .Append(" horizontal=").Append(horizontalWallCount)
+            .Append(" vertical=").Append(verticalWallCount)
+            .Append(" corner=").Append(cornerWallCount)
+            .Append(" approachEntity=").Append(nearestPlayerWallId.Value)
+            .Append(" distanceRaw=").Append(nearestDistance.RawValue)
             .AppendLine();
 
         s_Report = report;
@@ -273,7 +356,389 @@ internal static class LvTestBuildInteractionDiagnosticRunner
         Application.logMessageReceived -= OnRuntimeLog;
         Application.logMessageReceived += OnRuntimeLog;
         WriteResult(report.ToString());
-        BeginEditorPauseDiagnostic();
+        s_WallApproachTargetId = nearestPlayerWallId;
+        s_WallFocusDeadline = EditorApplication.timeSinceStartup + WallFocusTimeoutSeconds;
+        SessionState.SetInt(StateKey, (int)RunnerState.WaitingForWallFocus);
+    }
+
+    private static void DiagnoseWallFocus()
+    {
+        if (!InGameDataModel.IsBuildPhase(LogicPhaseCommandService.GetRequiredCurrentPhase()))
+            throw new InvalidOperationException("Wall preview focus diagnostic left the build phase.");
+        IEntityContext player = EntityRegistry.Player
+                                ?? throw new InvalidOperationException("Wall preview focus diagnostic lost the player hero.");
+        if (!EntityRegistry.TryGet(s_WallApproachTargetId, out IEntityContext approachTarget)
+            || !approachTarget.Alive)
+        {
+            throw new InvalidOperationException(
+                $"Wall preview approach target {s_WallApproachTargetId.Value} is unavailable.");
+        }
+
+        LogicEntityId focusedId = LogicInteractionAuthorityService.CurrentTargetId;
+        if (TryResolveWallPreview(focusedId, out LogicEntityState focusedWall)
+            && AreWallPreviewVisualsSynchronized(focusedId))
+        {
+            player.MoveExecutor.SetExternalFixed(FixVector2.Zero);
+            ValidateFocusedWallPreview(player, focusedWall);
+            s_Report.Append("WALL_FOCUSED entity=").Append(focusedId.Value)
+                .Append(" distanceRaw=").Append(player.LogicFrameDistanceToTargetSurfaceFixed(focusedWall).RawValue)
+                .Append(" visualActive=true nonFocusedActive=0")
+                .AppendLine();
+            WriteResult(s_Report.ToString());
+            SessionState.SetInt(StateKey, (int)RunnerState.WaitingForWallPanel);
+            return;
+        }
+
+        if (EditorApplication.timeSinceStartup >= s_WallFocusDeadline)
+        {
+            throw new TimeoutException(
+                $"Hero did not naturally focus a wall preview within {WallFocusTimeoutSeconds:F0}s. "
+                + $"approach={s_WallApproachTargetId.Value}, current={focusedId.Value}, "
+                + $"distanceRaw={player.LogicFrameDistanceToTargetSurfaceFixed(approachTarget).RawValue}.");
+        }
+
+        FixVector2 closestPoint = LogicTargetGeometry.ClosestPoint(approachTarget, player.PositionFixed);
+        FixVector2 towardWall = closestPoint - player.PositionFixed;
+        Fix64 distance = FixVector2.Magnitude(towardWall);
+        Fix64 stopDistance = LogicInteractionAuthorityService.EffectiveRange / (Fix64)2;
+        FixVector2 velocity = distance > stopDistance
+            ? towardWall.GetNormalized() * (Fix64)5
+            : FixVector2.Zero;
+        player.MoveExecutor.SetExternalFixed(velocity);
+    }
+
+    private static void DiagnoseWallPanel()
+    {
+        UIForm[] forms = GF.UI.GetAllLoadedUIForms();
+        for (int i = 0; i < forms.Length; i++)
+        {
+            if (forms[i]?.Logic is not BuildingBuildTips buildTips
+                || buildTips.TargetLogicEntityId != s_WallApproachTargetId
+                || buildTips.PresentedBuildOptionCount <= 0)
+            {
+                continue;
+            }
+
+            s_Report.Append("WALL_PANEL type=").Append(nameof(BuildingBuildTips))
+                .Append(" target=").Append(buildTips.TargetLogicEntityId.Value)
+                .Append(" buildOptions=").Append(buildTips.PresentedBuildOptionCount)
+                .AppendLine();
+            ValidateBuildingPanelDoesNotCoverTarget(buildTips);
+            WriteResult(s_Report.ToString());
+            if (SessionState.GetBool(WallOnlyKey, false))
+            {
+                FinishSuccessfulDiagnostic("AVENGE_LVTEST_WALL_PREVIEW_DIAGNOSTIC_PASS");
+                return;
+            }
+            BeginEditorPauseDiagnostic();
+            return;
+        }
+
+        if (EditorApplication.timeSinceStartup >= s_WallFocusDeadline)
+        {
+            throw new TimeoutException(
+                $"Focused isolated wall preview {s_WallApproachTargetId.Value} did not open BuildingBuildTips with a construction option.");
+        }
+    }
+
+    private static void ValidateWallPreviewPresentations(
+        IEntityContext player,
+        LogicEntityId focusedId,
+        ref int farHiddenWallCount,
+        ref int horizontalWallCount,
+        ref int verticalWallCount,
+        ref int cornerWallCount,
+        ref Fix64 nearestDistance,
+        ref LogicEntityId nearestPlayerWallId)
+    {
+        Texture2D brickTexture = Resources.Load<Texture2D>(WallBrickTextureResourceName)
+                                 ?? throw new InvalidOperationException(
+                                     $"Wall brick texture resource '{WallBrickTextureResourceName}' is missing.");
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            if (entities[i] is not LogicEntityState wall
+                || !wall.Alive
+                || wall.BuildingData == null
+                || wall.BuildingData.Lv != 0
+                || !LogicWallRuntime.IsWallBuilding(wall.BuildingData))
+            {
+                continue;
+            }
+            if (!LogicEntityLifecycleService.TryGetBoundView(wall.LogicEntityId, out MAEntity view) || view == null)
+                throw new InvalidOperationException($"Wall preview {wall.LogicEntityId.Value} has no bound view.");
+            WallBranchView wallView = view.GetComponent<WallBranchView>();
+            if (wallView == null)
+                throw new InvalidOperationException($"Wall preview {wall.LogicEntityId.Value} has no WallBranchView.");
+            Transform visualRoot = FindWallVisualRoot(view);
+            bool expectedActive = wall.LogicEntityId == focusedId;
+            if (visualRoot.gameObject.activeSelf != expectedActive)
+            {
+                throw new InvalidOperationException(
+                    $"Wall preview visibility mismatch. entity={wall.LogicEntityId.Value}, expected={expectedActive}, actual={visualRoot.gameObject.activeSelf}.");
+            }
+
+            ValidateWallMaterialAndCells(wall, visualRoot, brickTexture, out WallConnectionDirection connections);
+            bool horizontal = HasHorizontal(connections);
+            bool vertical = HasVertical(connections);
+            if (horizontal && vertical)
+                cornerWallCount++;
+            else if (horizontal)
+                horizontalWallCount++;
+            else if (vertical)
+                verticalWallCount++;
+            else
+                throw new InvalidOperationException($"Wall preview {wall.LogicEntityId.Value} has no path direction.");
+
+            Fix64 distance = player.LogicFrameDistanceToTargetSurfaceFixed(wall);
+            if (distance > LogicInteractionAuthorityService.EffectiveRange && !visualRoot.gameObject.activeSelf)
+                farHiddenWallCount++;
+            if (!LogicWallRuntime.TryGetPreviewCell(wall.LogicEntityId, out WallGridCell previewCell))
+                throw new InvalidOperationException($"Wall preview {wall.LogicEntityId.Value} has no authored cell.");
+            bool isIsolatedPreview = LogicWallRuntime.GetAdjacentBranches(
+                previewCell,
+                wall.OwnerFactionId).Count == 0;
+            if (wall.OwnerFactionId == EntitySideHelper.PlayerFactionId
+                && isIsolatedPreview
+                && distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearestPlayerWallId = wall.LogicEntityId;
+            }
+        }
+    }
+
+    private static void ValidateWallMaterialAndCells(
+        LogicEntityState wall,
+        Transform visualRoot,
+        Texture2D brickTexture,
+        out WallConnectionDirection previewConnections)
+    {
+        if (!LogicWallRuntime.TryGetPreviewCell(wall.LogicEntityId, out WallGridCell previewCell))
+            throw new InvalidOperationException($"Wall preview {wall.LogicEntityId.Value} has no authored cell.");
+        IReadOnlyList<WallGridCell> mergedCells = LogicWallRuntime.BuildMergedCells(previewCell, wall.OwnerFactionId);
+        Renderer[] renderers = visualRoot.GetComponentsInChildren<Renderer>(true);
+        if (renderers.Length == 0)
+            throw new InvalidOperationException($"Wall preview {wall.LogicEntityId.Value} generated no renderers.");
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Material material = renderers[i].sharedMaterial
+                                ?? throw new InvalidOperationException(
+                                    $"Wall preview {wall.LogicEntityId.Value} renderer has no material.");
+            Texture texture = material.HasProperty("_BaseMap") ? material.GetTexture("_BaseMap") : material.mainTexture;
+            if (texture != brickTexture)
+                throw new InvalidOperationException($"Wall preview {wall.LogicEntityId.Value} is not using the brick texture.");
+            if (Mathf.Abs(material.color.a - 0.38f) > 0.001f || material.renderQueue < (int)UnityEngine.Rendering.RenderQueue.Transparent)
+            {
+                throw new InvalidOperationException(
+                    $"Wall preview {wall.LogicEntityId.Value} material is not transparent. alpha={material.color.a:F3}, queue={material.renderQueue}.");
+            }
+        }
+
+        for (int cellIndex = 0; cellIndex < mergedCells.Count; cellIndex++)
+        {
+            FixVector2 center = LogicWallRuntime.GetCellWorldCenter(mergedCells[cellIndex]);
+            bool represented = false;
+            for (int rendererIndex = 0; rendererIndex < renderers.Length; rendererIndex++)
+            {
+                Vector3 position = renderers[rendererIndex].transform.position;
+                float dx = position.x - (float)center.x;
+                float dz = position.z - (float)center.y;
+                if (dx * dx + dz * dz <= 0.36f)
+                {
+                    represented = true;
+                    break;
+                }
+            }
+            if (!represented)
+            {
+                throw new InvalidOperationException(
+                    $"Wall preview {wall.LogicEntityId.Value} omitted merged cell {mergedCells[cellIndex]}.");
+            }
+        }
+
+        previewConnections = ResolveMergedConnections(mergedCells, previewCell)
+                             | LogicWallRuntime.ResolveWallPathConnections(previewCell);
+        Vector3 previewCenter = new Vector3(
+            (float)LogicWallRuntime.GetCellWorldCenter(previewCell).x,
+            0f,
+            (float)LogicWallRuntime.GetCellWorldCenter(previewCell).y);
+        int nearbyBlocks = 0;
+        bool hasHorizontalShape = false;
+        bool hasVerticalShape = false;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Vector3 position = renderers[i].transform.position;
+            float dx = position.x - previewCenter.x;
+            float dz = position.z - previewCenter.z;
+            if (dx * dx + dz * dz > 0.36f)
+                continue;
+            nearbyBlocks++;
+            Vector3 scale = renderers[i].transform.lossyScale;
+            hasHorizontalShape |= scale.x > scale.z + 0.01f || Mathf.Abs(dx) > 0.1f;
+            hasVerticalShape |= scale.z > scale.x + 0.01f || Mathf.Abs(dz) > 0.1f;
+        }
+        bool requiresHorizontal = HasHorizontal(previewConnections);
+        bool requiresVertical = HasVertical(previewConnections);
+        if (requiresHorizontal && !hasHorizontalShape || requiresVertical && !hasVerticalShape)
+        {
+            throw new InvalidOperationException(
+                $"Wall preview {wall.LogicEntityId.Value} geometry does not match path {previewConnections}. "
+                + $"horizontalShape={hasHorizontalShape}, verticalShape={hasVerticalShape}.");
+        }
+        if (requiresHorizontal && requiresVertical && nearbyBlocks < 3)
+        {
+            throw new InvalidOperationException(
+                $"Wall corner preview {wall.LogicEntityId.Value} degraded to {nearbyBlocks} block(s).");
+        }
+    }
+
+    private static WallConnectionDirection ResolveMergedConnections(
+        IReadOnlyList<WallGridCell> cells,
+        WallGridCell cell)
+    {
+        WallConnectionDirection result = WallConnectionDirection.None;
+        for (int i = 0; i < cells.Count; i++)
+        {
+            WallGridCell candidate = cells[i];
+            if (candidate.X == cell.X - 1 && candidate.Y == cell.Y)
+                result |= WallConnectionDirection.Left;
+            else if (candidate.X == cell.X + 1 && candidate.Y == cell.Y)
+                result |= WallConnectionDirection.Right;
+            else if (candidate.X == cell.X && candidate.Y == cell.Y - 1)
+                result |= WallConnectionDirection.Down;
+            else if (candidate.X == cell.X && candidate.Y == cell.Y + 1)
+                result |= WallConnectionDirection.Up;
+        }
+        return result;
+    }
+
+    private static bool AreWallPreviewVisualsSynchronized(LogicEntityId focusedId)
+    {
+        int activeCount = 0;
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            if (entities[i] is not LogicEntityState wall
+                || wall.BuildingData == null
+                || wall.BuildingData.Lv != 0
+                || !LogicWallRuntime.IsWallBuilding(wall.BuildingData))
+            {
+                continue;
+            }
+            if (!LogicEntityLifecycleService.TryGetBoundView(wall.LogicEntityId, out MAEntity view) || view == null)
+                return false;
+            bool active = FindWallVisualRoot(view).gameObject.activeSelf;
+            if (active)
+                activeCount++;
+            if (wall.LogicEntityId == focusedId && !active)
+                return false;
+            if (wall.LogicEntityId != focusedId && active)
+                return false;
+        }
+        return activeCount == 1;
+    }
+
+    private static void ValidateFocusedWallPreview(IEntityContext player, LogicEntityState focusedWall)
+    {
+        int farHidden = 0;
+        int horizontal = 0;
+        int vertical = 0;
+        int corner = 0;
+        Fix64 nearestDistance = Fix64.FromRaw(long.MaxValue);
+        LogicEntityId nearestId = default;
+        ValidateWallPreviewPresentations(
+            player,
+            focusedWall.LogicEntityId,
+            ref farHidden,
+            ref horizontal,
+            ref vertical,
+            ref corner,
+            ref nearestDistance,
+            ref nearestId);
+        if (player.LogicFrameDistanceToTargetSurfaceFixed(focusedWall) > LogicInteractionAuthorityService.EffectiveRange)
+            throw new InvalidOperationException($"Focused wall preview {focusedWall.LogicEntityId.Value} is outside interaction range.");
+        if (!LogicInteractionOptionService.HasVisibleOptions(focusedWall))
+            throw new InvalidOperationException($"Focused wall preview {focusedWall.LogicEntityId.Value} has no visible build option.");
+    }
+
+    private static bool TryResolveWallPreview(LogicEntityId entityId, out LogicEntityState wall)
+    {
+        wall = null;
+        if (!entityId.IsValid || !EntityRegistry.TryGet(entityId, out IEntityContext entity))
+            return false;
+        wall = entity as LogicEntityState;
+        return wall != null
+               && wall.Alive
+               && wall.BuildingData != null
+               && wall.BuildingData.Lv == 0
+               && LogicWallRuntime.IsWallBuilding(wall.BuildingData);
+    }
+
+    private static Transform FindWallVisualRoot(MAEntity view)
+    {
+        Transform root = view.transform.Find(
+            EntityPresentationBindings.DisplayObjectName + "/" + WallGeneratedVisualRootName);
+        return root ?? throw new InvalidOperationException(
+            $"Wall preview view {view.LogicEntityId.Value} has no generated visual root.");
+    }
+
+    private static void ValidateBuildingPanelDoesNotCoverTarget(BuildingBuildTips buildTips)
+    {
+        var field = typeof(BuildingBuildTips).GetField(
+            "varBuildPanel",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        if (field?.GetValue(buildTips) is not GameObject panelObject)
+            throw new InvalidOperationException("BuildingBuildTips has no bound varBuildPanel.");
+        if (panelObject.transform is not RectTransform panel || panel.parent is not RectTransform parent)
+            throw new InvalidOperationException("BuildingBuildTips panel hierarchy is invalid.");
+        if (!LogicEntityLifecycleService.TryGetBoundView(s_WallApproachTargetId, out MAEntity view) || view == null)
+            throw new InvalidOperationException("Focused wall has no bound view for panel overlap validation.");
+
+        var boundsMethod = typeof(BuildingPanelScreenClamp).GetMethod(
+            "CalculateTargetBounds",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        if (boundsMethod == null)
+            throw new InvalidOperationException("Building panel target projection method is missing.");
+        Rect targetRect = (Rect)boundsMethod.Invoke(null, new object[] { parent, view.transform });
+        Bounds panelBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(parent, panel);
+        Rect panelRect = Rect.MinMaxRect(
+            panelBounds.min.x,
+            panelBounds.min.y,
+            panelBounds.max.x,
+            panelBounds.max.y);
+        Rect overlap = Rect.MinMaxRect(
+            Mathf.Max(panelRect.xMin, targetRect.xMin),
+            Mathf.Max(panelRect.yMin, targetRect.yMin),
+            Mathf.Min(panelRect.xMax, targetRect.xMax),
+            Mathf.Min(panelRect.yMax, targetRect.yMax));
+        float overlapArea = overlap.width > 0f && overlap.height > 0f
+            ? overlap.width * overlap.height
+            : 0f;
+        s_Report.Append("WALL_PANEL_LAYOUT panel=").Append(panelRect)
+            .Append(" target=").Append(targetRect)
+            .Append(" overlapArea=").Append(overlapArea.ToString("F3", CultureInfo.InvariantCulture))
+            .AppendLine();
+        if (overlapArea > 0.01f)
+            throw new InvalidOperationException(
+                $"Building panel covers its wall target. panel={panelRect}, target={targetRect}, overlapArea={overlapArea:F3}.");
+    }
+
+    private static bool HasHorizontal(WallConnectionDirection connections) =>
+        (connections & (WallConnectionDirection.Left | WallConnectionDirection.Right)) != 0;
+
+    private static bool HasVertical(WallConnectionDirection connections) =>
+        (connections & (WallConnectionDirection.Down | WallConnectionDirection.Up)) != 0;
+
+    private static void FinishSuccessfulDiagnostic(string logPrefix)
+    {
+        StopRuntimeLogCapture();
+        s_Report.Append("finishedUtc=").AppendLine(DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+        s_Report.Replace("RESULT=RUNNING", "RESULT=PASS");
+        WriteResult(s_Report.ToString());
+        Debug.Log(logPrefix + " " + s_Report);
+        SessionState.SetInt(StateKey, (int)RunnerState.Finishing);
+        EditorApplication.isPlaying = false;
     }
 
     private static void BeginEditorPauseDiagnostic()
@@ -499,6 +964,12 @@ internal static class LvTestBuildInteractionDiagnosticRunner
 
     private static void OnRuntimeLog(string condition, string stackTrace, LogType type)
     {
+        if ((type == LogType.Error || type == LogType.Exception || type == LogType.Assert)
+            && string.IsNullOrEmpty(s_RuntimeError))
+        {
+            s_RuntimeError = condition + Environment.NewLine + stackTrace;
+        }
+
         if (s_EditorPauseResumeRequested && !s_EditorPauseFirstFrameValidated)
         {
             if (condition.Contains("[LogicFrame] Editor pause ended. Rebased realtime without catch-up", StringComparison.Ordinal))
@@ -525,7 +996,7 @@ internal static class LvTestBuildInteractionDiagnosticRunner
         }
         if (condition.Contains("[DefendPhase] SpawnEvent", StringComparison.Ordinal))
             s_DefendSpawnObserved = true;
-        if (condition.Contains("[DefendPhase] Released spawn speed on authoritative visibility", StringComparison.Ordinal))
+        if (condition.Contains("[DefendPhase] Released spawn speed.", StringComparison.Ordinal))
             s_SpawnSpeedReleaseObserved = true;
     }
 
@@ -551,6 +1022,9 @@ internal static class LvTestBuildInteractionDiagnosticRunner
         s_EditorPauseRebaseObserved = false;
         s_EditorPauseFirstFrameValidated = false;
         s_EditorPauseCatchUpCount = 0;
+        s_WallApproachTargetId = default;
+        s_WallFocusDeadline = 0.0;
+        s_RuntimeError = null;
     }
 
     private static void StopRuntimeLogCapture()
@@ -582,11 +1056,14 @@ internal static class LvTestBuildInteractionDiagnosticRunner
         return string.Join(",", ids);
     }
 
-    private static bool TryConsumeRunRequest()
+    private static bool TryConsumeRunRequest(out bool wallOnly)
     {
+        wallOnly = false;
         string requestPath = GetProjectPath(RequestRelativePath);
         if (!File.Exists(requestPath))
             return false;
+        string request = File.ReadAllText(requestPath);
+        wallOnly = request.Contains(WallOnlyRequestToken, StringComparison.OrdinalIgnoreCase);
         File.Delete(requestPath);
         return true;
     }

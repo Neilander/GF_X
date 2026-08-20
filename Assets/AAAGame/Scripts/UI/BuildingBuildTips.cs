@@ -8,6 +8,10 @@ using UnityEngine;
 public partial class BuildingBuildTips : UIFormBase
 {
     public const string P_TargetHost = "TargetHost";
+    public LogicEntityId TargetLogicEntityId => m_TargetBuilding != null
+        ? m_TargetBuilding.LogicEntityId
+        : default;
+    public int PresentedBuildOptionCount => m_BuildOptionBindings.Count;
 
     [SerializeField] private Vector2 uiOffset = new(0f, 80f);
 
@@ -16,10 +20,6 @@ public partial class BuildingBuildTips : UIFormBase
     private const string SupplyIconPath = "UI/Icon/Supply.png";
     private const string BuildPreviewFolder = "建筑预览";
     private const string BaseMilestoneTechPattern = "Tech_BaseBuilt_{0}_Lv1";
-    private const float HoldPerStarMinSeconds = 0.1f;
-    private const float HoldPerStarMaxSeconds = 0.4f;
-    private const float HoldAlignedDurationSeconds = 2f;
-    private const float HoldDurationMinSeconds = 1f;
 
     private static readonly Dictionary<BuilType, Archetype> s_LastSelectedIndustryByType = new();
     private static readonly Dictionary<string, int> s_ArmySupplyPerUnitCache = new(StringComparer.Ordinal);
@@ -134,13 +134,21 @@ public partial class BuildingBuildTips : UIFormBase
         long defaultTicks = 0L;
         if (hasCandidates)
         {
-            phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            SpawnIndustryOptions();
-            industryTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
+            if (m_BuildingCandidatesByArchetype.ContainsKey(Archetype.None))
+            {
+                m_SelectedArchetype = Archetype.None;
+                SpawnBuildOptionsForSelectedIndustry();
+            }
+            else
+            {
+                phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                SpawnIndustryOptions();
+                industryTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
 
-            phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            SelectDefaultIndustry();
-            defaultTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
+                phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                SelectDefaultIndustry();
+                defaultTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
+            }
         }
 
         LogBuildPanelPerf(
@@ -170,7 +178,7 @@ public partial class BuildingBuildTips : UIFormBase
         for (int i = 0; i < candidates.Count; i++)
         {
             BuildingData data = candidates[i];
-            if (data == null || data.Arche == Archetype.None)
+            if (data == null)
                 continue;
 
             if (!m_BuildingCandidatesByArchetype.TryGetValue(data.Arche, out List<BuildingData> list))
@@ -299,12 +307,6 @@ public partial class BuildingBuildTips : UIFormBase
         m_BuildOptionBindings.Clear();
         ResetHoldState();
         long clearTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
-
-        if (m_SelectedArchetype == Archetype.None)
-        {
-            LogBuildPanelPerf("BuildOptions", buildOptionsStartTicks, buildOptionsStartAllocatedBytes, $"clear={TicksToMilliseconds(clearTicks):F3}ms selected=None");
-            return;
-        }
 
         if (!m_BuildingCandidatesByArchetype.TryGetValue(m_SelectedArchetype, out List<BuildingData> candidates))
         {
@@ -607,7 +609,7 @@ public partial class BuildingBuildTips : UIFormBase
 
         int starCount = Mathf.Max(1, m_HoldBinding.Stars.Count);
         bool pressing = IsBuildBindingPressed(m_HoldBinding);
-        m_HoldProgressStars = AdvanceHoldProgressStars(
+        m_HoldProgressStars = BuildingInteractionHoldPresentation.AdvanceConfiguredProgressStars(
             m_HoldProgressStars,
             pressing,
             starCount,
@@ -656,19 +658,6 @@ public partial class BuildingBuildTips : UIFormBase
 
         if (!pressing && m_HoldProgressStars <= 1e-4f)
             ResetHoldState();
-    }
-
-    private static float AdvanceHoldProgressStars(
-        float current,
-        bool pressing,
-        int starCount,
-        float deltaTime)
-    {
-        float duration = ResolveHoldDurationSeconds(starCount);
-        float delta = (starCount / Mathf.Max(0.01f, duration)) * deltaTime;
-        return pressing
-            ? Mathf.Min(starCount, current + delta)
-            : Mathf.Max(0f, current - delta);
     }
 
     private BuildOptionBinding ResolvePressedBuildBinding()
@@ -763,12 +752,13 @@ public partial class BuildingBuildTips : UIFormBase
         if (panelRect == null || parentRect == null)
             return;
 
-        Vector3 uiPos = GF.UI.PositionWorldToUI(m_TargetHost.GetPromptPosition(), parentRect);
-        Vector2 unitOffset = HasArmyBuildOption()
-            ? Vector2.left * BuildingInfoItem.DetailPanelCenterOffset
-            : Vector2.zero;
-        panelRect.anchoredPosition = (Vector2)uiPos + uiOffset + unitOffset;
-        BuildingPanelScreenClamp.ClampToParent(panelRect, parentRect);
+        bool hasArmyBuildOption = HasArmyBuildOption();
+        BuildingPanelScreenClamp.PlaceBesideTarget(
+            panelRect,
+            parentRect,
+            m_TargetHost.transform,
+            uiOffset + (hasArmyBuildOption ? Vector2.left * BuildingInfoItem.DetailPanelCenterOffset : Vector2.zero),
+            hasArmyBuildOption ? BuildingInfoItem.DetailPanelWidth : 0f);
     }
 
     private bool HasArmyBuildOption()
@@ -844,12 +834,7 @@ public partial class BuildingBuildTips : UIFormBase
 
     private static float ResolveHoldDurationSeconds(int starCount)
     {
-        if (starCount <= 1)
-            return HoldDurationMinSeconds;
-
-        float perStarSeconds = HoldAlignedDurationSeconds / (starCount - 1f);
-        perStarSeconds = Mathf.Clamp(perStarSeconds, HoldPerStarMinSeconds, HoldPerStarMaxSeconds);
-        return Mathf.Max(HoldDurationMinSeconds, perStarSeconds * (starCount - 1f));
+        return BuildingInteractionHoldPresentation.ResolveConfiguredDurationSeconds(starCount);
     }
 
     private bool IsActionPressed(string actionName)

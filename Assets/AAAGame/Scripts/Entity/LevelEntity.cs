@@ -67,6 +67,7 @@ public partial class LevelEntity : EntityBase
         int initVersion = ++m_RuntimeInitializationVersion;
 
         CollectStrongholds();
+        InitializeWalls();
         m_RuntimePresetPoints = GetComponentsInChildren<EntityPresetPoint>(true);
         PhaseManager.ConfigureInvadeSpawnPoints(m_RuntimePresetPoints);
 
@@ -86,6 +87,7 @@ public partial class LevelEntity : EntityBase
         if (wasActiveLevel)
         {
             PhaseManager.ClearInvadeSpawnPoints();
+            LogicWallRuntime.Clear();
             LogicStrongholdMap.Clear();
             InGameDataModel.ClearStrongholdRuntimeData();
         }
@@ -266,6 +268,12 @@ public partial class LevelEntity : EntityBase
         int buildingCount = 0;
         int skippedCount = 0;
         int yieldCount = 0;
+        if (restoreCheckpoint == null)
+        {
+            int initialWallCount = LogicWallRuntime.SpawnInitialBuildings();
+            buildingCount += initialWallCount;
+            processedCount += initialWallCount;
+        }
         foreach (var point in presetPoints)
         {
             if (!IsRuntimeInitializationActive(initVersion))
@@ -492,6 +500,18 @@ public partial class LevelEntity : EntityBase
         Log.Info(
             "LevelEntity.CollectStrongholds done. Strongholds={0}",
             strongholds.Count);
+    }
+
+    private void InitializeWalls()
+    {
+        WallGridAuthoring[] authorings = GetComponentsInChildren<WallGridAuthoring>(true);
+        if (authorings.Length != 1)
+        {
+            throw new InvalidOperationException(
+                $"LevelEntity requires exactly one WallGridAuthoring component. count={authorings.Length}.");
+        }
+        LogicWallRuntime.Initialize(authorings[0]);
+        Log.Info("LevelEntity.InitializeWalls done.");
     }
 
     private void InitializeLogicStrongholdMap(IReadOnlyList<Stronghold> strongholds)

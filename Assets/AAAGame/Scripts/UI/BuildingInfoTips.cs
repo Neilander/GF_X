@@ -390,20 +390,21 @@ public partial class BuildingInfoTips : UIFormBase
         if (parentRect == null)
             return;
 
-        Vector3 worldPos;
-        if (m_TargetHost != null)
-            worldPos = m_TargetHost.GetPromptPosition();
-        else if (m_TargetBuilding != null)
-            worldPos = m_TargetBuilding.transform.position;
-        else
+        if (m_TargetHost == null && m_TargetBuilding == null)
             return;
 
-        Vector3 uiPos = GF.UI.PositionWorldToUI(worldPos, parentRect);
         Vector2 detailOffset = m_HasDetailPanel
             ? Vector2.left * BuildingInfoItem.DetailPanelCenterOffset
             : Vector2.zero;
-        panelRect.anchoredPosition = (Vector2)uiPos + uiOffset + detailOffset;
-        BuildingPanelScreenClamp.ClampToParent(panelRect, parentRect);
+        Transform targetTransform = m_TargetHost != null
+            ? m_TargetHost.transform
+            : m_TargetBuilding.transform;
+        BuildingPanelScreenClamp.PlaceBesideTarget(
+            panelRect,
+            parentRect,
+            targetTransform,
+            uiOffset + detailOffset,
+            m_HasDetailPanel ? BuildingInfoItem.DetailPanelWidth : 0f);
     }
 
     private void OnTechUnlocked(object sender, GameEventArgs e)

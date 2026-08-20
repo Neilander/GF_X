@@ -34,6 +34,39 @@ public class LogicEntityIdentityTests
         public void Resume() { }
     }
 
+    private sealed class PhaseTargetingProbe : ITargetingComp
+    {
+        public int UpdateCount { get; private set; }
+        public int ClearCount { get; private set; }
+        public IEntityContext CurrentTarget { get; set; }
+        public IEntityContext AggroTarget => CurrentTarget;
+        public void Init(IEntityContext ctx) { }
+        public void UpdateTargeting(Fix64 deltaTime) => UpdateCount++;
+        public void ClearAggro()
+        {
+            ClearCount++;
+            CurrentTarget = null;
+        }
+        public void ShutDown() => ClearAggro();
+        public void Resume() { }
+    }
+
+    private sealed class PhaseAttackProbe : IAtkComp
+    {
+        public int AttackCount { get; private set; }
+        public int InterruptCount { get; private set; }
+        public bool IsAttacking { get; private set; } = true;
+        public void Init(IEntityContext ctx) { }
+        public void Attack(Fix64 deltaTime) => AttackCount++;
+        public void InterruptAttack(AttackInterruptReason reason = AttackInterruptReason.Forced)
+        {
+            InterruptCount++;
+            IsAttacking = false;
+        }
+        public void ShutDown() => InterruptAttack(AttackInterruptReason.CapabilityLocked);
+        public void Resume() { }
+    }
+
     [SetUp]
     public void SetUp()
     {
@@ -356,6 +389,7 @@ public class LogicEntityIdentityTests
                 typeof(bool),
                 typeof(bool),
                 typeof(bool),
+                typeof(LogicWallBranchDefinition),
             });
         Assert.IsNotNull(fixedSpawn, "建筑出生必须公开 fixed 逻辑位置入口。");
         Assert.AreEqual(typeof(LogicEntityId), fixedSpawn.ReturnType, "建筑出生事务必须返回逻辑身份，不能返回 View 请求 ID。");
@@ -425,6 +459,47 @@ public class LogicEntityIdentityTests
         finally
         {
             LogicEntityLifecycleService.CommandRecorded -= OnRecorded;
+        }
+    }
+
+    [Test]
+    public void DefendEnemySpawnSpeed_EnteringCombatReleasesOverrideBeforeRouteWaypoint()
+    {
+        EntityParams entityParams = CreateDefendEnemyParams((Fix64)7.25f);
+        LogicEntityState state = CreateConfiguredStateForSide(
+            "Unit_DefendCombatSpeedRelease",
+            SideType.EnemySide);
+        LogicUnitConfigurator.ConfigureDefendEnemySpawnSpeed(state, entityParams);
+        Assert.IsTrue(state.IsOutOfCombat);
+        Assert.IsTrue(state.BuffComp.HasBuff(LogicUnitConfigurator.DefendSpeedBuffId));
+
+        state.TakeDamage(Fix64.One, HealthModifyType.reduce);
+        Assert.IsFalse(state.IsOutOfCombat);
+
+        System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+        System.Reflection.MethodInfo track = typeof(DefendPhaseRuntime).GetMethod(
+            "TrackSpawnedDefendEnemy",
+            flags);
+        System.Reflection.MethodInfo release = typeof(DefendPhaseRuntime).GetMethod(
+            "ReleaseEngagedOrPlayerVisibleEnemySpawnSpeeds",
+            flags);
+        Assert.IsNotNull(track);
+        Assert.IsNotNull(release);
+
+        try
+        {
+            track.Invoke(null, new object[] { state.LogicEntityId, nameof(DefendEnemySpawnSpeed_EnteringCombatReleasesOverrideBeforeRouteWaypoint) });
+            release.Invoke(null, new object[] { 1UL });
+
+            Assert.IsFalse(state.BuffComp.HasBuff(LogicUnitConfigurator.DefendSpeedBuffId));
+            Assert.DoesNotThrow(() => DefendPhaseRuntime.NotifyDefendEnemyReachedSpeedReleaseWaypoint(
+                state.LogicEntityId,
+                "test-waypoint"));
+        }
+        finally
+        {
+            DefendPhaseRuntime.CancelRuntime();
         }
     }
 
@@ -546,7 +621,7 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
-    public void DefendEnemyTargeting_BuildingHasNegativeHalfTauntLevel()
+    public void DefendEnemyTargeting_UnitOutranksBuildingAtSameTauntBySubTaunt()
     {
         ConfigureOpenTargetingNavigationGrid();
         LogicEntityState attacker = CreateConfiguredStateForSide(
@@ -570,7 +645,7 @@ public class LogicEntityIdentityTests
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(fartherUnit, targeting.CurrentTarget,
-            "A unit must outrank a closer building at the same integer taunt level because buildings carry negative half a level.");
+            "A unit must outrank a closer building at the same taunt level because ordinary buildings have SubTaunt -1.");
     }
 
     [Test]
@@ -602,7 +677,7 @@ public class LogicEntityIdentityTests
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(pursuitUnit, targeting.CurrentTarget,
-            "Within r, a same-level unit must replace the current building because the building has negative half a taunt level.");
+            "Within r, a same-taunt unit must replace the current building because the building has SubTaunt -1.");
     }
 
     [Test]
@@ -2756,8 +2831,9 @@ public class LogicEntityIdentityTests
         Assert.IsFalse(state.IsGhostState);
         Assert.IsTrue(state.Alive);
         Assert.AreEqual((Fix64)100, state.HealthValue);
-        Assert.IsTrue(state.CanRun(state.AtkComp));
-        Assert.IsTrue(state.CanRun(state.TargetComp));
+        Assert.IsTrue(state.HasInvincibleBuff());
+        Assert.IsFalse(state.CanRun(state.AtkComp));
+        Assert.IsFalse(state.CanRun(state.TargetComp));
     }
 
     [Test]
@@ -2853,6 +2929,57 @@ public class LogicEntityIdentityTests
         Assert.IsFalse(state.IsPhaseProtected);
         state.TakeDamage((Fix64)20, HealthModifyType.empty);
         Assert.AreEqual((Fix64)80, state.HealthValue);
+    }
+
+    [Test]
+    public void BuildPhase_AllEntitiesAreInvincibleAndDoNotRunTargetingOrAttack()
+    {
+        LogicEntityState state = CreateConfiguredState("Unit_BuildPhaseCombatGate", false);
+        var targeting = new PhaseTargetingProbe { CurrentTarget = state };
+        var attack = new PhaseAttackProbe();
+        state.SetTargetingComp(targeting);
+        targeting.Init(state);
+        state.SetAtkComp(attack);
+        attack.Init(state);
+        ActivateRequestedState(state.EntityId, 1);
+
+        LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.BuildBeforeInvade);
+        LogicTimeControlService.BeginFrame(2);
+        LogicPhaseCommandService.ApplyFrameForTests(2, _ => { });
+
+        Assert.IsNull(targeting.CurrentTarget);
+        Assert.AreEqual(1, targeting.ClearCount);
+        Assert.AreEqual(1, attack.InterruptCount);
+        Assert.IsTrue(state.HasInvincibleBuff());
+        Assert.IsFalse(state.IsAttackTargetable());
+        Assert.IsFalse(state.CanRun(state.TargetComp));
+        Assert.IsFalse(state.CanRun(state.AtkComp));
+
+        state.TakeDamage((Fix64)25, HealthModifyType.empty);
+        Assert.AreEqual((Fix64)100, state.HealthValue);
+
+        LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.Defend);
+        LogicTimeControlService.BeginFrame(3);
+        LogicPhaseCommandService.ApplyFrameForTests(3, _ => { });
+
+        Assert.IsFalse(state.HasInvincibleBuff());
+        Assert.IsTrue(state.CanRun(state.TargetComp));
+        Assert.IsTrue(state.CanRun(state.AtkComp));
+
+        LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.BuildBeforeInvade);
+        LogicTimeControlService.BeginFrame(4);
+        LogicPhaseCommandService.ApplyFrameForTests(4, _ => { });
+
+        state.BeginLogicFrame(LogicFrameRuntime.FixedDeltaTime);
+        state.ExecuteLogicFramePhase(MAEntityLogicFramePhase.BaseAndBuffs, LogicFrameRuntime.FixedDeltaTime);
+        state.ExecuteLogicFramePhase(MAEntityLogicFramePhase.NavigationSync, LogicFrameRuntime.FixedDeltaTime);
+        state.ExecuteLogicFramePhase(MAEntityLogicFramePhase.Brain, LogicFrameRuntime.FixedDeltaTime);
+        state.ExecuteLogicFramePhase(MAEntityLogicFramePhase.Targeting, LogicFrameRuntime.FixedDeltaTime);
+        state.ExecuteLogicFramePhase(MAEntityLogicFramePhase.Projectile, LogicFrameRuntime.FixedDeltaTime);
+        state.ExecuteLogicFramePhase(MAEntityLogicFramePhase.Attack, LogicFrameRuntime.FixedDeltaTime);
+
+        Assert.AreEqual(0, targeting.UpdateCount);
+        Assert.AreEqual(0, attack.AttackCount);
     }
 
     [Test]

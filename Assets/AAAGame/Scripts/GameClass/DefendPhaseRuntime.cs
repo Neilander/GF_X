@@ -303,6 +303,7 @@ public static class DefendPhaseRuntime
             throw new InvalidOperationException(
                 $"DefendPhaseRuntime.ApplyScheduledSpawnRequests failed: frame mismatch. requested={frame}, logic={LogicTimeControlService.CurrentFrame}.");
         }
+        ReleaseEngagedOrPlayerVisibleEnemySpawnSpeeds(frame);
         if (s_WaitingForNavigationDistancePrewarm)
             return;
         if (s_SpawnScheduleCompleted || s_PlannedSpawnEvents.Count == 0)
@@ -515,37 +516,89 @@ public static class DefendPhaseRuntime
             throw new ArgumentException("Defense speed release entity ID is invalid.", nameof(entityId));
         if (string.IsNullOrWhiteSpace(teleportationId))
             throw new ArgumentException("Defense speed release teleportation ID is empty.", nameof(teleportationId));
-        ReleaseTrackedDefendEnemySpawnSpeed(entityId, "route waypoint", teleportationId);
+        ReleaseTrackedDefendEnemySpawnSpeed(entityId, "route waypoint", teleportationId, allowAlreadyReleased: true);
     }
 
     public static void NotifyDefendEnemyReachedSpeedReleaseTarget(LogicEntityId entityId)
     {
         if (!entityId.IsValid)
             throw new ArgumentException("Defense speed release entity ID is invalid.", nameof(entityId));
-        ReleaseTrackedDefendEnemySpawnSpeed(entityId, "initial GameEnd target", null);
+        ReleaseTrackedDefendEnemySpawnSpeed(entityId, "initial GameEnd target", null, allowAlreadyReleased: true);
+    }
+
+    private static void ReleaseEngagedOrPlayerVisibleEnemySpawnSpeeds(ulong frame)
+    {
+        if (s_AcceleratedEnemyLogicEntityIds.Count == 0)
+            return;
+        if (LogicPhaseCommandService.GetRequiredCurrentPhase() != GamePhase.Defend)
+            throw new InvalidOperationException("DefendPhaseRuntime tracks accelerated enemies outside the Defend phase.");
+
+        s_DeterministicAcceleratedEnemyIds.Clear();
+        foreach (int entityId in s_AcceleratedEnemyLogicEntityIds)
+            s_DeterministicAcceleratedEnemyIds.Add(entityId);
+        s_DeterministicAcceleratedEnemyIds.Sort(s_DeterministicEnemyIdComparison);
+
+        for (int i = 0; i < s_DeterministicAcceleratedEnemyIds.Count; i++)
+        {
+            int entityIdValue = s_DeterministicAcceleratedEnemyIds[i];
+            if (!s_AliveEnemyLogicEntityIds.Contains(entityIdValue))
+            {
+                throw new InvalidOperationException(
+                    $"DefendPhaseRuntime tracks spawn acceleration for non-alive enemy {entityIdValue}.");
+            }
+
+            var entityId = new LogicEntityId(entityIdValue);
+            LogicEntityState state = LogicEntityStateStore.GetRequired(entityId);
+            if (!state.BuffComp.HasBuff(LogicUnitConfigurator.DefendSpeedBuffId))
+            {
+                throw new InvalidOperationException(
+                    $"DefendPhaseRuntime accelerated enemy {entityIdValue} is missing its speed override buff.");
+            }
+
+            string reason = !state.IsOutOfCombat
+                ? "entered combat"
+                : LogicFactionVisionService.IsEntityVisibleToSide(SideType.PlayerSide, state)
+                    ? "entered player vision"
+                    : null;
+            if (reason != null)
+                ReleaseTrackedDefendEnemySpawnSpeed(entityId, reason, null, allowAlreadyReleased: false, frame);
+        }
+        s_DeterministicAcceleratedEnemyIds.Clear();
     }
 
     private static void ReleaseTrackedDefendEnemySpawnSpeed(
         LogicEntityId entityId,
         string reason,
-        string teleportationId)
+        string teleportationId,
+        bool allowAlreadyReleased = false,
+        ulong? releaseFrame = null)
     {
         if (!s_AliveEnemyLogicEntityIds.Contains(entityId.Value))
             throw new InvalidOperationException($"Defense speed release references non-alive enemy {entityId.Value}.");
-        if (!s_AcceleratedEnemyLogicEntityIds.Remove(entityId.Value))
-            throw new InvalidOperationException($"Defense enemy {entityId.Value} has no tracked speed override to release.");
 
         LogicEntityState state = LogicEntityStateStore.GetRequired(entityId);
+        bool tracked = s_AcceleratedEnemyLogicEntityIds.Contains(entityId.Value);
+        bool hasBuff = state.BuffComp.HasBuff(LogicUnitConfigurator.DefendSpeedBuffId);
+        if (!tracked || !hasBuff)
+        {
+            if (allowAlreadyReleased && !tracked && !hasBuff)
+                return;
+            throw new InvalidOperationException(
+                $"Defense enemy {entityId.Value} speed override state is inconsistent. tracked={tracked}, hasBuff={hasBuff}.");
+        }
+
         Fix64 speedBefore = state.GetProperty(CreatureMainProperty.Speed);
         if (!LogicUnitConfigurator.ReleaseDefendEnemySpawnSpeed(state))
             throw new InvalidOperationException($"Defense enemy {entityId.Value} is missing its speed override buff.");
+        if (!s_AcceleratedEnemyLogicEntityIds.Remove(entityId.Value))
+            throw new InvalidOperationException($"Defense enemy {entityId.Value} speed override tracking removal failed.");
         Fix64 speedAfter = state.GetProperty(CreatureMainProperty.Speed);
         Log.Info(
             "[DefendPhase] Released spawn speed. logicEntityId={0} reason={1} teleportation={2} frame={3} speedBeforeRaw={4} speedAfterRaw={5}",
             entityId.Value,
             reason,
             teleportationId ?? "none",
-            LogicTimeControlService.CurrentFrame,
+            releaseFrame ?? LogicTimeControlService.CurrentFrame,
             speedBefore.RawValue,
             speedAfter.RawValue);
     }
