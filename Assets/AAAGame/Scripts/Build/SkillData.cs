@@ -26,6 +26,8 @@ public class SkillData
     public int UpgradeIncrementUsageCount { get; protected set; }
     public Fix64 Lv1Cooldown { get; protected set; }
     public Fix64 UpgradeDecrementCooldown { get; protected set; }
+    public Fix64 WindUp { get; protected set; }
+    public Fix64 WindDown { get; protected set; }
     public SkillType Type { get; protected set; }
     public string NameKey { get; protected set; }
     public string DescKey { get; protected set; }
@@ -44,6 +46,8 @@ public class SkillData
         int upgradeIncrementUsageCount,
         Fix64 lv1Cooldown,
         Fix64 upgradeDecrementCooldown,
+        Fix64 windUp,
+        Fix64 windDown,
         SkillType type,
         string nameKey,
         string descKey,
@@ -64,6 +68,8 @@ public class SkillData
         UpgradeIncrementUsageCount = upgradeIncrementUsageCount;
         Lv1Cooldown = lv1Cooldown;
         UpgradeDecrementCooldown = upgradeDecrementCooldown;
+        WindUp = windUp;
+        WindDown = windDown;
         Type = type;
         NameKey = nameKey;
         DescKey = descKey;

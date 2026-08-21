@@ -9,15 +9,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fe63d6e0460127c4faf4443d5ff62166, type: 3}
-  m_Name: Skill_Injection
+  m_Script: {fileID: 11500000, guid: a5c311445a6c4c8aa2d5f9de90e0f611, type: 3}
+  m_Name: Skill_Sweep
   m_EditorClassIdentifier: 
-  skillId: Skill_Injection
+  skillId: Skill_Sweep
   actions:
   - {fileID: 11400000, guid: f2eccbdfdb0f4e9aa9c6cb473f67578c, type: 2}
-  coolDownType: 0
-  coolDownInterval: 8
-  banWhenOtherSkill: 1
-  banOtherSkillWhenCast: 0
-  radius: 10
-  selectRatio: {x: 0, y: 0, z: 0}

@@ -19,42 +19,16 @@ public sealed class SkillReworkDataTests
     private const string ChineseLanguagePath = "Assets/AAAGame/Language/ChineseSimplified.json";
 
     [Test]
-    public void GeneratedSkillRows_ContainCurrentEffectsAndSkillTypes()
+    public void GeneratedSkillRows_ContainRequiredEffectShapesAndSkillTypes()
     {
-        SkillTable bladeDance = FindSkill("Skill_InsatiableThirst");
-        Assert.AreEqual(SkillType.Active, bladeDance.Type);
-        CollectionAssert.AreEqual(new[] { (Fix64)50, (Fix64)25 }, bladeDance.Lv1UniqueValues);
-        CollectionAssert.AreEqual(new[] { (Fix64)20, (Fix64)10 }, bladeDance.UpgradeIncrementUniqueValues);
-        Assert.AreEqual((Fix64)6, bladeDance.Lv1Duration);
-        Assert.AreEqual(2, bladeDance.Lv1UsageCount);
-        Assert.AreEqual((Fix64)8, bladeDance.Lv1Cooldown);
-
-        SkillTable fireDrill = FindSkill("Skill_ForgedInFire");
-        Assert.AreEqual(SkillType.Passive, fireDrill.Type);
-        CollectionAssert.AreEqual(new[] { (Fix64)1, (Fix64)50 }, fireDrill.Lv1UniqueValues);
-        CollectionAssert.AreEqual(new[] { Fix64.Parse("0.5"), (Fix64)20 }, fireDrill.UpgradeIncrementUniqueValues);
-        Assert.AreEqual((Fix64)9f, fireDrill.Lv1EffectRadius);
-        Assert.AreEqual((Fix64)1.8f, fireDrill.UpgradeIncrementEffectRadius);
-
-        SkillTable urgentRequest = FindSkill("Skill_UrgentRequest");
-        Assert.AreEqual(SkillType.Active, urgentRequest.Type);
-        CollectionAssert.AreEqual(new[] { (Fix64)8, (Fix64)3, (Fix64)15 }, urgentRequest.Lv1UniqueValues);
-        CollectionAssert.AreEqual(new[] { (Fix64)2, (Fix64)2, (Fix64)10 }, urgentRequest.UpgradeIncrementUniqueValues);
-        Assert.AreEqual((Fix64)16.2f, urgentRequest.Lv1CastRange);
-        Assert.AreEqual(2, urgentRequest.Lv1UsageCount);
-
-        SkillTable lightLoad = FindSkill("Skill_ExpressDelivery");
-        Assert.AreEqual(SkillType.Active, lightLoad.Type);
-        Assert.AreEqual((Fix64)40, lightLoad.Lv1UniqueValues[0]);
-        Assert.AreEqual((Fix64)10.8f, lightLoad.Lv1CastRange);
-        Assert.AreEqual((Fix64)4.5f, lightLoad.Lv1EffectRadius);
-        Assert.AreEqual((Fix64)2, lightLoad.Lv1Duration);
-        Assert.AreEqual(2, lightLoad.Lv1UsageCount);
-
-        SkillTable disarm = FindSkill("Skill_RiotArmor");
-        Assert.AreEqual(SkillType.Passive, disarm.Type);
-        Assert.AreEqual((Fix64)5, disarm.Lv1UniqueValues[0]);
-        Assert.AreEqual((Fix64)4, disarm.UpgradeIncrementUniqueValues[0]);
+        AssertSkillShape("Skill_InsatiableThirst", SkillType.Active, 2, requiresDuration: true);
+        AssertSkillShape("Skill_ForgedInFire", SkillType.Passive, 2, requiresArea: true);
+        AssertSkillShape("Skill_UrgentRequest", SkillType.Active, 3, requiresCastDistance: true);
+        AssertSkillShape("Skill_ExpressDelivery", SkillType.Active, 1, requiresCastDistance: true, requiresArea: true, requiresDuration: true);
+        AssertSkillShape("Skill_RiotArmor", SkillType.Passive, 1);
+        AssertSkillShape("Skill_GiantSlayer", SkillType.Passive, 1);
+        AssertSkillShape("Skill_NeatAndTidy", SkillType.Passive, 1, requiresArea: true);
+        AssertSkillShape("Skill_Sweep", SkillType.Active, 1, requiresArea: true);
     }
 
     [Test]
@@ -78,10 +52,65 @@ public sealed class SkillReworkDataTests
         Assert.AreEqual(expected.Count, map.Count);
         foreach (KeyValuePair<string, Archetype> pair in expected)
             Assert.AreEqual(pair.Value, map[pair.Key], pair.Key);
+        Assert.IsFalse(map.ContainsKey("Skill_Sweep"), "Keepsake skills must not require a building industry mapping.");
+
+        var skillIds = new HashSet<string>(LoadRows(SkillTablePath, ParseSkill).Select(row => row.Identifier));
+        CollectionAssert.IsSubsetOf(map.Keys, skillIds, "Every building skill mapping must reference an existing skill.");
     }
 
     [Test]
-    public void SkillFactories_ContainFiveActiveAndFivePassiveAssets()
+    public void KeepsakeSkill_SortsBeforeBuildingSkillsWithoutIndustryLookup()
+    {
+        Dictionary<string, Archetype> map = SkillDataModel.BuildSkillIndustryMap(LoadRows(BuildingTablePath, ParseBuilding));
+        SkillData sweep = CreateSkillData(FindSkill("Skill_Sweep"));
+        SkillData buildingSkill = CreateSkillData(FindSkill("Skill_InsatiableThirst"));
+
+        Assert.Less(SkillRuntimeDataModel.CompareCanonicalOrder(sweep, buildingSkill, map), 0);
+        Assert.Greater(SkillRuntimeDataModel.CompareCanonicalOrder(buildingSkill, sweep, map), 0);
+    }
+
+    [Test]
+    public void InstantSkillAction_CommitsAfterWindUpAndFinishesAfterWindDown()
+    {
+        InstantSkillAction action = ScriptableObject.CreateInstance<InstantSkillAction>();
+        try
+        {
+            Fix64 windUp = (Fix64)2;
+            Fix64 windDown = (Fix64)3;
+            action.StartAction(
+                null,
+                new SkillInfo(),
+                info =>
+                {
+                    var instantInfo = (InstantSkillActionInfo)info;
+                    instantInfo.windUp = windUp;
+                    instantInfo.windDown = windDown;
+                },
+                out ActionInfo rawInfo);
+            var info = (InstantSkillActionInfo)rawInfo;
+
+            Assert.IsFalse(info.effectCommitted);
+            Assert.IsFalse(info.isFinished);
+
+            action.Tick(info, windUp - Fix64.One);
+            Assert.IsFalse(info.effectCommitted);
+            Assert.IsFalse(info.isFinished);
+
+            action.Tick(info, Fix64.One);
+            Assert.IsTrue(info.effectCommitted);
+            Assert.IsFalse(info.isFinished);
+
+            action.Tick(info, windDown);
+            Assert.IsTrue(info.isFinished);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(action);
+        }
+    }
+
+    [Test]
+    public void SkillFactories_ContainSweepAndExistingSkillAssets()
     {
         PlayerSkillFactory player = AssetDatabase.LoadAssetAtPath<PlayerSkillFactory>(
             "Assets/AAAGame/SOs/SkillCompFactory/PlayerSkillFactory.asset");
@@ -94,32 +123,97 @@ public sealed class SkillReworkDataTests
         Assert.IsInstanceOf<InsatiableThirstActiveSkillSO>(FindAsset(player.skills, "Skill_InsatiableThirst"));
         Assert.IsInstanceOf<UrgentRequestActiveSkillSO>(FindAsset(player.skills, "Skill_UrgentRequest"));
         Assert.IsInstanceOf<LightLoadDashActiveSkillSO>(FindAsset(player.skills, "Skill_ExpressDelivery"));
+        AssertInstantAction(FindAsset(player.skills, "Skill_InsatiableThirst"));
+        AssertInstantAction(FindAsset(player.skills, "Skill_Injection"));
+        AssertInstantAction(FindAsset(player.skills, "Skill_Sweep"));
         Assert.IsInstanceOf<FireDrillPassiveSkillSO>(FindAsset(player.passiveSkills, "Skill_ForgedInFire"));
         Assert.IsInstanceOf<ArmorPassiveSkillSO>(FindAsset(player.passiveSkills, "Skill_RiotArmor"));
     }
 
     [Test]
+    public void Sweep_DamagesNearbyEnemiesIncludingBuildings()
+    {
+        EntityRegistry.Clear();
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(Sweep_DamagesNearbyEnemiesIncludingBuildings));
+        try
+        {
+            SkillData sweep = CreateSkillData(FindSkill("Skill_Sweep"));
+            Fix64 damage = sweep.GetUniqueValue(0, 1);
+            Fix64 radius = sweep.GetAreaRange(1);
+            Fix64 initialHealth = damage * (Fix64)2;
+            var caster = CreateCombatTarget(FixVector2.Zero, SideType.PlayerSide, initialHealth);
+            var enemyUnit = CreateCombatTarget(
+                new FixVector2(radius / (Fix64)2, Fix64.Zero),
+                SideType.EnemySide,
+                initialHealth);
+            var enemyBuilding = new SimBuildingEntityContext(EntitySideHelper.EnemyFactionId)
+            {
+                PositionFixed = new FixVector2(radius * (Fix64)3 / (Fix64)4, Fix64.Zero),
+                Side = SideType.EnemySide,
+            };
+            enemyBuilding.Health.Init(initialHealth);
+            var ally = CreateCombatTarget(
+                new FixVector2(radius / (Fix64)2, Fix64.Zero),
+                SideType.PlayerSide,
+                initialHealth);
+            var distantEnemy = CreateCombatTarget(
+                new FixVector2(radius + Fix64.One, Fix64.Zero),
+                SideType.EnemySide,
+                initialHealth);
+            EntityRegistry.Register(enemyBuilding);
+
+            SweepActiveSkillSO.ApplyArea(caster, damage, radius);
+
+            Assert.AreEqual(initialHealth - damage, enemyUnit.HealthValue);
+            Assert.AreEqual(initialHealth - damage, enemyBuilding.HealthValue);
+            Assert.AreEqual(initialHealth, ally.HealthValue);
+            Assert.AreEqual(initialHealth, distantEnemy.HealthValue);
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+        }
+    }
+
+    [Test]
+    public void GiantSlayer_OnlyAddsCurrentHealthDamageAgainstEnemyUnits()
+    {
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(GiantSlayer_OnlyAddsCurrentHealthDamageAgainstEnemyUnits));
+        SkillData giantSlayer = CreateSkillData(FindSkill("Skill_GiantSlayer"));
+        Fix64 currentHealthPercent = giantSlayer.GetUniqueValue(0, 1);
+        Fix64 targetHealth = (Fix64)100;
+        Fix64 baseDamage = (Fix64)10;
+        var caster = new SimEntityContext { Side = SideType.PlayerSide };
+        var enemyUnit = new SimEntityContext { Side = SideType.EnemySide };
+        enemyUnit.Health.Init(targetHealth);
+        var enemyBuilding = new SimBuildingEntityContext(EntitySideHelper.EnemyFactionId) { Side = SideType.EnemySide };
+        enemyBuilding.Health.Init(targetHealth);
+        var buff = new SkillCurrentHealthDamageBuff(currentHealthPercent);
+        buff.Initialize(null, caster);
+
+        Assert.AreEqual(
+            baseDamage + targetHealth * currentHealthPercent / (Fix64)100,
+            buff.ModifyOutgoingDamage(enemyUnit, baseDamage));
+        Assert.AreEqual(baseDamage, buff.ModifyOutgoingDamage(enemyBuilding, baseDamage));
+    }
+
+    [Test]
     public void SkillPanelStats_UseFinalValuesAtRequestedLevel()
     {
-        AssertSkillStats("Skill_InsatiableThirst", 2,
-            (BuildingPanelPresentation.DurationGlyph, ((Fix64)7).ToString()),
-            (BuildingPanelPresentation.UsageGlyph, "3"),
-            (BuildingPanelPresentation.CooldownGlyph, ((Fix64)8).ToString()));
-        AssertSkillStats("Skill_ForgedInFire", 3,
-            (BuildingPanelPresentation.SplashGlyph, "12.6"),
-            (BuildingPanelPresentation.StackGlyph, ((Fix64)90).ToString()));
-        AssertSkillStats("Skill_ExpressDelivery", 3,
-            (BuildingPanelPresentation.CastDistanceGlyph, "12.6"),
-            (BuildingPanelPresentation.SplashGlyph, "4.9"),
-            (BuildingPanelPresentation.DurationGlyph, ((Fix64)3).ToString()),
-            (BuildingPanelPresentation.UsageGlyph, "4"),
-            (BuildingPanelPresentation.CooldownGlyph, ((Fix64)9).ToString()));
+        AssertSkillStatsMatchCurrentData("Skill_InsatiableThirst", 2);
+        AssertSkillStatsMatchCurrentData("Skill_ForgedInFire", 3);
+        AssertSkillStatsMatchCurrentData("Skill_ExpressDelivery", 3);
+        AssertSkillStatsMatchCurrentData("Skill_Sweep", 2);
     }
 
     [Test]
     public void ChineseSkillDescriptions_DoNotExposeImplementationRemarks()
     {
         string language = File.ReadAllText(ChineseLanguagePath);
+        StringAssert.Contains("\"Skill_Name_Sweep\":\"横扫\"", language);
+        StringAssert.Contains("\"Skill_Desc_Sweep\":\"对英雄附近的敌人造成{0}伤害。\"", language);
+        StringAssert.Contains("\"Skill_Desc_GiantSlayer\":\"英雄攻击时，额外附加敌方单位当前生命{0}%的伤害。\"", language);
+        StringAssert.Contains("\"Skill_Desc_NeatAndTidy\":\"英雄的普通攻击也会对目标附近生命比例更高的敌方单位造成{0}%伤害。\"", language);
         string[] keys =
         {
             "Skill_Desc_InsatiableThirst",
@@ -187,7 +281,7 @@ public sealed class SkillReworkDataTests
 
             RectTransform counterRect = (RectTransform)slot.transform.Find("SkillCounter");
             TextMeshProUGUI counter = counterRect.GetComponent<TextMeshProUGUI>();
-            Assert.AreEqual("7/70", counter.text);
+            Assert.AreEqual($"7/{fireDrill.GetUniqueValue(1, 2)}", counter.text);
             Assert.Less(counter.fontSize, mainTextObject.GetComponent<TextMeshProUGUI>().fontSize);
             Assert.AreEqual(new Vector2(1f, 0f), counterRect.anchorMin);
             Assert.AreEqual(new Vector2(1f, 0f), counterRect.anchorMax);
@@ -234,16 +328,112 @@ public sealed class SkillReworkDataTests
         }
     }
 
-    private static void AssertSkillStats(string skillId, int level, params (string Glyph, string Value)[] expected)
+    [Test]
+    public void SkillCooldownVisual_UsesRadial360RemainingRatioAndCeilingSeconds()
+    {
+        var texture = new Texture2D(4, 4);
+        Sprite sprite = Sprite.Create(texture, new Rect(0f, 0f, 4f, 4f), new Vector2(0.5f, 0.5f));
+        var slot = new GameObject("SkillSlot", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        var mainTextObject = new GameObject("MainText", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+        mainTextObject.transform.SetParent(slot.transform, false);
+        slot.GetComponent<Image>().sprite = sprite;
+        try
+        {
+            InGameUIForm.SetSkillCooldownVisual(slot, true, (Fix64)5.25f, (Fix64)10f);
+
+            Image fill = slot.transform.Find("SkillCooldownFill").GetComponent<Image>();
+            TextMeshProUGUI text = slot.transform.Find("SkillCooldownText").GetComponent<TextMeshProUGUI>();
+            Assert.IsTrue(fill.gameObject.activeSelf);
+            Assert.IsTrue(text.gameObject.activeSelf);
+            Assert.AreEqual(Image.Type.Filled, fill.type);
+            Assert.AreEqual(Image.FillMethod.Radial360, fill.fillMethod);
+            Assert.AreEqual(0.525f, fill.fillAmount, 0.001f);
+            Assert.AreEqual("6", text.text);
+
+            InGameUIForm.SetSkillCooldownVisual(slot, false, Fix64.Zero, (Fix64)10f);
+            Assert.IsFalse(fill.gameObject.activeSelf);
+            Assert.IsFalse(text.gameObject.activeSelf);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(slot);
+            UnityEngine.Object.DestroyImmediate(sprite);
+            UnityEngine.Object.DestroyImmediate(texture);
+        }
+    }
+
+    [Test]
+    public void GeneralCounter_RemainingCooldownTracksResetAndTicks()
+    {
+        var counter = new GeneralCounter();
+        counter.Init((Fix64)10f, true);
+        Assert.AreEqual(Fix64.Zero, counter.GetRemainingRequired());
+
+        counter.Reset();
+        Assert.AreEqual((Fix64)10f, counter.GetTargetRequired());
+        Assert.AreEqual((Fix64)10f, counter.GetRemainingRequired());
+
+        counter.Tick((Fix64)3.25f);
+        Assert.AreEqual((Fix64)6.75f, counter.GetRemainingRequired());
+    }
+
+    private static void AssertSkillStatsMatchCurrentData(string skillId, int level)
     {
         SkillTable row = FindSkill(skillId);
         SkillData skill = CreateSkillData(row);
         var stats = new List<BuildingPanelStat>();
         BuildingPanelPresentation.CollectSkillStats(skill, level, stats);
-        for (int i = 0; i < expected.Length; i++)
+
+        var expected = new List<BuildingPanelStat>();
+        Fix64 castDistance = skill.GetCastDistance(level);
+        Fix64 areaRange = skill.GetAreaRange(level);
+        Fix64 duration = skill.GetDuration(level);
+        if (castDistance > Fix64.Zero)
+            expected.Add(new BuildingPanelStat(BuildingPanelPresentation.CastDistanceGlyph, castDistance.ToStringRound()));
+        if (areaRange > Fix64.Zero)
+            expected.Add(new BuildingPanelStat(BuildingPanelPresentation.SplashGlyph, areaRange.ToStringRound()));
+        if (duration > Fix64.Zero)
+            expected.Add(new BuildingPanelStat(BuildingPanelPresentation.DurationGlyph, duration.ToString()));
+        if (skill.Type == SkillType.Active)
         {
-            Assert.IsTrue(stats.Any(stat => stat.Glyph == expected[i].Glyph && stat.Value == expected[i].Value),
-                $"Missing skill stat {expected[i].Glyph}={expected[i].Value} for {skillId} Lv{level}.");
+            int usage = skill.Lv1UsageCount + skill.UpgradeIncrementUsageCount * (level - 1);
+            expected.Add(new BuildingPanelStat(BuildingPanelPresentation.UsageGlyph, usage.ToString()));
+            expected.Add(new BuildingPanelStat(BuildingPanelPresentation.CooldownGlyph, skill.GetCooldown(level).ToString()));
+        }
+        if (skill.Identifier == "Skill_ForgedInFire")
+            expected.Add(new BuildingPanelStat(BuildingPanelPresentation.StackGlyph, skill.GetUniqueValue(1, level).ToString()));
+
+        CollectionAssert.AreEqual(
+            expected.Select(stat => $"{stat.Glyph}={stat.Value}"),
+            stats.Select(stat => $"{stat.Glyph}={stat.Value}"),
+            $"Skill panel stats must reflect current data. skill={skillId}, level={level}");
+    }
+
+    private static void AssertSkillShape(
+        string skillId,
+        SkillType type,
+        int uniqueValueCount,
+        bool requiresCastDistance = false,
+        bool requiresArea = false,
+        bool requiresDuration = false)
+    {
+        SkillTable row = FindSkill(skillId);
+        Assert.AreEqual(type, row.Type, skillId);
+        Assert.AreEqual(uniqueValueCount, row.Lv1UniqueValues.Length, skillId);
+        Assert.IsTrue(row.Lv1UniqueValues.All(value => value > Fix64.Zero), skillId);
+        Assert.AreEqual(uniqueValueCount, row.UpgradeIncrementUniqueValues.Length, skillId);
+        Assert.IsTrue(row.WindUp >= Fix64.Zero, skillId);
+        Assert.IsTrue(row.WindDown >= Fix64.Zero, skillId);
+        if (requiresCastDistance)
+            Assert.IsTrue(row.Lv1CastRange > Fix64.Zero, skillId);
+        if (requiresArea)
+            Assert.IsTrue(row.Lv1EffectRadius > Fix64.Zero, skillId);
+        if (requiresDuration)
+            Assert.IsTrue(row.Lv1Duration > Fix64.Zero, skillId);
+        if (type == SkillType.Active)
+        {
+            Assert.Greater(row.Lv1UsageCount, 0, skillId);
+            Assert.IsTrue(row.Lv1Cooldown > Fix64.Zero, skillId);
         }
     }
 
@@ -263,6 +453,8 @@ public sealed class SkillReworkDataTests
             row.UpgradeIncrementUsageCount,
             row.Lv1Cooldown,
             row.UpgradeDecrementCooldown,
+            row.WindUp,
+            row.WindDown,
             row.Type,
             row.NameKey,
             row.DescKey,
@@ -279,11 +471,26 @@ public sealed class SkillReworkDataTests
         throw new InvalidOperationException($"Skill factory asset was not found. skill={skillId}.");
     }
 
+    private static void AssertInstantAction(ActiveSkillSO skill)
+    {
+        Assert.IsInstanceOf<InstantActiveSkillSO>(skill);
+        Assert.AreEqual(1, skill.actions.Count, skill.skillId);
+        Assert.IsInstanceOf<InstantSkillAction>(skill.actions[0], skill.skillId);
+    }
+
+    private static SimEntityContext CreateCombatTarget(FixVector2 position, SideType side, Fix64 health)
+    {
+        var entity = new SimEntityContext { PositionFixed = position, Side = side };
+        entity.Health.Init(health);
+        EntityRegistry.Register(entity);
+        return entity;
+    }
+
     private static void AssertFactory(
         IReadOnlyList<ActiveSkillSO> active,
         IReadOnlyList<PassiveSkillSO> passive)
     {
-        Assert.AreEqual(5, active.Count);
+        Assert.AreEqual(6, active.Count);
         Assert.AreEqual(5, passive.Count);
         var ids = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < active.Count; i++)

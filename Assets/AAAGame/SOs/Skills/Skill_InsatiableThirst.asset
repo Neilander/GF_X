@@ -13,7 +13,8 @@ MonoBehaviour:
   m_Name: Skill_InsatiableThirst
   m_EditorClassIdentifier: 
   skillId: Skill_InsatiableThirst
-  actions: []
+  actions:
+  - {fileID: 11400000, guid: f2eccbdfdb0f4e9aa9c6cb473f67578c, type: 2}
   coolDownType: 0
   coolDownInterval: 8
   banWhenOtherSkill: 1

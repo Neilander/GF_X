@@ -314,6 +314,8 @@ public sealed class SkillRuntimeDeterminismTests
     public void InstantSkillPositionOverloadExecutesInstantPath()
     {
         InstantSkillProbe skill = ScriptableObject.CreateInstance<InstantSkillProbe>();
+        InstantSkillAction action = ScriptableObject.CreateInstance<InstantSkillAction>();
+        skill.actions = new List<BasicAction> { action };
         var caster = new SimEntityContext();
         try
         {
@@ -329,6 +331,7 @@ public sealed class SkillRuntimeDeterminismTests
         }
         finally
         {
+            UnityEngine.Object.DestroyImmediate(action);
             UnityEngine.Object.DestroyImmediate(skill);
         }
     }
@@ -416,6 +419,14 @@ public sealed class SkillRuntimeDeterminismTests
         {
             ApplyCount++;
             LastCaster = caster;
+        }
+
+        protected override void ConfigureActionInfo(SkillInfo skillInfo, ActionInfo actionInfo, int actionIndex)
+        {
+            if (actionInfo is not InstantSkillActionInfo instantInfo)
+                throw new System.InvalidOperationException("Instant skill probe received an unexpected action state.");
+            instantInfo.windUp = Fix64.Zero;
+            instantInfo.windDown = Fix64.Zero;
         }
     }
 }

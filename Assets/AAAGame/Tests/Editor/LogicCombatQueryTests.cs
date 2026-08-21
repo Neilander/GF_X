@@ -133,4 +133,18 @@ public sealed class LogicCombatQueryTests
             activeModelField.SetValue(null, previousActiveModel);
         }
     }
+
+    [Test]
+    public void EnemyUnitClassification_ExcludesEnemyBuildings()
+    {
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(EnemyUnitClassification_ExcludesEnemyBuildings));
+        var player = new SimEntityContext { Side = SideType.PlayerSide };
+        var enemyUnit = new SimEntityContext { Side = SideType.EnemySide };
+        var enemyBuilding = new SimBuildingEntityContext(EntitySideHelper.EnemyFactionId) { Side = SideType.EnemySide };
+
+        Assert.IsTrue(EntityCombatTeamHelper.IsEnemy(player, enemyUnit));
+        Assert.IsTrue(EntityCombatTeamHelper.IsEnemyUnit(player, enemyUnit));
+        Assert.IsTrue(EntityCombatTeamHelper.IsEnemy(player, enemyBuilding));
+        Assert.IsFalse(EntityCombatTeamHelper.IsEnemyUnit(player, enemyBuilding));
+    }
 }

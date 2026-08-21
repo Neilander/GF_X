@@ -161,7 +161,7 @@ public sealed class CareerSystemsTests
         KeepsakeTable defaultKeepsake = KeepsakeConfigRuntime.GetDefaultRequired();
         Assert.AreEqual("Keepsake_Default", defaultKeepsake.Identifier);
         Assert.AreEqual("Hero_Keepsake_Default", defaultKeepsake.HeroCharacterKey);
-        Assert.IsEmpty(defaultKeepsake.InitialSkillIdentifiers);
+        CollectionAssert.AreEqual(new[] { "Skill_Sweep" }, defaultKeepsake.InitialSkillIdentifiers);
         List<CharacterDataDetail> heroRows = LoadRows<CharacterDataDetail>(
                 "AAAGame/DataTable/CharacterDataDetail.txt")
             .Where(row => row.UnitTags != null && row.UnitTags.Contains(UnitTag.Hero))

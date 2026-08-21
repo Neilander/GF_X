@@ -520,7 +520,7 @@ public sealed class NearbyEnemyAttackLockBuff : BuffCallback, ICapability, ILogi
                 continue;
             if (!candidate.IsAttackTargetable())
                 continue;
-            if (!EntityCombatTeamHelper.IsEnemy(hostEntity, candidate))
+            if (!EntityCombatTeamHelper.IsEnemyUnit(hostEntity, candidate))
                 continue;
 
             if (LogicEntityFrameSnapshotService.GetRequiredTargetSurfaceDistance(hostEntity, candidate) <= radius)

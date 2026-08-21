@@ -545,15 +545,32 @@ public class SkillRuntimeDataModel : DataModelBase
 
     internal static int CompareCanonicalOrder(SkillData left, SkillData right)
     {
+        return CompareCanonicalOrder(left, right, SkillDataModel.GetIndustryMapRequired());
+    }
+
+    internal static int CompareCanonicalOrder(
+        SkillData left,
+        SkillData right,
+        IReadOnlyDictionary<string, Archetype> skillIndustries)
+    {
         if (left == null)
             throw new ArgumentNullException(nameof(left));
         if (right == null)
             throw new ArgumentNullException(nameof(right));
+        if (skillIndustries == null)
+            throw new ArgumentNullException(nameof(skillIndustries));
         if (left.Type != right.Type)
             return left.Type == SkillType.Active ? -1 : 1;
 
-        int industryOrder = SkillDataModel.GetIndustryOrderIndexRequired(left.Identifier)
-            .CompareTo(SkillDataModel.GetIndustryOrderIndexRequired(right.Identifier));
+        bool leftHasIndustry = skillIndustries.TryGetValue(left.Identifier, out Archetype leftIndustry);
+        bool rightHasIndustry = skillIndustries.TryGetValue(right.Identifier, out Archetype rightIndustry);
+        if (leftHasIndustry != rightHasIndustry)
+            return leftHasIndustry ? 1 : -1;
+
+        int industryOrder = leftHasIndustry
+            ? CareerConfigRuntime.GetArchetypeOrderIndexRequired(leftIndustry)
+                .CompareTo(CareerConfigRuntime.GetArchetypeOrderIndexRequired(rightIndustry))
+            : 0;
         return industryOrder != 0
             ? industryOrder
             : string.CompareOrdinal(left.Identifier, right.Identifier);

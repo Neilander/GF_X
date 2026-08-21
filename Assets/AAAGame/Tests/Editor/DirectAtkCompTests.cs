@@ -917,6 +917,48 @@ atkComp.Attack((Fix64)999);
     }
 
     [Test]
+    public void 熊孩子近身锁攻_忽略敌方建筑但响应敌方单位()
+    {
+        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        var attack = new SimAtkComp();
+        attack.Init(attacker);
+        attacker.AtkComp = attack;
+
+        var enemyBuilding = new SimBuildingEntityContext(EntitySideHelper.EnemyFactionId)
+        {
+            Position = new Vector3(1f, 0f, 0f),
+            Side = SideType.EnemySide,
+        };
+        enemyBuilding.Health.Init((Fix64)100);
+        EntityRegistry.Register(enemyBuilding);
+
+        var nearbyLock = new NearbyEnemyAttackLockBuff((Fix64)4.1f);
+        nearbyLock.Initialize(null, attacker);
+        var listener = new LogicFrameActionListener(nearbyLock.OnUpdate);
+        LogicEntityFrameSnapshotService.BeginTimeline();
+        LogicFrameRuntime.Register(listener);
+        try
+        {
+            for (int i = 0; i < 10; i++)
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.IsTrue(attacker.CanRun(attack), "敌方建筑进入近身范围时不应锁定熊孩子攻击");
+
+            CreateUnit(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+            for (int i = 0; i < 10 && attacker.CanRun(attack); i++)
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.IsFalse(attacker.CanRun(attack), "敌方单位进入近身范围时应锁定熊孩子攻击");
+        }
+        finally
+        {
+            nearbyLock.OnRemove();
+            LogicFrameRuntime.Unregister(listener);
+            LogicEntityFrameSnapshotService.EndTimeline();
+        }
+    }
+
+    [Test]
     public void 拉力弹道存在时即使攻击间隔结束也不能开始下一次攻击()
     {
         EntityRegistry.Clear();

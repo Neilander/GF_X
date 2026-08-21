@@ -13,9 +13,9 @@
 	DiscardResourceConversionLevel3	3级牌弃牌转化资源量	3
 	InitMaxSupply	初始人口上限	10
 	BaseProvideSupply	每个基地每级提供的人口上限	10
-	HeroVisionRadius	英雄视野半径（格）	27
-	UnitVisionRadius	单位视野半径（格）	21
-	BuildingVisionRadius	建筑视野半径（格）	21
+	HeroVisionRadius	英雄视野半径（格）	24
+	UnitVisionRadius	单位视野半径（格）	20
+	BuildingVisionRadius	建筑视野半径（格）	20
 	KillRewardSupplyRatio	击杀人口与奖励资源之比	10
 	ResourcePointInitialAmount	资源点初始资源量	50
 	BaseCriticalDamageRate	基础暴击伤害百分比	50

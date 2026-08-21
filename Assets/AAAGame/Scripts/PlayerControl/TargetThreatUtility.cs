@@ -6,7 +6,7 @@ public readonly struct TargetPriority : IComparable<TargetPriority>
         int taunt,
         int subTaunt,
         bool inRange,
-        int special,
+        Fix64 special,
         bool currentAttack,
         bool alert,
         Fix64 distance,
@@ -25,7 +25,7 @@ public readonly struct TargetPriority : IComparable<TargetPriority>
     public int TauntLevel { get; }
     public int SubTauntLevel { get; }
     public bool InsideAttackRange { get; }
-    public int SpecialTargetingPriority { get; }
+    public Fix64 SpecialTargetingPriority { get; }
     public bool CurrentAttackTarget { get; }
     public bool AlertTarget { get; }
     public Fix64 Distance { get; }
@@ -67,23 +67,28 @@ public static class TargetPriorityUtility
             target.TauntLevel,
             LogicWallRuntime.ResolveSubTauntLevel(target),
             inRange,
-            GetSpecialTargetingPriority(attacker, target),
+            GetSpecialTargetingPriority(attacker, target, distance),
             inRange && ReferenceEquals(target, currentTarget),
             alertTarget,
             distance,
             target.LogicEntityId.Value);
     }
 
-    private static int GetSpecialTargetingPriority(IEntityContext attacker, IEntityContext target)
+    private static Fix64 GetSpecialTargetingPriority(IEntityContext attacker, IEntityContext target, Fix64 distance)
     {
-        if (!attacker.TryGetLogicBuilding(out IBuildingLogicContext building)
-            || !BuildingAbilityIds.IsBuilding(building.BuildingData, BuildingAbilityIds.ComplaintsDepartment)
+        if (!attacker.TryGetLogicBuilding(out IBuildingLogicContext building))
+            return Fix64.Zero;
+
+        if (BuildingAbilityIds.IsBuilding(building.BuildingData, BuildingAbilityIds.MeatRack))
+            return distance;
+
+        if (!BuildingAbilityIds.IsBuilding(building.BuildingData, BuildingAbilityIds.ComplaintsDepartment)
             || !BuildingTechRuntimeEffect.HasTag(target.CharacterData?.UnitTags, UnitTag.Ranged))
-            return 0;
+            return Fix64.Zero;
 
         Fix64[] values = building.BuildingData.UniqueValues;
         if (values == null || values.Length == 0 || values[0] <= Fix64.Zero || values[0] != Fix64.Floor(values[0]))
             throw new InvalidOperationException($"Complaints department ranged targeting priority is invalid. building={building.BuildingData.Identifier}.");
-        return checked((int)values[0]);
+        return values[0];
     }
 }

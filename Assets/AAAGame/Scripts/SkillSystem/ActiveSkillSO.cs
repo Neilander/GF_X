@@ -180,7 +180,7 @@ public class ActiveSkillSO : SkillEffectSO
             out info.currentInfo);
     }
 
-    private void ConfigureActionInfo(SkillInfo skillInfo, ActionInfo actionInfo, int actionIndex)
+    protected virtual void ConfigureActionInfo(SkillInfo skillInfo, ActionInfo actionInfo, int actionIndex)
     {
         actionInfo.executeIndex = actionIndex;
         actionInfo.damageInfo = new Damage(skillInfo.entity, Fix64.One);

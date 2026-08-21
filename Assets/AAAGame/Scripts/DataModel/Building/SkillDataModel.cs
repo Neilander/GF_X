@@ -25,10 +25,10 @@ public class SkillDataModel : DataModelBase
         }
 
         skillIndustryDic = BuildSkillIndustryMap(LogicRuntimeDataTableCache.BuildingRows);
-        foreach (string skillId in skillDataDic.Keys)
+        foreach (string skillId in skillIndustryDic.Keys)
         {
-            if (!skillIndustryDic.ContainsKey(skillId))
-                throw new InvalidOperationException($"Skill has no building industry mapping. skillId={skillId}");
+            if (!skillDataDic.ContainsKey(skillId))
+                throw new InvalidOperationException($"Building industry mapping references a missing skill. skillId={skillId}");
         }
     }
 
@@ -62,6 +62,13 @@ public class SkillDataModel : DataModelBase
     public static int GetIndustryOrderIndexRequired(string skillIdentifier)
     {
         return CareerConfigRuntime.GetArchetypeOrderIndexRequired(GetIndustryRequired(skillIdentifier));
+    }
+
+    internal static IReadOnlyDictionary<string, Archetype> GetIndustryMapRequired()
+    {
+        SkillDataModel model = GF.DataModel.GetDataModel<SkillDataModel>()
+                               ?? throw new InvalidOperationException("SkillDataModel is not available.");
+        return model.skillIndustryDic;
     }
 
     internal static Dictionary<string, Archetype> BuildSkillIndustryMap(IEnumerable<BuildingTable> rows)
@@ -123,6 +130,8 @@ public class SkillDataModel : DataModelBase
                               row.UpgradeIncrementUsageCount,
                               row.Lv1Cooldown,
                               row.UpgradeDecrementCooldown,
+                              row.WindUp,
+                              row.WindDown,
                               row.Type,
                               row.NameKey,
                               row.DescKey,

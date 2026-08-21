@@ -961,6 +961,8 @@ public sealed class LogicMigrationAuthorityBoundaryTests
             0,
             Fix64.One,
             Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
             SkillType.Active,
             "Name",
             "Desc",

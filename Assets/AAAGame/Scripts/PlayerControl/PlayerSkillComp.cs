@@ -6,7 +6,7 @@ using System.Linq;
 
 public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
     ILogicSkillCastCommandConsumer, ILogicPausedSkillCastCommandConsumer,
-    ISkillCastPreviewProvider, ISkillActionPresentationProvider
+    ISkillCastPreviewProvider, ISkillActionPresentationProvider, ISkillCooldownPresentationProvider
 {
     private IEntityContext _entity;
     private bool m_HasPendingCast;
@@ -293,6 +293,29 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
     }
 
     public int SkillPresentationSlotCount => SKILL_NUM;
+
+    public bool TryGetSkillCooldownPresentation(int slotIndex, out Fix64 remaining, out Fix64 total)
+    {
+        if (slotIndex < 0 || slotIndex >= SKILL_NUM)
+            throw new System.ArgumentOutOfRangeException(nameof(slotIndex), slotIndex, "Invalid skill slot index.");
+        if (!SkillRuntimeDataModel.IsUnlockedActiveSkillSlot(slotIndex))
+        {
+            remaining = Fix64.Zero;
+            total = Fix64.Zero;
+            return false;
+        }
+
+        SkillRuntimeInfo runtime = SkillRuntimeDataModel.GetUnlockedSkillAt(slotIndex);
+        string skillId = runtime.Data.Identifier;
+        if (!_cooldownsBySkillId.TryGetValue(skillId, out GeneralCounter cooldown) || cooldown == null)
+            throw new System.InvalidOperationException($"Player skill cooldown is missing. skillId={skillId}, slot={slotIndex}.");
+
+        total = cooldown.GetTargetRequired();
+        remaining = cooldown.GetRemainingRequired();
+        if (total <= Fix64.Zero)
+            throw new System.InvalidOperationException($"Player skill cooldown target is invalid. skillId={skillId}, slot={slotIndex}.");
+        return true;
+    }
 
     public bool TryGetActiveSkillActionPresentation(
         int slotIndex,

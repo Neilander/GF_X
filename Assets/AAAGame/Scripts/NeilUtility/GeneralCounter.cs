@@ -68,6 +68,25 @@ public class GeneralCounter
         return _finished;
     }
 
+    public Fix64 GetTargetRequired()
+    {
+        EnsureInitialized();
+        return _target;
+    }
+
+    public Fix64 GetRemainingRequired()
+    {
+        EnsureInitialized();
+        Fix64 remaining = _target - _current;
+        return remaining > Fix64.Zero ? remaining : Fix64.Zero;
+    }
+
+    private void EnsureInitialized()
+    {
+        if (!_setted)
+            throw new System.InvalidOperationException("Counter is not initialized.");
+    }
+
     public void WriteDeterministicState(LogicStateHasher hasher)
     {
         if (hasher == null)

@@ -17,6 +17,11 @@ public interface ISkillActionPresentationProvider
         out string triggerName);
 }
 
+public interface ISkillCooldownPresentationProvider
+{
+    bool TryGetSkillCooldownPresentation(int slotIndex, out Fix64 remaining, out Fix64 total);
+}
+
 public static class LogicSkillStateService
 {
     public static void RefreshActiveSkillComponents()
@@ -119,6 +124,19 @@ public static class SkillCompDeterministicStateUtility
             WriteSelectableList(hasher, positionInfo.selectedTargets);
             hasher.Add(positionInfo.radius.RawValue);
             hasher.Add(positionInfo.selectionRadius.RawValue);
+        }
+        else
+        {
+            hasher.Add(false);
+        }
+
+        if (action is InstantSkillActionInfo instantInfo)
+        {
+            hasher.Add(true);
+            hasher.Add(instantInfo.windUp.RawValue);
+            hasher.Add(instantInfo.windDown.RawValue);
+            hasher.Add(instantInfo.effectCommitted);
+            hasher.Add(instantInfo.effectApplied);
         }
         else
         {

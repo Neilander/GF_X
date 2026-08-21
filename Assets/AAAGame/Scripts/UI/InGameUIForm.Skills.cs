@@ -51,10 +51,12 @@ public partial class InGameUIForm
     private void TickSkillPresentation()
     {
         bool isCasting = SkillCastState.IsCasting;
-        if (isCasting == m_LastSkillCasting)
-            return;
-        m_LastSkillCasting = isCasting;
-        RefreshSkills();
+        if (isCasting != m_LastSkillCasting)
+        {
+            m_LastSkillCasting = isCasting;
+            RefreshSkills();
+        }
+        TickSkillCooldownPresentation();
     }
 
     private void RefreshSkills()
@@ -79,6 +81,7 @@ public partial class InGameUIForm
             slot.SetActive(true);
             SetSkillSlotName(slot, skills[i], i);
             SetSkillSlotCounter(slot, skills[i]);
+            EnsureSkillCooldownVisual(slot);
 
             Button button = slot.GetComponent<Button>();
             if (button == null)
@@ -93,6 +96,105 @@ public partial class InGameUIForm
                             && SkillCastPresentationService.CanRequestSkillCast(i);
             button.interactable = canClick;
         }
+    }
+
+    private void TickSkillCooldownPresentation()
+    {
+        if (varSkills == null || EntityRegistry.Player is not ISkillCompHost host)
+            return;
+        if (host.skillComp is not ISkillCooldownPresentationProvider provider)
+            throw new InvalidOperationException("Player skill component does not provide cooldown presentation state.");
+
+        IReadOnlyList<SkillRuntimeInfo> skills = SkillRuntimeDataModel.GetUnlockedSkills();
+        int count = Mathf.Min(varSkills.Length, skills.Count);
+        for (int i = 0; i < count; i++)
+        {
+            GameObject slot = varSkills[i];
+            if (slot == null || !slot.activeInHierarchy)
+                continue;
+
+            Fix64 remaining = Fix64.Zero;
+            Fix64 total = Fix64.Zero;
+            bool active = false;
+            if (skills[i].Data.Type == SkillType.Active)
+            {
+                bool hasCooldown = provider.TryGetSkillCooldownPresentation(i, out remaining, out total);
+                active = hasCooldown && remaining > Fix64.Zero;
+            }
+            SetSkillCooldownVisual(slot, active, remaining, total);
+        }
+    }
+
+    private static void EnsureSkillCooldownVisual(GameObject slot)
+    {
+        Transform existing = slot.transform.Find("SkillCooldownFill");
+        if (existing != null)
+            return;
+
+        Image slotImage = slot.GetComponent<Image>()
+                          ?? throw new InvalidOperationException($"Skill slot is missing Image. slot={slot.name}");
+        if (slotImage.sprite == null)
+            throw new InvalidOperationException($"Skill slot Image has no Sprite for cooldown fill. slot={slot.name}");
+
+        GameObject fillObject = new GameObject("SkillCooldownFill", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        fillObject.layer = slot.layer;
+        RectTransform fillRect = fillObject.GetComponent<RectTransform>();
+        fillRect.SetParent(slot.transform, false);
+        fillRect.anchorMin = Vector2.zero;
+        fillRect.anchorMax = Vector2.one;
+        fillRect.offsetMin = Vector2.zero;
+        fillRect.offsetMax = Vector2.zero;
+        Image fill = fillObject.GetComponent<Image>();
+        fill.sprite = slotImage.sprite;
+        fill.type = Image.Type.Filled;
+        fill.fillMethod = Image.FillMethod.Radial360;
+        fill.fillOrigin = (int)Image.Origin360.Top;
+        fill.fillClockwise = false;
+        fill.color = new Color(0.02f, 0.03f, 0.04f, 0.78f);
+        fill.raycastTarget = false;
+
+        GameObject textObject = new GameObject("SkillCooldownText", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+        textObject.layer = slot.layer;
+        RectTransform textRect = textObject.GetComponent<RectTransform>();
+        textRect.SetParent(slot.transform, false);
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+        TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+        TextMeshProUGUI main = GetSkillMainText(slot);
+        text.font = main.font;
+        text.fontSize = 28f;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = Color.white;
+        text.raycastTarget = false;
+
+        fillObject.SetActive(false);
+        textObject.SetActive(false);
+    }
+
+    internal static void SetSkillCooldownVisual(GameObject slot, bool active, Fix64 remaining, Fix64 total)
+    {
+        if (slot == null)
+            throw new ArgumentNullException(nameof(slot));
+        EnsureSkillCooldownVisual(slot);
+        Image fill = slot.transform.Find("SkillCooldownFill").GetComponent<Image>();
+        TextMeshProUGUI text = slot.transform.Find("SkillCooldownText").GetComponent<TextMeshProUGUI>();
+        if (!active)
+        {
+            fill.gameObject.SetActive(false);
+            text.gameObject.SetActive(false);
+            return;
+        }
+        if (remaining <= Fix64.Zero || total <= Fix64.Zero || remaining > total)
+            throw new ArgumentOutOfRangeException(nameof(remaining), "Active cooldown requires 0 < remaining <= total.");
+
+        fill.fillAmount = Mathf.Clamp01((float)(remaining / total));
+        text.text = ((long)Fix64.Ceiling(remaining)).ToString();
+        fill.gameObject.SetActive(true);
+        text.gameObject.SetActive(true);
+        fill.transform.SetAsLastSibling();
+        text.transform.SetAsLastSibling();
     }
 
     private void HideAllSkillSlots()
@@ -188,7 +290,8 @@ public partial class InGameUIForm
         TextMeshProUGUI[] texts = slot.GetComponentsInChildren<TextMeshProUGUI>(true);
         for (int i = 0; i < texts.Length; i++)
         {
-            if (texts[i].gameObject.name != "SkillCounter")
+            string objectName = texts[i].gameObject.name;
+            if (objectName != "SkillCounter" && objectName != "SkillCooldownText")
                 return texts[i];
         }
 

@@ -921,6 +921,64 @@ public class SteeringMovementTests
     }
 
     [Test]
+    public void MeatRackTargeting_ChoosesFarthestTargetAfterTauntAndRange()
+    {
+        SimBuildingContext rack = MakeBuilding(Vector3.zero, SideType.PlayerSide, "Buil_MeatRack_Lv1");
+        rack.WeaponComp = CreateTestWeaponComp((Fix64)10);
+        SimEntityContext nearer = MakeSoldier(new Vector3(2f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext farther = MakeSoldier(new Vector3(6f, 0f, 0f), SideType.EnemySide);
+        EntityRegistry.Register(rack);
+        EntityRegistry.Register(nearer);
+        EntityRegistry.Register(farther);
+
+        ITargetingComp targeting = new MeatRackTargetingComp();
+        targeting.Init(rack);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(farther, targeting.CurrentTarget,
+            "Meat rack must use the special farthest-target rule after the shared taunt and range tiers.");
+
+        nearer.TauntLevel = 1;
+        targeting.UpdateTargeting((Fix64)0.2f);
+        Assert.AreSame(nearer, targeting.CurrentTarget,
+            "A higher taunt target must outrank the meat rack farthest-target rule.");
+    }
+
+    [Test]
+    public void TargetPriority_UsesAggroTierOrderBeforeDistance()
+    {
+        var baseline = new TargetPriority(0, 0, false, Fix64.Zero, false, false, (Fix64)5, 10);
+
+        Assert.Greater(
+            new TargetPriority(1, -2, false, Fix64.Zero, false, false, (Fix64)100, 11).CompareTo(baseline),
+            0,
+            "Taunt must outrank all lower targeting tiers.");
+        Assert.Greater(
+            new TargetPriority(0, 0, true, Fix64.Zero, false, false, (Fix64)100, 11).CompareTo(
+                new TargetPriority(0, 0, false, (Fix64)100, true, true, Fix64.One, 12)),
+            0,
+            "Attack range must be resolved before special targeting.");
+        Assert.Greater(
+            new TargetPriority(0, 0, false, Fix64.One, false, false, (Fix64)100, 11).CompareTo(
+                new TargetPriority(0, 0, false, Fix64.Zero, true, true, Fix64.One, 12)),
+            0,
+            "Special targeting must be resolved before current target and alert state.");
+        Assert.Greater(
+            new TargetPriority(0, 0, false, Fix64.Zero, true, false, (Fix64)100, 11).CompareTo(
+                new TargetPriority(0, 0, false, Fix64.Zero, false, true, Fix64.One, 12)),
+            0,
+            "Current attack target must be resolved before alert state.");
+        Assert.Greater(
+            new TargetPriority(0, 0, false, Fix64.Zero, false, true, (Fix64)100, 11).CompareTo(baseline),
+            0,
+            "Alert state must be resolved before distance.");
+        Assert.Greater(
+            new TargetPriority(0, 0, false, Fix64.Zero, false, false, Fix64.One, 11).CompareTo(baseline),
+            0,
+            "Distance must prefer the closer target after all preceding tiers tie.");
+    }
+
+    [Test]
     public void BuildingTargeting_DoesNotExposeAlertCapability()
     {
         SimBuildingContext tower = MakeBuilding(Vector3.zero, SideType.PlayerSide);
@@ -1512,9 +1570,12 @@ public class SteeringMovementTests
         return hero;
     }
 
-    private SimBuildingContext MakeBuilding(Vector3 position, SideType side)
+    private SimBuildingContext MakeBuilding(
+        Vector3 position,
+        SideType side,
+        string identifier = "Buil_Test_Lv1")
     {
-        var building = new SimBuildingContext { Position = position, Side = side, Alive = true };
+        var building = new SimBuildingContext(identifier) { Position = position, Side = side, Alive = true };
         building.SetProperty(CreatureMainProperty.Speed, (Fix64)5);
         building.WeaponComp = CreateTestWeaponComp((Fix64)1.5f);
         building.MoveExecutor = new SimMoveExecutor { Position = position };
@@ -1543,7 +1604,13 @@ public class SteeringMovementTests
 
     private sealed class SimBuildingContext : SimEntityContext, IBuildingLogicContext
     {
-        private readonly BuildingData m_BuildingData = CreateTestBuildingData("Buil_Test_Lv1");
+        private readonly BuildingData m_BuildingData;
+
+        public SimBuildingContext(string identifier)
+        {
+            m_BuildingData = CreateTestBuildingData(identifier);
+        }
+
         public override bool IsBuildingEntity => true;
         public BuildingData BuildingData => m_BuildingData;
         public BuildingExtraProps ProductionProps => null;

@@ -21,6 +21,11 @@ public static class EntityCombatTeamHelper
         return selfTeam != otherTeam;
     }
 
+    public static bool IsEnemyUnit(IEntityContext self, IEntityContext other)
+    {
+        return IsEnemy(self, other) && !other.IsBuildingEntity;
+    }
+
     public static bool IsAlly(IEntityContext self, IEntityContext other)
     {
         if (self == null || other == null)

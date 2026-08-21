@@ -59,7 +59,9 @@ public sealed class SkillCurrentHealthDamageBuff : BuffCallback
 
     public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
     {
-        if (target is not IEntityContext entity || m_Percent <= Fix64.Zero)
+        if (target is not IEntityContext entity || m_Percent <= Fix64.Zero || hostEntity == null)
+            return baseDamage;
+        if (!EntityCombatTeamHelper.IsEnemyUnit(hostEntity, entity))
             return baseDamage;
 
         return baseDamage + entity.HealthValue * m_Percent / (Fix64)100;
@@ -181,7 +183,7 @@ public sealed class SkillHigherHealthSplashBuff : BuffCallback
                 IEntityContext candidate = all[i];
                 if (candidate == null || ReferenceEquals(candidate, target))
                     continue;
-                if (!candidate.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(hostEntity, candidate))
+                if (!candidate.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemyUnit(hostEntity, candidate))
                     continue;
                 if (FixVector2.Distance(
                         candidate.LogicFramePositionFixed(),

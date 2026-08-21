@@ -47,7 +47,7 @@ public class SkillTable : DataRowBase
         }
 
         /// <summary>
-        /// 1级施法距离（格）
+        /// 1级施法距离
         /// </summary>
         public Fix64 Lv1CastRange
         {
@@ -56,7 +56,7 @@ public class SkillTable : DataRowBase
         }
 
         /// <summary>
-        /// 1级作用范围（格）
+        /// 1级作用范围
         /// </summary>
         public Fix64 Lv1EffectRadius
         {
@@ -92,6 +92,24 @@ public class SkillTable : DataRowBase
         }
 
         /// <summary>
+        /// 技能前摇
+        /// </summary>
+        public Fix64 WindUp
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 技能后摇
+        /// </summary>
+        public Fix64 WindDown
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 升级增加数值
         /// </summary>
         public Fix64[] UpgradeIncrementUniqueValues
@@ -101,7 +119,7 @@ public class SkillTable : DataRowBase
         }
 
         /// <summary>
-        /// 升级增加施法距离（格）
+        /// 升级增加施法距离
         /// </summary>
         public Fix64 UpgradeIncrementCastRange
         {
@@ -110,7 +128,7 @@ public class SkillTable : DataRowBase
         }
 
         /// <summary>
-        /// 升级增加作用范围（格）
+        /// 升级增加作用范围
         /// </summary>
         public Fix64 UpgradeIncrementEffectRadius
         {
@@ -201,6 +219,8 @@ public class SkillTable : DataRowBase
             Lv1Duration = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1UsageCount = DataTableExtension.ParseInt(columnStrings[index++]);
             Lv1Cooldown = DataTableExtension.ParseFix64(columnStrings[index++]);
+            WindUp = DataTableExtension.ParseFix64(columnStrings[index++]);
+            WindDown = DataTableExtension.ParseFix64(columnStrings[index++]);
             UpgradeIncrementUniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
             UpgradeIncrementCastRange = DataTableExtension.ParseFix64(columnStrings[index++]);
             UpgradeIncrementEffectRadius = DataTableExtension.ParseFix64(columnStrings[index++]);
@@ -229,6 +249,8 @@ public class SkillTable : DataRowBase
                     Lv1Duration = binaryReader.ReadFix64();
                     Lv1UsageCount = binaryReader.Read7BitEncodedInt32();
                     Lv1Cooldown = binaryReader.ReadFix64();
+                    WindUp = binaryReader.ReadFix64();
+                    WindDown = binaryReader.ReadFix64();
                     UpgradeIncrementUniqueValues = binaryReader.ReadFix64Array();
                     UpgradeIncrementCastRange = binaryReader.ReadFix64();
                     UpgradeIncrementEffectRadius = binaryReader.ReadFix64();

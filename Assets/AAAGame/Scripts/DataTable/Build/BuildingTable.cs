@@ -164,7 +164,7 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 1级武器1攻击距离（格）
+        /// 1级武器1攻击距离
         /// </summary>
         public Fix64 Lv1Weapon1Range
         {
@@ -209,7 +209,7 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 2级武器1攻击距离（格）
+        /// 2级武器1攻击距离
         /// </summary>
         public Fix64 Lv2Weapon1Range
         {
@@ -254,7 +254,7 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 3级武器1攻击距离（格）
+        /// 3级武器1攻击距离
         /// </summary>
         public Fix64 Lv3Weapon1Range
         {
@@ -281,7 +281,7 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 1级武器1弹道速度（格/秒）
+        /// 1级武器1弹道速度
         /// </summary>
         public Fix64 Lv1Weapon1ProjectileSpeed
         {
@@ -308,7 +308,7 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 1级武器1溅射半径（格）
+        /// 1级武器1溅射半径
         /// </summary>
         public Fix64 Lv1Weapon1SplashRadius
         {
@@ -326,7 +326,7 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 1级武器1分裂距离（格）
+        /// 1级武器1分裂距离
         /// </summary>
         public Fix64 Lv1Weapon1SplitDist
         {
@@ -371,7 +371,7 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 2级武器1弹道速度（格/秒）
+        /// 2级武器1弹道速度
         /// </summary>
         public Fix64 Lv2Weapon1ProjectileSpeed
         {
@@ -398,7 +398,7 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 2级武器1溅射半径（格）
+        /// 2级武器1溅射半径
         /// </summary>
         public Fix64 Lv2Weapon1SplashRadius
         {
@@ -416,7 +416,7 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 2级武器1分裂距离（格）
+        /// 2级武器1分裂距离
         /// </summary>
         public Fix64 Lv2Weapon1SplitDist
         {
@@ -461,7 +461,7 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 3级武器1弹道速度（格/秒）
+        /// 3级武器1弹道速度
         /// </summary>
         public Fix64 Lv3Weapon1ProjectileSpeed
         {
@@ -488,7 +488,7 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 3级武器1溅射半径（格）
+        /// 3级武器1溅射半径
         /// </summary>
         public Fix64 Lv3Weapon1SplashRadius
         {
@@ -506,7 +506,7 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 3级武器1分裂距离（格）
+        /// 3级武器1分裂距离
         /// </summary>
         public Fix64 Lv3Weapon1SplitDist
         {
