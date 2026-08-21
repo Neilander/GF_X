@@ -10,7 +10,7 @@ public class LogicEntityFrameSnapshotTests
     public void Build_SortsByLogicId_AndCopiesFrameStartValues()
     {
         var entity20 = CreateEntity(20, new Vector3(2f, 7f, 4f), (Fix64)20);
-        var entity10 = CreateEntity(10, new Vector3(1f, 9f, 3f), (Fix64)10);
+        var entity10 = CreateEntity(10, new Vector3(1f, 9f, 3f), (Fix64)0.2f);
         var entities = new List<IEntityContext> { entity20, entity10 };
 
         LogicEntityFrameSnapshot snapshot = LogicEntityFrameSnapshotBuilder.Build(17, entities);
@@ -24,7 +24,7 @@ public class LogicEntityFrameSnapshotTests
         Assert.AreEqual((Fix64)3f, snapshot.States[0].Position.y);
         Assert.AreEqual(Fix64.Zero, snapshot.States[0].Forward.x);
         Assert.AreEqual(Fix64.One, snapshot.States[0].Forward.y);
-        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)10), snapshot.States[0].CollisionRadius);
+        Assert.AreEqual((Fix64)0.2f, snapshot.States[0].CollisionRadius);
         Assert.AreEqual(LogicCombatShapeKind.Circle, snapshot.States[0].CombatShape.Kind);
         Assert.AreEqual(snapshot.States[0].Position, snapshot.States[0].CombatShape.Center);
         Assert.AreEqual(snapshot.States[0].CollisionRadius, snapshot.States[0].CombatShape.Radius);

@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using System.Collections.Generic;
 using AAAGame.MiniMap.FOG3;
 using DG.Tweening;
 using GameFramework.ObjectPool;
@@ -12,7 +13,7 @@ public enum EditorLogicRuntimeStressGateStatus
     Idle = 0,
     Armed = 1,
     Running = 2,
-    AwaitingViewSettlement = 3,
+    AwaitingRuntimeSettlement = 3,
     Completed = 4,
     Failed = 5,
 }
@@ -21,6 +22,8 @@ public static class EditorLogicRuntimeStressGate
 {
     private static readonly LogicStateHasher s_GameplayTraceHasher = new LogicStateHasher();
     private static readonly LogicStateHasher s_DamageTraceHasher = new LogicStateHasher();
+    private static readonly Dictionary<int, FixVector2> s_EnemyMeasurementStartPositions =
+        new Dictionary<int, FixVector2>();
 
     private readonly struct RuntimeRetentionCensus
     {
@@ -175,6 +178,9 @@ public static class EditorLogicRuntimeStressGate
     private static int s_MaxSharedGoalCacheCount;
     private static int s_MaxPendingFlowTileCount;
     private static int s_MaxPendingSharedGoalCount;
+    private static int s_NavigationSettlementPumpCount;
+    private static int s_NavigationSettlementInitialPendingFlowCount;
+    private static int s_NavigationSettlementInitialPendingSharedGoalCount;
     private static long s_ManagedBaselineBytes;
     private static long s_ReservedBaselineBytes;
     private static long s_MonoUsedBaselineBytes;
@@ -212,7 +218,7 @@ public static class EditorLogicRuntimeStressGate
     public static bool OwnsLogicClock =>
         Status == EditorLogicRuntimeStressGateStatus.Armed
         || Status == EditorLogicRuntimeStressGateStatus.Running
-        || Status == EditorLogicRuntimeStressGateStatus.AwaitingViewSettlement
+        || Status == EditorLogicRuntimeStressGateStatus.AwaitingRuntimeSettlement
         || Status == EditorLogicRuntimeStressGateStatus.Completed
         || Status == EditorLogicRuntimeStressGateStatus.Failed;
     public static int ProcessedTicks => s_ProcessedTicks;
@@ -251,7 +257,7 @@ public static class EditorLogicRuntimeStressGate
     {
         if (Status == EditorLogicRuntimeStressGateStatus.Armed
             || Status == EditorLogicRuntimeStressGateStatus.Running
-            || Status == EditorLogicRuntimeStressGateStatus.AwaitingViewSettlement)
+            || Status == EditorLogicRuntimeStressGateStatus.AwaitingRuntimeSettlement)
         {
             throw new InvalidOperationException($"Editor logic stress gate is already active. status={Status}.");
         }
@@ -332,6 +338,7 @@ public static class EditorLogicRuntimeStressGate
         s_InitialStaticProjectionFailureCount = LogicAgentCollisionShadowService.TotalStaticProjectionFailureCount;
         s_InitialObstacleCount = LogicObstacleCommandService.ActiveObstacleCount;
         s_InitialStaticBakedObstacleShapeCount = CountStaticBakedBlockingObstacleShapes();
+        CaptureEnemyMeasurementStartPositions();
         s_FlowTileCacheLimit = FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheLimit();
         s_GameEndManager = GameEntry.GetComponent<GameEndManager>()
                            ?? throw new InvalidOperationException("Editor logic stress gate requires GameEndManager.");
@@ -442,14 +449,68 @@ public static class EditorLogicRuntimeStressGate
 
         if (s_ProcessedTicks == s_TotalTicks)
         {
-            Status = EditorLogicRuntimeStressGateStatus.AwaitingViewSettlement;
-            Log.Info("[LogicLongSessionGate] Logic ticks complete; waiting for view settlement. {0}", BuildReport());
+            Status = EditorLogicRuntimeStressGateStatus.AwaitingRuntimeSettlement;
+            s_NavigationSettlementInitialPendingFlowCount =
+                FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount();
+            s_NavigationSettlementInitialPendingSharedGoalCount =
+                FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount();
+            Log.Info(
+                "[LogicLongSessionGate] Logic ticks complete; waiting for runtime settlement. navigation=[{0}] report=[{1}]",
+                FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics(),
+                BuildReport());
         }
     }
 
-    public static void CompleteAfterViewSettlement()
+    public static bool PumpNavigationSettlement()
     {
-        EnsureStatus(EditorLogicRuntimeStressGateStatus.AwaitingViewSettlement);
+        EnsureStatus(EditorLogicRuntimeStressGateStatus.AwaitingRuntimeSettlement);
+        if (s_ProcessedTicks != s_TotalTicks)
+            throw new InvalidOperationException($"Navigation settlement began before logic completion. processed={s_ProcessedTicks}, total={s_TotalTicks}.");
+        if (LogicFrameRuntime.CurrentFrame != s_FinalFrame)
+        {
+            throw new InvalidOperationException(
+                $"Navigation settlement observed a logic-frame mismatch before pumping. expected={s_FinalFrame}, actual={LogicFrameRuntime.CurrentFrame}.");
+        }
+
+        FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+        FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        s_NavigationSettlementPumpCount = checked(s_NavigationSettlementPumpCount + 1);
+
+        if (LogicFrameRuntime.CurrentFrame != s_FinalFrame)
+        {
+            throw new InvalidOperationException(
+                $"Navigation settlement advanced the logic frame. expected={s_FinalFrame}, actual={LogicFrameRuntime.CurrentFrame}.");
+        }
+        if (s_ProcessedTicks != s_TotalTicks)
+        {
+            throw new InvalidOperationException(
+                $"Navigation settlement executed gameplay ticks. expected={s_TotalTicks}, actual={s_ProcessedTicks}.");
+        }
+        if (FlowFieldCrowdMovementSystem.GetEditorTestDuplicatePendingFlowTileBuildKeyCount() != 0)
+            throw new InvalidOperationException("Navigation settlement found duplicate pending flow-tile keys.");
+
+        bool settled = !HasPendingNavigationWork();
+        Log.Info(
+            "[LogicLongSessionGate] Navigation settlement pump={0}, settled={1}, frame={2}, work=[{3}]",
+            s_NavigationSettlementPumpCount,
+            settled,
+            LogicFrameRuntime.CurrentFrame,
+            FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics());
+        return settled;
+    }
+
+    public static void CompleteAfterRuntimeSettlement()
+    {
+        EnsureStatus(EditorLogicRuntimeStressGateStatus.AwaitingRuntimeSettlement);
+        if (s_NavigationSettlementPumpCount <= 0)
+            throw new InvalidOperationException("Editor logic stress gate skipped the required navigation settlement pump.");
+        if (HasPendingNavigationWork())
+        {
+            throw new InvalidOperationException(
+                $"Editor logic stress gate completed before navigation settlement. " +
+                FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics());
+        }
         ValidateWorldClosure(requireBoundViews: true);
         ValidateEnemyUnitPresentationClosure();
         if (FlowFieldCrowdMovementSystem.GetEditorTestDuplicatePendingFlowTileBuildKeyCount() != 0)
@@ -543,8 +604,17 @@ public static class EditorLogicRuntimeStressGate
             || FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount() != 0)
         {
             throw new InvalidOperationException(
-                "Editor logic stress gate completed with pending navigation work.");
+                $"Editor logic stress gate completed with pending navigation work. " +
+                FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics());
         }
+    }
+
+    private static bool HasPendingNavigationWork()
+    {
+        return FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild()
+               || FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty()
+               || FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount() != 0
+               || FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount() != 0;
     }
 
     public static void Fail(Exception exception)
@@ -583,6 +653,7 @@ public static class EditorLogicRuntimeStressGate
             $"sharedGoal={FlowFieldCrowdMovementSystem.GetEditorTestSharedGoalFieldCacheCount()}, sharedGoalBaseline={s_SharedGoalBaselineCount}, sharedGoalPeak={s_MaxSharedGoalCacheCount}, " +
             $"pendingFlow={FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount()}, pendingFlowBaseline={s_PendingFlowBaselineCount}, pendingFlowPeak={s_MaxPendingFlowTileCount}, " +
             $"pendingShared={FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount()}, pendingSharedBaseline={s_PendingSharedGoalBaselineCount}, pendingSharedPeak={s_MaxPendingSharedGoalCount}, " +
+            $"navigationSettlementPumps={s_NavigationSettlementPumpCount}, navigationSettlementInitialPendingFlow={s_NavigationSettlementInitialPendingFlowCount}, navigationSettlementInitialPendingShared={s_NavigationSettlementInitialPendingSharedGoalCount}, " +
             $"managedMetricScope=editorMonoAllocatorUsedDiagnosticOnly, managedEqualsMonoUsed={managedEqualsMonoUsed}, profilerContaminatesManagedComparison={s_AllowProfiler}, " +
             $"managedBaseline={s_ManagedBaselineBytes}, managedFinal={s_ManagedFinalBytes}, managedGrowth={managedGrowth}, " +
             $"reservedBaseline={s_ReservedBaselineBytes}, reservedFinal={s_ReservedFinalBytes}, reservedGrowth={reservedGrowth}, " +
@@ -618,7 +689,10 @@ public static class EditorLogicRuntimeStressGate
         if (timeline.LateEventCount != s_InitialLateInputCount)
         {
             throw new InvalidOperationException(
-                $"Input timeline observed a late event. initial={s_InitialLateInputCount}, current={timeline.LateEventCount}.");
+                $"Input timeline observed a late event. initial={s_InitialLateInputCount}, current={timeline.LateEventCount}, " +
+                $"kind={timeline.LastLateEventKind}, timestamp={timeline.LastLateEventTimestamp:R}, " +
+                $"previousCutoff={timeline.LastLateEventPreviousCutoff:R}, " +
+                $"lag={timeline.LastLateEventPreviousCutoff - timeline.LastLateEventTimestamp:R}.");
         }
         int expectedEventCount = s_InjectedThisFrame ? 1 : 0;
         if (inputFrame.Events.Count != expectedEventCount)
@@ -754,7 +828,12 @@ public static class EditorLogicRuntimeStressGate
             throw new InvalidOperationException(
                 $"Combat observation window failed at tick {s_ProcessedTicks}. " +
                 $"enemyObserved={s_CombatWindowEnemyObserved}, damageObserved={s_CombatWindowDamageObserved}, " +
-                $"currentEnemyUnits={s_CurrentEnemyUnitCount}, phase={PhaseManager.CurrentPhase}.");
+                $"currentEnemyUnits={s_CurrentEnemyUnitCount}, phase={PhaseManager.CurrentPhase}. " +
+                $"defendWaiting={DefendPhaseRuntime.GetEditorTestIsWaitingForNavigationDistancePrewarm()}, " +
+                $"defendPlanned={DefendPhaseRuntime.GetEditorTestPlannedSpawnCount()}, " +
+                $"defendAlive={DefendPhaseRuntime.GetEditorTestAliveEnemyCount()}, " +
+                $"prewarm=[{FlowFieldCrowdMovementSystem.GetEditorTestNavigationDistancePrewarmDiagnostics()}]. " +
+                BuildEnemyCombatDiagnostics());
         }
 
         s_CombatWindowsValidated = checked(s_CombatWindowsValidated + 1);
@@ -825,6 +904,83 @@ public static class EditorLogicRuntimeStressGate
         }
 
         return count;
+    }
+
+    private static void CaptureEnemyMeasurementStartPositions()
+    {
+        s_EnemyMeasurementStartPositions.Clear();
+        var entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            IEntityContext entity = entities[i];
+            if (entity.Alive && entity.Side == SideType.EnemySide && !entity.IsBuildingEntity)
+                s_EnemyMeasurementStartPositions.Add(entity.LogicEntityId.Value, entity.PositionFixed);
+        }
+    }
+
+    private static string BuildEnemyCombatDiagnostics()
+    {
+        var builder = new System.Text.StringBuilder(4096);
+        builder.Append("enemyDiagnostics=[");
+        bool wroteAny = false;
+        var entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            IEntityContext entity = entities[i];
+            if (!entity.Alive || entity.Side != SideType.EnemySide || entity.IsBuildingEntity)
+                continue;
+
+            if (wroteAny)
+                builder.Append(';');
+            wroteAny = true;
+            FixVector2 start = s_EnemyMeasurementStartPositions.TryGetValue(entity.LogicEntityId.Value, out FixVector2 captured)
+                ? captured
+                : entity.PositionFixed;
+            builder.Append("{entity=").Append(entity.LogicEntityId.Value)
+                .Append(",key=").Append(entity.CharacterKey)
+                .Append(",posRaw=(").Append(entity.PositionFixed.x.RawValue).Append(',').Append(entity.PositionFixed.y.RawValue).Append(')')
+                .Append(",movedRaw=(").Append((entity.PositionFixed.x - start.x).RawValue).Append(',').Append((entity.PositionFixed.y - start.y).RawValue).Append(')')
+                .Append(",brain=").Append(entity.Brain?.GetType().Name ?? "null");
+            if (entity.Brain is SoldierAIBrain soldierBrain)
+                builder.Append('/').Append(soldierBrain.State);
+
+            IEntityContext target = entity.TargetComp?.CurrentTarget;
+            if (target == null)
+            {
+                builder.Append(",target=null");
+            }
+            else
+            {
+                builder.Append(",target=").Append(target.LogicEntityId.Value).Append('/').Append(target.CharacterKey)
+                    .Append(",targetPosRaw=(").Append(target.PositionFixed.x.RawValue).Append(',').Append(target.PositionFixed.y.RawValue).Append(')')
+                    .Append(",surfaceDistanceRaw=").Append(entity.LogicFrameDistanceToTargetSurfaceFixed(target).RawValue);
+            }
+
+            builder.Append(",attackRangeRaw=").Append(entity.WeaponComp?.AttackRange.RawValue ?? -1L)
+                .Append(",moveComp=").Append(entity.MoveComp?.GetType().Name ?? "null")
+                .Append(",isMoving=").Append(entity.MoveComp?.IsMoving.ToString() ?? "null");
+            if (entity is ILogicFrameEntity logicFrameEntity)
+            {
+                builder.Append(",preparedRaw=(").Append(logicFrameEntity.PreparedResolvedHorizontalDisplacement.x.RawValue).Append(',')
+                    .Append(logicFrameEntity.PreparedResolvedHorizontalDisplacement.y.RawValue).Append(')');
+            }
+            else
+            {
+                builder.Append(",prepared=null");
+            }
+            if (entity.MoveComp is CharacterMoveComp characterMove
+                && characterMove.TryGetNavigationTargetFixed(out FixVector2 navigationTarget))
+            {
+                builder.Append(",navigationTargetRaw=(").Append(navigationTarget.x.RawValue).Append(',').Append(navigationTarget.y.RawValue).Append(')');
+            }
+            else
+            {
+                builder.Append(",navigationTarget=null");
+            }
+            builder.Append('}');
+        }
+        builder.Append(']');
+        return builder.ToString();
     }
 
     private static void ValidateEnemyUnitPresentationClosure()
@@ -1084,6 +1240,7 @@ public static class EditorLogicRuntimeStressGate
         s_CombatWindowsValidated = 0;
         s_ProtectedPlayerBuildingCount = 0;
         s_CurrentEnemyUnitCount = 0;
+        s_EnemyMeasurementStartPositions.Clear();
         s_MaxEnemyUnitCount = 0;
         s_EnemyUnitBoundViewCount = 0;
         s_EnemyUnitFogTrackedViewCount = 0;
@@ -1095,6 +1252,9 @@ public static class EditorLogicRuntimeStressGate
         s_MaxSharedGoalCacheCount = 0;
         s_MaxPendingFlowTileCount = 0;
         s_MaxPendingSharedGoalCount = 0;
+        s_NavigationSettlementPumpCount = 0;
+        s_NavigationSettlementInitialPendingFlowCount = 0;
+        s_NavigationSettlementInitialPendingSharedGoalCount = 0;
         s_ManagedBaselineBytes = 0;
         s_ReservedBaselineBytes = 0;
         s_MonoUsedBaselineBytes = 0;

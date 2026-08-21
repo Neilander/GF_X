@@ -96,6 +96,7 @@ public class DirectAtkCompTests
             Side = side
         };
         ctx.Health.Init((Fix64)hp);
+        ctx.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)0.1f);
         var executor = new SimMoveExecutor { Position = pos };
         ctx.MoveExecutor = executor;
         EntityRegistry.Register(ctx);
@@ -289,7 +290,7 @@ atkComp.Attack((Fix64)999);
         moveComp.Init(attacker);
         attacker.MoveComp = moveComp;
 
-        WeaponData weapon = MeleeWeapon(damage: 30f, range: 150f, windUp: 0.2f, windDown: 0.2f);
+        WeaponData weapon = MeleeWeapon(damage: 30f, range: 2.7f, windUp: 0.2f, windDown: 0.2f);
         attacker.WeaponComp = new WeaponComp(weapon.ToWeapon("MeleeImpactRangeValidationWeapon"));
         var atkComp = new DirectAtkComp();
         atkComp.Init(attacker);
@@ -596,8 +597,8 @@ atkComp.Attack((Fix64)999);
         moveComp.Init(attacker);
         attacker.MoveComp = moveComp;
 
-        // 攻击范围 150码 = 1.5m，目标在 10m 外
-        var weapon = MeleeWeapon(range: 150f);
+        // 攻击范围 2.7 格，目标在 10 格外。
+        var weapon = MeleeWeapon(range: 2.7f);
         attacker.WeaponComp = new WeaponComp(weapon.ToWeapon("TestWeapon"));
         var atkComp = new DirectAtkComp();
         atkComp.Init(attacker);
@@ -696,12 +697,12 @@ atkComp.Attack((Fix64)999);
         moveComp.Init(attacker);
         attacker.MoveComp = moveComp;
 
-        // 700码 = 7m 射程
+        // 12.6 格射程。
         var weapon = new WeaponData(
             WeaponType.Projectile,
             (Fix64)11f,
             (Fix64)1f,
-            (Fix64)700f,
+            (Fix64)12.6f,
             Fix64.Zero,
             (Fix64)0.25f,
             (Fix64)0.4f,
@@ -744,7 +745,7 @@ atkComp.Attack((Fix64)999);
             weaponType,
             (Fix64)17,
             Fix64.One,
-            (Fix64)300,
+            (Fix64)5.4f,
             Fix64.Zero,
             (Fix64)0.1f,
             (Fix64)0.1f,
@@ -781,8 +782,8 @@ atkComp.Attack((Fix64)999);
             LogicDamageEventService.BeginTimeline();
             LogicProjectileService.BeginTimeline();
 
-            Fix64 nearbyRadius = DistanceUnitConverter.ConvertToWorld((Fix64)225);
-            Fix64 attackRange = DistanceUnitConverter.ConvertToWorld((Fix64)650);
+            Fix64 nearbyRadius = (Fix64)4.1f;
+            Fix64 attackRange = (Fix64)11.7f;
             Fix64 initialDistance = nearbyRadius + (attackRange - nearbyRadius) / (Fix64)16;
             var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
             var target = CreateUnit(new Vector3((float)initialDistance, 0f, 0f), SideType.EnemySide);
@@ -802,8 +803,8 @@ atkComp.Attack((Fix64)999);
                 WeaponType.Projectile,
                 (Fix64)10f,
                 (Fix64)0.8f,
-                (Fix64)650f,
-                (Fix64)700f,
+                (Fix64)11.7f,
+                (Fix64)12.6f,
                 (Fix64)0.2f,
                 (Fix64)0.3f,
                 Fix64.Zero,
@@ -818,7 +819,7 @@ atkComp.Attack((Fix64)999);
             atkComp.SetWeaponSO(null);
             attacker.AtkComp = atkComp;
 
-            var lockBuff = new NearbyEnemyAttackLockBuff((Fix64)225f);
+            var lockBuff = new NearbyEnemyAttackLockBuff((Fix64)4.1f);
             var buffComp = new AAAGame.Scripts.BuffSystem.CharacterBuffComp();
             attacker.BuffComp = buffComp;
             buffComp.Init(attacker);
@@ -851,8 +852,13 @@ atkComp.Attack((Fix64)999);
                 LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
 
             Assert.AreEqual(1, atkComp.AttackCount, "熊孩子应在目标进入近身范围前完成起手");
-            Assert.AreEqual(1, LogicProjectileService.ActiveCount, "移动目标前必须已经提交逻辑弹道");
-            Assert.IsTrue(attacker.CanRun(atkComp), "目标位于225配表距离之外时不应锁攻");
+            Assert.AreEqual(
+                1,
+                LogicProjectileService.ActiveCount,
+                $"移动目标前必须已经提交逻辑弹道。state={atkComp.State}, canRun={attacker.CanRun(atkComp)}, " +
+                $"attackCount={atkComp.AttackCount}, distanceRaw={attacker.LogicFrameDistanceToTargetSurfaceFixed(target).RawValue}, " +
+                $"nearbyRaw={nearbyRadius.RawValue}, rangeRaw={attackRange.RawValue}");
+            Assert.IsTrue(attacker.CanRun(atkComp), "目标位于 4.1 格范围之外时不应锁攻");
 
             projectileId = LogicProjectileService.LastId;
             LogicProjectileService.BindView(projectileId);
@@ -862,7 +868,7 @@ atkComp.Attack((Fix64)999);
             for (int i = 0; i < 30 && attacker.CanRun(atkComp); i++)
                 LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
 
-            Assert.IsFalse(attacker.CanRun(atkComp), "敌人进入225配表距离后应锁定 Brat 攻击组件");
+            Assert.IsFalse(attacker.CanRun(atkComp), "敌人进入 4.1 格范围后应锁定 Brat 攻击组件");
             Assert.AreEqual(1, LogicProjectileService.ActiveCount, "近身锁攻成立时，已射出的逻辑弹道必须仍然存在");
             Assert.IsFalse(
                 LogicProjectileService.GetRequiredViewState(projectileId).Completed,
@@ -919,9 +925,9 @@ atkComp.Attack((Fix64)999);
         {
             SimEntityContext attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
             SimEntityContext target = CreateUnit(new Vector3(1f, 0f, 0f), SideType.EnemySide);
-            attacker.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)5);
+            attacker.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)0.1f);
             attacker.SetProperty(CreatureMainProperty.WeightLevel, (Fix64)2);
-            target.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)5);
+            target.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)0.1f);
             target.SetProperty(CreatureMainProperty.WeightLevel, (Fix64)2);
 
             var sourceDisplacement = new DurationMoveEffectComp();

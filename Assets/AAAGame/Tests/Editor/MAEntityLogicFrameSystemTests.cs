@@ -163,7 +163,7 @@ public class MAEntityLogicFrameSystemTests
                 out IAtkComp attackerAttack);
 
             var approachMove = new ProjectileRegressionApproachMoveComp(
-                new FixVector2(-DistanceUnitConverter.ConvertToWorld((Fix64)290), Fix64.Zero));
+                new FixVector2(-(Fix64)5.2f, Fix64.Zero));
             LogicEntityState target = CreateProjectileRegressionUnit(
                 new FixVector2(CreateBratRegressionInitialSurfaceDistance(), Fix64.Zero),
                 SideType.EnemySide,
@@ -176,7 +176,7 @@ public class MAEntityLogicFrameSystemTests
 
             attackerTargeting.CurrentTarget = target;
 
-            var lockBuff = new NearbyEnemyAttackLockBuff((Fix64)225);
+            var lockBuff = new NearbyEnemyAttackLockBuff((Fix64)4.1f);
             Assert.IsTrue(attacker.BuffComp.AddBuff(
                 BuffData.Create(
                     "brat_projectile_nearby_lock_regression",
@@ -203,7 +203,7 @@ public class MAEntityLogicFrameSystemTests
                 LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
 
             Assert.AreEqual(1, LogicProjectileService.ActiveCount, "目标靠近前必须已经提交 Brat 逻辑弹道");
-            Assert.IsTrue(attacker.CanRun(attackerAttack), "目标初始位于225配表距离之外，不应锁攻");
+            Assert.IsTrue(attacker.CanRun(attackerAttack), "目标初始位于 4.1 格范围之外，不应锁攻");
 
             projectileId = LogicProjectileService.LastId;
             LogicProjectileService.BindView(projectileId);
@@ -213,7 +213,7 @@ public class MAEntityLogicFrameSystemTests
             for (int i = 0; i < 30 && attacker.CanRun(attackerAttack); i++)
                 LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
 
-            Assert.IsFalse(attacker.CanRun(attackerAttack), "敌人移动进入225配表距离后必须锁定 Brat 攻击组件");
+            Assert.IsFalse(attacker.CanRun(attackerAttack), "敌人移动进入 4.1 格范围后必须锁定 Brat 攻击组件");
             Assert.AreEqual(1, LogicProjectileService.ActiveCount, "锁攻成立时已射出的逻辑弹道必须仍然存在");
             Assert.IsFalse(
                 LogicProjectileService.GetRequiredViewState(projectileId).Completed,
@@ -337,7 +337,7 @@ public class MAEntityLogicFrameSystemTests
             var directAttack = (DirectAtkComp)attackerAttack;
 
             var approachMove = new ProjectileRegressionApproachMoveComp(
-                new FixVector2(-DistanceUnitConverter.ConvertToWorld((Fix64)290), Fix64.Zero))
+                new FixVector2(-(Fix64)5.2f, Fix64.Zero))
             {
                 Enabled = true,
             };
@@ -361,7 +361,7 @@ public class MAEntityLogicFrameSystemTests
                     1,
                     new System.Collections.Generic.List<BuffCallback>
                     {
-                        new NearbyEnemyAttackLockBuff((Fix64)225),
+                        new NearbyEnemyAttackLockBuff((Fix64)4.1f),
                     }),
                 attacker));
 
@@ -384,7 +384,7 @@ public class MAEntityLogicFrameSystemTests
             for (int i = 0; i < 8 && attacker.CanRun(attackerAttack); i++)
                 LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
 
-            Assert.IsFalse(attacker.CanRun(attackerAttack), "敌人进入225配表距离后必须锁定 Brat 攻击组件");
+            Assert.IsFalse(attacker.CanRun(attackerAttack), "敌人进入 4.1 格范围后必须锁定 Brat 攻击组件");
             Assert.AreEqual(DirectAtkComp.AtkState.Idle, directAttack.State, "近身锁攻必须打断正在进行的抬手");
 
             for (int i = 0; i < 8; i++)
@@ -700,8 +700,8 @@ public class MAEntityLogicFrameSystemTests
         Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
 
         FixVector2 spawnPosition = new FixVector2((Fix64)1.5f, (Fix64)1.5f);
-        Fix64 collisionRadiusProperty = (Fix64)5;
-        Fix64 collisionRadius = DistanceUnitConverter.ConvertToWorld(collisionRadiusProperty);
+        Fix64 collisionRadiusProperty = (Fix64)0.1f;
+        Fix64 collisionRadius = (collisionRadiusProperty);
         Assert.IsTrue(LogicStaticCollisionShadowService.TrySolveFixed(
             0,
             spawnPosition,
@@ -832,7 +832,7 @@ public class MAEntityLogicFrameSystemTests
         };
         entity.SetProperty(
             CreatureMainProperty.CollisionRadius,
-            DistanceUnitConverter.ConvertFromWorld(collisionRadius));
+            (collisionRadius));
         EntityRegistry.Register(entity);
 
         BeginLogicTimeWithVisibleFog();
@@ -877,10 +877,10 @@ public class MAEntityLogicFrameSystemTests
         };
         mover.SetProperty(
             CreatureMainProperty.CollisionRadius,
-            DistanceUnitConverter.ConvertFromWorld(collisionRadius));
+            (collisionRadius));
         blocker.SetProperty(
             CreatureMainProperty.CollisionRadius,
-            DistanceUnitConverter.ConvertFromWorld(collisionRadius));
+            (collisionRadius));
         FixVector2 moverStart = mover.PositionFixed;
         EntityRegistry.Register(mover);
         EntityRegistry.Register(blocker);
@@ -1265,7 +1265,7 @@ public class MAEntityLogicFrameSystemTests
                 new CreaturePropertyManager(property => property switch
                 {
                     CreatureMainProperty.Health => (Fix64)100,
-                    CreatureMainProperty.CollisionRadius => DistanceUnitConverter.ConvertFromWorld(collisionRadius),
+                    CreatureMainProperty.CollisionRadius => (collisionRadius),
                     CreatureMainProperty.WeightLevel => (Fix64)2,
                     _ => Fix64.Zero,
                 }),
@@ -1368,6 +1368,87 @@ public class MAEntityLogicFrameSystemTests
             Assert.AreEqual(FixVector2.Zero, building.Position);
             Assert.AreEqual(placementForward, building.Forward,
                 "建筑整体朝向属于关卡/建造布置状态，索敌和攻击不能改写它");
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            EndDefendEntityTimeline();
+        }
+    }
+
+    [Test]
+    public void MoveResolve_BuildingOverlappingUnit_RemainsImmovable()
+    {
+        BeginDefendEntityTimeline();
+        try
+        {
+            FixVector2 buildingPosition = FixVector2.Zero;
+            LogicEntityId buildingId = LogicEntityLifecycleService.RequestSpawn(
+                new LogicEntitySpawnDescriptor(
+                    buildingPosition,
+                    new FixVector2(Fix64.Zero, Fix64.One),
+                    SideType.PlayerSide,
+                    "ImmovableBuildingSource"));
+            LogicEntityState building = LogicEntityStateStore.GetRequired(buildingId);
+            building.Configure(
+                null,
+                new CreaturePropertyManager(property => property switch
+                {
+                    CreatureMainProperty.Health => (Fix64)100,
+                    CreatureMainProperty.CollisionRadius => (Fix64)0.5f,
+                    _ => Fix64.Zero,
+                }),
+                0,
+                false,
+                null,
+                false);
+            new NoMoveFactoryForTest().Configure(building);
+            building.ConfigureBuilding(
+                new BuildingData(
+                    "ImmovableBuildingSource",
+                    BuilType.Def,
+                    Archetype.None,
+                    "Tests/Building",
+                    "Test_Name",
+                    "Test_Desc",
+                    1,
+                    0,
+                    (Fix64)100,
+                    null,
+                    Fix64.Zero,
+                    System.Array.Empty<Fix64>(),
+                    null,
+                    0,
+                    System.Array.Empty<string>()),
+                "immovable-building-source",
+                "test-stronghold",
+                EntitySideHelper.PlayerFactionId,
+                LogicCombatShape.AxisAlignedBox(
+                    buildingPosition,
+                    new FixVector2((Fix64)0.5f, (Fix64)0.5f)),
+                System.Array.Empty<LogicCombatShape>(),
+                System.Array.Empty<LogicInteractionOptionDescriptor>(),
+                false);
+            LogicEntityStateStore.CommitSpawn(buildingId);
+            EntityRegistry.Register(building);
+
+            LogicEntityState unit = CreateDisplacementTestUnit(
+                301,
+                SideType.EnemySide,
+                new FixVector2((Fix64)0.75f, Fix64.Zero));
+
+            LogicFrameRuntime.Tick(1);
+
+            LogicAgentCollisionShadowState buildingCollision =
+                LogicAgentCollisionShadowService.GetRequiredState(building.LogicEntityId, 1);
+            LogicAgentCollisionShadowState unitCollision =
+                LogicAgentCollisionShadowService.GetRequiredState(unit.LogicEntityId, 1);
+            Assert.AreEqual(buildingPosition, building.Position,
+                "建筑必须作为零逆质量碰撞体保留关卡布置位置");
+            Assert.AreEqual(FixVector2.Zero, buildingCollision.PairCorrection,
+                "单位重叠不得把建筑加入可移动分离结果");
+            Assert.AreNotEqual(FixVector2.Zero, unitCollision.PairCorrection,
+                "与建筑重叠的可移动单位必须承担分离位移");
         }
         finally
         {
@@ -1544,7 +1625,7 @@ public class MAEntityLogicFrameSystemTests
         Fix64 collisionRadius = Fix64.One / (Fix64)4;
         entity.SetProperty(
             CreatureMainProperty.CollisionRadius,
-            DistanceUnitConverter.ConvertFromWorld(collisionRadius));
+            (collisionRadius));
         EntityRegistry.Register(entity);
 
         try
@@ -1597,7 +1678,7 @@ public class MAEntityLogicFrameSystemTests
         };
         entity.SetProperty(
             CreatureMainProperty.CollisionRadius,
-            DistanceUnitConverter.ConvertFromWorld(Fix64.One / (Fix64)4));
+            (Fix64.One / (Fix64)4));
         EntityRegistry.RegisterAsPlayer(entity);
 
         try
@@ -1659,7 +1740,7 @@ public class MAEntityLogicFrameSystemTests
         Fix64 collisionRadius = Fix64.FromRaw(1352);
         entity.SetProperty(
             CreatureMainProperty.CollisionRadius,
-            DistanceUnitConverter.ConvertFromWorld(collisionRadius));
+            (collisionRadius));
 
         try
         {
@@ -1849,7 +1930,7 @@ public class MAEntityLogicFrameSystemTests
             new CreaturePropertyManager(property => property switch
             {
                 CreatureMainProperty.Health => (Fix64)100,
-                CreatureMainProperty.Speed => (Fix64)290,
+                CreatureMainProperty.Speed => (Fix64)5.2f,
                 _ => Fix64.Zero,
             }),
             0,
@@ -1966,8 +2047,8 @@ public class MAEntityLogicFrameSystemTests
             WeaponType.Projectile,
             (Fix64)8,
             (Fix64)0.8f,
-            (Fix64)650,
-            (Fix64)700,
+            (Fix64)11.7f,
+            (Fix64)12.6f,
             (Fix64)0.2f,
             (Fix64)0.3f,
             Fix64.Zero,
@@ -1980,8 +2061,8 @@ public class MAEntityLogicFrameSystemTests
 
     private static Fix64 CreateBratRegressionInitialSurfaceDistance()
     {
-        Fix64 nearbyRadius = DistanceUnitConverter.ConvertToWorld((Fix64)225);
-        Fix64 attackRange = DistanceUnitConverter.ConvertToWorld((Fix64)650);
+        Fix64 nearbyRadius = (Fix64)4.1f;
+        Fix64 attackRange = (Fix64)11.7f;
         if (attackRange <= nearbyRadius)
             throw new System.InvalidOperationException("Brat regression requires attack range greater than nearby lock radius.");
         return nearbyRadius + (attackRange - nearbyRadius) / (Fix64)16;

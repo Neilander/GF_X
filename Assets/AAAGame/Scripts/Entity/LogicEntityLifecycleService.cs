@@ -34,6 +34,7 @@ public static class LogicEntityLifecycleService
     {
         Activate = 0,
         DeactivateAndHide = 1,
+        RetireUnboundViewRequest = 2,
     }
 
     private static readonly List<LogicEntityLifecycleCommand> s_Commands = new List<LogicEntityLifecycleCommand>();
@@ -45,6 +46,7 @@ public static class LogicEntityLifecycleService
     private static readonly Dictionary<int, ulong> s_DespawnFramesByEntityId = new Dictionary<int, ulong>();
     private static readonly HashSet<int> s_ActivatedEntityIds = new HashSet<int>();
     private static readonly HashSet<int> s_DespawnCommittedEntityIds = new HashSet<int>();
+    private static readonly HashSet<int> s_PendingViewRequestEntityIds = new HashSet<int>();
     private static readonly List<int> s_DueDespawnEntityIds = new List<int>();
     private static readonly List<int> s_DueSpawnEntityIds = new List<int>();
     private static readonly Dictionary<int, LifecyclePresentationKind> s_PendingPresentationByEntityId =
@@ -86,6 +88,7 @@ public static class LogicEntityLifecycleService
         s_DespawnFramesByEntityId.Clear();
         s_ActivatedEntityIds.Clear();
         s_DespawnCommittedEntityIds.Clear();
+        s_PendingViewRequestEntityIds.Clear();
         s_DueDespawnEntityIds.Clear();
         s_DueSpawnEntityIds.Clear();
         s_PendingPresentationByEntityId.Clear();
@@ -110,6 +113,7 @@ public static class LogicEntityLifecycleService
         s_DespawnFramesByEntityId.Clear();
         s_ActivatedEntityIds.Clear();
         s_DespawnCommittedEntityIds.Clear();
+        s_PendingViewRequestEntityIds.Clear();
         s_DueDespawnEntityIds.Clear();
         s_DueSpawnEntityIds.Clear();
         s_PendingPresentationByEntityId.Clear();
@@ -271,6 +275,7 @@ public static class LogicEntityLifecycleService
         s_DespawnFramesByEntityId.Clear();
         s_ActivatedEntityIds.Clear();
         s_DespawnCommittedEntityIds.Clear();
+        s_PendingViewRequestEntityIds.Clear();
         s_DueDespawnEntityIds.Clear();
         s_DueSpawnEntityIds.Clear();
         s_PendingPresentationByEntityId.Clear();
@@ -308,6 +313,7 @@ public static class LogicEntityLifecycleService
         if (!s_BoundViewIdsByEntityId.TryAdd(entityId.Value, viewEntityId))
             throw new InvalidOperationException($"LogicEntityLifecycleService.BindView failed: entity {entityId.Value} is already bound.");
         LogicEntityStateStore.BindView(entityId, viewEntityId);
+        bool consumedPendingViewRequest = s_PendingViewRequestEntityIds.Remove(entityId.Value);
         if (view != null)
             s_BoundViewsByEntityId.Add(entityId.Value, view);
 
@@ -321,6 +327,8 @@ public static class LogicEntityLifecycleService
             s_BoundViewIdsByEntityId.Remove(entityId.Value);
             s_BoundViewsByEntityId.Remove(entityId.Value);
             LogicEntityStateStore.UnbindView(entityId, viewEntityId);
+            if (consumedPendingViewRequest && !s_PendingViewRequestEntityIds.Add(entityId.Value))
+                throw new InvalidOperationException($"Logic entity {entityId.Value} failed to restore pending view ownership.");
             throw;
         }
 
@@ -502,6 +510,8 @@ public static class LogicEntityLifecycleService
             }
             if (s_BoundViewsByEntityId.ContainsKey(entityId))
                 s_PendingPresentationByEntityId[entityId] = LifecyclePresentationKind.DeactivateAndHide;
+            else if (s_PendingViewRequestEntityIds.Contains(entityId))
+                s_PendingPresentationByEntityId[entityId] = LifecyclePresentationKind.RetireUnboundViewRequest;
             else
                 RemoveDespawnedEntity(logicEntityId);
         }
@@ -556,27 +566,41 @@ public static class LogicEntityLifecycleService
         {
             int entityId = s_PendingPresentationEntityIds[i];
             LifecyclePresentationKind kind = s_PendingPresentationByEntityId[entityId];
-            if (!s_BoundViewsByEntityId.TryGetValue(entityId, out MAEntity view) || view == null)
-            {
-                throw new InvalidOperationException(
-                    $"LogicEntityLifecycleService.UpdatePresentation lost bound view. entity={entityId}, kind={kind}.");
-            }
 
             switch (kind)
             {
                 case LifecyclePresentationKind.Activate:
+                    MAEntity activatingView = GetRequiredBoundView(entityId, kind);
                     if (!s_ActivatedEntityIds.Contains(entityId))
                         throw new InvalidOperationException($"Lifecycle activation presentation has inactive logic entity {entityId}.");
-                    view.ActivateLogicParticipation(LogicTimeControlService.CurrentFrame);
+                    activatingView.ActivateLogicParticipation(LogicTimeControlService.CurrentFrame);
                     break;
                 case LifecyclePresentationKind.DeactivateAndHide:
+                    MAEntity retiringView = GetRequiredBoundView(entityId, kind);
                     if (!s_DespawnCommittedEntityIds.Contains(entityId) || s_ActivatedEntityIds.Contains(entityId))
                         throw new InvalidOperationException($"Lifecycle deactivation presentation has active logic entity {entityId}.");
-                    if (view.IsLogicActive)
-                        view.DeactivateLogicParticipation();
-                    if (view.Entity == null)
+                    if (retiringView.IsLogicActive)
+                        retiringView.DeactivateLogicParticipation();
+                    if (retiringView.Entity == null)
                         throw new InvalidOperationException($"Lifecycle deactivation view has no framework entity. entity={entityId}.");
-                    LogicEntityViewSpawnQueue.EnqueueHide(view.Entity.Id);
+                    LogicEntityViewSpawnQueue.EnqueueHide(retiringView.Entity.Id);
+                    break;
+                case LifecyclePresentationKind.RetireUnboundViewRequest:
+                    if (!s_DespawnCommittedEntityIds.Contains(entityId)
+                        || s_ActivatedEntityIds.Contains(entityId)
+                        || s_BoundViewIdsByEntityId.ContainsKey(entityId))
+                    {
+                        throw new InvalidOperationException(
+                            $"Lifecycle unbound retirement state is invalid. entity={entityId}.");
+                    }
+                    var logicEntityId = new LogicEntityId(entityId);
+                    LogicEntityViewSpawnQueue.CancelRequestForDespawn(logicEntityId);
+                    if (!s_PendingViewRequestEntityIds.Remove(entityId))
+                    {
+                        throw new InvalidOperationException(
+                            $"Lifecycle unbound retirement lost its pending view ownership. entity={entityId}.");
+                    }
+                    RemoveDespawnedEntity(logicEntityId);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown lifecycle presentation kind.");
@@ -586,6 +610,17 @@ public static class LogicEntityLifecycleService
         }
 
         s_PendingPresentationEntityIds.Clear();
+    }
+
+    private static MAEntity GetRequiredBoundView(int entityId, LifecyclePresentationKind kind)
+    {
+        if (!s_BoundViewsByEntityId.TryGetValue(entityId, out MAEntity view) || view == null)
+        {
+            throw new InvalidOperationException(
+                $"LogicEntityLifecycleService.UpdatePresentation lost bound view. entity={entityId}, kind={kind}.");
+        }
+
+        return view;
     }
 
     public static void ResetFrameTimelinePreservingEntities()
@@ -674,12 +709,23 @@ public static class LogicEntityLifecycleService
         CommandRecorded?.Invoke(command);
     }
 
+    public static void RegisterPendingViewRequest(LogicEntityId entityId)
+    {
+        EnsureKnownEntity(entityId, nameof(RegisterPendingViewRequest));
+        if (s_BoundViewIdsByEntityId.ContainsKey(entityId.Value))
+            throw new InvalidOperationException($"Logic entity {entityId.Value} already has a bound view.");
+        if (!s_PendingViewRequestEntityIds.Add(entityId.Value))
+            throw new InvalidOperationException($"Logic entity {entityId.Value} already has a pending view request.");
+    }
+
     private static void RemoveDespawnedEntity(LogicEntityId entityId)
     {
         if (s_ActivatedEntityIds.Contains(entityId.Value))
             throw new InvalidOperationException($"LogicEntityLifecycleService.RemoveDespawnedEntity failed: entity {entityId.Value} is still active.");
         if (s_BoundViewIdsByEntityId.ContainsKey(entityId.Value))
             throw new InvalidOperationException($"LogicEntityLifecycleService.RemoveDespawnedEntity failed: entity {entityId.Value} still has a bound view.");
+        if (s_PendingViewRequestEntityIds.Contains(entityId.Value))
+            throw new InvalidOperationException($"LogicEntityLifecycleService.RemoveDespawnedEntity failed: entity {entityId.Value} still owns a pending view request.");
 
         s_SpawnFramesByEntityId.Remove(entityId.Value);
         s_DespawnFramesByEntityId.Remove(entityId.Value);

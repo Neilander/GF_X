@@ -61,21 +61,7 @@ public static class EntityPresentationPrefabTools
         };
 
         string radiusText = ReadRequiredGameConfigText(configKey);
-        Fix64 tableRadius = DistanceUnitConverter.ParseFixedConfigText(configKey, radiusText);
-        string rateText = ReadRequiredGameConfigText(DistanceUnitConverter.DistanceConversionRateKey);
-        if (!decimal.TryParse(
-                rateText,
-                System.Globalization.NumberStyles.AllowLeadingSign | System.Globalization.NumberStyles.AllowDecimalPoint,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out decimal conversionRate)
-            || conversionRate <= decimal.Zero)
-        {
-            throw new InvalidOperationException(
-                $"GameConfig '{DistanceUnitConverter.DistanceConversionRateKey}' must be a positive invariant decimal. actual='{rateText}'.");
-        }
-
-        long worldRaw = decimal.ToInt64(decimal.Ceiling(tableRadius.RawValue * conversionRate));
-        return (float)Fix64.FromRaw(worldRaw);
+        return (float)FixedConfigReader.ParseFixedConfigText(configKey, radiusText);
     }
 
     [MenuItem("Tools/Entity Presentation/Validate Entity Prefabs")]

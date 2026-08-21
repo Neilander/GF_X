@@ -515,7 +515,7 @@ public static class LevelTagRuntime
         return total;
     }
 
-    public static Fix64 GetEnemyInitialStrengthScale(EnemyStrengthContext context)
+    public static Fix64 GetEnemyInitialResourceEquivalentScale(EnemySquadResourceEquivalentContext context)
     {
         Fix64 result = Fix64.One;
         foreach (LevelTagTable tag in ResolveActiveTags())
@@ -530,15 +530,15 @@ public static class LevelTagRuntime
         }
 
         if (result <= Fix64.Zero)
-            throw new InvalidOperationException($"Enemy initial strength scale is not positive. context={context} raw={result.RawValue}.");
+            throw new InvalidOperationException($"Enemy initial resource-equivalent scale is not positive. context={context} raw={result.RawValue}.");
         return result;
     }
 
-    public static Fix64 GetEnemyGrowthSpeedScale(EnemyStrengthContext context)
+    public static Fix64 GetEnemyResourceEquivalentGrowthSpeedScale(EnemySquadResourceEquivalentContext context)
     {
         Fix64 result = Fix64.One;
         if (result <= Fix64.Zero)
-            throw new InvalidOperationException($"Enemy growth speed scale is not positive. context={context} raw={result.RawValue}.");
+            throw new InvalidOperationException($"Enemy resource-equivalent growth speed scale is not positive. context={context} raw={result.RawValue}.");
         return result;
     }
 

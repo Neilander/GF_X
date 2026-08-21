@@ -342,8 +342,8 @@ namespace AAAGame.Card
 
         private static Fix64 ResolveVisionRadius(string configKey)
         {
-            Fix64 configured = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(configKey);
-            Fix64 radius = DistanceUnitConverter.ConvertToWorld(configured);
+            Fix64 configured = FixedConfigReader.ReadRequiredPositiveFixedConfig(configKey);
+            Fix64 radius = (configured);
             if (radius <= Fix64.Zero)
                 throw new InvalidOperationException($"Logic card-placement vision config '{configKey}' converted to {radius.RawValue} raw.");
             return radius;

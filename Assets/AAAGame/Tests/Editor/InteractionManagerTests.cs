@@ -6,9 +6,10 @@ using UnityEngine;
 public sealed class InteractionManagerTests
 {
     [Test]
-    public void EffectiveRange_IsReadAsGameConfigCodeUnits()
+    public void EffectiveRange_UsesGridConfigValue()
     {
-        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)90).RawValue, LogicInteractionAuthorityService.EffectiveRange.RawValue);
+        Fix64 expected = FixedConfigReader.ReadRequiredPositiveFixedConfig("BuildingInteractionRadius");
+        Assert.AreEqual(expected.RawValue, LogicInteractionAuthorityService.EffectiveRange.RawValue);
     }
 
     private sealed class VisibleOption : IInteractionOption

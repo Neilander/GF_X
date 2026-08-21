@@ -201,7 +201,7 @@ internal static class Lv3InteractiveHitchCaptureRunner
             FinalTargetFogState = InitialTargetFogState;
 
             _strongholdId = strongholdId;
-            _radius = DistanceUnitConverter.ConvertToWorld(
+            _radius = (
                 _hero.GetProperty(CreatureMainProperty.CollisionRadius));
             if (_radius <= Fix64.Zero)
                 throw new InvalidOperationException("Build stronghold boundary probe requires a positive hero collision radius.");
@@ -694,7 +694,7 @@ internal static class Lv3InteractiveHitchCaptureRunner
 
                 if (!(_hero is ILogicFrameEntity logicHero))
                     throw new InvalidOperationException("Lv3 movement probe requires an ILogicFrameEntity hero.");
-                Fix64 radius = DistanceUnitConverter.ConvertToWorld(
+                Fix64 radius = (
                     _hero.GetProperty(CreatureMainProperty.CollisionRadius));
                 if (radius <= Fix64.Zero)
                 {
@@ -821,7 +821,7 @@ internal static class Lv3InteractiveHitchCaptureRunner
                                                        $"Lv3 chase probe soldier {_soldierId.Value} has no target search range capability.");
             _aggroRange = searchRange.AggroRangeFixed;
             _forgetRange = searchRange.ForgetRangeFixed;
-            _lastSpeed = DistanceUnitConverter.ConvertToWorld(soldier.GetProperty(CreatureMainProperty.Speed));
+            _lastSpeed = (soldier.GetProperty(CreatureMainProperty.Speed));
             _sourceStrongholdId = (soldier as LogicEntityState)?.SourceStrongholdId
                                   ?? throw new InvalidOperationException($"Lv3 chase probe soldier {_soldierId.Value} has no source stronghold.");
             LogicFrameRuntime.Register(this);
@@ -938,7 +938,7 @@ internal static class Lv3InteractiveHitchCaptureRunner
             {
                 _lastNavigationTarget = navigationTarget;
             }
-            _lastSpeed = DistanceUnitConverter.ConvertToWorld(soldier.GetProperty(CreatureMainProperty.Speed));
+            _lastSpeed = (soldier.GetProperty(CreatureMainProperty.Speed));
             FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
                 _soldierId.Value,
                 out _lastFlowDiagnostic);
@@ -2267,7 +2267,7 @@ internal static class Lv3InteractiveHitchCaptureRunner
         if (!foundHero)
             return $"collision shadow has no hero {hero.LogicEntityId.Value}.";
 
-        Fix64 heroRadius = DistanceUnitConverter.ConvertToWorld(
+        Fix64 heroRadius = (
             hero.GetProperty(CreatureMainProperty.CollisionRadius));
         var overlaps = new List<string>();
         var nearby = new List<KeyValuePair<long, string>>();
@@ -2279,7 +2279,7 @@ internal static class Lv3InteractiveHitchCaptureRunner
             if (!EntityRegistry.TryGet(state.EntityId, out IEntityContext entity) || entity == null || !entity.Alive)
                 continue;
 
-            Fix64 entityRadius = DistanceUnitConverter.ConvertToWorld(
+            Fix64 entityRadius = (
                 entity.GetProperty(CreatureMainProperty.CollisionRadius));
             Fix64 distance = FixVector2.Distance(heroState.ProposedPosition, state.ProposedPosition);
             Fix64 penetration = heroRadius + entityRadius - distance;

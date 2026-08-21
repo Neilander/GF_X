@@ -39,6 +39,42 @@ public sealed class LogicPhaseCommandServiceTests
     }
 
     [Test]
+    public void PhaseCycle_FromBuildBeforeInvade_ReachesDefendThroughDayAdvancingBuildPhase()
+    {
+        GamePhase phase = GamePhase.BuildBeforeInvade;
+
+        phase = PhaseManager.GetNextPhase(phase);
+        Assert.AreEqual(GamePhase.Invade, phase);
+        phase = PhaseManager.GetNextPhase(phase);
+        Assert.AreEqual(GamePhase.BuildBeforeDefend, phase);
+        phase = PhaseManager.GetNextPhase(phase);
+        Assert.AreEqual(GamePhase.Defend, phase);
+    }
+
+    [TestCase(0, 1, false)]
+    [TestCase(1, 1, true)]
+    public void DefendGatePopulationReadiness_WaitsForPendingLifecycleActivation(
+        int currentBattleTroopCount,
+        int defendTrackedCount,
+        bool expectedReady)
+    {
+        Assert.AreEqual(
+            expectedReady,
+            InvokeDefendGatePopulationReadiness(currentBattleTroopCount, defendTrackedCount));
+    }
+
+    [Test]
+    public void DefendGatePopulationReadiness_RejectsCurrentBattleTroopOutsideDefendRuntime()
+    {
+        System.Reflection.TargetInvocationException invocationException =
+            Assert.Throws<System.Reflection.TargetInvocationException>(
+                () => InvokeDefendGatePopulationReadiness(2, 1));
+
+        Assert.IsInstanceOf<InvalidOperationException>(invocationException.InnerException);
+        StringAssert.Contains("outside DefendPhaseRuntime", invocationException.InnerException.Message);
+    }
+
+    [Test]
     public void Commands_ApplyOnExactFrameInSequenceOrder()
     {
         LogicPhaseCommand first = LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.BuildBeforeInvade);
@@ -288,5 +324,19 @@ public sealed class LogicPhaseCommandServiceTests
         int end = source.IndexOf(endMarker, start, StringComparison.Ordinal);
         Assert.Greater(end, start, $"Missing source marker '{endMarker}' after '{startMarker}'.");
         return source.Substring(start, end - start);
+    }
+
+    private static bool InvokeDefendGatePopulationReadiness(
+        int currentBattleTroopCount,
+        int defendTrackedCount)
+    {
+        Type runnerType = Type.GetType(
+            "LogicRuntimeLongSessionGateRunner, AAAGame.Scripts.Editor",
+            true);
+        System.Reflection.MethodInfo method = runnerType.GetMethod(
+            "IsDefendCombatPopulationCommitted",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        return (bool)method.Invoke(null, new object[] { currentBattleTroopCount, defendTrackedCount });
     }
 }

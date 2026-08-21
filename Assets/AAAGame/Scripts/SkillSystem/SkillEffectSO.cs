@@ -57,7 +57,7 @@ public abstract class SkillEffectSO : ScriptableObject
     protected Fix64 GetCastDistanceWorldFixed()
     {
         Fix64 value = GetCastDistanceValue();
-        return value > Fix64.Zero ? DistanceUnitConverter.ConvertToWorld(value) : Fix64.Zero;
+        return value > Fix64.Zero ? (value) : Fix64.Zero;
     }
 
     protected Fix64 GetAreaRangeValue()
@@ -78,7 +78,7 @@ public abstract class SkillEffectSO : ScriptableObject
     protected Fix64 GetAreaRangeWorldFixed()
     {
         Fix64 value = GetAreaRangeValue();
-        return value > Fix64.Zero ? DistanceUnitConverter.ConvertToWorld(value) : Fix64.Zero;
+        return value > Fix64.Zero ? (value) : Fix64.Zero;
     }
 
     protected Fix64 GetDurationLogicTime()

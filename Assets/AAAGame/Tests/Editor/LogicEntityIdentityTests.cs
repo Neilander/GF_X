@@ -617,7 +617,7 @@ public class LogicEntityIdentityTests
         LogicUnitConfigurator.ConfigurePlayerOutOfCombatMoveSpeed(state);
 
         Assert.IsTrue(state.BuffComp.HasBuff(LogicUnitConfigurator.PlayerOutOfCombatMoveSpeedBuffId));
-        Assert.AreEqual((Fix64)500, state.GetProperty(CreatureMainProperty.Speed));
+        Assert.AreEqual((Fix64)9f, state.GetProperty(CreatureMainProperty.Speed));
     }
 
     [Test]
@@ -2864,7 +2864,7 @@ public class LogicEntityIdentityTests
         LogicEntityState hero = CreateConfiguredState(
             "Hero_AttackRangeOutOfCombat",
             true,
-            (Fix64)400);
+            (Fix64)7.2f);
         LogicEntityState enemy = CreateConfiguredStateForSide(
             "Unit_AttackRangeOutOfCombatTarget",
             SideType.EnemySide,
@@ -2876,14 +2876,14 @@ public class LogicEntityIdentityTests
         LogicUnitConfigurator.ConfigurePlayerOutOfCombatMoveSpeed(hero);
         ActivateRequestedState(hero.EntityId, 1);
 
-        Assert.AreEqual((Fix64)900, hero.GetProperty(CreatureMainProperty.Speed));
+        Assert.AreEqual((Fix64)16.2f, hero.GetProperty(CreatureMainProperty.Speed));
 
         targeting.CurrentTarget = enemy;
         InvokeRefreshOutOfCombat(hero);
         hero.BuffComp.UpdateBuff(LogicFrameRuntime.FixedDeltaTime);
 
         Assert.IsFalse(hero.IsOutOfCombat);
-        Assert.AreEqual((Fix64)400, hero.GetProperty(CreatureMainProperty.Speed));
+        Assert.AreEqual((Fix64)7.2f, hero.GetProperty(CreatureMainProperty.Speed));
 
         targeting.UpdateTargeting((Fix64)0.2f);
         InvokeRefreshOutOfCombat(hero);
@@ -2892,7 +2892,7 @@ public class LogicEntityIdentityTests
 
         Assert.IsNull(targeting.AggroTarget);
         Assert.IsTrue(hero.IsOutOfCombat);
-        Assert.AreEqual((Fix64)900, hero.GetProperty(CreatureMainProperty.Speed));
+        Assert.AreEqual((Fix64)16.2f, hero.GetProperty(CreatureMainProperty.Speed));
     }
 
     [Test]
@@ -3242,7 +3242,7 @@ public class LogicEntityIdentityTests
             WeaponType.Melee,
             Fix64.One,
             Fix64.One,
-            DistanceUnitConverter.ConvertFromWorld(Fix64.FromRaw(6144)),
+            (Fix64.FromRaw(6144)),
             Fix64.Zero,
             Fix64.Zero,
             Fix64.Zero,
@@ -3279,7 +3279,7 @@ public class LogicEntityIdentityTests
     {
         state.CreatureProperties.ModifyMainPropertyValueBuff(
             CreatureMainProperty.CollisionRadius,
-            PropertyDirectAdditiveModifier.Create((Fix64)12),
+            PropertyDirectAdditiveModifier.Create((Fix64)0.2f),
             true);
     }
 

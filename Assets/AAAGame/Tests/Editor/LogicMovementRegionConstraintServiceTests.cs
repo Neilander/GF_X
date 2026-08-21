@@ -124,7 +124,7 @@ public sealed class LogicMovementRegionConstraintServiceTests
         Assert.Less(resolved.y.RawValue, candidate.y.RawValue);
         Assert.IsTrue(LogicStrongholdMap.IsCircleClearOfForeignStrongholds(
             resolved,
-            DistanceUnitConverter.ConvertToWorld(
+            (
                 player.GetProperty(CreatureMainProperty.CollisionRadius)),
             EntitySideHelper.PlayerFactionId));
     }
@@ -171,9 +171,9 @@ public sealed class LogicMovementRegionConstraintServiceTests
         SimEntityContext player = CreateEntity(SideType.PlayerSide);
         player.SetProperty(
             CreatureMainProperty.CollisionRadius,
-            DistanceUnitConverter.ConvertFromWorld(Fix64.FromRaw(1352)));
+            (Fix64.FromRaw(1352)));
         FixVector2 start = new FixVector2(Fix64.FromRaw(259590), Fix64.FromRaw(42835));
-        Fix64 collisionRadius = DistanceUnitConverter.ConvertToWorld(
+        Fix64 collisionRadius = (
             player.GetProperty(CreatureMainProperty.CollisionRadius));
 
         Assert.IsTrue(LogicStrongholdMap.IsCircleClearOfForeignStrongholds(
@@ -216,7 +216,7 @@ public sealed class LogicMovementRegionConstraintServiceTests
         Fix64 collisionRadius = Fix64.FromRaw(collisionRadiusRaw);
         player.SetProperty(
             CreatureMainProperty.CollisionRadius,
-            DistanceUnitConverter.ConvertFromWorld(collisionRadius));
+            (collisionRadius));
         Fix64 halfExtent = Fix64.One / (Fix64)2;
         Fix64 approachDistance = Fix64.FromRaw(256);
         var directions = new[]
@@ -538,11 +538,13 @@ public sealed class LogicMovementRegionConstraintServiceTests
 
     private static SimEntityContext CreateEntity(SideType side)
     {
-        return new SimEntityContext
+        var entity = new SimEntityContext
         {
             Side = side,
             PositionFixed = StrongholdPoint(0),
         };
+        entity.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)0.2f);
+        return entity;
     }
 
     private static void InitializeStrongholds()

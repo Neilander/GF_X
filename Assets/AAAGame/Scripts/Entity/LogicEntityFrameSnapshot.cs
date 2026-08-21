@@ -96,7 +96,7 @@ public sealed class LogicEntityFrameSnapshot
             if (!entity.LogicEntityId.IsValid)
                 throw new InvalidOperationException($"LogicEntityFrameSnapshotBuilder.Build failed: entity at index {i} has an invalid logic id.");
 
-            Fix64 collisionRadius = DistanceUnitConverter.ConvertToWorld(
+            Fix64 collisionRadius = (
                 entity.GetProperty(CreatureMainProperty.CollisionRadius));
             if (collisionRadius < Fix64.Zero)
             {

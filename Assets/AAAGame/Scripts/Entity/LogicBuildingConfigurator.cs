@@ -7,7 +7,7 @@ public static class LogicBuildingConfigurator
     private const string Lv0InvincibleBuffId = "building_lv0_invincible";
     private const string PhaseGuardBuffId = "building_phase_guard";
     private static readonly Fix64 PlaceholderAttackInterval = Fix64.FromRaw(6554);
-    private static readonly Fix64 PlaceholderAttackRange = (Fix64)650;
+    private static readonly Fix64 PlaceholderAttackRange = Fix64.FromRaw(47924);
     private static readonly Fix64 PlaceholderWindUp = Fix64.FromRaw(1434);
     private static readonly Fix64 PlaceholderWindDown = Fix64.FromRaw(1434);
     public static event Action<IBuildingLogicContext> BuildingConfigured;

@@ -7,6 +7,29 @@ using NUnit.Framework;
 [TestFixture]
 public sealed class DefendRouteRuntimeTests
 {
+    [TestCase(GamePhase.Defend, 1, 1)]
+    [TestCase(GamePhase.BuildBeforeDefend, 2, 3)]
+    [TestCase(GamePhase.BuildBeforeInvade, 1, 2)]
+    [TestCase(GamePhase.Invade, 3, 6)]
+    public void DefenseWaveCalendarMapsStartPhaseToRealDay(GamePhase startPhase, int wave, int expectedDay)
+    {
+        Assert.AreEqual(expectedDay, DefenseWaveCalendar.GetDefenseDay(startPhase, wave));
+        Assert.AreEqual(wave, DefenseWaveCalendar.GetDefenseWaveIndex(startPhase, expectedDay));
+    }
+
+    [Test]
+    public void RelativeEngagementTimesReceiveOneSharedMinimumShift()
+    {
+        Fix64 shift = DefendPhaseRuntime.GetEditorTestWaveEngagementShift(
+            new[] { (Fix64)5, (Fix64)8, (Fix64)3 },
+            new[] { Fix64.Zero, (Fix64)4, (Fix64)10 });
+
+        Assert.AreEqual((Fix64)5, shift);
+        CollectionAssert.AreEqual(
+            new[] { (Fix64)5, (Fix64)9, (Fix64)15 },
+            new[] { Fix64.Zero + shift, (Fix64)4 + shift, (Fix64)10 + shift });
+    }
+
     [TearDown]
     public void TearDown()
     {
@@ -117,7 +140,7 @@ public sealed class DefendRouteRuntimeTests
     }
 
     [Test]
-    public void WaveSchedulerInterleavesGroupsWithOneGlobalInterval()
+    public void WaveSchedulerKeepsFixedIntervalInsideEachGroup()
     {
         Fix64[] scheduled = DefendPhaseRuntime.GetEditorTestWaveSpawnSeconds(
             new[] { Fix64.Zero, Fix64.Zero, Fix64.Zero, Fix64.Zero },
@@ -126,21 +149,35 @@ public sealed class DefendRouteRuntimeTests
             new[] { 0, 1, 0, 1 },
             Fix64.One);
 
-        CollectionAssert.AreEqual(
-            new[] { Fix64.Zero, (Fix64)2, Fix64.One, (Fix64)3 },
-            scheduled);
+        Assert.AreEqual(Fix64.One, scheduled[1] - scheduled[0]);
+        Assert.AreEqual(Fix64.One, scheduled[3] - scheduled[2]);
+        Assert.AreNotEqual(scheduled[0], scheduled[2]);
     }
 
     [Test]
-    public void WaveSchedulerRejectsAWindowThatWouldRequireDenseSpawning()
+    public void WaveSchedulerAllowsLeaderWindowsToOverlapWithoutChangingGroupIntervals()
     {
-        Assert.Throws<InvalidOperationException>(() =>
-            DefendPhaseRuntime.GetEditorTestWaveSpawnSeconds(
-                new[] { Fix64.Zero, Fix64.Zero, Fix64.Zero },
-                new[] { Fix64.One, Fix64.One, Fix64.One },
-                new[] { "A", "A", "B" },
-                new[] { 0, 1, 0 },
-                Fix64.FromRaw(3277)));
+        Fix64[] scheduled = DefendPhaseRuntime.GetEditorTestWaveSpawnSeconds(
+            new[] { Fix64.Zero, Fix64.Zero, Fix64.Zero },
+            new[] { Fix64.One, Fix64.One, Fix64.One },
+            new[] { "A", "B", "C" },
+            new[] { 0, 0, 0 },
+            Fix64.FromRaw(3277));
+        Assert.That(scheduled.All(value => value >= Fix64.Zero && value <= Fix64.One));
+    }
+
+    [Test]
+    public void EveryMemberUsesItsGroupLeaderTravelTimeForSpeed()
+    {
+        Fix64[] speeds = DefendPhaseRuntime.GetEditorTestGroupExpectedEngagementSpeeds(
+            (Fix64)50,
+            (Fix64)12,
+            new[] { (Fix64)2, (Fix64)4, (Fix64)6 },
+            new[] { 0, 1, 2 });
+
+        Assert.That(speeds[0], Is.EqualTo((Fix64)5));
+        Assert.That(speeds[1], Is.EqualTo(speeds[0]));
+        Assert.That(speeds[2], Is.EqualTo(speeds[0]));
     }
 
     [Test]
@@ -170,7 +207,7 @@ public sealed class DefendRouteRuntimeTests
 
         Fix64 initialFrontSpeed = DefendPhaseRuntime.GetEditorTestExpectedEngagementSpeed((Fix64)50, (Fix64)10);
 
-        CollectionAssert.AreEqual(new[] { Fix64.Zero, Fix64.One }, scheduled);
+        CollectionAssert.AreEqual(new[] { Fix64.Zero, (Fix64)10 }, scheduled);
         Assert.AreEqual(0, initialFront);
         Assert.AreEqual((Fix64)5, initialFrontSpeed);
     }
@@ -352,7 +389,7 @@ public sealed class DefendRouteRuntimeTests
                 (System.Collections.IList)windowType.GetField("_routes", flags).GetValue(restored);
             Assert.AreEqual(1, restoredRoutes.Count);
             Assert.AreEqual(
-                "1_0_Unsaved",
+                "1_0@Unsaved",
                 routeType.GetField("Identifier", flags).GetValue(restoredRoutes[0]));
             Assert.IsTrue((bool)windowType.GetField("_dirty", flags).GetValue(restored));
         }
@@ -550,7 +587,7 @@ public sealed class DefendRouteRuntimeTests
                 string suffix = (string)routeType.GetField("Suffix", flags).GetValue(route);
                 string expected = string.Join("_", new[] { sourceId }.Concat(waypoints));
                 if (!string.IsNullOrEmpty(suffix))
-                    expected += $"_{suffix}";
+                    expected += $"@{suffix}";
                 Assert.AreEqual(expected, routeType.GetField("Identifier", flags).GetValue(route));
             }
 
@@ -560,7 +597,7 @@ public sealed class DefendRouteRuntimeTests
                 string suffix = (string)groupType.GetField("Suffix", flags).GetValue(group);
                 string expected = routeIdentifier;
                 if (!string.IsNullOrEmpty(suffix))
-                    expected += $"_{suffix}";
+                    expected += $"@{suffix}";
                 Assert.AreEqual(expected, groupType.GetField("Identifier", flags).GetValue(group));
             }
 
@@ -596,11 +633,96 @@ public sealed class DefendRouteRuntimeTests
     }
 
     [Test]
-    public void FirstDefenseGroupsUseRealDayTwoForBuildBeforeInvadeLevels()
+    public void DefenseEditorNewGroupDefaultCanAffordItsSelectedLevelOneUnit()
+    {
+        Type windowType = AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType("DefendRouteEditorWindow", false))
+            .First(type => type != null);
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic;
+
+        UnityEditor.EditorWindow window = null;
+        try
+        {
+            window = (UnityEditor.EditorWindow)UnityEngine.ScriptableObject.CreateInstance(windowType);
+            windowType.GetMethod("OnEnable", flags).Invoke(window, null);
+            System.Collections.IList levels =
+                (System.Collections.IList)windowType.GetField("_levels", flags).GetValue(window);
+            int levelIndex = Enumerable.Range(0, levels.Count).Single(index =>
+                string.Equals(
+                    (string)levels[index].GetType().GetField("Identifier", flags).GetValue(levels[index]),
+                    "Lv_2",
+                    StringComparison.Ordinal));
+            windowType.GetField("_levelIndex", flags).SetValue(window, levelIndex);
+
+            System.Collections.IList groups =
+                (System.Collections.IList)windowType.GetField("_groups", flags).GetValue(window);
+            int previousCount = groups.Count;
+            windowType.GetMethod("AddGroup", flags).Invoke(window, null);
+            Assert.AreEqual(previousCount + 1, groups.Count);
+
+            object group = groups[groups.Count - 1];
+            var arguments = new object[] { group, 2, null, null };
+            bool resolved = (bool)windowType
+                .GetMethod("TryBuildGroupResourceEquivalentPreview", flags)
+                .Invoke(window, arguments);
+            Assert.IsTrue(resolved, arguments[3] as string);
+        }
+        finally
+        {
+            if (window != null)
+                UnityEngine.Object.DestroyImmediate(window);
+        }
+    }
+
+    [Test]
+    public void GameConfigDoesNotContainDefenseEditorDraftDefaults()
+    {
+        string config = File.ReadAllText("Assets/AAAGame/Config/GameConfig.txt");
+        StringAssert.DoesNotContain("EnemyDefenseDefaultInitialResourceEquivalent", config);
+        StringAssert.DoesNotContain("EnemyDefenseDefaultCountGrowthWeight", config);
+        StringAssert.DoesNotContain("EnemyDefenseDefaultRelativeLeaderEngagementSeconds", config);
+        StringAssert.DoesNotContain("EnemyResourceEquivalentPreviewWarningErrorRate", config);
+    }
+
+    [Test]
+    public void GeneratedConfigUsesQuadraticGrowthAndNoQuantitySynergyCurve()
+    {
+        string config = File.ReadAllText("Assets/AAAGame/Config/GameConfig.txt");
+
+        StringAssert.Contains("EnemyGarrisonPreExpectedDailyIncrementIncreasePerDay1BaseResourceEquivalent", config);
+        StringAssert.Contains("EnemyDefensePreExpectedDailyIncrementIncreasePerDay1BaseResourceEquivalent", config);
+        StringAssert.DoesNotContain("EnemyGarrisonPreExpectedDailyIncrementMultiplier", config);
+        StringAssert.DoesNotContain("EnemyDefensePreExpectedDailyIncrementMultiplier", config);
+        StringAssert.DoesNotContain("EnemyStrengthEarlyCountPivot", config);
+        StringAssert.DoesNotContain("EnemyStrengthEarlyCountSynergy", config);
+        StringAssert.DoesNotContain("EnemyStrengthCrowdingTailScale", config);
+    }
+
+    [Test]
+    public void DefenseEditorGroupOrderDoesNotChangeWhenWaveEnablementChanges()
+    {
+        string source = File.ReadAllText(
+            "Assets/AAAGame/ScriptsBuiltin/Editor/Defense/DefendRouteEditorWindow.cs");
+        string currentGroups = ExtractSourceBlock(
+            source,
+            "private List<GroupRecord> CurrentGroups()",
+            "private string FirstEnemyTeleportationId()");
+
+        StringAssert.Contains("_groups", currentGroups);
+        StringAssert.Contains(".Where(", currentGroups);
+        StringAssert.DoesNotContain("OrderBy", currentGroups);
+        StringAssert.DoesNotContain("ActiveDefenseWaves", currentGroups);
+    }
+
+    [Test]
+    public void FirstDefenseGroupsUseDefenseWaveOneRegardlessOfStartDay()
     {
         string[] lines = File.ReadAllLines(
             "Assets/AAAGame/DataTable/Level/DefendAttackGroupTable.txt");
-        int matchedGroups = 0;
+        var matchedLevels = new HashSet<string>();
         foreach (string line in lines.Skip(4))
         {
             string[] columns = line.Split('	');
@@ -614,13 +736,37 @@ public sealed class DefendRouteRuntimeTests
                 continue;
             }
 
-            string[] activeDays = columns[5].Split(',');
-            CollectionAssert.Contains(activeDays, "2", $"First defense group is not active on real Day 2: {line}");
-            CollectionAssert.DoesNotContain(activeDays, "1", $"BuildBeforeInvade cannot reach defense on Day 1: {line}");
-            matchedGroups++;
+            string[] activeWaves = columns[5].Split(',');
+            CollectionAssert.Contains(activeWaves, "1", $"First defense group is not active in defense wave 1: {line}");
+            matchedLevels.Add(levelIdentifier);
         }
 
-        Assert.That(matchedGroups, Is.EqualTo(10));
+        CollectionAssert.AreEquivalent(new[] { "Lv_2", "Lv_3", "LvTest" }, matchedLevels);
+    }
+
+    [Test]
+    public void DefenseGroupActiveWavesHaveOneRelativeLeaderEngagementTimePerWave()
+    {
+        string[] lines = File.ReadAllLines(
+            "Assets/AAAGame/DataTable/Level/DefendAttackGroupTable.txt");
+        string[] headers = lines[1].Split('\t');
+        CollectionAssert.DoesNotContain(headers, "AfterGroupIdentifier");
+        CollectionAssert.DoesNotContain(headers, "StartDelaySeconds");
+        int activeWavesColumn = Array.IndexOf(headers, "ActiveDefenseWaves");
+        int engagementColumn = Array.IndexOf(headers, "RelativeLeaderEngagementSeconds");
+        Assert.That(activeWavesColumn, Is.GreaterThanOrEqualTo(0));
+        Assert.That(engagementColumn, Is.GreaterThanOrEqualTo(0));
+
+        foreach (string line in lines.Skip(4))
+        {
+            string[] columns = line.Split('\t');
+            if (columns.Length <= engagementColumn)
+                throw new InvalidDataException($"Malformed defense group row: '{line}'.");
+            string[] activeWaves = columns[activeWavesColumn].Split(',');
+            string[] engagementTimes = columns[engagementColumn].Split(',');
+            Assert.That(engagementTimes.Length, Is.EqualTo(activeWaves.Length), line);
+            Assert.That(engagementTimes.All(x => decimal.Parse(x, System.Globalization.CultureInfo.InvariantCulture) >= 0m));
+        }
     }
 
     [Test]

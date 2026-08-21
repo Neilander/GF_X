@@ -38,7 +38,8 @@ public static class LogicRuntimeLongSessionGateRunner
     private const string PhysicsComparisonScheduleKey = SessionPrefix + "PhysicsComparisonSchedule";
     private const int BatchTicks = 10;
     private const int ProgressIntervalTicks = 3000;
-    private const int MaxViewSettlementPumps = 600;
+    private const int MaxRuntimeSettlementPumps = 600;
+    private const ulong PhaseTransitionFrameStride = 2;
     private const ulong PhysicsComparisonDefendFrame = 150;
     private const ulong PhysicsComparisonMeasurementStartFrame = 300;
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(30);
@@ -353,15 +354,70 @@ public static class LogicRuntimeLongSessionGateRunner
                 throw new InvalidOperationException(
                     $"Physics comparison missed fixed Defend schedule frame. current={LogicFrameRuntime.CurrentFrame}, target={PhysicsComparisonDefendFrame}.");
             }
-            LogicPhaseCommandService.ScheduleForEditorGate(GamePhase.Defend, PhysicsComparisonDefendFrame);
+            SchedulePhasePreludeToDefend(PhysicsComparisonDefendFrame);
             SessionState.SetInt(StateKey, (int)RunnerState.WaitingForCombat);
             return;
         }
-        else if (PhaseManager.CurrentPhase != GamePhase.Defend)
+        if (PhaseManager.CurrentPhase != GamePhase.Defend)
         {
-            PhaseManager.SwitchToPhase(GamePhase.Defend);
+            ulong transitionCount = CountPhaseTransitionsToDefend();
+            ulong defendFrame = checked(
+                LogicFrameRuntime.CurrentFrame + transitionCount * PhaseTransitionFrameStride);
+            SchedulePhasePreludeToDefend(defendFrame);
         }
         SessionState.SetInt(StateKey, (int)RunnerState.WaitingForCombat);
+    }
+
+    private static ulong CountPhaseTransitionsToDefend()
+    {
+        GamePhase phase = LogicPhaseCommandService.GetRequiredCurrentPhase();
+        ulong count = 0;
+        while (phase != GamePhase.Defend)
+        {
+            phase = PhaseManager.GetNextPhase(phase);
+            count++;
+            if (count > 3)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot reach Defend from phase {LogicPhaseCommandService.GetRequiredCurrentPhase()} within one phase cycle.");
+            }
+        }
+
+        return count;
+    }
+
+    private static void SchedulePhasePreludeToDefend(ulong defendFrame)
+    {
+        GamePhase phase = LogicPhaseCommandService.GetRequiredCurrentPhase();
+        var transitions = new List<GamePhase>(3);
+        while (phase != GamePhase.Defend)
+        {
+            phase = PhaseManager.GetNextPhase(phase);
+            transitions.Add(phase);
+            if (transitions.Count > 3)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot reach Defend from phase {LogicPhaseCommandService.GetRequiredCurrentPhase()} within one phase cycle.");
+            }
+        }
+
+        if (transitions.Count == 0)
+            return;
+        ulong requiredSpan = checked((ulong)(transitions.Count - 1) * PhaseTransitionFrameStride);
+        if (defendFrame <= requiredSpan)
+            throw new ArgumentOutOfRangeException(nameof(defendFrame), defendFrame, "Defend frame cannot fit its phase prelude.");
+        ulong firstFrame = defendFrame - requiredSpan;
+        if (firstFrame <= LogicTimeControlService.CurrentFrame)
+        {
+            throw new InvalidOperationException(
+                $"Physics comparison cannot schedule the phase prelude before Defend. current={LogicTimeControlService.CurrentFrame}, first={firstFrame}, defend={defendFrame}.");
+        }
+        for (int i = 0; i < transitions.Count; i++)
+        {
+            LogicPhaseCommandService.ScheduleForEditorGate(
+                transitions[i],
+                firstFrame + checked((ulong)i * PhaseTransitionFrameStride));
+        }
     }
 
     private static void EnsureGameplayDiagnosticsDisabled()
@@ -388,6 +444,8 @@ public static class LogicRuntimeLongSessionGateRunner
                                               ?? throw new InvalidOperationException("Physics comparison prelude requires InputModel.");
             if (comparisonInputModel.LogicTimeline.PendingEventCount != 0)
                 return;
+            if (!IsDefendCombatAuthorityReady(combatBaseline))
+                return;
             if (LogicFrameRuntime.CurrentFrame >= PhysicsComparisonMeasurementStartFrame)
             {
                 throw new InvalidOperationException(
@@ -399,7 +457,7 @@ public static class LogicRuntimeLongSessionGateRunner
         }
         if (PhaseManager.CurrentPhase != GamePhase.Defend || LogicPhaseCommandService.PendingCount != 0)
             return;
-        if (LogicEntityLifecycleService.AuthorityEntityCount <= combatBaseline)
+        if (!IsDefendCombatAuthorityReady(combatBaseline))
             return;
         if (LogicEntityLifecycleService.BoundViewCount != LogicEntityLifecycleService.AuthorityEntityCount)
             return;
@@ -408,6 +466,53 @@ public static class LogicRuntimeLongSessionGateRunner
         if (inputModel.LogicTimeline.PendingEventCount != 0)
             return;
         ArmGate(combatBaseline, 0);
+    }
+
+    private static bool IsDefendCombatAuthorityReady(int combatBaseline)
+    {
+        if (PhaseManager.CurrentPhase != GamePhase.Defend
+            || LogicPhaseCommandService.PendingCount != 0
+            || DefendPhaseRuntime.GetEditorTestIsWaitingForNavigationDistancePrewarm())
+        {
+            return false;
+        }
+
+        int defendEnemyCount = DefendPhaseRuntime.GetEditorTestAliveEnemyCount();
+        if (defendEnemyCount <= 0
+            || LogicEntityLifecycleService.AuthorityEntityCount <= combatBaseline)
+        {
+            return false;
+        }
+
+        int currentBattleTroopCount = 0;
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            if (entities[i] is LogicEntityState state
+                && state.Lifetime == LogicEntityLifetime.CurrentBattleTroop)
+            {
+                currentBattleTroopCount++;
+            }
+        }
+
+        return IsDefendCombatPopulationCommitted(currentBattleTroopCount, defendEnemyCount);
+    }
+
+    private static bool IsDefendCombatPopulationCommitted(
+        int currentBattleTroopCount,
+        int defendTrackedCount)
+    {
+        if (currentBattleTroopCount < defendTrackedCount)
+            return false;
+
+        if (currentBattleTroopCount > defendTrackedCount)
+        {
+            throw new InvalidOperationException(
+                $"Lv_2 combat contains current-battle troops outside DefendPhaseRuntime. " +
+                $"currentBattle={currentBattleTroopCount}, defendTracked={defendTrackedCount}.");
+        }
+
+        return true;
     }
 
     private static void ArmGate(int combatBaseline, ulong measurementStartFrame)
@@ -459,8 +564,8 @@ public static class LogicRuntimeLongSessionGateRunner
                 StartAllocationCaptureAfterWarmupIfRequired();
                 WriteProgressIfDue();
                 return;
-            case EditorLogicRuntimeStressGateStatus.AwaitingViewSettlement:
-                SettleViewsAndComplete();
+            case EditorLogicRuntimeStressGateStatus.AwaitingRuntimeSettlement:
+                SettleRuntimeAndComplete();
                 return;
             case EditorLogicRuntimeStressGateStatus.Completed:
                 PassRun();
@@ -473,19 +578,24 @@ public static class LogicRuntimeLongSessionGateRunner
         }
     }
 
-    private static void SettleViewsAndComplete()
+    private static void SettleRuntimeAndComplete()
     {
         int settlingPumps = SessionState.GetInt(SettlingPumpsKey, 0) + 1;
         SessionState.SetInt(SettlingPumpsKey, settlingPumps);
-        if (LogicEntityLifecycleService.BoundViewCount == LogicEntityLifecycleService.AuthorityEntityCount)
+        bool navigationSettled = EditorLogicRuntimeStressGate.PumpNavigationSettlement();
+        bool viewsSettled = LogicEntityLifecycleService.BoundViewCount == LogicEntityLifecycleService.AuthorityEntityCount;
+        if (navigationSettled && viewsSettled)
         {
-            EditorLogicRuntimeStressGate.CompleteAfterViewSettlement();
+            EditorLogicRuntimeStressGate.CompleteAfterRuntimeSettlement();
             return;
         }
-        if (settlingPumps >= MaxViewSettlementPumps)
+        if (settlingPumps >= MaxRuntimeSettlementPumps)
         {
             throw new InvalidOperationException(
-                $"Views did not settle after {settlingPumps} editor pumps. bound={LogicEntityLifecycleService.BoundViewCount}, authority={LogicEntityLifecycleService.AuthorityEntityCount}.");
+                $"Runtime did not settle after {settlingPumps} editor pumps. " +
+                $"navigationSettled={navigationSettled}, viewsSettled={viewsSettled}, " +
+                $"bound={LogicEntityLifecycleService.BoundViewCount}, authority={LogicEntityLifecycleService.AuthorityEntityCount}, " +
+                $"navigation=[{FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics()}].");
         }
     }
 

@@ -95,7 +95,7 @@ public static class CriticalDamageUtility
     {
         if (s_Prepared)
             return;
-        s_BaseCriticalDamageRate = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(BaseCriticalDamageRateKey);
+        s_BaseCriticalDamageRate = FixedConfigReader.ReadRequiredPositiveFixedConfig(BaseCriticalDamageRateKey);
         s_Prepared = true;
     }
 
@@ -512,7 +512,7 @@ public sealed class NearbyEnemyAttackLockBuff : BuffCallback, ICapability, ILogi
         if (all == null)
             throw new InvalidOperationException("NearbyEnemyAttackLockBuff.HasNearbyEnemy failed: EntityRegistry.AllEntities is null.");
 
-        Fix64 radius = DistanceUnitConverter.ConvertToWorld(m_Radius);
+        Fix64 radius = (m_Radius);
         for (int i = 0; i < all.Count; i++)
         {
             IEntityContext candidate = all[i];
@@ -668,8 +668,8 @@ public sealed class LateRiderChargeBuff : BuffCallback, ILogicDeterministicState
         if (!WeaponTargetRules.IsValidTargetForCurrentWeapon(hostEntity, target))
             return;
 
-        Fix64 minDistance = DistanceUnitConverter.ConvertToWorld(m_MinDistance);
-        Fix64 maxDistance = DistanceUnitConverter.ConvertToWorld(m_MaxDistance);
+        Fix64 minDistance = (m_MinDistance);
+        Fix64 maxDistance = (m_MaxDistance);
         Fix64 distance = LogicEntityFrameSnapshotService.GetRequiredTargetSurfaceDistance(hostEntity, target);
         if (distance < minDistance || distance > maxDistance)
             return;

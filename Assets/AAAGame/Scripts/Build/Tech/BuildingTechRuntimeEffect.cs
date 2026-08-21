@@ -979,7 +979,7 @@ public sealed class NearbyMedicalDelayedDamageBuff : BuffCallback, ILogicDetermi
     private void Refresh()
     {
         var current = new HashSet<int>();
-        Fix64 radius = DistanceUnitConverter.ConvertToWorld(m_Radius);
+        Fix64 radius = (m_Radius);
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {

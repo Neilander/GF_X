@@ -119,7 +119,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 视野半径
+        /// 视野半径（格）
         /// </summary>
         public Fix64 Sight
         {
@@ -146,7 +146,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 1级移速
+        /// 1级移速（格/秒）
         /// </summary>
         public Fix64 Lv1MoveSpeed
         {
@@ -164,7 +164,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 1级武器1攻击距离
+        /// 1级武器1攻击距离（格）
         /// </summary>
         public Fix64 Lv1Weapon1Range
         {
@@ -200,7 +200,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 2级移速
+        /// 2级移速（格/秒）
         /// </summary>
         public Fix64 Lv2MoveSpeed
         {
@@ -218,7 +218,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 2级武器1攻击距离
+        /// 2级武器1攻击距离（格）
         /// </summary>
         public Fix64 Lv2Weapon1Range
         {
@@ -254,7 +254,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 3级移速
+        /// 3级移速（格/秒）
         /// </summary>
         public Fix64 Lv3MoveSpeed
         {
@@ -272,7 +272,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 3级武器1攻击距离
+        /// 3级武器1攻击距离（格）
         /// </summary>
         public Fix64 Lv3Weapon1Range
         {
@@ -299,7 +299,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 1级武器1弹道速度
+        /// 1级武器1弹道速度（格/秒）
         /// </summary>
         public Fix64 Lv1Weapon1ProjectileSpeed
         {
@@ -326,7 +326,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 1级武器1溅射半径
+        /// 1级武器1溅射半径（格）
         /// </summary>
         public Fix64 Lv1Weapon1SplashRadius
         {
@@ -344,7 +344,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 1级武器1分裂距离
+        /// 1级武器1分裂距离（格）
         /// </summary>
         public Fix64 Lv1Weapon1SplitDist
         {
@@ -389,7 +389,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 2级武器1弹道速度
+        /// 2级武器1弹道速度（格/秒）
         /// </summary>
         public Fix64 Lv2Weapon1ProjectileSpeed
         {
@@ -416,7 +416,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 2级武器1溅射半径
+        /// 2级武器1溅射半径（格）
         /// </summary>
         public Fix64 Lv2Weapon1SplashRadius
         {
@@ -434,7 +434,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 2级武器1分裂距离
+        /// 2级武器1分裂距离（格）
         /// </summary>
         public Fix64 Lv2Weapon1SplitDist
         {
@@ -479,7 +479,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 3级武器1弹道速度
+        /// 3级武器1弹道速度（格/秒）
         /// </summary>
         public Fix64 Lv3Weapon1ProjectileSpeed
         {
@@ -506,7 +506,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 3级武器1溅射半径
+        /// 3级武器1溅射半径（格）
         /// </summary>
         public Fix64 Lv3Weapon1SplashRadius
         {
@@ -524,7 +524,7 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 3级武器1分裂距离
+        /// 3级武器1分裂距离（格）
         /// </summary>
         public Fix64 Lv3Weapon1SplitDist
         {

@@ -215,10 +215,10 @@ public static class LogicFactionVisionService
     }
 
     public static Fix64 ReadWorldDistance(string configKey) =>
-        DistanceUnitConverter.ConvertToWorld(ReadPositiveConfig(configKey));
+        (ReadPositiveConfig(configKey));
 
     public static Fix64 ReadPositiveConfig(string configKey) =>
-        DistanceUnitConverter.ReadRequiredPositiveFixedConfig(configKey);
+        FixedConfigReader.ReadRequiredPositiveFixedConfig(configKey);
 
     public static void WriteDeterministicState(LogicStateHasher hasher)
     {

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Reflection;
+using AAAGame.MiniMap.FOG3;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -422,6 +423,136 @@ public sealed class LogicPresentationBoundaryTests
             LogicPhaseCommandService.EndTimeline();
             LogicTimeControlService.EndTimeline();
             UnityEngine.Object.DestroyImmediate(viewObject);
+        }
+    }
+
+    [Test]
+    public void FogRegistryPresentation_RegisteredThenUnregisteredBeforeViewBinding_DoesNotResolveRetiredLogicEntity()
+    {
+        LogicTimeControlService.BeginTimeline();
+        LogicPhaseCommandService.BeginTimeline();
+        LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
+        LogicEntityLifecycleService.BeginTimeline();
+        LogicEntityState state = CreateConfiguredState("Unit_FogUnboundRetirement");
+        var managerObject = new GameObject("FogUnboundRetirementManager");
+        managerObject.SetActive(false);
+        Fog3Manager manager = managerObject.AddComponent<Fog3Manager>();
+        MethodInfo subscribe = typeof(Fog3Manager).GetMethod(
+            "TrySubscribeEvents",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        MethodInfo updatePresentation = typeof(Fog3Manager).GetMethod(
+            "UpdateEntityRegistryPresentation",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        FieldInfo requestQueue = typeof(Fog3Manager).GetField(
+            "entityRegistryPresentationRequests",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(subscribe);
+        Assert.NotNull(updatePresentation);
+        Assert.NotNull(requestQueue);
+
+        try
+        {
+            subscribe.Invoke(manager, null);
+            LogicTimeControlService.BeginFrame(1);
+            LogicEntityLifecycleService.ApplyFrame(1);
+
+            LogicEntityLifecycleService.RequestDespawn(state.EntityId);
+            LogicTimeControlService.BeginFrame(2);
+            LogicEntityLifecycleService.ApplyFrame(2);
+
+            Assert.IsFalse(EntityRegistry.TryGet(state.EntityId, out _));
+            Assert.DoesNotThrow(() => updatePresentation.Invoke(manager, null));
+            var queue = requestQueue.GetValue(manager) as System.Collections.ICollection;
+            Assert.NotNull(queue);
+            Assert.AreEqual(0, queue.Count);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(managerObject);
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicPhaseCommandService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    [Test]
+    public void FogRegistryPresentation_UnregisteredRequestRetiresCapturedViewAfterLifecycleRemoval()
+    {
+        LogicTimeControlService.BeginTimeline();
+        LogicPhaseCommandService.BeginTimeline();
+        LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
+        LogicEntityLifecycleService.BeginTimeline();
+        LogicEntityState state = CreateConfiguredState("Unit_FogBoundRetirement");
+        var managerObject = new GameObject("FogBoundRetirementManager");
+        managerObject.SetActive(false);
+        Fog3Manager manager = managerObject.AddComponent<Fog3Manager>();
+        var controller = new Fog3Controller();
+        controller.Initialize(new Fog3TerrainInfo(
+            1,
+            1,
+            1f,
+            Vector3.zero,
+            new[] { true },
+            "FogBoundRetirementTest"));
+        typeof(Fog3Manager).GetField("controller", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?.SetValue(manager, controller);
+        typeof(Fog3Manager).GetField("isInitialized", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?.SetValue(manager, true);
+        MethodInfo subscribe = typeof(Fog3Manager).GetMethod(
+            "TrySubscribeEvents",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        MethodInfo updatePresentation = typeof(Fog3Manager).GetMethod(
+            "UpdateEntityRegistryPresentation",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(subscribe);
+        Assert.NotNull(updatePresentation);
+
+        var viewObject = new GameObject("FogBoundRetirementView");
+        MAEntity view = viewObject.AddComponent<MAEntity>();
+        SetBoundViewIdentity(view, state);
+        const int viewEntityId = 404;
+        LogicEntityLifecycleService.BindView(state.EntityId, viewEntityId, view);
+        bool viewBound = true;
+
+        try
+        {
+            subscribe.Invoke(manager, null);
+            LogicTimeControlService.BeginFrame(1);
+            LogicEntityLifecycleService.ApplyFrame(1);
+            int revealerId = manager.RegisterRevealer(
+                view.transform,
+                1f,
+                viewEntityId,
+                false,
+                true,
+                state.EntityId.Value);
+            Assert.Greater(revealerId, 0);
+
+            LogicEntityLifecycleService.RequestDespawn(state.EntityId);
+            LogicTimeControlService.BeginFrame(2);
+            LogicEntityLifecycleService.ApplyFrame(2);
+            LogicEntityLifecycleService.UnbindView(state.EntityId, viewEntityId);
+            viewBound = false;
+
+            Assert.DoesNotThrow(() => updatePresentation.Invoke(manager, null));
+            var entityRevealers = (System.Collections.Generic.Dictionary<int, int>)typeof(Fog3Manager)
+                .GetField("entityRevealers", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetValue(manager);
+            Assert.NotNull(entityRevealers);
+            Assert.IsFalse(entityRevealers.ContainsKey(viewEntityId));
+            Assert.IsFalse(controller.TryGetRevealer(revealerId, out _));
+        }
+        finally
+        {
+            if (viewBound)
+                LogicEntityLifecycleService.UnbindView(state.EntityId, viewEntityId);
+            UnityEngine.Object.DestroyImmediate(managerObject);
+            UnityEngine.Object.DestroyImmediate(viewObject);
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicPhaseCommandService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
         }
     }
 

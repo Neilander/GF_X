@@ -26,7 +26,10 @@
 	"__smartColor": "#ADADB5",
 	"__bgPos": null,
 	"externalRelPath": null,
-	"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{ "id": "V_String", "params": ["CoastalCity"] }] }],
+	"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{
+		"id": "V_String",
+		"params": ["CoastalCity"]
+	}] }],
 	"layerInstances": [
 		{
 			"__identifier": "Entities",
@@ -157,7 +160,7 @@
 							"id": "V_String",
 							"params": ["Unit_Scapegoat"]
 						}] },
-						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 2.075, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [2.075] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 2.075, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [2.075] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.9, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.9] }] }
 					],
 					"__worldX": 2456,
@@ -180,7 +183,7 @@
 							"id": "V_String",
 							"params": ["Unit_CanMaker"]
 						}] },
-						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 3.458333, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [3.458333] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 3.458, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [3.458333] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.75, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.75] }] }
 					],
 					"__worldX": 2696,
@@ -203,7 +206,7 @@
 							"id": "V_String",
 							"params": ["Unit_CanMaker"]
 						}] },
-						{ "__identifier": "StrengthValue", "__type": "Float", "__value": 3.458333, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [3.458333] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 3.458, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [3.458333] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.75, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.75] }] }
 					],
 					"__worldX": 2744,

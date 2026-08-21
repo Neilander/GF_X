@@ -154,7 +154,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             DefendReturnMoveSpeedBonusConfigKey);
         ReturnHpRegenPercentPerSec = LogicFactionVisionService.ReadPositiveConfig(
             DefendReturnHealthRegenPercentPerSecondConfigKey) / (Fix64)100;
-        ReturnDamageReductionPercent = DistanceUnitConverter.ReadRequiredFixedConfig(
+        ReturnDamageReductionPercent = FixedConfigReader.ReadRequiredFixedConfig(
             DefendReturnDamageReductionPercentConfigKey);
         if (ReturnDamageReductionPercent < Fix64.Zero || ReturnDamageReductionPercent > (Fix64)100)
         {
@@ -1074,7 +1074,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
         return Fix64.Max(
             Fix64.Zero,
-            DistanceUnitConverter.ConvertToWorld(entity.GetProperty(CreatureMainProperty.CollisionRadius)));
+            (entity.GetProperty(CreatureMainProperty.CollisionRadius)));
     }
 
     private static Fix64 ResolveCombatApproachStandOff(

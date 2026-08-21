@@ -20,7 +20,7 @@ internal static class BratProjectileRuntimeRegressionRunner
     private const string StateKey = SessionPrefix + "State";
     private const string StartedUtcKey = SessionPrefix + "StartedUtc";
     private const double StateTimeoutSeconds = 20.0;
-    private static Fix64 NearbyRadius => DistanceUnitConverter.ConvertToWorld((Fix64)225);
+    private static Fix64 NearbyRadius => Fix64.FromRaw(16794);
     private static Fix64 NearbySurfaceDistance => NearbyRadius - Fix64.FromRaw(2048);
     private static readonly TestCapability TargetAttackLocker = new TestCapability();
     private static readonly TestCapability AttackerSetupLocker = new TestCapability();
@@ -215,7 +215,7 @@ internal static class BratProjectileRuntimeRegressionRunner
     private static void SpawnScenario(FixVector2 attackerPosition, string name)
     {
         bool projectileScenario = string.Equals(name, "projectile", StringComparison.Ordinal);
-        Fix64 attackRange = DistanceUnitConverter.ConvertToWorld((Fix64)650);
+        Fix64 attackRange = Fix64.FromRaw(47924);
         Fix64 targetOffset = projectileScenario
             ? (NearbyRadius + attackRange) / Fix64.FromRaw(8192) + Fix64.FromRaw(2048)
             : NearbyRadius + Fix64.FromRaw(10240);
@@ -302,7 +302,7 @@ internal static class BratProjectileRuntimeRegressionRunner
             return;
 
         Fix64 distance = s_Attacker.LogicFrameDistanceToTargetSurfaceFixed(s_Target);
-        if (distance <= NearbyRadius || distance > DistanceUnitConverter.ConvertToWorld((Fix64)650))
+        if (distance <= NearbyRadius || distance > Fix64.FromRaw(47924))
         {
             throw new InvalidOperationException(
                 $"Scenario start distance is invalid. raw={distance.RawValue}, nearbyRaw={NearbyRadius.RawValue}.");

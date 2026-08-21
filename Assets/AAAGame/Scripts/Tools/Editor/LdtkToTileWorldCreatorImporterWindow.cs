@@ -2823,7 +2823,7 @@ namespace AAAGame.Tools.Editor
                 point.Identifier = pointData.identifier;
                 point.PointType = pointData.pointType;
                 if (pointData.pointType == EntityPresetPointType.Unit)
-                    point.SetUnitStrength(pointData.unitStrengthValue, pointData.unitCountGrowthWeight);
+                    point.SetUnitResourceEquivalent(pointData.unitResourceEquivalent, pointData.unitCountGrowthWeight);
                 point.TeleportationId = pointData.teleportationId;
                 point.SetDefendSpawnWeight(pointData.defendSpawnWeight);
                 point.DestinationId = pointData.destinationId;
@@ -3254,9 +3254,7 @@ namespace AAAGame.Tools.Editor
 
         private static float ResolveDefaultMovementTypeRadius(string configKey)
         {
-            float tableRadius = ResolveGameConfigFloat(configKey);
-            float conversionRate = ResolveGameConfigFloat(DistanceUnitConverter.DistanceConversionRateKey);
-            return tableRadius * conversionRate;
+            return ResolveGameConfigFloat(configKey);
         }
 
         private static float ResolveGameConfigFloat(string configKey)
@@ -3439,7 +3437,7 @@ namespace AAAGame.Tools.Editor
             string entityType = entity.__identifier;
             EntityPresetPointType pointType;
             string identifier;
-            Fix64 unitStrengthValue = Fix64.Zero;
+            Fix64 unitResourceEquivalent = Fix64.Zero;
             Fix64 unitCountGrowthWeight = Fix64.Zero;
             int teleportationId = 0;
             Fix64 defendSpawnWeight = Fix64.Zero;
@@ -3455,8 +3453,8 @@ namespace AAAGame.Tools.Editor
                 identifier = GetFieldString(entity, "Identifier");
                 if (string.IsNullOrWhiteSpace(identifier))
                     throw new InvalidOperationException("LDtk Soldier requires a non-empty Identifier field.");
-                if (!TryGetPositiveFixedField(entity, "StrengthValue", out unitStrengthValue))
-                    throw new InvalidOperationException($"LDtk Soldier '{identifier}' StrengthValue must be a finite positive number, actual={GetFieldValue(entity, "StrengthValue")}.");
+                if (!TryGetPositiveFixedField(entity, "ResourceEquivalent", out unitResourceEquivalent))
+                    throw new InvalidOperationException($"LDtk Soldier '{identifier}' ResourceEquivalent must be a finite positive number, actual={GetFieldValue(entity, "ResourceEquivalent")}.");
                 if (!TryGetUnitIntervalFixedField(entity, "CountGrowthWeight", out unitCountGrowthWeight))
                     throw new InvalidOperationException($"LDtk Soldier '{identifier}' CountGrowthWeight must be between zero and one, actual={GetFieldValue(entity, "CountGrowthWeight")}.");
             }
@@ -3525,7 +3523,7 @@ namespace AAAGame.Tools.Editor
             {
                 pointType = pointType,
                 identifier = identifier,
-                unitStrengthValue = unitStrengthValue,
+                unitResourceEquivalent = unitResourceEquivalent,
                 unitCountGrowthWeight = unitCountGrowthWeight,
                 teleportationId = teleportationId,
                 defendSpawnWeight = defendSpawnWeight,
@@ -4086,7 +4084,7 @@ namespace AAAGame.Tools.Editor
         {
             public EntityPresetPointType pointType;
             public string identifier;
-            public Fix64 unitStrengthValue;
+            public Fix64 unitResourceEquivalent;
             public Fix64 unitCountGrowthWeight;
             public int teleportationId;
             public Fix64 defendSpawnWeight;

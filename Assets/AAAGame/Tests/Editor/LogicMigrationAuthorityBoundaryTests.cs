@@ -8,6 +8,8 @@ using UnityEngine;
 [TestFixture]
 public sealed class LogicMigrationAuthorityBoundaryTests
 {
+    private const string ProjectFlowConfigPath = "Assets/AAAGame/SOs/FlowFieldNavigationConfig.asset";
+
     [SetUp]
     public void SetUp()
     {
@@ -24,6 +26,18 @@ public sealed class LogicMigrationAuthorityBoundaryTests
             LogicFrameRuntime.End();
         EntityRegistry.Clear();
         FlowFieldCrowdMovementSystem.ResetAll();
+        RestoreProjectFlowConfig();
+    }
+
+    private static void RestoreProjectFlowConfig()
+    {
+        FlowFieldNavigationConfig projectConfig = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowFieldNavigationConfig>(
+            ProjectFlowConfigPath);
+        if (projectConfig == null)
+            throw new InvalidOperationException(
+                $"LogicMigrationAuthorityBoundaryTests teardown failed: project flow config is missing at {ProjectFlowConfigPath}.");
+
+        FlowFieldCrowdMovementSystem.SetConfig(projectConfig);
     }
 
     [Test]

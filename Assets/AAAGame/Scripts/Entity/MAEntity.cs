@@ -130,7 +130,7 @@ public class MAEntity : CompCreature, IEntityContext
 
     public virtual LogicCombatShape CombatShape => LogicCombatShape.Circle(
         PositionFixed,
-        DistanceUnitConverter.ConvertToWorld(GetProperty(CreatureMainProperty.CollisionRadius)));
+        (GetProperty(CreatureMainProperty.CollisionRadius)));
 
     public Vector3 Position
     {
@@ -1003,7 +1003,7 @@ public class MAEntity : CompCreature, IEntityContext
         if (collisionRadius <= Fix64.Zero)
             throw new InvalidOperationException($"MAEntity requires a positive logic collision radius. entity={LogicEntityId.Value}, raw={collisionRadius.RawValue}.");
 
-        float targetWorldRadius = DistanceUnitConverter.ConvertToWorldFloat(collisionRadius);
+        float targetWorldRadius = (float)(collisionRadius);
         if (targetWorldRadius <= 0.0001f)
             throw new InvalidOperationException($"MAEntity converted collision radius is invalid. entity={LogicEntityId.Value}, world={targetWorldRadius}.");
 

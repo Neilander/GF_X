@@ -171,7 +171,7 @@ public sealed class SkillHigherHealthSplashBuff : BuffCallback
             return;
 
         Fix64 mainRatio = mainTarget.HealthValue / mainMax;
-        Fix64 radius = DistanceUnitConverter.ConvertToWorld(m_Radius);
+        Fix64 radius = (m_Radius);
         var all = EntityRegistry.AllEntities;
         m_ApplyingSplash = true;
         try

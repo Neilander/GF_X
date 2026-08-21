@@ -223,7 +223,7 @@ public static class AreaWeaponDamage
         }
 
         var targets = new List<IEntityContext> { mainTarget };
-        Fix64 radius = DistanceUnitConverter.ConvertToWorld(weaponData.SplashRadius);
+        Fix64 radius = (weaponData.SplashRadius);
         FixVector2 center = LogicEntityFrameSnapshotService.GetRequiredPosition(mainTarget);
         foreach (var target in CollectEnemiesInCircle(attacker, center, radius, mainTarget))
             targets.Add(target);
@@ -245,7 +245,7 @@ public static class AreaWeaponDamage
             throw new System.InvalidOperationException($"AreaWeaponDamage.DealSelfAoE failed: weaponData is null. attacker={attacker.CharacterKey}.");
 
         var targets = new List<IEntityContext> { mainTarget };
-        Fix64 radius = DistanceUnitConverter.ConvertToWorld(weaponData.Range);
+        Fix64 radius = (weaponData.Range);
         FixVector2 center = LogicEntityFrameSnapshotService.GetRequiredPosition(attacker);
         foreach (var target in CollectEnemiesInCircle(attacker, center, radius, mainTarget))
             targets.Add(target);
@@ -272,7 +272,7 @@ public static class AreaWeaponDamage
             forward = LogicEntityFrameSnapshotService.GetRequiredForward(attacker);
         forward = forward.GetNormalized();
 
-        Fix64 range = DistanceUnitConverter.ConvertToWorld(
+        Fix64 range = (
             weaponData.SplitDist > Fix64.Zero ? weaponData.SplitDist : weaponData.Range);
         if (weaponData.SplitAngle < Fix64.Zero || weaponData.SplitAngle >= (Fix64)180)
             throw new System.InvalidOperationException($"AreaWeaponDamage.DealCleave requires SplitAngle in [0, 180). actual={weaponData.SplitAngle}.");
@@ -370,7 +370,7 @@ public static class HealingWeaponEffect
         if (weaponData.Type == WeaponType.HealProjectile && weaponData.SplashRadius > Fix64.Zero)
         {
             HealSingle(healer, target, weaponData.Atk);
-            Fix64 radius = DistanceUnitConverter.ConvertToWorld(weaponData.SplashRadius);
+            Fix64 radius = (weaponData.SplashRadius);
             FixVector2 center = LogicEntityFrameSnapshotService.GetRequiredPosition(target);
             foreach (var ally in CollectAlliesInCircle(healer, center, radius, target))
             {

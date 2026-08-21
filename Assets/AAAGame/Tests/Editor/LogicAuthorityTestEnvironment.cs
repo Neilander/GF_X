@@ -24,7 +24,6 @@ public sealed class LogicAuthorityConfigTestScope : System.IDisposable
     private const string ReturnDamageReductionConfigKey = "DefendReturnDamageReductionPercent";
     private static readonly string[] ConfigKeys =
     {
-        DistanceUnitConverter.DistanceConversionRateKey,
         "BuildingInteractionRadius",
         "SmallUnitCollisionRadius",
         "MediumUnitCollisionRadius",
@@ -54,7 +53,7 @@ public sealed class LogicAuthorityConfigTestScope : System.IDisposable
         "DefendReturnMoveSpeedBonus",
         "PlayerOutOfCombatMoveSpeedBonus",
         "DefendReturnHealthRegenPercentPerSecond",
-        "DefendPhaseEnemyArriveInterval",
+        "DefendPhaseSameGroupSpawnIntervalSeconds",
         "DefendPhaseEnemyMinSpeed",
         "DefendPhaseEnemyMaxSpeed",
         "DefendPhaseEnemyEndlessGrowthRate",
@@ -64,14 +63,12 @@ public sealed class LogicAuthorityConfigTestScope : System.IDisposable
 
     private static readonly string[] ConfigValues =
     {
-        "0.05", "90", "12", "22", "36", "54", "50", "300", "800", "1200", "500", "2500", "10000", "0.4", "1", "1200",
-        "1200", "900", "900", "50", "1800", "2", "200", "700", "2", "700", "1800", "250", "500", "20", "0.8", "500", "1000", "1.2", "0.5", "1"
+        "1.4", "0.2", "0.4", "0.6", "1.0", "50", "1.8", "5.4", "8.1", "3.6", "14.4", "54.0", "0.4", "1", "7.2",
+        "27.0", "21.6", "21.6", "0.9", "32.4", "2", "3.6", "12.6", "2", "12.6", "32.4", "4.5", "9.0", "20", "1", "5.4", "21.6", "1.2", "0.5", "1"
     };
 
     private readonly bool[] m_HadPreviousValues = new bool[ConfigKeys.Length];
     private readonly Fix64[] m_PreviousValues = new Fix64[ConfigKeys.Length];
-    private readonly bool m_HadPreviousDistanceConversionRateText;
-    private readonly string m_PreviousDistanceConversionRateText;
     private readonly bool m_HadPreviousReturnDamageReduction;
     private readonly Fix64 m_PreviousReturnDamageReduction;
     private bool m_Disposed;
@@ -83,21 +80,18 @@ public sealed class LogicAuthorityConfigTestScope : System.IDisposable
             throw new System.InvalidOperationException(
                 $"Logic authority test config key/value count mismatch. keys={ConfigKeys.Length}, values={ConfigValues.Length}.");
         }
-        m_HadPreviousDistanceConversionRateText = DistanceUnitConverter.TryGetEditorTestDistanceConversionRateText(
-            out m_PreviousDistanceConversionRateText);
-        DistanceUnitConverter.SetEditorTestDistanceConversionRateText(ConfigValues[0]);
-        m_HadPreviousReturnDamageReduction = DistanceUnitConverter.TryGetEditorTestFixedConfig(
+        m_HadPreviousReturnDamageReduction = FixedConfigReader.TryGetEditorTestFixedConfig(
             ReturnDamageReductionConfigKey,
             out m_PreviousReturnDamageReduction);
-        DistanceUnitConverter.SetEditorTestFixedConfig(ReturnDamageReductionConfigKey, Fix64.Zero);
+        FixedConfigReader.SetEditorTestFixedConfig(ReturnDamageReductionConfigKey, Fix64.Zero);
 
-        for (int i = 1; i < ConfigKeys.Length; i++)
+        for (int i = 0; i < ConfigKeys.Length; i++)
         {
             string key = ConfigKeys[i];
-            m_HadPreviousValues[i] = DistanceUnitConverter.TryGetEditorTestPositiveFixedConfig(key, out m_PreviousValues[i]);
-            DistanceUnitConverter.SetEditorTestPositiveFixedConfig(
+            m_HadPreviousValues[i] = FixedConfigReader.TryGetEditorTestPositiveFixedConfig(key, out m_PreviousValues[i]);
+            FixedConfigReader.SetEditorTestPositiveFixedConfig(
                 key,
-                DistanceUnitConverter.ParseFixedConfigText(key, ConfigValues[i]));
+                FixedConfigReader.ParseFixedConfigText(key, ConfigValues[i]));
         }
     }
 
@@ -106,22 +100,17 @@ public sealed class LogicAuthorityConfigTestScope : System.IDisposable
         if (m_Disposed)
             return;
 
-        if (m_HadPreviousDistanceConversionRateText)
-            DistanceUnitConverter.SetEditorTestDistanceConversionRateText(m_PreviousDistanceConversionRateText);
-        else
-            DistanceUnitConverter.ClearEditorTestDistanceConversionRate();
-
-        for (int i = 1; i < ConfigKeys.Length; i++)
+        for (int i = 0; i < ConfigKeys.Length; i++)
         {
             if (m_HadPreviousValues[i])
-                DistanceUnitConverter.SetEditorTestPositiveFixedConfig(ConfigKeys[i], m_PreviousValues[i]);
+                FixedConfigReader.SetEditorTestPositiveFixedConfig(ConfigKeys[i], m_PreviousValues[i]);
             else
-                DistanceUnitConverter.ClearEditorTestPositiveFixedConfig(ConfigKeys[i]);
+                FixedConfigReader.ClearEditorTestPositiveFixedConfig(ConfigKeys[i]);
         }
         if (m_HadPreviousReturnDamageReduction)
-            DistanceUnitConverter.SetEditorTestFixedConfig(ReturnDamageReductionConfigKey, m_PreviousReturnDamageReduction);
+            FixedConfigReader.SetEditorTestFixedConfig(ReturnDamageReductionConfigKey, m_PreviousReturnDamageReduction);
         else
-            DistanceUnitConverter.ClearEditorTestFixedConfig(ReturnDamageReductionConfigKey);
+            FixedConfigReader.ClearEditorTestFixedConfig(ReturnDamageReductionConfigKey);
         m_Disposed = true;
     }
 }

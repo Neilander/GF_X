@@ -24,7 +24,7 @@ public static class DisplacementForceUtility
             return false;
         }
 
-        worldVelocity = DistanceUnitConverter.ConvertToWorld(ReadForceByDifference(
+        worldVelocity = (ReadForceByDifference(
             difference,
             KnockbackForceLevelM1Key,
             KnockbackForceLevel0Key,
@@ -46,20 +46,20 @@ public static class DisplacementForceUtility
             return false;
         }
 
-        worldAcceleration = DistanceUnitConverter.ConvertToWorld(ReadForceByDifference(
+        worldAcceleration = (ReadForceByDifference(
             difference,
             PullForceLevelM1Key,
             PullForceLevel0Key,
             PullForceLevel1Key));
-        duration = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(
+        duration = FixedConfigReader.ReadRequiredPositiveFixedConfig(
             difference <= -Fix64.One ? PullDurationLevelM1Key : PullDurationLevel0Key);
         return true;
     }
 
     public static Fix64 ReadWorldFriction()
     {
-        return DistanceUnitConverter.ConvertToWorld(
-            DistanceUnitConverter.ReadRequiredPositiveFixedConfig(FrictionKey));
+        return (
+            FixedConfigReader.ReadRequiredPositiveFixedConfig(FrictionKey));
     }
 
     private static Fix64 ReadForceByDifference(
@@ -73,7 +73,7 @@ public static class DisplacementForceUtility
             : difference < Fix64.One
                 ? level0Key
                 : level1Key;
-        return DistanceUnitConverter.ReadRequiredPositiveFixedConfig(key);
+        return FixedConfigReader.ReadRequiredPositiveFixedConfig(key);
     }
 
     private static Fix64 RequireWeight(Fix64 weightLevel)

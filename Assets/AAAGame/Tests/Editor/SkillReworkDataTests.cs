@@ -33,21 +33,21 @@ public sealed class SkillReworkDataTests
         Assert.AreEqual(SkillType.Passive, fireDrill.Type);
         CollectionAssert.AreEqual(new[] { (Fix64)1, (Fix64)50 }, fireDrill.Lv1UniqueValues);
         CollectionAssert.AreEqual(new[] { Fix64.Parse("0.5"), (Fix64)20 }, fireDrill.UpgradeIncrementUniqueValues);
-        Assert.AreEqual((Fix64)500, fireDrill.Lv1EffectRadius);
-        Assert.AreEqual((Fix64)100, fireDrill.UpgradeIncrementEffectRadius);
+        Assert.AreEqual((Fix64)9f, fireDrill.Lv1EffectRadius);
+        Assert.AreEqual((Fix64)1.8f, fireDrill.UpgradeIncrementEffectRadius);
 
         SkillTable urgentRequest = FindSkill("Skill_UrgentRequest");
         Assert.AreEqual(SkillType.Active, urgentRequest.Type);
         CollectionAssert.AreEqual(new[] { (Fix64)8, (Fix64)3, (Fix64)15 }, urgentRequest.Lv1UniqueValues);
         CollectionAssert.AreEqual(new[] { (Fix64)2, (Fix64)2, (Fix64)10 }, urgentRequest.UpgradeIncrementUniqueValues);
-        Assert.AreEqual((Fix64)900, urgentRequest.Lv1CastRange);
+        Assert.AreEqual((Fix64)16.2f, urgentRequest.Lv1CastRange);
         Assert.AreEqual(2, urgentRequest.Lv1UsageCount);
 
         SkillTable lightLoad = FindSkill("Skill_ExpressDelivery");
         Assert.AreEqual(SkillType.Active, lightLoad.Type);
         Assert.AreEqual((Fix64)40, lightLoad.Lv1UniqueValues[0]);
-        Assert.AreEqual((Fix64)600, lightLoad.Lv1CastRange);
-        Assert.AreEqual((Fix64)250, lightLoad.Lv1EffectRadius);
+        Assert.AreEqual((Fix64)10.8f, lightLoad.Lv1CastRange);
+        Assert.AreEqual((Fix64)4.5f, lightLoad.Lv1EffectRadius);
         Assert.AreEqual((Fix64)2, lightLoad.Lv1Duration);
         Assert.AreEqual(2, lightLoad.Lv1UsageCount);
 
@@ -106,11 +106,11 @@ public sealed class SkillReworkDataTests
             (BuildingPanelPresentation.UsageGlyph, "3"),
             (BuildingPanelPresentation.CooldownGlyph, ((Fix64)8).ToString()));
         AssertSkillStats("Skill_ForgedInFire", 3,
-            (BuildingPanelPresentation.SplashGlyph, ((Fix64)700).ToString()),
+            (BuildingPanelPresentation.SplashGlyph, "12.6"),
             (BuildingPanelPresentation.StackGlyph, ((Fix64)90).ToString()));
         AssertSkillStats("Skill_ExpressDelivery", 3,
-            (BuildingPanelPresentation.CastDistanceGlyph, ((Fix64)700).ToString()),
-            (BuildingPanelPresentation.SplashGlyph, ((Fix64)270).ToString()),
+            (BuildingPanelPresentation.CastDistanceGlyph, "12.6"),
+            (BuildingPanelPresentation.SplashGlyph, "4.9"),
             (BuildingPanelPresentation.DurationGlyph, ((Fix64)3).ToString()),
             (BuildingPanelPresentation.UsageGlyph, "4"),
             (BuildingPanelPresentation.CooldownGlyph, ((Fix64)9).ToString()));

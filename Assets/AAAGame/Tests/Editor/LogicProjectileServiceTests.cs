@@ -102,7 +102,7 @@ public class LogicProjectileServiceTests
             (Fix64)10,
             Fix64.One,
             (Fix64)100,
-            (Fix64)300,
+            (Fix64)5.4f,
             Fix64.Zero,
             Fix64.Zero,
             Fix64.Zero,

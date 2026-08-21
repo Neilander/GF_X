@@ -255,7 +255,7 @@ public static class LogicMovementRegionConstraintService
 
     private static Fix64 ResolveCollisionRadius(IEntityContext entity)
     {
-        Fix64 radius = DistanceUnitConverter.ConvertToWorld(
+        Fix64 radius = (
             entity.GetProperty(CreatureMainProperty.CollisionRadius));
         if (radius <= Fix64.Zero)
         {

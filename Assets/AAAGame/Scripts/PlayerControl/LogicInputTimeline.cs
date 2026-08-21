@@ -229,6 +229,9 @@ public sealed class LogicInputTimeline
     public int PendingEventCount => m_PendingEvents.Count;
     public int RetainedSealedFrameCount => CurrentFrame.FrameId == 0 ? 0 : 1;
     public ulong LateEventCount { get; private set; }
+    public RawInputEventKind LastLateEventKind { get; private set; }
+    public double LastLateEventTimestamp { get; private set; }
+    public double LastLateEventPreviousCutoff { get; private set; }
 
     public void Begin(
         double startRealtime,
@@ -245,6 +248,9 @@ public sealed class LogicInputTimeline
         m_WorldMove = initialWorldMove;
         m_HeldBits = initialHeldBits;
         LateEventCount = 0;
+        LastLateEventKind = default;
+        LastLateEventTimestamp = 0d;
+        LastLateEventPreviousCutoff = 0d;
         CurrentFrame = LogicInputFrame.Empty;
         m_IsStarted = true;
     }
@@ -258,6 +264,9 @@ public sealed class LogicInputTimeline
         m_WorldMove = FixVector2.Zero;
         m_HeldBits = 0;
         LateEventCount = 0;
+        LastLateEventKind = default;
+        LastLateEventTimestamp = 0d;
+        LastLateEventPreviousCutoff = 0d;
         CurrentFrame = LogicInputFrame.Empty;
         m_IsStarted = false;
     }
@@ -471,7 +480,12 @@ public sealed class LogicInputTimeline
     {
         ValidateTimestamp(timestamp, nameof(timestamp));
         if (m_IsStarted && timestamp <= m_LastCutoff + TimestampBoundaryEpsilonSeconds)
+        {
             LateEventCount = checked(LateEventCount + 1);
+            LastLateEventKind = kind;
+            LastLateEventTimestamp = timestamp;
+            LastLateEventPreviousCutoff = m_LastCutoff;
+        }
 
         var inputEvent = new RawInputEvent(
             checked(++m_NextSequence),

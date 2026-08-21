@@ -76,7 +76,7 @@ public static class TeleportationPointService
                 playerState.LogicEntityId,
                 destination,
                 strongholdId,
-                DistanceUnitConverter.ReadRequiredPositiveFixedConfig(CombatTeleportationWindUpConfigKey));
+                FixedConfigReader.ReadRequiredPositiveFixedConfig(CombatTeleportationWindUpConfigKey));
     }
 
     private static void ValidatePoint(EntityPresetPoint point)

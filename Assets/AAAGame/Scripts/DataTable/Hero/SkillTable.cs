@@ -47,7 +47,7 @@ public class SkillTable : DataRowBase
         }
 
         /// <summary>
-        /// 1级施法距离
+        /// 1级施法距离（格）
         /// </summary>
         public Fix64 Lv1CastRange
         {
@@ -56,7 +56,7 @@ public class SkillTable : DataRowBase
         }
 
         /// <summary>
-        /// 1级作用范围
+        /// 1级作用范围（格）
         /// </summary>
         public Fix64 Lv1EffectRadius
         {
@@ -101,7 +101,7 @@ public class SkillTable : DataRowBase
         }
 
         /// <summary>
-        /// 升级增加施法距离
+        /// 升级增加施法距离（格）
         /// </summary>
         public Fix64 UpgradeIncrementCastRange
         {
@@ -110,7 +110,7 @@ public class SkillTable : DataRowBase
         }
 
         /// <summary>
-        /// 升级增加作用范围
+        /// 升级增加作用范围（格）
         /// </summary>
         public Fix64 UpgradeIncrementEffectRadius
         {

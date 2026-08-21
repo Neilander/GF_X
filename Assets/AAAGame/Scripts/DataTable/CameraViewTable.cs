@@ -15,7 +15,7 @@ using UnityGameFramework.Runtime;
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName | Obfuz.ObfuzScope.MethodName)]
 #endif
 /// <summary>
-/// 相机视角
+/// 正交相机配置
 /// </summary>
 public class CameraViewTable : DataRowBase
 {
@@ -29,16 +29,34 @@ public class CameraViewTable : DataRowBase
     }
 
         /// <summary>
-        /// 跟随偏移
+        /// 相机欧拉角（X=俯角，Y=朝向）
         /// </summary>
-        public Vector3 FollowOffset
+        public Vector3 Rotation
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 
+        /// 正交半屏高度（世界单位）
+        /// </summary>
+        public float OrthographicSize
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 相机相对跟随点的竖直高度（世界单位）
+        /// </summary>
+        public float CameraHeight
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 瞄准点偏移
         /// </summary>
         public Vector3 AimOffset
         {
@@ -58,7 +76,9 @@ public class CameraViewTable : DataRowBase
             index++;
             m_Id = DataTableExtension.ParseInt(columnStrings[index++]);
             index++;
-            FollowOffset = DataTableExtension.ParseVector3(columnStrings[index++]);
+            Rotation = DataTableExtension.ParseVector3(columnStrings[index++]);
+            OrthographicSize = DataTableExtension.ParseFloat(columnStrings[index++]);
+            CameraHeight = DataTableExtension.ParseFloat(columnStrings[index++]);
             AimOffset = DataTableExtension.ParseVector3(columnStrings[index++]);
 
             return true;
@@ -71,7 +91,9 @@ public class CameraViewTable : DataRowBase
                 using (BinaryReader binaryReader = new BinaryReader(memoryStream, Encoding.UTF8))
                 {
                     m_Id = binaryReader.Read7BitEncodedInt32();
-                    FollowOffset = binaryReader.ReadVector3();
+                    Rotation = binaryReader.ReadVector3();
+                    OrthographicSize = binaryReader.ReadSingle();
+                    CameraHeight = binaryReader.ReadSingle();
                     AimOffset = binaryReader.ReadVector3();
                 }
             }

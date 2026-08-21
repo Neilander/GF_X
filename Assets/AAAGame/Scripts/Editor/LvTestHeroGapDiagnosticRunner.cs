@@ -261,7 +261,7 @@ internal static class LvTestHeroGapDiagnosticRunner
         ILogicFrameEntity logicHero,
         LogicEntityState building)
     {
-        Fix64 radius = DistanceUnitConverter.ConvertToWorld(
+        Fix64 radius = (
             hero.GetProperty(CreatureMainProperty.CollisionRadius));
         FixVector2 expectedCenter = new FixVector2((Fix64)65, (Fix64)40);
         Fix64 fixtureHalfExtent = Fix64.FromRaw(6144);

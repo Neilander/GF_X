@@ -5,7 +5,7 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "LightLoadDashActiveSkillSO", menuName = "Skills/Active/Light Load Dash")]
 public sealed class LightLoadDashActiveSkillSO : TargetPositionActiveSkillSO
 {
-    private static Fix64 EndpointSnapDistance => DistanceUnitConverter.ConvertToWorld((Fix64)50);
+    private static Fix64 EndpointSnapDistance => Fix64.FromRaw(3687);
 
     protected override void ApplyAtPosition(
         IEntityContext caster,
@@ -15,7 +15,7 @@ public sealed class LightLoadDashActiveSkillSO : TargetPositionActiveSkillSO
         if (caster is not LogicEntityState state)
             throw new InvalidOperationException($"LightLoad requires an authoritative logic entity. skillId={skillId}");
 
-        Fix64 collisionRadius = DistanceUnitConverter.ConvertToWorld(
+        Fix64 collisionRadius = (
             caster.GetProperty(CreatureMainProperty.CollisionRadius));
         int agentTypeId = ClusterSpawnSystem.ResolveAgentTypeId(UnitType.Unit_Hero);
         if (!FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixed(

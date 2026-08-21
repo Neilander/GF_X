@@ -602,11 +602,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 92fbafb09f009ae4bb8c6ae139d69b16, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  useLegacyIsometricOnFollow: 1
-  legacyPivotLocalPosition: {x: 85.6, y: -67, z: 84.55}
-  legacyPivotEuler: {x: 30, y: 45, z: 0}
-  legacyInnerCameraLocalPosition: {x: 0, y: 0, z: -250}
-  legacyOrthographicSize: 14.4
   enableScreenEdgePan: 1
   edgeThresholdRatio: 0.1
   edgeExitThresholdRatio: 0.25

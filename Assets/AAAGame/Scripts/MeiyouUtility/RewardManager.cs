@@ -174,7 +174,7 @@ public class RewardManager : GameFrameworkComponent
 		if (GF.Config == null)
 			throw new InvalidOperationException("RewardManager requires initialized game config.");
 
-		m_BaseResourceIncomeDailyGrowth = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(BaseResourceIncomeDailyGrowthConfigKey);
+		m_BaseResourceIncomeDailyGrowth = FixedConfigReader.ReadRequiredPositiveFixedConfig(BaseResourceIncomeDailyGrowthConfigKey);
 		m_DefendPhaseBaseResourceIncome = GF.Config.GetInt(DefendPhaseBaseResourceIncomeConfigKey, 0);
 		m_InvadePhaseIncomePerCapturedOutpost = GF.Config.GetInt(InvadePhaseIncomePerCapturedOutpostConfigKey, 0);
 		m_KillRewardSupplyRatio = GF.Config.GetInt(KillRewardSupplyRatioConfigKey, 0);

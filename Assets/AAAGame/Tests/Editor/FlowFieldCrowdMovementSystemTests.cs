@@ -11,6 +11,8 @@ using UnityEngine.TestTools;
 [SingleThreaded]
 public class FlowFieldCrowdMovementSystemTests
 {
+    private const string ProjectFlowConfigPath = "Assets/AAAGame/SOs/FlowFieldNavigationConfig.asset";
+
     private LogicTestGroupMoveManagerAuthority m_GroupMoveAuthority;
 
     [SetUp]
@@ -44,6 +46,18 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.ResetAll();
         FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
         FlowFieldCrowdMovementSystem.ClearEditorTestClock();
+        RestoreProjectFlowConfig();
+    }
+
+    private static void RestoreProjectFlowConfig()
+    {
+        FlowFieldNavigationConfig projectConfig = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowFieldNavigationConfig>(
+            ProjectFlowConfigPath);
+        if (projectConfig == null)
+            throw new InvalidOperationException(
+                $"FlowFieldCrowdMovementSystemTests teardown failed: project flow config is missing at {ProjectFlowConfigPath}.");
+
+        FlowFieldCrowdMovementSystem.SetConfig(projectConfig);
     }
 
     private static void SetupCombatPhaseForTests()
@@ -131,7 +145,7 @@ public class FlowFieldCrowdMovementSystemTests
         string[] authorityFiles =
         {
             Path.Combine(scriptsRoot, "Movement", "FlowFieldCrowdMovementSystem.cs"),
-            Path.Combine(scriptsRoot, "Common", "DistanceUnitConverter.cs"),
+            Path.Combine(scriptsRoot, "Common", "FixedConfigReader.cs"),
             Path.Combine(scriptsRoot, "DataTable", "CharacterDataDetailAccessor.cs"),
             Path.Combine(scriptsRoot, "Card", "LogicCardCommandService.cs"),
             Path.Combine(scriptsRoot, "Card", "LogicCardPlacementAuthority.cs"),
@@ -157,7 +171,6 @@ public class FlowFieldCrowdMovementSystemTests
 
         string flowSource = File.ReadAllText(authorityFiles[0]);
         Assert.That(flowSource, Does.Contain("ResolveConfiguredAgentTypeRadiusFixed"));
-        Assert.That(flowSource, Does.Contain("DistanceConversionRateFixed"));
         Assert.That(flowSource, Does.Not.Contain("return Time.frameCount"));
         Assert.That(flowSource, Does.Not.Contain("return Time.time"));
     }
@@ -166,8 +179,8 @@ public class FlowFieldCrowdMovementSystemTests
     public void RuntimeAgentTypeRadius_IsFrozenBeforeSceneNavigationSourceEnable()
     {
         const string configKey = "MediumUnitCollisionRadius";
-        Fix64 configuredRadius = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(configKey);
-        Fix64 expectedWorldRadius = DistanceUnitConverter.ConvertToWorld(configuredRadius);
+        Fix64 configuredRadius = FixedConfigReader.ReadRequiredPositiveFixedConfig(configKey);
+        Fix64 expectedWorldRadius = (configuredRadius);
         MethodInfo resolveRadius = typeof(FlowFieldCrowdMovementSystem).GetMethod(
             "ResolveAgentTypeRadiusFixed",
             BindingFlags.Static | BindingFlags.NonPublic);
@@ -175,7 +188,7 @@ public class FlowFieldCrowdMovementSystemTests
 
         try
         {
-            DistanceUnitConverter.SetEditorTestPositiveFixedConfig(configKey, configuredRadius + Fix64.One);
+            FixedConfigReader.SetEditorTestPositiveFixedConfig(configKey, configuredRadius + Fix64.One);
             Fix64 frozenRadius = (Fix64)resolveRadius.Invoke(
                 null,
                 new object[] { AgentTypeHelper.MediumMovementTypeId });
@@ -184,7 +197,7 @@ public class FlowFieldCrowdMovementSystemTests
         }
         finally
         {
-            DistanceUnitConverter.SetEditorTestPositiveFixedConfig(configKey, configuredRadius);
+            FixedConfigReader.SetEditorTestPositiveFixedConfig(configKey, configuredRadius);
             FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
         }
     }
@@ -299,7 +312,7 @@ public class FlowFieldCrowdMovementSystemTests
                 new[] { 0, 4 });
             FlowNavigationGridAsset.DerivedNavigationData derivedData = FlowFieldCrowdMovementSystem.BuildDerivedNavigationDataForAsset(
                 0,
-                DistanceUnitConverter.ConvertToWorld(DistanceUnitConverter.ReadRequiredPositiveFixedConfig("MediumUnitCollisionRadius")),
+                (FixedConfigReader.ReadRequiredPositiveFixedConfig("MediumUnitCollisionRadius")),
                 width,
                 height,
                 cellSize,
@@ -1315,7 +1328,7 @@ public class FlowFieldCrowdMovementSystemTests
         moveComp.Move((Fix64)0.0333f);
 
         SimMoveExecutor executor = (SimMoveExecutor)ctx.MoveExecutor;
-        Fix64 expectedSpeed = DistanceUnitConverter.ConvertToWorld(ctx.GetProperty(CreatureMainProperty.Speed));
+        Fix64 expectedSpeed = (ctx.GetProperty(CreatureMainProperty.Speed));
         Assert.IsTrue(executor.HasFixedInput, "正式移动链必须调用 SetInputFixed。 ");
         Assert.AreEqual(expectedSpeed.RawValue, executor.LastFixedInput.x.RawValue);
         Assert.AreEqual(0L, executor.LastFixedInput.y.RawValue);
@@ -3902,6 +3915,285 @@ public class FlowFieldCrowdMovementSystemTests
         {
             FlowFieldCrowdMovementSystem.NavigationDistancePrewarmCompleted -= onCompleted;
         }
+    }
+
+    [Test]
+    public void 同一目标已缓存裁剪场后新增起点_必须扩展预热覆盖并完成()
+    {
+        const int width = 64;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        var firstStart = new FixVector2((Fix64)48.5f, (Fix64)1.5f);
+        var laterStart = new FixVector2((Fix64)0.5f, (Fix64)6.5f);
+        var sharedGoal = new FixVector2((Fix64)63.5f, (Fix64)3.5f);
+
+        FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(firstStart, sharedGoal, 0);
+        for (int frame = 1;
+             frame <= 100 && !FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted;
+             frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        }
+
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted,
+            "首个起点必须先完成 demand-limited shared-goal 预热，建立后续新增起点的真实时序。");
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryEstimatePrewarmedNavigationDistanceToReachableGoalFixed(
+                firstStart,
+                sharedGoal,
+                0,
+                out _,
+                out _,
+                out string firstFailure),
+            firstFailure);
+
+        FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(laterStart, sharedGoal, 0);
+        Assert.IsFalse(
+            FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted,
+            "新增未覆盖起点后，预热完成状态必须失效。");
+
+        for (int frame = 101;
+             frame <= 200 && !FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted;
+             frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        }
+
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted,
+            $"同一 shared-goal 的新增起点必须扩展已有裁剪场，不能在缓存存在且 pending=0 时永久等待。 " +
+            $"pending={FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount()}");
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryEstimatePrewarmedNavigationDistanceToReachableGoalFixed(
+                laterStart,
+                sharedGoal,
+                0,
+                out Fix64 laterDistance,
+                out _,
+                out string laterFailure),
+            laterFailure);
+        Assert.Greater(laterDistance.RawValue, Fix64.Zero.RawValue);
+    }
+
+    [Test]
+    public void 预热路径已全部可查询但完成边沿丢失后_队列泵必须按当前状态收敛()
+    {
+        const int width = 40;
+        const int height = 5;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        var start = new FixVector2((Fix64)0.5f, (Fix64)0.5f);
+        var goal = new FixVector2((Fix64)39.5f, (Fix64)4.5f);
+
+        FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(start, goal, 0);
+        for (int frame = 1;
+             frame <= 100 && !FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted;
+             frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        }
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted);
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount());
+
+        FieldInfo completedField = typeof(FlowFieldCrowdMovementSystem).GetField(
+            "s_NavigationDistancePrewarmCompleted",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        FieldInfo completionDirtyField = typeof(FlowFieldCrowdMovementSystem).GetField(
+            "s_NavigationDistancePrewarmCompletionMayHaveChanged",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(completedField);
+        Assert.NotNull(completionDirtyField);
+        completedField.SetValue(null, false);
+        completionDirtyField.SetValue(null, false);
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted);
+        StringAssert.Contains(
+            "queryable=True",
+            FlowFieldCrowdMovementSystem.GetEditorTestNavigationDistancePrewarmDiagnostics());
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(101, 101f / 30f);
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted,
+            FlowFieldCrowdMovementSystem.GetEditorTestNavigationDistancePrewarmDiagnostics());
+        Assert.AreEqual(
+            0,
+            FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount(),
+            "level-triggered 完成判定只应收敛状态，不应重建 shared-goal 场。");
+    }
+
+    [Test]
+    public void 多AgentType预热完成判定_必须使用请求所属NavigationWorld()
+    {
+        const int width = 40;
+        const int height = 8;
+        bool[] smallWalkable = new bool[width * height];
+        bool[] largeWalkable = new bool[width * height];
+        for (int i = 0; i < smallWalkable.Length; i++)
+        {
+            smallWalkable[i] = true;
+            largeWalkable[i] = true;
+        }
+        for (int x = 8; x < width - 8; x++)
+        {
+            largeWalkable[2 * width + x] = false;
+            largeWalkable[5 * width + x] = false;
+        }
+
+        int smallAgentType = AgentTypeHelper.SmallMovementTypeId;
+        int largeAgentType = AgentTypeHelper.LargeMovementTypeId;
+        FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadius(smallAgentType, 0.35f);
+        FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadius(largeAgentType, 0.75f);
+        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSources(new[]
+        {
+            new AuthoredNavigationSourceData(
+                smallAgentType,
+                width,
+                height,
+                1f,
+                Vector3.zero,
+                smallWalkable,
+                null),
+            new AuthoredNavigationSourceData(
+                largeAgentType,
+                width,
+                height,
+                1f,
+                Vector3.zero,
+                largeWalkable,
+                null)
+        });
+        ProcessWorldBuildQueueUntilReady();
+
+        var smallStart = new FixVector2((Fix64)0.5f, (Fix64)1.5f);
+        var smallGoal = new FixVector2((Fix64)39.5f, (Fix64)6.5f);
+        var largeStart = new FixVector2((Fix64)0.5f, (Fix64)3.5f);
+        var largeGoal = new FixVector2((Fix64)39.5f, (Fix64)3.5f);
+        FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(
+            smallStart,
+            smallGoal,
+            smallAgentType);
+        FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(
+            largeStart,
+            largeGoal,
+            largeAgentType);
+
+        for (int frame = 1;
+             frame <= 200 && !FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted;
+             frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        }
+
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted,
+            FlowFieldCrowdMovementSystem.GetEditorTestNavigationDistancePrewarmDiagnostics());
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryEstimatePrewarmedNavigationDistanceToReachableGoalFixed(
+                smallStart,
+                smallGoal,
+                smallAgentType,
+                out _,
+                out _,
+                out string smallFailure),
+            smallFailure);
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryEstimatePrewarmedNavigationDistanceToReachableGoalFixed(
+                largeStart,
+                largeGoal,
+                largeAgentType,
+                out _,
+                out _,
+                out string largeFailure),
+            largeFailure);
+    }
+
+    [Test]
+    public void 动态障碍改变可达目标但世界版本不变_预热必须按新拓扑重新解析并完成()
+    {
+        const int width = 64;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        var start = new FixVector2((Fix64)0.5f, (Fix64)3.5f);
+        var rawGoal = new FixVector2((Fix64)63.5f, (Fix64)3.5f);
+        FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(start, rawGoal, 0);
+        for (int frame = 1;
+             frame <= 100 && !FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted;
+             frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        }
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted);
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryEstimatePrewarmedNavigationDistanceToReachableGoalFixed(
+                start,
+                rawGoal,
+                0,
+                out _,
+                out FixVector2 initialReachableGoal,
+                out string initialFailure),
+            initialFailure);
+        Assert.AreEqual(rawGoal, initialReachableGoal);
+
+        int worldVersionBeforeObstacle = FlowFieldCrowdMovementSystem.GetEditorTestActiveWorldVersion(0);
+        int topologyVersionBeforeObstacle = FlowFieldCrowdMovementSystem.NavigationTopologyVersion;
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            93001,
+            rawGoal,
+            new FixVector2((Fix64)0.49f, (Fix64)0.49f));
+        ProcessRuntimeDirtyQueueUntilReady(101);
+
+        Assert.AreEqual(
+            worldVersionBeforeObstacle,
+            FlowFieldCrowdMovementSystem.GetEditorTestActiveWorldVersion(0),
+            "runtime-dirty 必须保留 world version，测试锁定同 world version 下的拓扑变化。");
+        Assert.Greater(FlowFieldCrowdMovementSystem.NavigationTopologyVersion, topologyVersionBeforeObstacle);
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted);
+
+        for (int frame = 200;
+             frame <= 400 && !FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted;
+             frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        }
+
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted,
+            FlowFieldCrowdMovementSystem.GetEditorTestNavigationDistancePrewarmDiagnostics());
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryEstimatePrewarmedNavigationDistanceToReachableGoalFixed(
+                start,
+                rawGoal,
+                0,
+                out _,
+                out FixVector2 rebuiltReachableGoal,
+                out string rebuiltFailure),
+            rebuiltFailure);
+        Assert.AreNotEqual(rawGoal, rebuiltReachableGoal);
     }
 
     [Test]
@@ -6887,6 +7179,40 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 大型动态障碍覆盖目标时_导航准备必须由同岛最近点统一解析()
+    {
+        const int width = 80;
+        const int height = 50;
+        const float cellSize = 0.1f;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            width,
+            height,
+            cellSize,
+            Vector3.zero,
+            walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext ctx = CreateEntity(new Vector3(1.05f, 0f, 2.55f), false, 0, 0.18f);
+        FixVector2 blockedGoal = new FixVector2((Fix64)4.05f, (Fix64)2.55f);
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(
+            9103,
+            new Vector3(4.05f, 0f, 2.55f),
+            new Vector3(1f, 0f, 1f));
+        ProcessRuntimeDirtyQueueUntilReady(1);
+
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryPrepareNavigationRequestFixed(
+                ctx,
+                blockedGoal,
+                out string failureReason),
+            failureReason);
+    }
+
+    [Test]
     public void 战斗接近点在RuntimeDirty期间返回Pending而不是误报不可达()
     {
         const int width = 9;
@@ -7439,7 +7765,7 @@ public class FlowFieldCrowdMovementSystemTests
         moveComp.Move((Fix64)0.2f);
         ((SimMoveExecutor)ctx.MoveExecutor).Execute(0.2f);
         ctx.SyncPositionFromExecutor();
-        Assert.Greater(ctx.Position.x, 0.7f, $"首次寻路应正常向前，pos={ctx.Position}");
+        Assert.Greater(ctx.Position.x, 0.6f, $"首次寻路应按 0.7 格/秒正常向前，pos={ctx.Position}");
 
         effectComp.StartDurationAdditionalMove((Fix64)0.1f, new FixVector2(Fix64.Zero, (Fix64)(-10)));
         effectComp.ApplyEffect((Fix64)0.1f);
@@ -7667,9 +7993,19 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(mover, blocker.Position, 2f, out Vector3 velocity));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestLastSteeringGoal(
+            mover.LogicEntityId.Value,
+            out Vector3 resolvedGoal));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+            mover.LogicEntityId.Value,
+            out string diagnostic));
 
         Assert.Greater(velocity.x, 0.5f, $"被占目标点应仍保持朝目标附近前进，velocity={velocity}");
-        Assert.Greater(Mathf.Abs(velocity.z), 0.01f, $"被占目标点应旋转到附近空位，而不是继续直冲占位单位，velocity={velocity}");
+        Assert.Greater(
+            Mathf.Abs(velocity.z),
+            0.01f,
+            $"被占目标点应旋转到附近空位，而不是继续直冲占位单位，velocity={velocity}, " +
+            $"resolvedGoal={resolvedGoal}, collisionRadiusRaw={mover.GetProperty(CreatureMainProperty.CollisionRadius).RawValue}, diagnostic={diagnostic}");
     }
 
     [Test]
@@ -8400,8 +8736,17 @@ public class FlowFieldCrowdMovementSystemTests
             chaser.LogicEntityId.Value,
             out string buildSource));
         Assert.AreEqual("committedPortalPrefix", buildSource);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestLastSteeringGoal(
+            chaser.LogicEntityId.Value,
+            out Vector3 replannedSteeringGoal));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+            chaser.LogicEntityId.Value,
+            out string replannedDirectionDiagnostic));
         Assert.AreEqual(0f, Vector3.Angle(initialVelocity, replannedVelocity), 0.01f,
-            $"目标移动只能重规划 committed tile 之后的后缀；当前位置未变时当前局部场方向必须保持一致，initial={initialVelocity}, replanned={replannedVelocity}。");
+            $"目标移动只能重规划 committed tile 之后的后缀；当前位置未变时当前局部场方向必须保持一致，" +
+            $"initial={initialVelocity}, replanned={replannedVelocity}, steeringGoal={replannedSteeringGoal}, " +
+            $"collisionRadiusRaw={chaser.GetProperty(CreatureMainProperty.CollisionRadius).RawValue}, initialDiagnostic={initialDiagnostic}, " +
+            $"replannedDiagnostic={replannedDirectionDiagnostic}。");
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
             chaser.LogicEntityId.Value,
             out string replannedDiagnostic));
@@ -8706,6 +9051,50 @@ public class FlowFieldCrowdMovementSystemTests
 
         Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), "flow tile queue 应在后续预算帧内完成");
         Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount(), 1, "完成后应提交预构建 tile 链");
+    }
+
+    [Test]
+    public void 末逻辑帧消费者之后产生导航需求_冻结Gameplay后按既有预算泵必须归零()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 4;
+        config.DeterministicFlowTileCommitQuota = 1;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 48;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 3.5f));
+        Vector3 goal = new Vector3(47.5f, 0f, 3.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount());
+
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryPrepareNavigationRequest(chaser, goal, out string failureReason),
+            failureReason);
+        int pendingAfterLateDemand = FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount();
+        Assert.Greater(pendingAfterLateDemand, 1, "末帧消费者之后的长路径 demand 必须留下多条待提交 tile，测试才覆盖真实时序。");
+
+        int pumpCount = 0;
+        while (FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount() > 0 && pumpCount < 64)
+        {
+            FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+            pumpCount++;
+        }
+
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(),
+            $"冻结 gameplay 后，既有分帧预算必须收敛末帧 demand。initial={pendingAfterLateDemand}, pumps={pumpCount}, diagnostics={FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics()}");
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount());
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
     }
 
     [Test]
@@ -9373,7 +9762,7 @@ public class FlowFieldCrowdMovementSystemTests
         const float dt = 0.1f;
         const float heroSpeed = 2.4f;
         const float chaserSpeed = 3.5f;
-        Fix64 chaserSpeedProperty = (Fix64)(chaserSpeed / DistanceUnitConverter.DefaultDistanceConversionRate);
+        Fix64 chaserSpeedProperty = (Fix64)chaserSpeed;
         System.Text.StringBuilder setupDiagnostics = new System.Text.StringBuilder();
         FlowFieldCrowdMovementSystem.SetAuthoredNavigationSource(
             grid.AgentTypeId,
@@ -9669,7 +10058,7 @@ public class FlowFieldCrowdMovementSystemTests
         {
             SimEntityContext chaser = CreateEntity(route.ChaserStarts[i], false, grid.AgentTypeId, agentRadius);
             chaser.Side = SideType.EnemySide;
-            chaser.SetProperty(CreatureMainProperty.Speed, (Fix64)(chaserSpeed / DistanceUnitConverter.DefaultDistanceConversionRate));
+            chaser.SetProperty(CreatureMainProperty.Speed, (Fix64)chaserSpeed);
             chasers[i] = chaser;
             allEntities.Add(chaser);
         }
@@ -9970,7 +10359,7 @@ public class FlowFieldCrowdMovementSystemTests
             grid.AgentTypeId,
             agentRadius);
         hero.Side = SideType.PlayerSide;
-        hero.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)(agentRadius / DistanceUnitConverter.DefaultDistanceConversionRate));
+        hero.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)agentRadius);
 
         Vector3[] preferredStarts =
         {
@@ -9995,8 +10384,8 @@ public class FlowFieldCrowdMovementSystemTests
             Vector3 start = ResolveRuntimeLegalLv3MainIslandCell(grid, derivedData, preferredStarts[i], 4.0f, agentRadius, "right-edge-chaser-" + i, diagnostics);
             SimEntityContext chaser = CreateEntity(start, false, grid.AgentTypeId, agentRadius);
             chaser.Side = SideType.EnemySide;
-            chaser.SetProperty(CreatureMainProperty.Speed, (Fix64)(chaserSpeed / DistanceUnitConverter.DefaultDistanceConversionRate));
-            chaser.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)(agentRadius / DistanceUnitConverter.DefaultDistanceConversionRate));
+            chaser.SetProperty(CreatureMainProperty.Speed, (Fix64)chaserSpeed);
+            chaser.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)agentRadius);
             chasers[i] = chaser;
             allEntities.Add(chaser);
         }
@@ -10380,7 +10769,7 @@ public class FlowFieldCrowdMovementSystemTests
         const float dt = 0.1f;
         const float heroSpeed = 2.4f;
         const float targetCellJitter = 0.035f;
-        Fix64 chaserSpeedProperty = (Fix64)(3.5f / DistanceUnitConverter.DefaultDistanceConversionRate);
+        Fix64 chaserSpeedProperty = (Fix64)3.5f;
         SimEntityContext[] chasers = new SimEntityContext[chaserCount];
         CharacterMoveComp[] moveComps = new CharacterMoveComp[chaserCount];
         SimMoveExecutor[] executors = new SimMoveExecutor[chaserCount];
@@ -10935,7 +11324,7 @@ public class FlowFieldCrowdMovementSystemTests
             {
                 SimEntityContext chaser = CreateEntity(starts[i], false, grid.AgentTypeId, agentRadius);
                 chaser.Side = SideType.EnemySide;
-                chaser.SetProperty(CreatureMainProperty.Speed, (Fix64)(chaserSpeed / DistanceUnitConverter.DefaultDistanceConversionRate));
+                chaser.SetProperty(CreatureMainProperty.Speed, (Fix64)chaserSpeed);
                 GameObject go = new GameObject("FlowTest_CC_Chaser_" + i);
                 go.transform.position = starts[i];
                 CharacterController controller = go.AddComponent<CharacterController>();
@@ -11146,9 +11535,13 @@ public class FlowFieldCrowdMovementSystemTests
         RunLv3CharacterControllerCombatScenario(grid, spawnGrid, derivedData, preset, scenario, 991000);
     }
 
-    [TestCase(668, 897)]
-    [TestCase(823, 898)]
-    public void Lv3占领SH13后同主岛Follow应能构建Sector路径(int startSectorId, int goalSectorId)
+    [TestCase(56.808f, 16.524f, 46.44f, 20.412f)]
+    [TestCase(52.92f, 19.116f, 47.736f, 20.412f)]
+    public void Lv3占领SH13后同主岛Follow应能构建Sector路径(
+        float startWorldX,
+        float startWorldZ,
+        float goalWorldX,
+        float goalWorldZ)
     {
         FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Small.asset");
         Assert.NotNull(grid);
@@ -11175,11 +11568,20 @@ public class FlowFieldCrowdMovementSystemTests
             useRuntimeReadOnlyReferences: true);
         ProcessWorldBuildQueueUntilReady();
 
+        int startSectorId = ResolveDerivedSectorIdAtWorldPosition(
+            grid,
+            derivedData,
+            new Vector3(startWorldX, 0f, startWorldZ));
+        int goalSectorId = ResolveDerivedSectorIdAtWorldPosition(
+            grid,
+            derivedData,
+            new Vector3(goalWorldX, 0f, goalWorldZ));
         List<Vector3> starts = ResolveMainIslandCellsInSector(grid, derivedData, startSectorId);
         List<Vector3> goals = ResolveMainIslandCellsInSector(grid, derivedData, goalSectorId);
         Vector3 representativeStart = starts[starts.Count / 2];
         Vector3 representativeGoal = goals[goals.Count / 2];
-        SimEntityContext warmup = CreateEntity(representativeStart, false, grid.AgentTypeId, 0.18f);
+        const float smallUnitRadius = 0.2f;
+        SimEntityContext warmup = CreateEntity(representativeStart, false, grid.AgentTypeId, smallUnitRadius);
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(warmup, representativeGoal, 2f, out _));
 
@@ -11194,7 +11596,7 @@ public class FlowFieldCrowdMovementSystemTests
 
         for (int i = 0; i < starts.Count; i++)
         {
-            SimEntityContext ctx = CreateEntity(starts[i], false, grid.AgentTypeId, 0.18f);
+            SimEntityContext ctx = CreateEntity(starts[i], false, grid.AgentTypeId, smallUnitRadius);
             FlowFieldCrowdMovementSystem.SetEditorTestClock(frame++, frame * 0.1f);
             Assert.IsTrue(
                 FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, representativeGoal, 2f, out _),
@@ -11203,7 +11605,7 @@ public class FlowFieldCrowdMovementSystemTests
 
         for (int i = 0; i < goals.Count; i++)
         {
-            SimEntityContext ctx = CreateEntity(representativeStart, false, grid.AgentTypeId, 0.18f);
+            SimEntityContext ctx = CreateEntity(representativeStart, false, grid.AgentTypeId, smallUnitRadius);
             FlowFieldCrowdMovementSystem.SetEditorTestClock(frame++, frame * 0.1f);
             Assert.IsTrue(
                 FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goals[i], 2f, out _),
@@ -11263,7 +11665,7 @@ public class FlowFieldCrowdMovementSystemTests
         {
             SimEntityContext chaser = CreateEntity(route.ChaserStarts[i], false, grid.AgentTypeId, 0.45f);
             chaser.Side = SideType.EnemySide;
-            chaser.SetProperty(CreatureMainProperty.Speed, (Fix64)(3.5f / DistanceUnitConverter.DefaultDistanceConversionRate));
+            chaser.SetProperty(CreatureMainProperty.Speed, (Fix64)3.5f);
             chaser.TargetComp = new SimTargetingComp(chaser, new System.Collections.Generic.List<IEntityContext> { hero })
             {
                 CurrentTarget = hero
@@ -11492,6 +11894,25 @@ public class FlowFieldCrowdMovementSystemTests
         return sector.SectorId;
     }
 
+    private static int ResolveDerivedSectorIdAtWorldPosition(
+        FlowNavigationGridAsset grid,
+        FlowNavigationGridAsset.DerivedNavigationData derivedData,
+        Vector3 worldPosition)
+    {
+        if (grid == null)
+            throw new InvalidOperationException("ResolveDerivedSectorIdAtWorldPosition failed: grid is null.");
+
+        int x = Mathf.FloorToInt((worldPosition.x - grid.Origin.x) / grid.CellSize);
+        int y = Mathf.FloorToInt((worldPosition.z - grid.Origin.z) / grid.CellSize);
+        if (x < 0 || x >= grid.Width || y < 0 || y >= grid.Height)
+        {
+            throw new InvalidOperationException(
+                $"ResolveDerivedSectorIdAtWorldPosition failed: world={worldPosition} cell=({x},{y}) outside {grid.Width}x{grid.Height}.");
+        }
+
+        return ResolveDerivedSectorId(derivedData, x, y);
+    }
+
     private static List<Vector3> ResolveMainIslandCellsInSector(
         FlowNavigationGridAsset grid,
         FlowNavigationGridAsset.DerivedNavigationData derivedData,
@@ -11611,7 +12032,7 @@ public class FlowFieldCrowdMovementSystemTests
         SimMoveExecutor[] executors = new SimMoveExecutor[chaserStarts.Length];
         bool[] agentExpectsLowerRoute = new bool[chaserStarts.Length];
         var allEntities = new System.Collections.Generic.List<IEntityContext> { hero };
-        Fix64 chaserSpeedProperty = (Fix64)(chaserSpeed / DistanceUnitConverter.DefaultDistanceConversionRate);
+        Fix64 chaserSpeedProperty = (Fix64)chaserSpeed;
         for (int i = 0; i < chaserStarts.Length; i++)
         {
             SimEntityContext chaser = CreateEntity(chaserStarts[i], false, grid.AgentTypeId, agentRadius);
@@ -11968,7 +12389,7 @@ public class FlowFieldCrowdMovementSystemTests
 
             SimEntityContext hero = CreateEntity(heroStart, false, grid.AgentTypeId, agentRadius);
             hero.Side = SideType.PlayerSide;
-            hero.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)(agentRadius / DistanceUnitConverter.DefaultDistanceConversionRate));
+            hero.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)agentRadius);
             int characterLayer = ResolveRequiredLayer("character");
             GameObject heroCollision = new GameObject("FlowTest_CC_Combat_HeroCollider");
             heroCollision.layer = characterLayer;
@@ -11989,8 +12410,8 @@ public class FlowFieldCrowdMovementSystemTests
                 "Assets/AAAGame/Prefabs/Entity/Soldier/背锅侠.prefab",
                 scenario.Name);
             List<IEntityContext> allEntities = new List<IEntityContext>(chaserStarts.Length + 1) { hero };
-            Fix64 speedProperty = (Fix64)(chaserSpeed / DistanceUnitConverter.DefaultDistanceConversionRate);
-            Fix64 radiusProperty = (Fix64)(agentRadius / DistanceUnitConverter.DefaultDistanceConversionRate);
+            Fix64 speedProperty = (Fix64)chaserSpeed;
+            Fix64 radiusProperty = (Fix64)agentRadius;
             for (int i = 0; i < chaserStarts.Length; i++)
             {
                 SimEntityContext chaser = CreateEntity(chaserStarts[i], false, grid.AgentTypeId, agentRadius);
@@ -13743,7 +14164,7 @@ public class FlowFieldCrowdMovementSystemTests
                     || point.PointType != EntityPresetPointType.Unit
                     || !string.Equals(point.Identifier, "Unit_Scapegoat", StringComparison.Ordinal))
                     continue;
-                if (point.UnitStrengthValue <= Fix64.Zero)
+                if (point.UnitResourceEquivalent <= Fix64.Zero)
                     continue;
 
                 Vector3 position = point.Position;
@@ -13793,24 +14214,28 @@ public class FlowFieldCrowdMovementSystemTests
 
     private static int ResolveAuthoredScapegoatCount(EntityPresetPoint point)
     {
-        var curve = new EnemyStrengthCurveSettings((Fix64)0.10m, (Fix64)0.25m);
-        var value = new EnemySquadValueSettings(6, (Fix64)0.45m, (Fix64)8m);
-        Fix64[] levelValues = { Fix64.One, (Fix64)1.8m, (Fix64)2.25m };
-        IReadOnlyList<EnemySquadCompositionEntry> composition = EnemySquadStrengthResolver.Resolve(
-            point.UnitStrengthValue,
+        var curve = new EnemySquadResourceEquivalentCurveSettings((Fix64)0.012m, (Fix64)0.004m, (Fix64)0.55m);
+        Fix64[] unitLevelResourceEquivalents = { Fix64.One, (Fix64)1.8m, (Fix64)2.25m };
+        IReadOnlyList<EnemySquadCompositionEntry> composition = EnemySquadResourceEquivalentResolver.Resolve(
+            point.UnitResourceEquivalent,
             point.UnitCountGrowthWeight,
             1,
             8,
             Fix64.One,
             Fix64.One,
-            levelValues,
+            unitLevelResourceEquivalents,
             curve,
-            value);
+            1 << 20);
         int count = 0;
         for (int i = 0; i < composition.Count; i++)
         {
             if (composition[i].Level != 1)
-                throw new InvalidOperationException("Lv3 authored Scapegoat preset no longer resolves to its original level-one composition.");
+            {
+                throw new InvalidOperationException(
+                    $"Lv3 authored Scapegoat preset no longer resolves to its original level-one composition. " +
+                    $"resourceEquivalentRaw={point.UnitResourceEquivalent.RawValue} weightRaw={point.UnitCountGrowthWeight.RawValue} " +
+                    $"unexpectedEntry=Lv{composition[i].Level}x{composition[i].Count} entryCount={composition.Count}");
+            }
             count = checked(count + composition[i].Count);
         }
         return count;
@@ -15741,8 +16166,8 @@ public class FlowFieldCrowdMovementSystemTests
             Side = SideType.PlayerSide,
             Alive = true
         };
-        ctx.SetProperty(CreatureMainProperty.Speed, (Fix64)40f);
-        ctx.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)10f);
+        ctx.SetProperty(CreatureMainProperty.Speed, (Fix64)0.7f);
+        ctx.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)0.2f);
         ctx.WeaponComp = CreateTestWeaponComp((Fix64)0.75f);
         ctx.MoveExecutor = new SimMoveExecutor { Position = position };
         FlowFieldCrowdMovementSystem.RegisterAgentForEditorTest(ctx, 0.5f, agentTypeId);
@@ -15755,7 +16180,7 @@ public class FlowFieldCrowdMovementSystemTests
             WeaponType.Melee,
             Fix64.One,
             Fix64.One,
-            DistanceUnitConverter.ConvertFromWorld(worldRange),
+            (worldRange),
             Fix64.Zero,
             Fix64.Zero,
             Fix64.Zero,
@@ -15771,7 +16196,7 @@ public class FlowFieldCrowdMovementSystemTests
     private static SimEntityContext CreateEntity(Vector3 position, bool isLeader, int agentTypeId, float radius)
     {
         SimEntityContext ctx = CreateEntity(position, isLeader, agentTypeId);
-        ctx.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)(radius / DistanceUnitConverter.DefaultDistanceConversionRate));
+        ctx.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)radius);
         FlowFieldCrowdMovementSystem.RegisterAgentForEditorTest(ctx, radius, agentTypeId);
         return ctx;
     }

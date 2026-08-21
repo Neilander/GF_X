@@ -310,16 +310,17 @@ public static class LogicAgentCollisionShadowService
             int runtimeObstacleStableId = 0;
             if (entity.PreparedNavigationConstraintEnabled)
             {
+                LogicStaticCollisionSlideMode slideMode = entity.PreparedPreserveSpeedOnStaticSlide
+                    && s_PairCorrections[i] == FixVector2.Zero
+                        ? LogicStaticCollisionSlideMode.PreserveRemainingDistance
+                        : LogicStaticCollisionSlideMode.PreserveTangentialComponent;
                 long staticStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
                 staticAvailable = LogicStaticCollisionShadowService.TrySolveFixed(
                     entity.NavigationAgentTypeId,
                     frameStart,
                     s_PairAdjustedDisplacements[i],
                     body.Radius,
-                    entity.PreparedPreserveSpeedOnStaticSlide
-                    && s_PairCorrections[i] == FixVector2.Zero
-                        ? LogicStaticCollisionSlideMode.PreserveRemainingDistance
-                        : LogicStaticCollisionSlideMode.PreserveTangentialComponent,
+                    slideMode,
                     out LogicStaticCollisionShadowResult staticResult);
                 if (profile)
                     staticSolverTicks += System.Diagnostics.Stopwatch.GetTimestamp() - staticStartTicks;
@@ -340,9 +341,24 @@ public static class LogicAgentCollisionShadowService
                 if (!staticSucceeded)
                 {
                     LastStaticProjectionFailureCount++;
+                    string contactTrace = BuildStaticCollisionFailureTrace(
+                        entity.NavigationAgentTypeId,
+                        staticResult.SolveResult);
                     throw new InvalidOperationException(
-                        $"LogicAgentCollisionShadowService.ResolveStaticProjection failed: static projection failed for entity {body.EntityId.Value}. " +
-                        $"failure={staticResult.SolveResult.Failure}, frame={LogicFrameRuntime.CurrentFrame}.");
+                        $"LogicAgentCollisionShadowService.ResolveStaticProjection failed: static projection failed. " +
+                        $"entity={body.EntityId.Value}, character={entity.CharacterKey}, building={entity.IsBuildingEntity}, " +
+                        $"frame={LogicFrameRuntime.CurrentFrame}, agentType={entity.NavigationAgentTypeId}, " +
+                        $"radiusRaw={body.Radius.RawValue}, slide={slideMode}, failure={staticResult.SolveResult.Failure}, " +
+                        $"startRaw=({frameStart.x.RawValue},{frameStart.y.RawValue}), " +
+                        $"desiredRaw=({s_PairAdjustedDisplacements[i].x.RawValue},{s_PairAdjustedDisplacements[i].y.RawValue}), " +
+                        $"recoveredRaw=({staticResult.SolveResult.RecoveredStart.x.RawValue},{staticResult.SolveResult.RecoveredStart.y.RawValue}), " +
+                        $"resolvedRaw=({staticResult.SolveResult.ResolvedDisplacement.x.RawValue},{staticResult.SolveResult.ResolvedDisplacement.y.RawValue}), " +
+                        $"startedOverlapping={staticResult.SolveResult.StartedOverlapping}, contacts={staticResult.SolveResult.ContactCount}, " +
+                        $"firstHitKey={staticResult.SolveResult.FirstHitStableKey}, " +
+                        $"firstHitNormalRaw=({staticResult.SolveResult.FirstHitNormal.x.RawValue},{staticResult.SolveResult.FirstHitNormal.y.RawValue}), " +
+                        $"contactKind={staticResult.ContactKind}, cell=({staticResult.ContactCellX},{staticResult.ContactCellY}), " +
+                        $"boundarySegment={staticResult.ContactBoundarySegmentIndex}, runtimeObstacle={staticResult.RuntimeObstacleStableId}. " +
+                        contactTrace);
                 }
 
                 staticPosition = staticResult.SolveResult.Start + staticResult.SolveResult.ResolvedDisplacement;
@@ -423,6 +439,87 @@ public static class LogicAgentCollisionShadowService
             UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
                 UnityGameFramework.Runtime.MainThreadPerfScope.LogicMoveResolveRegionConstraint,
                 regionConstraintTicks);
+        }
+    }
+
+    private static string BuildStaticCollisionFailureTrace(
+        int agentTypeId,
+        LogicStaticCollisionSolveResult solveResult)
+    {
+        var builder = new System.Text.StringBuilder(768);
+        builder.Append("contactTrace=[");
+        int recordedCount = Math.Min(
+            solveResult.ContactCount,
+            LogicStaticCollisionSolveResult.MaxRecordedContactCount);
+        for (int i = 0; i < recordedCount; i++)
+        {
+            if (i > 0)
+                builder.Append(';');
+            LogicStaticCollisionContactTrace trace = solveResult.GetContactTrace(i);
+            builder.Append("{iteration=").Append(trace.Iteration)
+                .Append(",key=").Append(trace.StableKey)
+                .Append(",timeRaw=").Append(trace.Time.RawValue)
+                .Append(",normalRaw=(").Append(trace.Normal.x.RawValue).Append(',').Append(trace.Normal.y.RawValue).Append(')')
+                .Append(",positionRaw=(").Append(trace.Position.x.RawValue).Append(',').Append(trace.Position.y.RawValue).Append(')')
+                .Append(",incomingRaw=(").Append(trace.Incoming.x.RawValue).Append(',').Append(trace.Incoming.y.RawValue).Append(')')
+                .Append(",leftoverRaw=(").Append(trace.Leftover.x.RawValue).Append(',').Append(trace.Leftover.y.RawValue).Append(')');
+
+            if (LogicStaticCollisionShadowService.TryGetRuntimeObstacleForContact(
+                    agentTypeId,
+                    trace.StableKey,
+                    out LogicStaticCollisionObstacle obstacle))
+            {
+                builder.Append(",obstacle={stableId=").Append(obstacle.StableId)
+                    .Append(",kind=").Append(obstacle.Kind)
+                    .Append(",centerRaw=(").Append(obstacle.Center.x.RawValue).Append(',').Append(obstacle.Center.y.RawValue).Append(')')
+                    .Append(",halfRaw=(").Append(obstacle.HalfExtents.x.RawValue).Append(',').Append(obstacle.HalfExtents.y.RawValue).Append(')')
+                    .Append(",radiusRaw=").Append(obstacle.Radius.RawValue);
+                AppendObstacleOwner(builder, obstacle.StableId);
+                builder.Append('}');
+            }
+            builder.Append('}');
+        }
+        builder.Append(']');
+        return builder.ToString();
+    }
+
+    private static void AppendObstacleOwner(System.Text.StringBuilder builder, int obstacleId)
+    {
+        if (!LogicEntityObstacleId.TryDecodeBuildingCollider(
+                obstacleId,
+                out LogicEntityId ownerId,
+                out int localOrdinal))
+        {
+            builder.Append(",owner=nonBuildingObstacle");
+            return;
+        }
+
+        builder.Append(",ownerEntity=").Append(ownerId.Value)
+            .Append(",localOrdinal=").Append(localOrdinal);
+        if (!EntityRegistry.TryGet(ownerId, out IEntityContext owner))
+        {
+            builder.Append(",ownerState=unregistered");
+            return;
+        }
+
+        builder.Append(",ownerCharacter=").Append(owner.CharacterKey);
+        if (owner is IBuildingLogicContext building)
+        {
+            builder.Append(",ownerObstacleCount=").Append(building.LogicObstacleShapes.Count);
+            if (localOrdinal >= 0 && localOrdinal < building.LogicObstacleShapes.Count)
+            {
+                LogicCombatShape shape = building.LogicObstacleShapes[localOrdinal];
+                builder.Append(",ownerShapeCenterRaw=(").Append(shape.Center.x.RawValue).Append(',').Append(shape.Center.y.RawValue).Append(')')
+                    .Append(",ownerShapeHalfRaw=(").Append(shape.HalfExtents.x.RawValue).Append(',').Append(shape.HalfExtents.y.RawValue).Append(')');
+            }
+            else
+            {
+                builder.Append(",ownerShapeState=ordinalOutOfRange");
+            }
+        }
+        else
+        {
+            builder.Append(",ownerState=notBuildingContext");
         }
     }
 

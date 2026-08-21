@@ -1,0 +1,52 @@
+[
+  {
+    "Path": "AAAGameData/Configs/GameConfig.xlsx",
+    "Length": 14757,
+    "SHA256": "363A1D7A274E1C52CCB19212B990617C6E797D8932193B8634E10A159983467F"
+  },
+  {
+    "Path": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Length": 67651,
+    "SHA256": "7CAFF7739C1C617B2B360A46F0A4D0637ADD8827EB5359DCCA9DF7D13CF5723D"
+  },
+  {
+    "Path": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Length": 52233,
+    "SHA256": "1AE831B577DA17312013C1D0E44E0A924AB644980E2E1CCFEFCEDFD4EEE4B83C"
+  },
+  {
+    "Path": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Length": 12998,
+    "SHA256": "AE56A84795D3C3DA5A4A96731895B4618AB3F4992804F8F28244482EEAB963AB"
+  },
+  {
+    "Path": "Assets/AAAGame/Config/GameConfig.txt",
+    "Length": 5670,
+    "SHA256": "D122808EE922C8D7F9A2AB7F9993CFBD8F88C11FEC2C73352077E579E3EC808A"
+  },
+  {
+    "Path": "Assets/AAAGame/DataTable/CharacterDataDetail.txt",
+    "Length": 11094,
+    "SHA256": "1084E7EEE2C20A31DE830426FEB98358A74AA400D0ADEA640F047DB1694EDF63"
+  },
+  {
+    "Path": "Assets/AAAGame/DataTable/Build/BuildingTable.txt",
+    "Length": 44497,
+    "SHA256": "E131FA9A943E9B7588B7A941E90679AFFB8E35DF9462CD7F23B5CD73E7A22E1F"
+  },
+  {
+    "Path": "Assets/AAAGame/DataTable/Hero/SkillTable.txt",
+    "Length": 2908,
+    "SHA256": "F0356CED04CC0D31BFDF63302CF2B00FE29A735292CEACAB8DC9A75A693540ED"
+  },
+  {
+    "Path": "Assets/AAAGame/Scripts/Common/DistanceUnitConverter.cs",
+    "Length": 10987,
+    "SHA256": "5FF95523EEDA24EE80CB521281C3BD4C467ED1C420169050420BED0D24562FE0"
+  },
+  {
+    "Path": "Assets/AAAGame/Scripts/Common/DistanceUnitConverter.cs.meta",
+    "Length": 254,
+    "SHA256": "89CDF238B5545B68B45D1CE9B536FD216BB55F793CA362BF13152BB35378ABE5"
+  }
+]

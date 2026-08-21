@@ -162,28 +162,20 @@ public sealed class TutorialSystemTests
     }
 
     [Test]
-    public void DestinationRadius_ConvertsGameDistanceAndUsesCircularBoundary()
+    public void DestinationRadius_UsesGridUnitsAndCircularBoundary()
     {
-        DistanceUnitConverter.SetEditorTestDistanceConversionRateText("0.015");
-        try
-        {
-            Fix64 worldRadius = ObjectiveDestinationService.ConvertConfiguredRadius((Fix64)250);
-            Assert.AreEqual(((Fix64)3.75f).RawValue, worldRadius.RawValue);
+        Fix64 radius = ObjectiveDestinationService.ConvertConfiguredRadius((Fix64)4.5f);
+        Assert.AreEqual(((Fix64)4.5f).RawValue, radius.RawValue);
 
-            var center = new FixVector2((Fix64)10, (Fix64)20);
-            Assert.IsTrue(ObjectiveDestinationService.Contains(
-                new FixVector2((Fix64)13.75f, (Fix64)20),
-                center,
-                worldRadius));
-            Assert.IsFalse(ObjectiveDestinationService.Contains(
-                new FixVector2((Fix64)13.76f, (Fix64)20),
-                center,
-                worldRadius));
-        }
-        finally
-        {
-            DistanceUnitConverter.ClearEditorTestDistanceConversionRate();
-        }
+        var center = new FixVector2((Fix64)10, (Fix64)20);
+        Assert.IsTrue(ObjectiveDestinationService.Contains(
+            new FixVector2((Fix64)14.5f, (Fix64)20),
+            center,
+            radius));
+        Assert.IsFalse(ObjectiveDestinationService.Contains(
+            new FixVector2((Fix64)14.6f, (Fix64)20),
+            center,
+            radius));
     }
 
     [Test]

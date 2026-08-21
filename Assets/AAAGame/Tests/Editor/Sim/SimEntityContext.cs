@@ -41,7 +41,7 @@ public class SimEntityContext : IEntityContext, ITargetable
     }
     public virtual LogicCombatShape CombatShape => LogicCombatShape.Circle(
         PositionFixed,
-        DistanceUnitConverter.ConvertToWorld(GetProperty(CreatureMainProperty.CollisionRadius)));
+        (GetProperty(CreatureMainProperty.CollisionRadius)));
     public Vector3 Position
     {
         get => _position;

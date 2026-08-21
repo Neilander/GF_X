@@ -22,7 +22,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
     private bool _attackLocked;
 
     private static readonly Fix64 MinimumLossOfBalanceDuration = Fix64.FromRaw(410);
-    private static readonly Fix64 ExitSpeedGameUnits = Fix64.FromRaw(410);
+    private static readonly Fix64 ExitSpeedGridUnits = Fix64.FromRaw(8);
     private static readonly Fix64 SinglePullStopRatio = Fix64.FromRaw(2748);
 
     public bool IsInLossOfBalance => _isInLossOfBalance;
@@ -364,7 +364,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
             ApplySinglePullStop();
         ApplyFriction(deltaTime);
 
-        Fix64 exitSpeed = DistanceUnitConverter.ConvertToWorld(ExitSpeedGameUnits);
+        Fix64 exitSpeed = ExitSpeedGridUnits;
         if (_lossOfBalanceElapsed >= MinimumLossOfBalanceDuration
             && _pullEffects.Count == 0
             && FixVector2.Magnitude(_displacementVelocity) < exitSpeed)

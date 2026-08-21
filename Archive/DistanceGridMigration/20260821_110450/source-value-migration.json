@@ -1,0 +1,1416 @@
+[
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 5,
+    "Field": "MinMoveSpeed",
+    "Old": 100.0,
+    "New": 1.8
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 6,
+    "Field": "MaxMoveSpeed",
+    "Old": 1000.0,
+    "New": 18.0
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 8,
+    "Field": "SmallUnitCollisionRadius",
+    "Old": 12.0,
+    "New": 0.2
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 9,
+    "Field": "MediumUnitCollisionRadius",
+    "Old": 22.0,
+    "New": 0.4
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 10,
+    "Field": "LargeUnitCollisionRadius",
+    "Old": 36.0,
+    "New": 0.6
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 11,
+    "Field": "SuperLargeUnitCollisionRadius",
+    "Old": 54.0,
+    "New": 1.0
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 17,
+    "Field": "HeroVisionRadius",
+    "Old": 1500.0,
+    "New": 27.0
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 18,
+    "Field": "UnitVisionRadius",
+    "Old": 1200.0,
+    "New": 21.6
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 19,
+    "Field": "BuildingVisionRadius",
+    "Old": 1200.0,
+    "New": 21.6
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 24,
+    "Field": "KnockbackForceLevelM1",
+    "Old": 100.0,
+    "New": 1.8
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 25,
+    "Field": "KnockbackForceLevel0",
+    "Old": 300.0,
+    "New": 5.4
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 26,
+    "Field": "KnockbackForceLevel1",
+    "Old": 450.0,
+    "New": 8.1
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 27,
+    "Field": "PullForceLevelM1",
+    "Old": 200.0,
+    "New": 3.6
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 28,
+    "Field": "PullForceLevel0",
+    "Old": 800.0,
+    "New": 14.4
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 29,
+    "Field": "PullForceLevel1",
+    "Old": 3000.0,
+    "New": 54.0
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 32,
+    "Field": "Friction",
+    "Old": 400.0,
+    "New": 7.2
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 34,
+    "Field": "DefendPhaseEnemyMinSpeed",
+    "Old": 300.0,
+    "New": 5.4
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 35,
+    "Field": "DefendPhaseEnemyMaxSpeed",
+    "Old": 1200.0,
+    "New": 21.6
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 46,
+    "Field": "AggroOuterRange",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 48,
+    "Field": "DamageAlertVisionRadius",
+    "Old": 200.0,
+    "New": 3.6
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 49,
+    "Field": "DamageAlertAllyRadius",
+    "Old": 700.0,
+    "New": 12.6
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 51,
+    "Field": "MinimumAggroCandidateRange",
+    "Old": 700.0,
+    "New": 12.6
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 52,
+    "Field": "DefendPursuitDistance",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 59,
+    "Field": "BuildingInteractionRadius",
+    "Old": 80.0,
+    "New": 1.4
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 60,
+    "Field": "DefendReturnMoveSpeedBonus",
+    "Old": 250.0,
+    "New": 4.5
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 61,
+    "Field": "PlayerOutOfCombatMoveSpeedBonus",
+    "Old": 500.0,
+    "New": 9.0
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 62,
+    "Field": "DefendRouteWaypointArrivalRadius",
+    "Old": 100.0,
+    "New": 1.8
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 65,
+    "Field": "WallDetourDistanceThreshold",
+    "Old": 500.0,
+    "New": 9.0
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 66,
+    "Field": "SlopeUpperVisionRadius",
+    "Old": 50.0,
+    "New": 0.9
+  },
+  {
+    "Source": "AAAGameData/Configs/GameConfig.xlsx",
+    "Row": 7,
+    "Field": "DistanceConversionRate",
+    "Old": "0.018",
+    "New": "<deleted>"
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 5,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 6,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 7,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 8,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 9,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 10,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 11,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 12,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 13,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 14,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 15,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 16,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 17,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 18,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 19,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 20,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 21,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 22,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 23,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 24,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 25,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 26,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 327,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 328,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 329,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 330,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 331,
+    "Field": "视野半径",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 5,
+    "Field": "1级移速",
+    "Old": 400.0,
+    "New": 7.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 6,
+    "Field": "1级移速",
+    "Old": 260.0,
+    "New": 4.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 7,
+    "Field": "1级移速",
+    "Old": 270.0,
+    "New": 4.9
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 8,
+    "Field": "1级移速",
+    "Old": 280.0,
+    "New": 5.0
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 9,
+    "Field": "1级移速",
+    "Old": 260.0,
+    "New": 4.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 10,
+    "Field": "1级移速",
+    "Old": 290.0,
+    "New": 5.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 11,
+    "Field": "1级移速",
+    "Old": 420.0,
+    "New": 7.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 12,
+    "Field": "1级移速",
+    "Old": 300.0,
+    "New": 5.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 13,
+    "Field": "1级移速",
+    "Old": 250.0,
+    "New": 4.5
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 14,
+    "Field": "1级移速",
+    "Old": 260.0,
+    "New": 4.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 15,
+    "Field": "1级移速",
+    "Old": 260.0,
+    "New": 4.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 16,
+    "Field": "1级移速",
+    "Old": 260.0,
+    "New": 4.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 17,
+    "Field": "1级移速",
+    "Old": 270.0,
+    "New": 4.9
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 18,
+    "Field": "1级移速",
+    "Old": 260.0,
+    "New": 4.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 19,
+    "Field": "1级移速",
+    "Old": 260.0,
+    "New": 4.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 20,
+    "Field": "1级移速",
+    "Old": 260.0,
+    "New": 4.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 21,
+    "Field": "1级移速",
+    "Old": 280.0,
+    "New": 5.0
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 22,
+    "Field": "1级移速",
+    "Old": 300.0,
+    "New": 5.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 23,
+    "Field": "1级移速",
+    "Old": 300.0,
+    "New": 5.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 24,
+    "Field": "1级移速",
+    "Old": 260.0,
+    "New": 4.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 25,
+    "Field": "1级移速",
+    "Old": 260.0,
+    "New": 4.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 26,
+    "Field": "1级移速",
+    "Old": 330.0,
+    "New": 5.9
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 327,
+    "Field": "1级移速",
+    "Old": 400.0,
+    "New": 7.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 328,
+    "Field": "1级移速",
+    "Old": 400.0,
+    "New": 7.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 329,
+    "Field": "1级移速",
+    "Old": 400.0,
+    "New": 7.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 330,
+    "Field": "1级移速",
+    "Old": 400.0,
+    "New": 7.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 331,
+    "Field": "1级移速",
+    "Old": 400.0,
+    "New": 7.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 5,
+    "Field": "1级武器1攻击距离",
+    "Old": 150.0,
+    "New": 2.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 6,
+    "Field": "1级武器1攻击距离",
+    "Old": 70.0,
+    "New": 1.3
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 7,
+    "Field": "1级武器1攻击距离",
+    "Old": 55.0,
+    "New": 1.0
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 8,
+    "Field": "1级武器1攻击距离",
+    "Old": 50.0,
+    "New": 0.9
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 9,
+    "Field": "1级武器1攻击距离",
+    "Old": 700.0,
+    "New": 12.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 10,
+    "Field": "1级武器1攻击距离",
+    "Old": 650.0,
+    "New": 11.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 11,
+    "Field": "1级武器1攻击距离",
+    "Old": 55.0,
+    "New": 1.0
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 12,
+    "Field": "1级武器1攻击距离",
+    "Old": 75.0,
+    "New": 1.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 13,
+    "Field": "1级武器1攻击距离",
+    "Old": 100.0,
+    "New": 1.8
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 14,
+    "Field": "1级武器1攻击距离",
+    "Old": 90.0,
+    "New": 1.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 15,
+    "Field": "1级武器1攻击距离",
+    "Old": 500.0,
+    "New": 9.0
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 16,
+    "Field": "1级武器1攻击距离",
+    "Old": 600.0,
+    "New": 10.8
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 17,
+    "Field": "1级武器1攻击距离",
+    "Old": 70.0,
+    "New": 1.3
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 18,
+    "Field": "1级武器1攻击距离",
+    "Old": 85.0,
+    "New": 1.5
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 19,
+    "Field": "1级武器1攻击距离",
+    "Old": 1200.0,
+    "New": 21.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 20,
+    "Field": "1级武器1攻击距离",
+    "Old": 700.0,
+    "New": 12.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 21,
+    "Field": "1级武器1攻击距离",
+    "Old": 80.0,
+    "New": 1.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 22,
+    "Field": "1级武器1攻击距离",
+    "Old": 225.0,
+    "New": 4.1
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 23,
+    "Field": "1级武器1攻击距离",
+    "Old": 90.0,
+    "New": 1.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 24,
+    "Field": "1级武器1攻击距离",
+    "Old": 550.0,
+    "New": 9.9
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 25,
+    "Field": "1级武器1攻击距离",
+    "Old": 75.0,
+    "New": 1.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 26,
+    "Field": "1级武器1攻击距离",
+    "Old": 750.0,
+    "New": 13.5
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 327,
+    "Field": "1级武器1攻击距离",
+    "Old": 150.0,
+    "New": 2.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 328,
+    "Field": "1级武器1攻击距离",
+    "Old": 150.0,
+    "New": 2.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 329,
+    "Field": "1级武器1攻击距离",
+    "Old": 150.0,
+    "New": 2.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 330,
+    "Field": "1级武器1攻击距离",
+    "Old": 150.0,
+    "New": 2.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 331,
+    "Field": "1级武器1攻击距离",
+    "Old": 150.0,
+    "New": 2.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 11,
+    "Field": "2级移速",
+    "Old": 440.0,
+    "New": 7.9
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 12,
+    "Field": "2级移速",
+    "Old": 150.0,
+    "New": 2.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 13,
+    "Field": "2级移速",
+    "Old": 240.0,
+    "New": 4.3
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 23,
+    "Field": "2级移速",
+    "Old": 340.0,
+    "New": 6.1
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 9,
+    "Field": "2级武器1攻击距离",
+    "Old": 800.0,
+    "New": 14.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 10,
+    "Field": "2级武器1攻击距离",
+    "Old": 750.0,
+    "New": 13.5
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 15,
+    "Field": "2级武器1攻击距离",
+    "Old": 600.0,
+    "New": 10.8
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 16,
+    "Field": "2级武器1攻击距离",
+    "Old": 700.0,
+    "New": 12.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 19,
+    "Field": "2级武器1攻击距离",
+    "Old": 1300.0,
+    "New": 23.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 20,
+    "Field": "2级武器1攻击距离",
+    "Old": 750.0,
+    "New": 13.5
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 22,
+    "Field": "2级武器1攻击距离",
+    "Old": 275.0,
+    "New": 5.0
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 24,
+    "Field": "2级武器1攻击距离",
+    "Old": 650.0,
+    "New": 11.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 26,
+    "Field": "2级武器1攻击距离",
+    "Old": 875.0,
+    "New": 15.8
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 11,
+    "Field": "3级移速",
+    "Old": 470.0,
+    "New": 8.5
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 13,
+    "Field": "3级移速",
+    "Old": 230.0,
+    "New": 4.1
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 23,
+    "Field": "3级移速",
+    "Old": 380.0,
+    "New": 6.8
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 10,
+    "Field": "3级武器1攻击距离",
+    "Old": 850.0,
+    "New": 15.3
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 15,
+    "Field": "3级武器1攻击距离",
+    "Old": 650.0,
+    "New": 11.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 19,
+    "Field": "3级武器1攻击距离",
+    "Old": 1350.0,
+    "New": 24.3
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 20,
+    "Field": "3级武器1攻击距离",
+    "Old": 800.0,
+    "New": 14.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 9,
+    "Field": "1级武器1弹道速度",
+    "Old": 1000.0,
+    "New": 18.0
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 10,
+    "Field": "1级武器1弹道速度",
+    "Old": 700.0,
+    "New": 12.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 16,
+    "Field": "1级武器1弹道速度",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 19,
+    "Field": "1级武器1弹道速度",
+    "Old": 800.0,
+    "New": 14.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 20,
+    "Field": "1级武器1弹道速度",
+    "Old": 1800.0,
+    "New": 32.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 24,
+    "Field": "1级武器1弹道速度",
+    "Old": 700.0,
+    "New": 12.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 26,
+    "Field": "1级武器1弹道速度",
+    "Old": 900.0,
+    "New": 16.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 16,
+    "Field": "1级武器1溅射半径",
+    "Old": 250.0,
+    "New": 4.5
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 24,
+    "Field": "1级武器1溅射半径",
+    "Old": 180.0,
+    "New": 3.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 15,
+    "Field": "1级武器1分裂距离",
+    "Old": 600.0,
+    "New": 10.8
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 21,
+    "Field": "1级武器1分裂距离",
+    "Old": 275.0,
+    "New": 5.0
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 24,
+    "Field": "2级武器1溅射半径",
+    "Old": 240.0,
+    "New": 4.3
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 15,
+    "Field": "2级武器1分裂距离",
+    "Old": 700.0,
+    "New": 12.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 16,
+    "Field": "3级武器1溅射半径",
+    "Old": 325.0,
+    "New": 5.9
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 10,
+    "Field": "Unit_Brat.UniqueValues[0]",
+    "Old": 225.0,
+    "New": 4.1
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 12,
+    "Field": "Unit_LateRider.UniqueValues[0]",
+    "Old": 200.0,
+    "New": 3.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 12,
+    "Field": "Unit_LateRider.UniqueValues[1]",
+    "Old": 600.0,
+    "New": 10.8
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 12,
+    "Field": "Unit_LateRider.UniqueValues[2]",
+    "Old": 400.0,
+    "New": 7.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/CharacterDataDetail.xlsx",
+    "Row": 25,
+    "Field": "Unit_Sprinter.UniqueValues[3]",
+    "Old": 200.0,
+    "New": 3.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 11,
+    "Field": "1级武器1攻击距离",
+    "Old": 1000.0,
+    "New": 18.0
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 16,
+    "Field": "1级武器1攻击距离",
+    "Old": 800.0,
+    "New": 14.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 21,
+    "Field": "1级武器1攻击距离",
+    "Old": 900.0,
+    "New": 16.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 26,
+    "Field": "1级武器1攻击距离",
+    "Old": 800.0,
+    "New": 14.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 31,
+    "Field": "1级武器1攻击距离",
+    "Old": 800.0,
+    "New": 14.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 36,
+    "Field": "1级武器1攻击距离",
+    "Old": 900.0,
+    "New": 16.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 46,
+    "Field": "1级武器1攻击距离",
+    "Old": 150.0,
+    "New": 2.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 51,
+    "Field": "1级武器1攻击距离",
+    "Old": 200.0,
+    "New": 3.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 56,
+    "Field": "1级武器1攻击距离",
+    "Old": 700.0,
+    "New": 12.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 61,
+    "Field": "1级武器1攻击距离",
+    "Old": 700.0,
+    "New": 12.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 11,
+    "Field": "2级武器1攻击距离",
+    "Old": 1150.0,
+    "New": 20.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 26,
+    "Field": "2级武器1攻击距离",
+    "Old": 850.0,
+    "New": 15.3
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 31,
+    "Field": "2级武器1攻击距离",
+    "Old": 900.0,
+    "New": 16.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 36,
+    "Field": "2级武器1攻击距离",
+    "Old": 950.0,
+    "New": 17.1
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 51,
+    "Field": "2级武器1攻击距离",
+    "Old": 230.0,
+    "New": 4.1
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 56,
+    "Field": "2级武器1攻击距离",
+    "Old": 800.0,
+    "New": 14.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 61,
+    "Field": "2级武器1攻击距离",
+    "Old": 800.0,
+    "New": 14.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 11,
+    "Field": "3级武器1攻击距离",
+    "Old": 1300.0,
+    "New": 23.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 16,
+    "Field": "3级武器1攻击距离",
+    "Old": 900.0,
+    "New": 16.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 26,
+    "Field": "3级武器1攻击距离",
+    "Old": 900.0,
+    "New": 16.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 31,
+    "Field": "3级武器1攻击距离",
+    "Old": 1000.0,
+    "New": 18.0
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 36,
+    "Field": "3级武器1攻击距离",
+    "Old": 1000.0,
+    "New": 18.0
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 51,
+    "Field": "3级武器1攻击距离",
+    "Old": 260.0,
+    "New": 4.7
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 11,
+    "Field": "1级武器1弹道速度",
+    "Old": 1500.0,
+    "New": 27.0
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 21,
+    "Field": "1级武器1弹道速度",
+    "Old": 700.0,
+    "New": 12.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 26,
+    "Field": "1级武器1弹道速度",
+    "Old": 900.0,
+    "New": 16.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 31,
+    "Field": "1级武器1弹道速度",
+    "Old": 1000.0,
+    "New": 18.0
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 56,
+    "Field": "1级武器1弹道速度",
+    "Old": 1100.0,
+    "New": 19.8
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 61,
+    "Field": "1级武器1弹道速度",
+    "Old": 1400.0,
+    "New": 25.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 21,
+    "Field": "Buil_ThemeStatue.UniqueValues[0]",
+    "Old": 300.0,
+    "New": 5.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 21,
+    "Field": "Buil_ThemeStatue.Tech2UniqueValues[0]",
+    "Old": 50.0,
+    "New": 0.9
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 25,
+    "Field": "Buil_DeliveryHub.Tech1UniqueValues[0]",
+    "Old": 100.0,
+    "New": 1.8
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 25,
+    "Field": "Buil_DeliveryHub.Tech1UniqueValues[1]",
+    "Old": 60.0,
+    "New": 1.1
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 25,
+    "Field": "Buil_DeliveryHub.Tech2UniqueValues[0]",
+    "Old": 100.0,
+    "New": 1.8
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 25,
+    "Field": "Buil_DeliveryHub.Tech2UniqueValues[1]",
+    "Old": 120.0,
+    "New": 2.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 42,
+    "Field": "Buil_WildernessCamp.Tech4UniqueValues[0]",
+    "Old": 200.0,
+    "New": 3.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 52,
+    "Field": "Buil_TopHospital.Tech2UniqueValues[0]",
+    "Old": 700.0,
+    "New": 12.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/Build/BuildingTable.xlsx",
+    "Row": 59,
+    "Field": "Buil_Track.Tech1UniqueValues[2]",
+    "Old": 100.0,
+    "New": 1.8
+  },
+  {
+    "Source": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Row": 5,
+    "Field": "1级施法距离",
+    "Old": 700.0,
+    "New": 12.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Row": 8,
+    "Field": "1级施法距离",
+    "Old": 900.0,
+    "New": 16.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Row": 9,
+    "Field": "1级施法距离",
+    "Old": 600.0,
+    "New": 10.8
+  },
+  {
+    "Source": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Row": 5,
+    "Field": "1级作用范围",
+    "Old": 400.0,
+    "New": 7.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Row": 7,
+    "Field": "1级作用范围",
+    "Old": 500.0,
+    "New": 9.0
+  },
+  {
+    "Source": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Row": 9,
+    "Field": "1级作用范围",
+    "Old": 250.0,
+    "New": 4.5
+  },
+  {
+    "Source": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Row": 12,
+    "Field": "1级作用范围",
+    "Old": 300.0,
+    "New": 5.4
+  },
+  {
+    "Source": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Row": 14,
+    "Field": "1级作用范围",
+    "Old": 200.0,
+    "New": 3.6
+  },
+  {
+    "Source": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Row": 9,
+    "Field": "升级增加施法距离",
+    "Old": 50.0,
+    "New": 0.9
+  },
+  {
+    "Source": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Row": 5,
+    "Field": "升级增加作用范围",
+    "Old": 50.0,
+    "New": 0.9
+  },
+  {
+    "Source": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Row": 7,
+    "Field": "升级增加作用范围",
+    "Old": 100.0,
+    "New": 1.8
+  },
+  {
+    "Source": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Row": 9,
+    "Field": "升级增加作用范围",
+    "Old": 10.0,
+    "New": 0.2
+  },
+  {
+    "Source": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Row": 12,
+    "Field": "升级增加作用范围",
+    "Old": 50.0,
+    "New": 0.9
+  },
+  {
+    "Source": "AAAGameData/DataTables/Hero/SkillTable.xlsx",
+    "Row": 14,
+    "Field": "升级增加作用范围",
+    "Old": 30.0,
+    "New": 0.5
+  }
+]

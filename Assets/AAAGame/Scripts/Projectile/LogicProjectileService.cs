@@ -310,7 +310,7 @@ public static class LogicProjectileService
         if (!attacker.LogicEntityId.IsValid || !target.LogicEntityId.IsValid)
             throw new InvalidOperationException("LogicProjectileService.Submit failed: attacker and target require valid logic ids.");
 
-        Fix64 speed = DistanceUnitConverter.ConvertToWorld(weaponData.ProjectileSpeed);
+        Fix64 speed = (weaponData.ProjectileSpeed);
         if (speed <= Fix64.Zero)
             throw new InvalidOperationException($"LogicProjectileService.Submit failed: projectile speed must be positive. attacker={attacker.LogicEntityId.Value}.");
 

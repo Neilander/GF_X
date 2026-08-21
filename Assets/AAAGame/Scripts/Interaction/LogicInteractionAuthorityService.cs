@@ -29,8 +29,8 @@ public static class LogicInteractionAuthorityService
     public static LogicEntityId CurrentActorId => s_CurrentActorId;
     public static LogicEntityId CurrentTargetId => s_CurrentTargetId;
     public static ulong LastSwitchFrame => s_LastSwitchFrame;
-    public static Fix64 EffectiveRange => DistanceUnitConverter.ConvertToWorld(
-        DistanceUnitConverter.ReadRequiredPositiveFixedConfig(BuildingInteractionRadiusConfigKey));
+    public static Fix64 EffectiveRange => (
+        FixedConfigReader.ReadRequiredPositiveFixedConfig(BuildingInteractionRadiusConfigKey));
 
     public static void BeginTimeline()
     {

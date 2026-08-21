@@ -553,6 +553,35 @@ public enum LogicStaticCollisionSlideMode
     PreserveRemainingDistance = 1,
 }
 
+public readonly struct LogicStaticCollisionContactTrace
+{
+    internal LogicStaticCollisionContactTrace(
+        int iteration,
+        int stableKey,
+        Fix64 time,
+        FixVector2 normal,
+        FixVector2 position,
+        FixVector2 incoming,
+        FixVector2 leftover)
+    {
+        Iteration = iteration;
+        StableKey = stableKey;
+        Time = time;
+        Normal = normal;
+        Position = position;
+        Incoming = incoming;
+        Leftover = leftover;
+    }
+
+    public int Iteration { get; }
+    public int StableKey { get; }
+    public Fix64 Time { get; }
+    public FixVector2 Normal { get; }
+    public FixVector2 Position { get; }
+    public FixVector2 Incoming { get; }
+    public FixVector2 Leftover { get; }
+}
+
 public readonly struct LogicStaticCollisionSolveResult
 {
     internal LogicStaticCollisionSolveResult(
@@ -565,7 +594,11 @@ public readonly struct LogicStaticCollisionSolveResult
         bool startedOverlapping,
         int contactCount,
         int firstHitStableKey = -1,
-        FixVector2 firstHitNormal = default)
+        FixVector2 firstHitNormal = default,
+        LogicStaticCollisionContactTrace contact0 = default,
+        LogicStaticCollisionContactTrace contact1 = default,
+        LogicStaticCollisionContactTrace contact2 = default,
+        LogicStaticCollisionContactTrace contact3 = default)
     {
         Success = success;
         Failure = failure;
@@ -577,6 +610,10 @@ public readonly struct LogicStaticCollisionSolveResult
         ContactCount = contactCount;
         FirstHitStableKey = firstHitStableKey;
         FirstHitNormal = firstHitNormal;
+        Contact0 = contact0;
+        Contact1 = contact1;
+        Contact2 = contact2;
+        Contact3 = contact3;
     }
 
     public bool Success { get; }
@@ -589,6 +626,26 @@ public readonly struct LogicStaticCollisionSolveResult
     public int ContactCount { get; }
     public int FirstHitStableKey { get; }
     public FixVector2 FirstHitNormal { get; }
+
+    public LogicStaticCollisionContactTrace GetContactTrace(int index)
+    {
+        if (index < 0 || index >= ContactCount || index >= MaxRecordedContactCount)
+            throw new ArgumentOutOfRangeException(nameof(index));
+        switch (index)
+        {
+            case 0: return Contact0;
+            case 1: return Contact1;
+            case 2: return Contact2;
+            default: return Contact3;
+        }
+    }
+
+    public const int MaxRecordedContactCount = 4;
+
+    private LogicStaticCollisionContactTrace Contact0 { get; }
+    private LogicStaticCollisionContactTrace Contact1 { get; }
+    private LogicStaticCollisionContactTrace Contact2 { get; }
+    private LogicStaticCollisionContactTrace Contact3 { get; }
 }
 
 public static class DeterministicStaticCollisionSolver
@@ -624,6 +681,90 @@ public static class DeterministicStaticCollisionSolver
         public Fix64 Depth { get; }
         public FixVector2 Normal { get; }
         public int StableKey { get; }
+    }
+
+    private struct ContactManifold
+    {
+        private FixVector2 m_Normal0;
+        private FixVector2 m_Normal1;
+        private FixVector2 m_Normal2;
+        private FixVector2 m_Normal3;
+
+        public int Count { get; private set; }
+
+        public void Add(FixVector2 normal)
+        {
+            if (normal == FixVector2.Zero)
+                throw new ArgumentException("Static collision contact normal cannot be zero.", nameof(normal));
+            if (Count >= MaxContactIterations)
+                throw new InvalidOperationException("Static collision contact manifold capacity exceeded.");
+
+            switch (Count)
+            {
+                case 0: m_Normal0 = normal; break;
+                case 1: m_Normal1 = normal; break;
+                case 2: m_Normal2 = normal; break;
+                default: m_Normal3 = normal; break;
+            }
+            Count++;
+        }
+
+        public FixVector2 Project(FixVector2 displacement)
+        {
+            if (displacement == FixVector2.Zero || IsFeasible(displacement))
+                return displacement;
+
+            FixVector2 best = FixVector2.Zero;
+            Fix64 bestDistanceSquared = FixVector2.SqrMagnitude(displacement);
+            for (int i = 0; i < Count; i++)
+            {
+                FixVector2 normal = GetNormal(i);
+                Fix64 normalLengthSquared = FixVector2.SqrMagnitude(normal);
+                if (normalLengthSquared <= Fix64.Zero)
+                    throw new InvalidOperationException("Static collision contact manifold contains an invalid normal.");
+
+                // In 2D the contact plane is a line. Projecting onto its tangent avoids the
+                // subtractive Q12 cancellation that can leave a one-raw inward component.
+                FixVector2 tangent = new FixVector2(-normal.y, normal.x);
+                FixVector2 candidate = tangent
+                                       * (FixVector2.Dot(displacement, tangent) / normalLengthSquared);
+                if (!IsFeasible(candidate))
+                    continue;
+
+                Fix64 distanceSquared = FixVector2.SqrMagnitude(candidate - displacement);
+                bool quantizedTieWithZero = distanceSquared == bestDistanceSquared
+                                            && best == FixVector2.Zero
+                                            && candidate != FixVector2.Zero;
+                if (distanceSquared < bestDistanceSquared || quantizedTieWithZero)
+                {
+                    best = candidate;
+                    bestDistanceSquared = distanceSquared;
+                }
+            }
+            return best;
+        }
+
+        private bool IsFeasible(FixVector2 candidate)
+        {
+            for (int i = 0; i < Count; i++)
+            {
+                if (FixVector2.Dot(candidate, GetNormal(i)) < Fix64.Zero)
+                    return false;
+            }
+            return true;
+        }
+
+        private FixVector2 GetNormal(int index)
+        {
+            switch (index)
+            {
+                case 0: return m_Normal0;
+                case 1: return m_Normal1;
+                case 2: return m_Normal2;
+                case 3: return m_Normal3;
+                default: throw new ArgumentOutOfRangeException(nameof(index));
+            }
+        }
     }
 
     public static LogicStaticCollisionSolveResult SolveCircle(
@@ -755,6 +896,11 @@ public static class DeterministicStaticCollisionSolver
         int contactCount = 0;
         int firstHitStableKey = -1;
         FixVector2 firstHitNormal = FixVector2.Zero;
+        LogicStaticCollisionContactTrace contact0 = default;
+        LogicStaticCollisionContactTrace contact1 = default;
+        LogicStaticCollisionContactTrace contact2 = default;
+        LogicStaticCollisionContactTrace contact3 = default;
+        ContactManifold contactManifold = default;
         for (int iteration = 0; iteration < MaxContactIterations; iteration++)
         {
             if (remaining == FixVector2.Zero)
@@ -781,20 +927,34 @@ public static class DeterministicStaticCollisionSolver
                 firstHitNormal = hit.Normal;
             }
 
+            FixVector2 incoming = remaining;
             Fix64 travelTime = hit.Time;
-            position += remaining * travelTime;
+            position += incoming * travelTime;
 
-            FixVector2 leftover = remaining * (Fix64.One - hit.Time);
+            FixVector2 leftover = incoming * (Fix64.One - hit.Time);
             Fix64 remainingDistance = FixVector2.Magnitude(leftover);
-            Fix64 inwardDistance = FixVector2.Dot(leftover, hit.Normal);
-            if (inwardDistance < Fix64.Zero)
+            contactManifold.Add(hit.Normal);
+            leftover = contactManifold.Project(leftover);
+            if (slideMode == LogicStaticCollisionSlideMode.PreserveRemainingDistance
+                && leftover != FixVector2.Zero)
             {
-                leftover -= hit.Normal * inwardDistance;
-                if (slideMode == LogicStaticCollisionSlideMode.PreserveRemainingDistance
-                    && leftover != FixVector2.Zero)
-                {
-                    leftover *= remainingDistance / FixVector2.Magnitude(leftover);
-                }
+                leftover *= remainingDistance / FixVector2.Magnitude(leftover);
+            }
+
+            var trace = new LogicStaticCollisionContactTrace(
+                iteration,
+                hit.StableKey,
+                hit.Time,
+                hit.Normal,
+                position,
+                incoming,
+                leftover);
+            switch (iteration)
+            {
+                case 0: contact0 = trace; break;
+                case 1: contact1 = trace; break;
+                case 2: contact2 = trace; break;
+                case 3: contact3 = trace; break;
             }
 
             contactCount++;
@@ -806,7 +966,13 @@ public static class DeterministicStaticCollisionSolver
                     position,
                     desiredDisplacement,
                     startedOverlapping,
-                    contactCount);
+                    contactCount,
+                    firstHitStableKey,
+                    firstHitNormal,
+                    contact0,
+                    contact1,
+                    contact2,
+                    contact3);
             }
 
             remaining = leftover;
@@ -820,7 +986,13 @@ public static class DeterministicStaticCollisionSolver
                 position,
                 desiredDisplacement,
                 startedOverlapping,
-                contactCount);
+                contactCount,
+                firstHitStableKey,
+                firstHitNormal,
+                contact0,
+                contact1,
+                contact2,
+                contact3);
         }
 
         return new LogicStaticCollisionSolveResult(
@@ -833,7 +1005,11 @@ public static class DeterministicStaticCollisionSolver
             startedOverlapping,
             contactCount,
             firstHitStableKey,
-            firstHitNormal);
+            firstHitNormal,
+            contact0,
+            contact1,
+            contact2,
+            contact3);
     }
 
     internal static LogicStaticCollisionSolveResult SolveCircleAgainstObstacles(
@@ -880,6 +1056,7 @@ public static class DeterministicStaticCollisionSolver
         FixVector2 recoveredStart = position;
         FixVector2 remaining = desiredDisplacement;
         int contactCount = 0;
+        ContactManifold contactManifold = default;
         for (int iteration = 0; iteration < MaxContactIterations; iteration++)
         {
             if (remaining == FixVector2.Zero)
@@ -895,9 +1072,8 @@ public static class DeterministicStaticCollisionSolver
             Fix64 travelTime = hit.Time;
             position += remaining * travelTime;
             FixVector2 leftover = remaining * (Fix64.One - hit.Time);
-            Fix64 inwardDistance = FixVector2.Dot(leftover, hit.Normal);
-            if (inwardDistance < Fix64.Zero)
-                leftover -= hit.Normal * inwardDistance;
+            contactManifold.Add(hit.Normal);
+            leftover = contactManifold.Project(leftover);
 
             contactCount++;
             if (travelTime == Fix64.Zero && leftover == remaining)
@@ -1010,7 +1186,13 @@ public static class DeterministicStaticCollisionSolver
         FixVector2 position,
         FixVector2 desiredDisplacement,
         bool startedOverlapping,
-        int contactCount)
+        int contactCount,
+        int firstHitStableKey = -1,
+        FixVector2 firstHitNormal = default,
+        LogicStaticCollisionContactTrace contact0 = default,
+        LogicStaticCollisionContactTrace contact1 = default,
+        LogicStaticCollisionContactTrace contact2 = default,
+        LogicStaticCollisionContactTrace contact3 = default)
     {
         return new LogicStaticCollisionSolveResult(
             false,
@@ -1020,7 +1202,13 @@ public static class DeterministicStaticCollisionSolver
             desiredDisplacement,
             position - start,
             startedOverlapping,
-            contactCount);
+            contactCount,
+            firstHitStableKey,
+            firstHitNormal,
+            contact0,
+            contact1,
+            contact2,
+            contact3);
     }
 
     private static bool RecoverStart(
@@ -2689,6 +2877,33 @@ public static class LogicStaticCollisionShadowService
             source.RuntimeObstacles,
             slideMode);
         result = new LogicStaticCollisionShadowResult(world, source.RuntimeObstacles, solveResult);
+        return true;
+    }
+
+    internal static bool TryGetRuntimeObstacleForContact(
+        int agentTypeId,
+        int stableKey,
+        out LogicStaticCollisionObstacle obstacle)
+    {
+        obstacle = default;
+        if (!FlowFieldCrowdMovementSystem.TryGetStaticCollisionShadowSource(agentTypeId, out LogicStaticCollisionSourceData source))
+            return false;
+
+        LogicStaticCollisionWorld world = ResolveWorld(agentTypeId, source);
+        int runtimeKeyBase = world.HasBoundaryGeometry
+            ? checked(4 + world.BoundarySegmentCount)
+            : checked(4 + checked(world.Width * world.Height) * 8);
+        if (stableKey < runtimeKeyBase)
+            return false;
+
+        int obstacleIndex = (stableKey - runtimeKeyBase) / 8;
+        if (obstacleIndex < 0 || obstacleIndex >= source.RuntimeObstacles.Length)
+        {
+            throw new InvalidOperationException(
+                $"Static collision contact key {stableKey} resolved invalid runtime obstacle index {obstacleIndex}/{source.RuntimeObstacles.Length}.");
+        }
+
+        obstacle = source.RuntimeObstacles[obstacleIndex];
         return true;
     }
 

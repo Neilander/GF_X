@@ -103,8 +103,8 @@ public static class LogicUnitConfigurator
                         entityParams.DefendRouteWaypointTeleportationIds,
                         entityParams.DefendSpeedReleaseWaypointIndex,
                         entityParams.DefendSpeedReleasePositionFixed,
-                        DistanceUnitConverter.ConvertToWorld(
-                            DistanceUnitConverter.ReadRequiredPositiveFixedConfig(
+                        (
+                            FixedConfigReader.ReadRequiredPositiveFixedConfig(
                                 DefendRouteWaypointArrivalRadiusConfigKey)));
                 }
             }

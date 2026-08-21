@@ -646,7 +646,7 @@ public void Attack(Fix64 deltaTime)
         }
 
         Fix64 dist = _ctx.LogicFrameDistanceToTargetSurfaceFixed(target);
-        Fix64 wpnRange = DistanceUnitConverter.ConvertToWorld(activeWeapon.Range);
+        Fix64 wpnRange = (activeWeapon.Range);
 
         // 统一判定：攻击者中心到目标碰撞体边缘的 XZ 距离，和武器射程直接比较。
         Fix64 range = wpnRange;
@@ -829,7 +829,7 @@ public void Attack(Fix64 deltaTime)
     {
         bool validateImpactRange = !WeaponTargetRules.UsesProjectileSimulation(activeWeapon.Type);
         Fix64 impactRange = validateImpactRange
-            ? DistanceUnitConverter.ConvertToWorld(activeWeapon.Range)
+            ? (activeWeapon.Range)
             : Fix64.Zero;
 
         for (int i = _lockedTargets.Count - 1; i >= 0; i--)

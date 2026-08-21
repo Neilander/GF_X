@@ -259,7 +259,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 + field.NextNodeTowardGoal.Count
                 + field.FirstCrossingPortalByStartNode.Count
                 + field.CompletedDemandStartSectorIds.Count
-                + field.CompletedDemandStartCellIndices.Count);
+                + field.CompletedDemandStartCellIndices.Count
+                + (field.PortalOpenSet?.Count ?? 0)
+                + (field.SettledPortalNodes?.Count ?? 0));
         }
 
         long pendingSharedGoalEntryCount = 0;
@@ -886,6 +888,8 @@ public static partial class FlowFieldCrowdMovementSystem
         AddSortedIntDictionary(hasher, field.NextNodeTowardGoal);
         AddSortedInts(hasher, field.CompletedDemandStartSectorIds);
         AddSortedInts(hasher, field.CompletedDemandStartCellIndices);
+        AddDeterministicCostHeap(hasher, field.PortalOpenSet);
+        AddSortedInts(hasher, field.SettledPortalNodes);
         return hasher.Hash;
     }
 
@@ -1143,6 +1147,18 @@ public static partial class FlowFieldCrowdMovementSystem
             != ComputeAuthorityIntSetHash(field.CompletedDemandStartCellIndices, 0x534746434F4D5043UL))
         {
             failureReason = $"Shared-goal completed demand cell authority hash mismatch key={field.Key}.";
+            return false;
+        }
+        if (field.PortalOpenSet == null
+            || field.PortalOpenSet.AuthorityContentHash != field.PortalOpenSet.ComputeAuthorityContentHashForValidation())
+        {
+            failureReason = $"Shared-goal continuation frontier authority hash mismatch key={field.Key}.";
+            return false;
+        }
+        if (field.SettledPortalAuthorityContentHash
+            != ComputeAuthorityIntSetHash(field.SettledPortalNodes, 0x5347534554544C45UL))
+        {
+            failureReason = $"Shared-goal settled portal authority hash mismatch key={field.Key}.";
             return false;
         }
 
@@ -2861,6 +2877,14 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(request.From.y.RawValue);
             hasher.Add(request.RawGoal.x.RawValue);
             hasher.Add(request.RawGoal.y.RawValue);
+            hasher.Add(request.ResolvedWorldVersion);
+            hasher.Add(request.ResolvedTopologyVersion);
+            hasher.Add(request.StartX);
+            hasher.Add(request.StartY);
+            hasher.Add(request.StartSectorId);
+            hasher.Add(request.GoalX);
+            hasher.Add(request.GoalY);
+            hasher.Add(request.GoalSectorId);
         }
     }
 
@@ -2974,6 +2998,8 @@ public static partial class FlowFieldCrowdMovementSystem
         AddSortedIntDictionary(hasher, field.NextNodeTowardGoal);
         AddSortedInts(hasher, field.CompletedDemandStartSectorIds);
         AddSortedInts(hasher, field.CompletedDemandStartCellIndices);
+        AddDeterministicCostHeap(hasher, field.PortalOpenSet);
+        AddSortedInts(hasher, field.SettledPortalNodes);
         hasher.Add(field.LastUsedFrame);
     }
 
@@ -2992,7 +3018,13 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(handle.BuildSource);
         hasher.Add(handle.HasCommittedCurrentTileKey);
         if (handle.HasCommittedCurrentTileKey)
+        {
             AddFlowTileCacheKey(hasher, handle.CommittedCurrentTileKey);
+            hasher.Add(handle.CommittedCorridorGoalX);
+            hasher.Add(handle.CommittedCorridorGoalY);
+            AddIntArray(hasher, handle.CommittedCorridorSectorIds);
+            AddIntArray(hasher, handle.CommittedCorridorPortalIds);
+        }
     }
 
     private static void AddFlowTileBuildKey(LogicStateHasher hasher, FlowTileBuildKey key)

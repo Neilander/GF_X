@@ -315,13 +315,13 @@ public static class LogicTeleportCommandService
                 continue;
             }
 
-            Fix64 ring = (Fix64)(1 + ordinal / 8) * DistanceUnitConverter.ConvertToWorld((Fix64)100);
+            Fix64 ring = (Fix64)(1 + ordinal / 8) * Fix64.FromRaw(7373);
             FixVector2 offset = ResolveFormationOffset(ordinal % 8, ring);
             FixVector2 candidate = hero.PositionFixed + offset;
             if (!FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixed(
                     candidate,
                     unit.NavigationAgentTypeId,
-                    DistanceUnitConverter.ConvertToWorld((Fix64)300),
+                    Fix64.FromRaw(22119),
                     unit.CombatShape.Radius,
                     out FixVector2 destination))
             {

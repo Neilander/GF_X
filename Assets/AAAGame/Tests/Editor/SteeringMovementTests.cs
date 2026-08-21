@@ -12,6 +12,8 @@ using AAAGame.MiniMap.FOG3;
 [TestFixture]
 public class SteeringMovementTests
 {
+    private const string ProjectFlowConfigPath = "Assets/AAAGame/SOs/FlowFieldNavigationConfig.asset";
+
     private LogicTestGroupMoveManagerAuthority m_GroupMoveAuthority;
 
     [SetUp]
@@ -57,6 +59,18 @@ public class SteeringMovementTests
         m_GroupMoveAuthority = null;
         FlowFieldCrowdMovementSystem.ResetAll();
         FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
+        RestoreProjectFlowConfig();
+    }
+
+    private static void RestoreProjectFlowConfig()
+    {
+        FlowFieldNavigationConfig projectConfig = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowFieldNavigationConfig>(
+            ProjectFlowConfigPath);
+        if (projectConfig == null)
+            throw new InvalidOperationException(
+                $"SteeringMovementTests teardown failed: project flow config is missing at {ProjectFlowConfigPath}.");
+
+        FlowFieldCrowdMovementSystem.SetConfig(projectConfig);
     }
 
     private static void SetupCombatPhaseForTests()
@@ -357,6 +371,7 @@ public class SteeringMovementTests
             Alive = true
         };
         ctx.SetProperty(CreatureMainProperty.Speed, (Fix64)5f);
+        ctx.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)0.2f);
         ctx.WeaponComp = CreateTestWeaponComp((Fix64)1.5f);
 
         var exec = new SimMoveExecutor();
@@ -388,7 +403,7 @@ public class SteeringMovementTests
             weaponType,
             Fix64.One,
             Fix64.One,
-            DistanceUnitConverter.ConvertFromWorld(worldRange),
+            (worldRange),
             Fix64.Zero,
             Fix64.Zero,
             Fix64.Zero,
@@ -534,7 +549,7 @@ public class SteeringMovementTests
     {
         var self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
         var currentTarget = MakeSoldier(new Vector3(1f, 0f, 0f), SideType.EnemySide);
-        var distantTauntingTarget = MakeSoldier(new Vector3(18f, 0f, 0f), SideType.EnemySide);
+        var distantTauntingTarget = MakeSoldier(new Vector3(10f, 0f, 0f), SideType.EnemySide);
         currentTarget.TauntLevel = 1;
         distantTauntingTarget.TauntLevel = 2;
         EntityRegistry.Register(self);
@@ -802,7 +817,7 @@ public class SteeringMovementTests
         targeting.UpdateTargeting((Fix64)0.2f);
 
         SetAttacking(self, false);
-        currentTarget.Position = new Vector3(18f, 0f, 0f);
+        currentTarget.Position = new Vector3(10f, 0f, 0f);
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(currentTarget, targeting.CurrentTarget,
@@ -929,7 +944,7 @@ public class SteeringMovementTests
     public void FactionVision_IsComputedIndependentlyForEachSide()
     {
         SimHeroContext playerHero = MakeHero(Vector3.zero, SideType.PlayerSide);
-        SimEntityContext enemy = MakeSoldier(new Vector3(55f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext enemy = MakeSoldier(new Vector3(25f, 0f, 0f), SideType.EnemySide);
         EntityRegistry.Register(playerHero);
         EntityRegistry.Register(enemy);
 
@@ -942,14 +957,30 @@ public class SteeringMovementTests
     {
         Fog3MapData map = CreateSlopeUpperVisionMap();
         LogicFactionVisionService.BindMap(map);
-        SimEntityContext revealer = MakeSoldier(new Vector3(1.5f, 0f, 0.5f), SideType.EnemySide);
-        SimEntityContext inRadiusHeightOne = MakeSoldier(new Vector3(3.5f, 0f, 0.5f), SideType.PlayerSide);
+        SimEntityContext revealer = MakeSoldier(new Vector3(1.8f, 0f, 0.5f), SideType.EnemySide);
+        SimEntityContext inRadiusHeightOne = MakeSoldier(new Vector3(2.1f, 0f, 0.5f), SideType.PlayerSide);
         SimEntityContext outsideRadiusHeightOne = MakeSoldier(new Vector3(4.5f, 0f, 0.5f), SideType.PlayerSide);
-        SimEntityContext inRadiusHeightTwo = MakeSoldier(new Vector3(2.5f, 0f, 0.5f), SideType.PlayerSide);
+        SimEntityContext inRadiusHeightTwo = MakeSoldier(new Vector3(3.5f, 0f, 0.5f), SideType.PlayerSide);
         EntityRegistry.Register(revealer);
         EntityRegistry.Register(inRadiusHeightOne);
         EntityRegistry.Register(outsideRadiusHeightOne);
         EntityRegistry.Register(inRadiusHeightTwo);
+
+        Assert.IsTrue(map.WorldToGrid(revealer.PositionFixed, out int revealerX, out int revealerY));
+        Assert.IsTrue(map.IsSlope(revealerX, revealerY));
+        Assert.AreEqual(0, map.GetVisionHeight(revealer.PositionFixed));
+        Assert.AreEqual(1, map.GetVisionHeight(inRadiusHeightOne.PositionFixed));
+        Assert.AreEqual(1, map.GetVisionHeight(outsideRadiusHeightOne.PositionFixed));
+        Assert.AreEqual(2, map.GetVisionHeight(inRadiusHeightTwo.PositionFixed));
+        Fix64 configuredRadius = FixedConfigReader.ReadRequiredPositiveFixedConfig(
+            LogicFactionVisionService.SlopeUpperVisionRadiusConfigKey);
+        Fix64 radiusSquared = configuredRadius * configuredRadius;
+        Assert.LessOrEqual(
+            FixVector2.SqrMagnitude(inRadiusHeightOne.PositionFixed - revealer.PositionFixed).RawValue,
+            radiusSquared.RawValue);
+        Assert.Greater(
+            FixVector2.SqrMagnitude(outsideRadiusHeightOne.PositionFixed - revealer.PositionFixed).RawValue,
+            radiusSquared.RawValue);
 
         Assert.IsTrue(LogicFactionVisionService.IsEntityVisibleToSide(SideType.EnemySide, inRadiusHeightOne));
         Assert.IsFalse(LogicFactionVisionService.IsEntityVisibleToSide(SideType.EnemySide, outsideRadiusHeightOne));
@@ -1110,8 +1141,8 @@ public class SteeringMovementTests
     {
         ConfigureOpenNavigationGrid(160, 16, new Vector3(-80f, 0f, -8f));
         SimEntityContext victim = MakeSoldier(Vector3.zero, SideType.PlayerSide);
-        SimEntityContext ally = MakeSoldier(new Vector3(10f, 0f, 0f), SideType.PlayerSide);
-        SimEntityContext attacker = MakeSoldier(new Vector3(50f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext ally = MakeSoldier(new Vector3(9f, 0f, 0f), SideType.PlayerSide);
+        SimEntityContext attacker = MakeSoldier(new Vector3(32f, 0f, 0f), SideType.EnemySide);
         var victimTargeting = new CharacterTargetingComp();
         victimTargeting.Init(victim);
         victim.TargetComp = victimTargeting;
@@ -1128,7 +1159,7 @@ public class SteeringMovementTests
         Assert.AreSame(attacker, allyTargeting.CurrentTarget,
             "The alert target is outside r but inside b and must be eligible while the fixed reveal sees it.");
 
-        attacker.Position = new Vector3(70f, 0f, 0f);
+        attacker.Position = new Vector3(36f, 0f, 0f);
         allyTargeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.IsNull(allyTargeting.CurrentTarget,
@@ -1157,7 +1188,7 @@ public class SteeringMovementTests
     {
         ConfigureOpenNavigationGrid(240, 16, new Vector3(-120f, 0f, -8f));
         SimEntityContext self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
-        SimEntityContext enemy = MakeSoldier(new Vector3(40f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext enemy = MakeSoldier(new Vector3(20f, 0f, 0f), SideType.EnemySide);
         EntityRegistry.Register(self);
         EntityRegistry.Register(enemy);
         var targeting = new CharacterTargetingComp();
@@ -1166,16 +1197,16 @@ public class SteeringMovementTests
         targeting.CurrentTarget = enemy;
         targeting.UpdateTargeting((Fix64)0.2f);
 
-        enemy.Position = new Vector3(100f, 0f, 0f);
+        enemy.Position = new Vector3(40f, 0f, 0f);
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.IsNull(targeting.CurrentTarget);
         Assert.IsTrue(targeting.HasLastSeenPursuit);
         Assert.AreSame(enemy, targeting.AggroTarget,
             "The last-seen target remains the aggro target while no visible attack target exists.");
-        Assert.AreEqual(new FixVector2((Fix64)40, Fix64.Zero), targeting.LastSeenPositionFixed);
+        Assert.AreEqual(new FixVector2((Fix64)20, Fix64.Zero), targeting.LastSeenPositionFixed);
 
-        enemy.Position = new Vector3(40f, 0f, 0f);
+        enemy.Position = new Vector3(20f, 0f, 0f);
         targeting.UpdateTargeting((Fix64)0.2f);
 
         Assert.AreSame(enemy, targeting.CurrentTarget);
@@ -1280,10 +1311,10 @@ public class SteeringMovementTests
     [Test]
     public void LastSeenPursuit_UsesClosestReachablePointInsideAttackRange()
     {
-        ConfigureSplitNavigationGrid(60, 7, 50);
+        ConfigureSplitNavigationGrid(36, 7, 30);
         SimEntityContext self = MakeSoldier(new Vector3(2.5f, 0f, 3.5f), SideType.PlayerSide);
         self.WeaponComp = CreateTestWeaponComp((Fix64)4);
-        SimEntityContext target = MakeSoldier(new Vector3(52.5f, 0f, 3.5f), SideType.EnemySide);
+        SimEntityContext target = MakeSoldier(new Vector3(32.5f, 0f, 3.5f), SideType.EnemySide);
         EntityRegistry.Register(self);
         EntityRegistry.Register(target);
         var targeting = new CharacterTargetingComp();
@@ -1301,7 +1332,7 @@ public class SteeringMovementTests
         Assert.IsTrue(targeting.HasLastSeenPursuit);
         Assert.AreEqual(target.PositionFixed, targeting.LastSeenPositionFixed,
             "The observed position remains the source of truth and must not be replaced by the navigation destination.");
-        Assert.IsTrue(targeting.LastSeenPursuitDestinationFixed.x < (Fix64)50,
+        Assert.IsTrue(targeting.LastSeenPursuitDestinationFixed.x < (Fix64)30,
             "The pursuit destination must remain on the pursuer's navigation island.");
         Assert.IsTrue(
             FixVector2.Distance(targeting.LastSeenPursuitDestinationFixed, targeting.LastSeenPositionFixed)
@@ -1310,14 +1341,14 @@ public class SteeringMovementTests
     }
 
     [Test]
-    public void DefendReturnConfig_ConvertsDistanceAndKeepsFixedSpeedBonus()
+    public void DefendReturnConfig_UsesGridDistanceAndSpeedBonus()
     {
         var brain = new SoldierAIBrain();
 
         brain.ConfigureReturnFromGameConfig();
 
-        Assert.AreEqual((Fix64)90, brain.ChaseRange);
-        Assert.AreEqual((Fix64)250, brain.ReturnSpeedBonus);
+        Assert.AreEqual((Fix64)32.4f, brain.ChaseRange);
+        Assert.AreEqual((Fix64)4.5f, brain.ReturnSpeedBonus);
         Assert.AreEqual((Fix64)20 / (Fix64)100, brain.ReturnHpRegenPercentPerSec);
         Assert.AreEqual(Fix64.Zero, brain.ReturnDamageReductionPercent);
     }
@@ -1443,7 +1474,7 @@ public class SteeringMovementTests
         bool[] walkable = new bool[width];
         for (int i = 0; i < walkable.Length; i++)
             walkable[i] = true;
-        int[] heights = { 0, 0, 2, 1, 1, 1, 1, 1 };
+        int[] heights = { 0, 0, 1, 2, 1, 1, 1, 1 };
         bool[] slopes = new bool[width];
         slopes[1] = true;
         var slopeCells = new Fog3SlopeCellInfo[width];

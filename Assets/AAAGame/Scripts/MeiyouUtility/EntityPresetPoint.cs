@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -23,11 +24,12 @@ public class EntityPresetPoint : MonoBehaviour
 
     public EntityPresetPointType PointType;
     public bool IsGameEndConditionBuilding;
-    [SerializeField, Tooltip("仅对 Unit 类型有效：初始橙髓等价战力的 Q12 定点数原始值")]
-    private long unitStrengthValueRaw;
+    [FormerlySerializedAs("unitStrengthValueRaw")]
+    [SerializeField, Tooltip("仅对 Unit 类型有效：初始小队资源等价量的 Q12 定点数原始值；当前单位为橙髓")]
+    private long unitResourceEquivalentRaw;
     [SerializeField, Tooltip("仅对 Unit 类型有效：数量成长权重的 Q12 定点数原始值")]
     private long unitCountGrowthWeightRaw;
-    public Fix64 UnitStrengthValue => Fix64.FromRaw(unitStrengthValueRaw);
+    public Fix64 UnitResourceEquivalent => Fix64.FromRaw(unitResourceEquivalentRaw);
     public Fix64 UnitCountGrowthWeight => Fix64.FromRaw(unitCountGrowthWeightRaw);
     [Tooltip("仅对 Teleportation 类型有效：关卡内唯一且稳定、从 0 开始的传送点 ID")]
     public int TeleportationId;
@@ -67,13 +69,13 @@ public class EntityPresetPoint : MonoBehaviour
         defendSpawnWeightRaw = weight.RawValue;
     }
 
-    public void SetUnitStrength(Fix64 strengthValue, Fix64 countGrowthWeight)
+    public void SetUnitResourceEquivalent(Fix64 resourceEquivalent, Fix64 countGrowthWeight)
     {
-        if (strengthValue <= Fix64.Zero)
-            throw new ArgumentOutOfRangeException(nameof(strengthValue), "Unit strength value must be positive.");
+        if (resourceEquivalent <= Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(resourceEquivalent), "Unit squad resource equivalent must be positive.");
         if (countGrowthWeight < Fix64.Zero || countGrowthWeight > Fix64.One)
             throw new ArgumentOutOfRangeException(nameof(countGrowthWeight), "Unit count growth weight must be between zero and one.");
-        unitStrengthValueRaw = strengthValue.RawValue;
+        unitResourceEquivalentRaw = resourceEquivalent.RawValue;
         unitCountGrowthWeightRaw = countGrowthWeight.RawValue;
     }
 }

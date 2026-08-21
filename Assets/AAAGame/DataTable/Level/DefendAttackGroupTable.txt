@@ -1,17 +1,20 @@
-#	防御出兵组表												
-#	ID		Identifier	LevelIdentifier	ActiveDays	RouteIdentifier	UnitIdentifier	InitialStrengthValue	CountGrowthWeight	AfterGroupIdentifier	StartDelaySeconds	ExpectedEngagementSeconds	Suffix
-#	int		string	string	int[]	string	string	Fix64	Fix64	string	Fix64	Fix64	string
-#	行号	备注	代码内标识符，由路线名和后缀派生；编辑器中只编辑后缀	所属关卡标识	启用防御日；编辑器顶部选择天数后勾选，不生成按日实例	路线标识符	单一兵种标识，不包含等级	初始橙髓等价战力；由兵种、数量和等级的非线性价值换算	新增强度在数量成长中的分配权重，0=全投等级，1=全投数量	前置小队；前置与本小队必须在同一天启用	前置小队固定出兵窗口结束后的延迟秒；无前置时为防御阶段开始延迟	从本小队计时基准到预计接战时刻的秒数	命名后缀，可空；同关卡同路线多小队时必须唯一
-	1		LvTest_Route_SouthEast	LvTest	2	LvTest_Route_SouthEast	Unit_Poacher	31.5	0.2		0	15	
-	2		LvTest_Route_SouthWest	LvTest	2	LvTest_Route_SouthWest	Unit_BoneButcher	7	0.25		0	12	
-	3		LvTest_Route_West	LvTest	2	LvTest_Route_West	Unit_Poacher	31.5	0.2		0	18	
-	4		Lv_1_Route_East	Lv_1	2,3,4	Lv_1_Route_East	Unit_HiredBodyguard	5.1875	0.8		0	12	
-	5		Lv_1_Route_North	Lv_1	2,3,4	Lv_1_Route_North	Unit_HiredBodyguard	2.5	0.8		0	15	
-	6		Lv_1_Route_West	Lv_1	2,3,4	Lv_1_Route_West	Unit_HiredBodyguard	2.5	0.8		0	18	
-	7		TP2	Lv_2	2	TP2	Unit_CanMaker	5.625	0.75		0	18	
-	8		TP3	Lv_2	2	TP3	Unit_CanMaker	5.625	0.75		0	15	
-	9		TP0	Lv_2	2	TP0	Unit_BoneButcher	7	0.25		0	12	
-	10		Lv_3_Route_East	Lv_3	2	Lv_3_Route_East	Unit_Intern	1.0375	0.9		0	17	
-	11		Lv_3_Route_North_BoneButcher	Lv_3	2	Lv_3_Route_North	Unit_BoneButcher	18.9	0.25		0	14	BoneButcher
-	12		Lv_3_Route_North_Intern	Lv_3	2	Lv_3_Route_North	Unit_Intern	0.5	0.9		0	14	Intern
-	13		Lv_3_Route_SouthEast	Lv_3	2	Lv_3_Route_SouthEast	Unit_Intern	1.0375	0.9		0	20	
+#	防御出兵组表										
+#	ID		Identifier	LevelIdentifier	ActiveDefenseWaves	RouteIdentifier	UnitIdentifier	InitialResourceEquivalent	CountGrowthWeight	RelativeLeaderEngagementSeconds	Suffix
+#	int		string	string	int[]	string	string	Fix64	Fix64	Fix64[]	string
+#	行号	备注	代码内标识符，由路线名和后缀派生；编辑器中只编辑后缀	所属关卡标识	显式启用的防御波次；空缺波完整沿用最近上一波编排	路线标识符	单一兵种标识，不包含等级	初始小队资源等价量，当前以橙髓计；按各等级单兵资源等价量乘数量后求和	新增资源等价量在数量成长中的分配权重，0=全投等级，1=全投数量	与启用防御波次一一对应的队首相对接战秒数；可为0，运行时不足则全波统一延后	命名后缀，可空；同关卡同路线多小队时必须唯一
+	1		0_1_2@SouthWest	LvTest	1	0_1_2@SouthWest	Unit_BoneButcher	7	0.25	12	
+	2		1_2@SouthEast	LvTest	1	1_2@SouthEast	Unit_Poacher	31.5	0.2	15	
+	3		3_2@West	LvTest	1	3_2@West	Unit_Poacher	31.5	0.2	18	
+	4		1_2_0@East	Lv_1	1,2,3	1_2_0@East	Unit_HiredBodyguard	5.188	0.8	12,12,12	
+	5		2_0@North	Lv_1	1,2,3	2_0@North	Unit_HiredBodyguard	2.5	0.8	15,15,15	
+	6		3_0@West	Lv_1	1,2,3	3_0@West	Unit_HiredBodyguard	2.5	0.8	18,18,18	
+	7		0	Lv_2	1	0	Unit_CanMaker	7	0.5	0	
+	8		2_4@Brat	Lv_2	1	2_4	Unit_Brat	7	0.5	0	Brat
+	9		2_4@Canmaker	Lv_2	1	2_4	Unit_CanMaker	7	0.5	0	Canmaker
+	10		2_4@HiredBodyguard	Lv_2	1	2_4	Unit_HiredBodyguard	7	0.5	0	HiredBodyguard
+	11		3_4	Lv_2	1	3_4	Unit_Brat	7	0.5	0	
+	12		4	Lv_2	1	4	Unit_CanMaker	7	0.5	0	
+	13		2_1_0@North@BoneButcher	Lv_3	1	2_1_0@North	Unit_BoneButcher	18.9	0.25	14	BoneButcher
+	14		2_1_0@North@Intern	Lv_3	1	2_1_0@North	Unit_Intern	0.5	0.9	14	Intern
+	15		4_3_0@SouthEast	Lv_3	1	4_3_0@SouthEast	Unit_Intern	1.038	0.9	20	
+	16		5_1_0@East	Lv_3	1	5_1_0@East	Unit_Intern	1.038	0.9	17	

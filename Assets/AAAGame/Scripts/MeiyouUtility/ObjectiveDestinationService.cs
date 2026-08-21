@@ -94,7 +94,7 @@ public static class ObjectiveDestinationService
     {
         if (configuredRadius <= Fix64.Zero)
             throw new ArgumentOutOfRangeException(nameof(configuredRadius), configuredRadius, "Configured destination radius must be positive.");
-        return DistanceUnitConverter.ConvertToWorld(configuredRadius);
+        return (configuredRadius);
     }
 
     public static void Clear()

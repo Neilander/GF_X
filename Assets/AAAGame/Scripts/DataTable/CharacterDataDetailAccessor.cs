@@ -207,7 +207,7 @@ public static class CharacterDataDetailAccessor
             _ => throw new InvalidOperationException($"Character collision radius config is undefined for unit size '{size}'.")
         };
 
-        return DistanceUnitConverter.ReadRequiredPositiveFixedConfig(configKey);
+        return FixedConfigReader.ReadRequiredPositiveFixedConfig(configKey);
     }
 
     private static Fix64 GetWeightLevelBySize(UnitSize size)

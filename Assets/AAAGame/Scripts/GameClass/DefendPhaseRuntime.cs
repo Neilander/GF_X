@@ -8,8 +8,7 @@ public static class DefendPhaseRuntime
 {
     private const string DefendEnemyMinSpeedConfigKey = "DefendPhaseEnemyMinSpeed";
     private const string DefendEnemyMaxSpeedConfigKey = "DefendPhaseEnemyMaxSpeed";
-    private const string DefendEnemySpawnIntervalConfigKey = "DefendPhaseEnemyArriveInterval";
-    private static readonly Fix64 MinWorldSpeed = Fix64.FromRaw(5);
+    private const string SameGroupSpawnIntervalConfigKey = "DefendPhaseSameGroupSpawnIntervalSeconds";
     private static readonly Fix64 NavigationPointProbeRadius = Fix64.FromRaw(10240);
     private const string TutorialLevelIdentifier = "Lv_1";
     private static readonly Fix64 TutorialEnemyClusterRadius = Fix64.FromRaw(12288);
@@ -36,7 +35,8 @@ public static class DefendPhaseRuntime
     private static bool s_SpawnPointCacheConfigured;
     private static bool s_WaveConfigConfigured;
     private static int s_CachedLevelEntityId;
-    private static int s_DefendRoundIndex;
+    private static int s_DefendDay;
+    private static int s_DefenseWaveIndex;
     private static bool s_SpawnScheduleCompleted;
     private static bool s_WaitingForNavigationDistancePrewarm;
     private static string s_WaveConfigLevelIdentifier = string.Empty;
@@ -45,9 +45,8 @@ public static class DefendPhaseRuntime
     private static ulong s_SpawnRequestStartFrame;
     private static Fix64 s_MinSpeedWorld;
     private static Fix64 s_MaxSpeedWorld;
-    private static Fix64 s_SpawnIntervalSeconds;
+    private static Fix64 s_SameGroupSpawnIntervalSeconds;
     private static Fix64 s_WaypointArrivalRadiusWorld;
-    private static decimal s_DistanceConversionRate;
     private static bool s_TutorialFirstDefenseConsumed;
     private static bool s_TutorialFirstDefenseWaiting;
     private static bool s_TutorialFirstDefenseActive;
@@ -74,8 +73,8 @@ public static class DefendPhaseRuntime
                 throw new InvalidOperationException(
                     $"Tutorial spawn point has invalid unit identifier. point={point.name} identifier={point.Identifier}.");
             }
-            if (point.UnitStrengthValue <= Fix64.Zero)
-                throw new InvalidOperationException($"Tutorial spawn point '{point.name}' has a non-positive strength value.");
+            if (point.UnitResourceEquivalent <= Fix64.Zero)
+                throw new InvalidOperationException($"Tutorial spawn point '{point.name}' has a non-positive resource equivalent.");
             if (point.UnitCountGrowthWeight < Fix64.Zero || point.UnitCountGrowthWeight > Fix64.One)
                 throw new InvalidOperationException($"Tutorial spawn point '{point.name}' has an invalid count growth weight.");
 
@@ -83,7 +82,7 @@ public static class DefendPhaseRuntime
             s_TutorialTriggeredSpawnPoints.Add(new TutorialTriggeredSpawnPoint(
                 new FixVector2((Fix64)position.x, (Fix64)position.z),
                 unitType,
-                point.UnitStrengthValue,
+                point.UnitResourceEquivalent,
                 point.UnitCountGrowthWeight,
                 string.IsNullOrWhiteSpace(point.name) ? "<unnamed>" : point.name));
         }
@@ -142,9 +141,8 @@ public static class DefendPhaseRuntime
         s_WaveConfigLevelIdentifier = string.Empty;
         s_MinSpeedWorld = Fix64.Zero;
         s_MaxSpeedWorld = Fix64.Zero;
-        s_SpawnIntervalSeconds = Fix64.Zero;
+        s_SameGroupSpawnIntervalSeconds = Fix64.Zero;
         s_WaypointArrivalRadiusWorld = Fix64.Zero;
-        s_DistanceConversionRate = decimal.Zero;
     }
 
     public static void PrepareForCurrentLevelIfNeeded()
@@ -162,8 +160,6 @@ public static class DefendPhaseRuntime
         double spawnPointMs = stopwatch.Elapsed.TotalMilliseconds;
         ConfigureWaveRuntimeIfNeeded();
         double waveMs = stopwatch.Elapsed.TotalMilliseconds;
-        if (s_DistanceConversionRate <= decimal.Zero)
-            s_DistanceConversionRate = DistanceUnitConverter.ReadDistanceConversionRateDecimal();
         Log.Info(
             "[DefendPhaseTiming] stage=prepare totalMs={0:F3} subscribeMs={1:F3} archetypeMs={2:F3} spawnPointMs={3:F3} waveMs={4:F3}",
             stopwatch.Elapsed.TotalMilliseconds,
@@ -187,21 +183,21 @@ public static class DefendPhaseRuntime
             return;
         }
 
-        s_DefendRoundIndex = Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
+        s_DefendDay = Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
+        LevelTable level = LogicRuntimeDataTableCache.GetLevelRequired(ResolveCurrentLevelIdentifier());
+        s_DefenseWaveIndex = DefenseWaveCalendar.GetDefenseWaveIndex(level.StartPhase, s_DefendDay);
 
-        List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForRound(s_DefendRoundIndex);
+        List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForWave(s_DefenseWaveIndex, s_DefendDay);
         if (groups.Count == 0)
         {
-            Log.Warning("[DefendPhase] 当前防御波次无配置，直接结束。round={0}", s_DefendRoundIndex);
-            s_SpawnScheduleCompleted = true;
-            TryCompleteDefendPhase();
-            return;
+            throw new InvalidOperationException(
+                $"Defense wave {s_DefenseWaveIndex} on Day {s_DefendDay} has no authored or inherited attack groups.");
         }
 
         if (!FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted)
         {
             s_WaitingForNavigationDistancePrewarm = true;
-            Log.Info("[DefendPhase] Waiting for navigation distance prewarm. round={0}", s_DefendRoundIndex);
+            Log.Info("[DefendPhase] Waiting for navigation distance prewarm. wave={0}, day={1}", s_DefenseWaveIndex, s_DefendDay);
             return;
         }
 
@@ -229,10 +225,8 @@ public static class DefendPhaseRuntime
         s_PlannedSpawnEvents.AddRange(BuildSpawnEvents(groups));
         if (s_PlannedSpawnEvents.Count == 0)
         {
-            Log.Warning("[DefendPhase] 当前防御波次无法生成出怪计划，直接结束。round={0}", s_DefendRoundIndex);
-            s_SpawnScheduleCompleted = true;
-            TryCompleteDefendPhase();
-            return;
+            throw new InvalidOperationException(
+                $"Defense wave {s_DefenseWaveIndex} on Day {s_DefendDay} produced no spawn events.");
         }
 
         s_PlannedSpawnEvents.Sort(ComparePlannedSpawnEvents);
@@ -252,16 +246,16 @@ public static class DefendPhaseRuntime
         if (LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId) != EntitySideHelper.PlayerFactionId)
             throw new InvalidOperationException($"Tutorial first defense stronghold '{strongholdId}' is not player owned.");
 
-        Fix64 assignedSpeed = DistanceUnitConverter.ConvertFromWorld(s_MinSpeedWorld, s_DistanceConversionRate);
+        Fix64 assignedSpeed = s_MinSpeedWorld;
         if (assignedSpeed <= Fix64.Zero)
             throw new InvalidOperationException("Tutorial first defense resolved a non-positive assigned speed.");
 
         int spawnedCount = 0;
         int currentDay = Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
         LevelTable level = LogicRuntimeDataTableCache.GetLevelRequired(ResolveCurrentLevelIdentifier());
-        EnemyStrengthRuntimeSettings strengthSettings = EnemyStrengthRuntimeConfig.Read(EnemyStrengthContext.DefenseWave);
-        Fix64 initialStrengthScale = LevelTagRuntime.GetEnemyInitialStrengthScale(EnemyStrengthContext.DefenseWave);
-        Fix64 growthSpeedScale = LevelTagRuntime.GetEnemyGrowthSpeedScale(EnemyStrengthContext.DefenseWave);
+        EnemySquadResourceEquivalentRuntimeSettings resourceEquivalentSettings = EnemySquadResourceEquivalentRuntimeConfig.Read(EnemySquadResourceEquivalentContext.DefenseWave);
+        Fix64 initialResourceEquivalentScale = LevelTagRuntime.GetEnemyInitialResourceEquivalentScale(EnemySquadResourceEquivalentContext.DefenseWave);
+        Fix64 resourceEquivalentGrowthSpeedScale = LevelTagRuntime.GetEnemyResourceEquivalentGrowthSpeedScale(EnemySquadResourceEquivalentContext.DefenseWave);
         for (int i = 0; i < s_TutorialTriggeredSpawnPoints.Count; i++)
         {
             TutorialTriggeredSpawnPoint point = s_TutorialTriggeredSpawnPoints[i];
@@ -270,13 +264,13 @@ public static class DefendPhaseRuntime
 
             IReadOnlyList<EnemySquadCompositionEntry> composition = ResolveSquadComposition(
                 point.UnitType,
-                point.InitialStrengthValue,
+                point.InitialResourceEquivalent,
                 point.CountGrowthWeight,
                 currentDay,
                 level.ExpectedDays,
-                initialStrengthScale,
-                growthSpeedScale,
-                strengthSettings);
+                initialResourceEquivalentScale,
+                resourceEquivalentGrowthSpeedScale,
+                resourceEquivalentSettings);
             for (int entryIndex = 0; entryIndex < composition.Count; entryIndex++)
             {
                 EnemySquadCompositionEntry entry = composition[entryIndex];
@@ -407,7 +401,9 @@ public static class DefendPhaseRuntime
         RequirePreparedRuntime();
 
         int previewDay = Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
-        List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForRound(previewDay);
+        LevelTable level = LogicRuntimeDataTableCache.GetLevelRequired(ResolveCurrentLevelIdentifier());
+        int previewWave = DefenseWaveCalendar.GetDefenseWaveIndex(level.StartPhase, previewDay);
+        List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForWave(previewWave, previewDay);
         if (groups.Count == 0)
             return false;
 
@@ -506,16 +502,17 @@ public static class DefendPhaseRuntime
         if (LogicPhaseCommandService.GetRequiredCurrentPhase() != GamePhase.Defend)
             throw new InvalidOperationException("Navigation distance prewarm completed for a pending wave outside the Defend phase.");
 
-        List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForRound(s_DefendRoundIndex);
+        List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForWave(s_DefenseWaveIndex, s_DefendDay);
         if (groups.Count == 0)
-            throw new InvalidOperationException($"Pending defense round {s_DefendRoundIndex} has no attack groups.");
+            throw new InvalidOperationException($"Pending defense wave {s_DefenseWaveIndex} on Day {s_DefendDay} has no attack groups.");
         ulong startFrame = LogicTimeControlService.CurrentFrame > 0
             ? checked(LogicTimeControlService.CurrentFrame + 1UL)
             : 1UL;
         StartPreparedDefendWave(groups, startFrame);
         Log.Info(
-            "[DefendPhase] Navigation distance prewarm completed; spawn schedule starts next frame. round={0}, requests={1}, startFrame={2}",
-            s_DefendRoundIndex,
+            "[DefendPhase] Navigation distance prewarm completed; spawn schedule starts next frame. wave={0}, day={1}, requests={2}, startFrame={3}",
+            s_DefenseWaveIndex,
+            s_DefendDay,
             eventArgs.RequestCount,
             startFrame);
     }
@@ -651,7 +648,7 @@ public static class DefendPhaseRuntime
             return;
         }
 
-        Log.Info("[DefendPhase] 防御阶段结束：敌兵已全部清空。round={0}", s_DefendRoundIndex);
+        Log.Info("[DefendPhase] 防御阶段结束：敌兵已全部清空。wave={0}, day={1}", s_DefenseWaveIndex, s_DefendDay);
         PhaseManager.SwitchToPhase(GamePhase.BuildBeforeInvade);
     }
 
@@ -685,7 +682,8 @@ public static class DefendPhaseRuntime
             return;
 
         s_CachedLevelEntityId = levelEntityId;
-        s_DefendRoundIndex = 0;
+        s_DefendDay = 0;
+        s_DefenseWaveIndex = 0;
         s_WaveConfigLevelIdentifier = string.Empty;
         s_WaveConfigConfigured = false;
         s_DefendRoutesByIdentifier.Clear();
@@ -955,42 +953,41 @@ public static class DefendPhaseRuntime
                 continue;
             if (string.IsNullOrWhiteSpace(row.Identifier))
                 throw new InvalidOperationException($"Defend attack group row {row.Id} has an empty identifier.");
-            if (row.ActiveDays == null || row.ActiveDays.Length == 0)
-                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has no active days.");
-            ValidateActiveDays(row.Identifier, row.ActiveDays);
+            if (row.ActiveDefenseWaves == null || row.ActiveDefenseWaves.Length == 0)
+                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has no active defense waves.");
+            ValidateActiveDefenseWaves(row.Identifier, row.ActiveDefenseWaves);
             if (!s_DefendRoutesByIdentifier.TryGetValue(row.RouteIdentifier, out DefendRouteDefinition route))
                 throw new InvalidOperationException($"Defend attack group '{row.Identifier}' references unknown route '{row.RouteIdentifier}'.");
             if (!UnitTypeHelper.TryParseUnitType(row.UnitIdentifier, out UnitType unitType))
                 throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has invalid unit '{row.UnitIdentifier}'.");
-            if (row.InitialStrengthValue <= Fix64.Zero)
-                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has non-positive initial strength value.");
+            if (row.InitialResourceEquivalent <= Fix64.Zero)
+                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has non-positive initial resource equivalent.");
             if (row.CountGrowthWeight < Fix64.Zero || row.CountGrowthWeight > Fix64.One)
                 throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has count growth weight outside zero to one.");
-            if (row.StartDelaySeconds < Fix64.Zero || row.ExpectedEngagementSeconds <= Fix64.Zero)
+            if (row.RelativeLeaderEngagementSeconds == null
+                || row.RelativeLeaderEngagementSeconds.Length != row.ActiveDefenseWaves.Length)
+                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' active waves and relative engagement times must have the same length.");
+            for (int waveIndex = 0; waveIndex < row.RelativeLeaderEngagementSeconds.Length; waveIndex++)
             {
-                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has invalid delay or expected engagement time.");
+                if (row.RelativeLeaderEngagementSeconds[waveIndex] < Fix64.Zero)
+                    throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has a negative relative engagement time at index {waveIndex}.");
             }
 
             var group = new DefendAttackGroupDefinition
             {
                 Identifier = row.Identifier,
-                DefendRound = row.ActiveDays[0],
-                ActiveDays = (int[])row.ActiveDays.Clone(),
+                ActiveDefenseWaves = (int[])row.ActiveDefenseWaves.Clone(),
+                RelativeLeaderEngagementSecondsByWave = (Fix64[])row.RelativeLeaderEngagementSeconds.Clone(),
                 Route = route,
                 UnitType = unitType,
-                InitialStrengthValue = row.InitialStrengthValue,
-                CountGrowthWeight = row.CountGrowthWeight,
-                AfterGroupIdentifier = string.IsNullOrWhiteSpace(row.AfterGroupIdentifier) ? null : row.AfterGroupIdentifier,
-                DelaySeconds = row.StartDelaySeconds,
-                ExpectedEngagementSeconds = row.ExpectedEngagementSeconds
+                InitialResourceEquivalent = row.InitialResourceEquivalent,
+                CountGrowthWeight = row.CountGrowthWeight
             };
 
             if (!groupsByIdentifier.TryAdd(group.Identifier, group))
                 throw new InvalidOperationException($"Duplicate defend attack group identifier '{group.Identifier}'.");
             s_DefendAttackGroups.Add(group);
         }
-
-        ValidateActivePredecessors(groupsByIdentifier);
 
         s_AgentTypeIdByUnitType.Clear();
         for (int groupIndex = 0; groupIndex < s_DefendAttackGroups.Count; groupIndex++)
@@ -1000,27 +997,25 @@ public static class DefendPhaseRuntime
         }
         Fix64 minSpeedProperty = ResolveFiniteConfigFixed(DefendEnemyMinSpeedConfigKey, Fix64.One);
         Fix64 maxSpeedProperty = ResolveFiniteConfigFixed(DefendEnemyMaxSpeedConfigKey, Fix64.One);
-        s_MinSpeedWorld = Fix64.Max(
-            MinWorldSpeed,
-            DistanceUnitConverter.ConvertToWorld(minSpeedProperty));
-        s_MaxSpeedWorld = DistanceUnitConverter.ConvertToWorld(maxSpeedProperty);
+        s_MinSpeedWorld = (minSpeedProperty);
+        if (s_MinSpeedWorld <= Fix64.Zero)
+            throw new InvalidOperationException("DefendPhaseEnemyMinSpeed converts to a non-positive world speed.");
+        s_MaxSpeedWorld = (maxSpeedProperty);
         if (s_MaxSpeedWorld < s_MinSpeedWorld)
             throw new InvalidOperationException("DefendPhaseEnemyMaxSpeed must be greater than or equal to DefendPhaseEnemyMinSpeed.");
-        s_SpawnIntervalSeconds = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(
-            DefendEnemySpawnIntervalConfigKey);
-        s_WaypointArrivalRadiusWorld = DistanceUnitConverter.ConvertToWorld(
-            DistanceUnitConverter.ReadRequiredPositiveFixedConfig(
+        s_SameGroupSpawnIntervalSeconds = FixedConfigReader.ReadRequiredPositiveFixedConfig(
+            SameGroupSpawnIntervalConfigKey);
+        s_WaypointArrivalRadiusWorld = (
+            FixedConfigReader.ReadRequiredPositiveFixedConfig(
                 LogicUnitConfigurator.DefendRouteWaypointArrivalRadiusConfigKey));
         LevelTable level = LogicRuntimeDataTableCache.GetLevelRequired(levelIdentifier);
         if (level.ExpectedDays <= 0)
             throw new InvalidOperationException($"Level '{levelIdentifier}' has invalid expected days {level.ExpectedDays}.");
-        EnemyStrengthRuntimeConfig.ValidateCurveOrder(level.ExpectedDays);
+        EnemySquadResourceEquivalentRuntimeConfig.ValidateCurveOrder(level.ExpectedDays);
 
         for (int i = 0; i < s_DefendAttackGroups.Count; i++)
             ConfigureFixedSpawnWindow(s_DefendAttackGroups[i]);
 
-        foreach (DefendAttackGroupDefinition group in s_DefendAttackGroups)
-            ResolveGroupStartSeconds(group, groupsByIdentifier, new HashSet<string>(StringComparer.Ordinal));
         s_DefendAttackGroups.Sort(CompareAttackGroups);
         ConfigureNavigationDistancePrewarmRequests();
         s_WaveConfigConfigured = true;
@@ -1129,174 +1124,107 @@ public static class DefendPhaseRuntime
 
         Fix64 longestRouteAtMaxSpeed = presetEngagementDistance / s_MaxSpeedWorld;
         Fix64 shortestRouteAtMinSpeed = shortestEngagementDistance / s_MinSpeedWorld;
-        group.FirstSpawnLeadSeconds = Fix64.Max(longestRouteAtMaxSpeed, shortestRouteAtMinSpeed);
-        group.LastSpawnLeadSeconds = Fix64.Min(longestRouteAtMaxSpeed, shortestRouteAtMinSpeed);
-        if (group.LastSpawnLeadSeconds <= Fix64.Zero
-            || group.ExpectedEngagementSeconds <= group.FirstSpawnLeadSeconds)
+        group.MaximumTravelLeadSeconds = shortestRouteAtMinSpeed;
+        group.MinimumTravelLeadSeconds = longestRouteAtMaxSpeed;
+        if (group.MaximumTravelLeadSeconds < group.MinimumTravelLeadSeconds)
         {
             throw new InvalidOperationException(
-                $"Defend group '{group.Identifier}' expected engagement time must exceed its preset first-spawn lead. " +
-                $"expectedRaw={group.ExpectedEngagementSeconds.RawValue}, leadRaw={group.FirstSpawnLeadSeconds.RawValue}.");
+                $"Defend group '{group.Identifier}' has no legal leader window within configured speed estimates.");
         }
-    }
-
-    private static Fix64 ResolveGroupStartSeconds(
-        DefendAttackGroupDefinition group,
-        IReadOnlyDictionary<string, DefendAttackGroupDefinition> groupsByIdentifier,
-        HashSet<string> visiting)
-    {
-        if (group.StartResolved)
-            return group.StartSeconds;
-        if (!visiting.Add(group.Identifier))
-            throw new InvalidOperationException($"Defend attack group dependency cycle contains '{group.Identifier}'.");
-
-        Fix64 start = group.DelaySeconds;
-        if (!string.IsNullOrWhiteSpace(group.AfterGroupIdentifier))
-        {
-            if (!groupsByIdentifier.TryGetValue(group.AfterGroupIdentifier, out DefendAttackGroupDefinition predecessor))
-                throw new InvalidOperationException($"Defend attack group '{group.Identifier}' references unknown predecessor '{group.AfterGroupIdentifier}'.");
-            start += ResolveGroupStartSeconds(predecessor, groupsByIdentifier, visiting)
-                     + GetFixedSpawnWindowEndOffset(predecessor);
-        }
-
-        visiting.Remove(group.Identifier);
-        group.StartSeconds = start;
-        group.StartResolved = true;
-        return start;
-    }
-
-    private static Fix64 GetFixedSpawnWindowEndOffset(DefendAttackGroupDefinition group)
-    {
-        Fix64 offset = group.ExpectedEngagementSeconds - group.LastSpawnLeadSeconds;
-        if (offset < Fix64.Zero)
-            throw new InvalidOperationException($"Defend group '{group.Identifier}' has an invalid fixed spawn window end.");
-        return offset;
     }
 
     private static int CompareAttackGroups(DefendAttackGroupDefinition left, DefendAttackGroupDefinition right)
     {
-        int round = left.DefendRound.CompareTo(right.DefendRound);
-        if (round != 0)
-            return round;
-        int start = left.StartSeconds.CompareTo(right.StartSeconds);
-        return start != 0 ? start : string.CompareOrdinal(left.Identifier, right.Identifier);
+        int firstWave = left.ActiveDefenseWaves[0].CompareTo(right.ActiveDefenseWaves[0]);
+        return firstWave != 0 ? firstWave : string.CompareOrdinal(left.Identifier, right.Identifier);
     }
 
-    private static void ValidateActiveDays(string identifier, IReadOnlyList<int> activeDays)
+    private static void ValidateActiveDefenseWaves(string identifier, IReadOnlyList<int> activeDefenseWaves)
     {
         var seen = new HashSet<int>();
         int previous = 0;
-        for (int i = 0; i < activeDays.Count; i++)
+        for (int i = 0; i < activeDefenseWaves.Count; i++)
         {
-            int day = activeDays[i];
-            if (day <= 0 || !seen.Add(day) || day <= previous)
-                throw new InvalidOperationException($"Defend attack group '{identifier}' active days must be positive, unique, and ascending.");
-            previous = day;
+            int wave = activeDefenseWaves[i];
+            if (wave <= 0 || !seen.Add(wave) || wave <= previous)
+                throw new InvalidOperationException($"Defend attack group '{identifier}' active defense waves must be positive, unique, and ascending.");
+            previous = wave;
         }
-    }
-
-    private static void ValidateActivePredecessors(
-        IReadOnlyDictionary<string, DefendAttackGroupDefinition> groupsByIdentifier)
-    {
-        foreach (DefendAttackGroupDefinition group in groupsByIdentifier.Values)
-        {
-            if (string.IsNullOrWhiteSpace(group.AfterGroupIdentifier))
-                continue;
-            if (!groupsByIdentifier.TryGetValue(group.AfterGroupIdentifier, out DefendAttackGroupDefinition predecessor))
-                throw new InvalidOperationException($"Defend attack group '{group.Identifier}' references unknown predecessor '{group.AfterGroupIdentifier}'.");
-            for (int i = 0; i < group.ActiveDays.Length; i++)
-            {
-                if (!ContainsDay(predecessor.ActiveDays, group.ActiveDays[i]))
-                {
-                    throw new InvalidOperationException(
-                        $"Defend attack group '{group.Identifier}' is active on day {group.ActiveDays[i]} but predecessor " +
-                        $"'{predecessor.Identifier}' is not.");
-                }
-            }
-        }
-    }
-
-    private static bool ContainsDay(IReadOnlyList<int> activeDays, int day)
-    {
-        for (int i = 0; i < activeDays.Count; i++)
-        {
-            if (activeDays[i] == day)
-                return true;
-        }
-        return false;
     }
 
     private static IReadOnlyList<EnemySquadCompositionEntry> ResolveSquadComposition(
         UnitType unitType,
-        Fix64 initialStrengthValue,
+        Fix64 initialResourceEquivalent,
         Fix64 countGrowthWeight,
         int day,
         int expectedDays,
-        Fix64 initialStrengthScale,
-        Fix64 growthSpeedScale,
-        EnemyStrengthRuntimeSettings settings)
+        Fix64 initialResourceEquivalentScale,
+        Fix64 resourceEquivalentGrowthSpeedScale,
+        EnemySquadResourceEquivalentRuntimeSettings settings)
     {
         BuildingTable building = LogicRuntimeDataTableCache.GetArmyBuilding(unitType)
             ?? throw new InvalidOperationException($"Cannot resolve army building for enemy unit '{unitType}'.");
-        EnemyUnitStrengthValueResolver.Result unitValues = EnemyUnitStrengthValueResolver.ResolveFromArmyBuilding(
+        EnemyUnitResourceEquivalentResolver.Result unitResourceEquivalents = EnemyUnitResourceEquivalentResolver.ResolveFromArmyBuilding(
             building,
-            settings.LevelTwoValueScale,
-            settings.LevelThreeValueScale);
-        return EnemySquadStrengthResolver.Resolve(
-            initialStrengthValue,
+            settings.LevelTwoResourceEquivalentScale,
+            settings.LevelThreeResourceEquivalentScale);
+        return EnemySquadResourceEquivalentResolver.Resolve(
+            initialResourceEquivalent,
             countGrowthWeight,
             day,
             expectedDays,
-            initialStrengthScale,
-            growthSpeedScale,
-            unitValues.EffectiveValues,
+            initialResourceEquivalentScale,
+            resourceEquivalentGrowthSpeedScale,
+            unitResourceEquivalents.EffectiveResourceEquivalents,
             settings.Curve,
-            settings.SquadValue);
+            settings.MaximumResolvedUnitCount);
     }
 
-    private static List<DefendAttackGroupDefinition> ResolveAttackGroupsForRound(int roundIndex)
+    private static List<DefendAttackGroupDefinition> ResolveAttackGroupsForWave(int defenseWaveIndex, int realDay)
     {
         var result = new List<DefendAttackGroupDefinition>();
-        if (roundIndex <= 0)
-            return result;
+        if (defenseWaveIndex <= 0)
+            throw new ArgumentOutOfRangeException(nameof(defenseWaveIndex));
+        if (realDay <= 0)
+            throw new ArgumentOutOfRangeException(nameof(realDay));
 
         LevelTable level = LogicRuntimeDataTableCache.GetLevelRequired(ResolveCurrentLevelIdentifier());
         if (level.ExpectedDays <= 0)
             throw new InvalidOperationException($"Level '{level.Identifier}' has invalid expected days {level.ExpectedDays}.");
-        EnemyStrengthRuntimeSettings strengthSettings = EnemyStrengthRuntimeConfig.Read(EnemyStrengthContext.DefenseWave);
-        Fix64 initialStrengthScale = LevelTagRuntime.GetEnemyInitialStrengthScale(EnemyStrengthContext.DefenseWave);
-        Fix64 growthSpeedScale = LevelTagRuntime.GetEnemyGrowthSpeedScale(EnemyStrengthContext.DefenseWave);
+        EnemySquadResourceEquivalentRuntimeSettings resourceEquivalentSettings = EnemySquadResourceEquivalentRuntimeConfig.Read(EnemySquadResourceEquivalentContext.DefenseWave);
+        Fix64 initialResourceEquivalentScale = LevelTagRuntime.GetEnemyInitialResourceEquivalentScale(EnemySquadResourceEquivalentContext.DefenseWave);
+        Fix64 resourceEquivalentGrowthSpeedScale = LevelTagRuntime.GetEnemyResourceEquivalentGrowthSpeedScale(EnemySquadResourceEquivalentContext.DefenseWave);
+        int authoredSourceWave = ResolveAuthoredSourceWave(defenseWaveIndex);
+        if (authoredSourceWave <= 0)
+            return result;
         for (int i = 0; i < s_DefendAttackGroups.Count; i++)
         {
             DefendAttackGroupDefinition source = s_DefendAttackGroups[i];
-            if (!ContainsDay(source.ActiveDays, roundIndex))
+            int authoredWaveIndex = Array.IndexOf(source.ActiveDefenseWaves, authoredSourceWave);
+            if (authoredWaveIndex < 0)
                 continue;
             var clone = new DefendAttackGroupDefinition
             {
                 Identifier = source.Identifier,
-                DefendRound = roundIndex,
-                ActiveDays = source.ActiveDays,
+                ActiveDefenseWaves = source.ActiveDefenseWaves,
+                RelativeLeaderEngagementSecondsByWave = source.RelativeLeaderEngagementSecondsByWave,
                 Route = source.Route,
                 UnitType = source.UnitType,
-                InitialStrengthValue = source.InitialStrengthValue,
+                InitialResourceEquivalent = source.InitialResourceEquivalent,
                 CountGrowthWeight = source.CountGrowthWeight,
-                AfterGroupIdentifier = source.AfterGroupIdentifier,
-                DelaySeconds = source.DelaySeconds,
-                ExpectedEngagementSeconds = source.ExpectedEngagementSeconds,
-                FirstSpawnLeadSeconds = source.FirstSpawnLeadSeconds,
-                LastSpawnLeadSeconds = source.LastSpawnLeadSeconds,
-                StartSeconds = source.StartSeconds,
-                StartResolved = true
+                RelativeLeaderEngagementSeconds = source.RelativeLeaderEngagementSecondsByWave[authoredWaveIndex],
+                MaximumTravelLeadSeconds = source.MaximumTravelLeadSeconds,
+                MinimumTravelLeadSeconds = source.MinimumTravelLeadSeconds
             };
             IReadOnlyList<EnemySquadCompositionEntry> composition = ResolveSquadComposition(
                 source.UnitType,
-                source.InitialStrengthValue,
+                source.InitialResourceEquivalent,
                 source.CountGrowthWeight,
-                roundIndex,
+                realDay,
                 level.ExpectedDays,
-                initialStrengthScale,
-                growthSpeedScale,
-                strengthSettings);
+                initialResourceEquivalentScale,
+                resourceEquivalentGrowthSpeedScale,
+                resourceEquivalentSettings);
             for (int entryIndex = 0; entryIndex < composition.Count; entryIndex++)
             {
                 EnemySquadCompositionEntry entry = composition[entryIndex];
@@ -1313,6 +1241,21 @@ public static class DefendPhaseRuntime
         return result;
     }
 
+    private static int ResolveAuthoredSourceWave(int requestedWave)
+    {
+        int sourceWave = 0;
+        for (int groupIndex = 0; groupIndex < s_DefendAttackGroups.Count; groupIndex++)
+        {
+            int[] waves = s_DefendAttackGroups[groupIndex].ActiveDefenseWaves;
+            for (int i = 0; i < waves.Length; i++)
+            {
+                if (waves[i] <= requestedWave)
+                    sourceWave = Math.Max(sourceWave, waves[i]);
+            }
+        }
+        return sourceWave;
+    }
+
     private static List<PlannedSpawnEvent> BuildSpawnEvents(IReadOnlyList<DefendAttackGroupDefinition> groups)
     {
         var events = new List<PlannedSpawnEvent>();
@@ -1321,15 +1264,16 @@ public static class DefendPhaseRuntime
         if (groups == null || groups.Count == 0 || s_DefendSpawnPoints.Count == 0)
             return events;
 
+        Fix64 engagementShift = CalculateWaveEngagementShift(groups);
         for (int groupIndex = 0; groupIndex < groups.Count; groupIndex++)
         {
             DefendAttackGroupDefinition group = groups[groupIndex];
-            Fix64 earliestSpawnSeconds = group.StartSeconds
-                                         + group.ExpectedEngagementSeconds
-                                         - group.FirstSpawnLeadSeconds;
-            Fix64 latestSpawnSeconds = group.StartSeconds
-                                       + group.ExpectedEngagementSeconds
-                                       - group.LastSpawnLeadSeconds;
+            group.ExpectedEngagementSeconds = group.RelativeLeaderEngagementSeconds + engagementShift;
+            Fix64 earliestSpawnSeconds = Fix64.Max(
+                Fix64.Zero,
+                group.ExpectedEngagementSeconds - group.MaximumTravelLeadSeconds);
+            Fix64 latestSpawnSeconds = group.ExpectedEngagementSeconds
+                                       - group.MinimumTravelLeadSeconds;
             if (earliestSpawnSeconds < Fix64.Zero || latestSpawnSeconds < earliestSpawnSeconds)
                 throw new InvalidOperationException($"Defend group '{group.Identifier}' has an invalid fixed spawn window.");
 
@@ -1352,7 +1296,13 @@ public static class DefendPhaseRuntime
             }
         }
 
-        ScheduleWaveSpawnCandidates(candidates, s_SpawnIntervalSeconds);
+        ScheduleWaveSpawnCandidates(candidates, s_SameGroupSpawnIntervalSeconds);
+        var leaderSpawnSecondsByGroup = new Dictionary<string, Fix64>(StringComparer.Ordinal);
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            if (candidates[i].OrdinalInGroup == 0)
+                leaderSpawnSecondsByGroup.Add(candidates[i].Group.Identifier, candidates[i].ScheduledSpawnSeconds);
+        }
         candidates.Sort((left, right) =>
         {
             int time = left.ScheduledSpawnSeconds.CompareTo(right.ScheduledSpawnSeconds);
@@ -1363,6 +1313,7 @@ public static class DefendPhaseRuntime
             AddPlannedSpawnEvent(
                 candidates[i],
                 candidates[i].ScheduledSpawnSeconds,
+                leaderSpawnSecondsByGroup,
                 distanceByRouteUnitAndWaypoint,
                 events);
         }
@@ -1370,78 +1321,117 @@ public static class DefendPhaseRuntime
         return events;
     }
 
-    private static void ScheduleWaveSpawnCandidates(
-        IReadOnlyList<WaveSpawnCandidate> candidates,
-        Fix64 spawnIntervalSeconds)
+    private static Fix64 CalculateWaveEngagementShift(IReadOnlyList<DefendAttackGroupDefinition> groups)
     {
-        if (spawnIntervalSeconds <= Fix64.Zero)
-            throw new ArgumentOutOfRangeException(nameof(spawnIntervalSeconds));
-        var pending = new List<WaveSpawnCandidate>(candidates);
-        Fix64 nextSpawnSeconds = Fix64.Zero;
-        if (pending.Count > 0)
+        Fix64 shift = Fix64.Zero;
+        for (int i = 0; i < groups.Count; i++)
         {
-            nextSpawnSeconds = pending[0].EarliestSpawnSeconds;
-            for (int i = 1; i < pending.Count; i++)
-                nextSpawnSeconds = Fix64.Min(nextSpawnSeconds, pending[i].EarliestSpawnSeconds);
+            shift = Fix64.Max(
+                shift,
+                groups[i].MinimumTravelLeadSeconds - groups[i].RelativeLeaderEngagementSeconds);
         }
-        while (pending.Count > 0)
-        {
-            int selectedIndex = SelectNextWaveSpawnCandidate(pending, nextSpawnSeconds);
-            if (selectedIndex < 0)
-            {
-                nextSpawnSeconds = pending[0].EarliestSpawnSeconds;
-                for (int i = 1; i < pending.Count; i++)
-                    nextSpawnSeconds = Fix64.Min(nextSpawnSeconds, pending[i].EarliestSpawnSeconds);
-                selectedIndex = SelectNextWaveSpawnCandidate(pending, nextSpawnSeconds);
-            }
-            if (selectedIndex < 0)
-                throw new InvalidOperationException("Defense wave scheduler could not select an available spawn candidate.");
-
-            WaveSpawnCandidate candidate = pending[selectedIndex];
-            pending.RemoveAt(selectedIndex);
-            if (nextSpawnSeconds > candidate.LatestSpawnSeconds)
-            {
-                throw new InvalidOperationException(
-                    $"Defense wave cannot keep the global spawn interval inside group '{candidate.Group.Identifier}' fixed window. " +
-                    $"scheduledRaw={nextSpawnSeconds.RawValue}, latestRaw={candidate.LatestSpawnSeconds.RawValue}.");
-            }
-
-            candidate.ScheduledSpawnSeconds = nextSpawnSeconds;
-            nextSpawnSeconds += spawnIntervalSeconds;
-        }
+        return Fix64.Max(Fix64.Zero, shift);
     }
 
-    private static int SelectNextWaveSpawnCandidate(
+    private static void ScheduleWaveSpawnCandidates(
         IReadOnlyList<WaveSpawnCandidate> candidates,
-        Fix64 spawnSeconds)
+        Fix64 sameGroupSpawnIntervalSeconds)
     {
-        int selectedIndex = -1;
+        if (sameGroupSpawnIntervalSeconds <= Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(sameGroupSpawnIntervalSeconds));
+        var groups = new List<List<WaveSpawnCandidate>>();
+        var byIdentifier = new Dictionary<string, List<WaveSpawnCandidate>>(StringComparer.Ordinal);
         for (int i = 0; i < candidates.Count; i++)
         {
             WaveSpawnCandidate candidate = candidates[i];
-            if (candidate.EarliestSpawnSeconds > spawnSeconds)
-                continue;
-            if (selectedIndex < 0 || CompareWaveSpawnCandidates(candidate, candidates[selectedIndex]) < 0)
-                selectedIndex = i;
+            if (!byIdentifier.TryGetValue(candidate.Group.Identifier, out List<WaveSpawnCandidate> group))
+            {
+                group = new List<WaveSpawnCandidate>();
+                byIdentifier.Add(candidate.Group.Identifier, group);
+                groups.Add(group);
+            }
+            group.Add(candidate);
         }
-        return selectedIndex;
+        for (int i = 0; i < groups.Count; i++)
+            groups[i].Sort((left, right) => left.OrdinalInGroup.CompareTo(right.OrdinalInGroup));
+        groups.Sort((left, right) =>
+        {
+            int deadline = left[0].LatestSpawnSeconds.CompareTo(right[0].LatestSpawnSeconds);
+            return deadline != 0
+                ? deadline
+                : string.CompareOrdinal(left[0].Group.Identifier, right[0].Group.Identifier);
+        });
+
+        var scheduledTimes = new List<Fix64>();
+        for (int groupIndex = 0; groupIndex < groups.Count; groupIndex++)
+        {
+            List<WaveSpawnCandidate> group = groups[groupIndex];
+            Fix64 leaderSeconds = FindBestLeaderSpawnSeconds(
+                group,
+                scheduledTimes,
+                sameGroupSpawnIntervalSeconds);
+            for (int i = 0; i < group.Count; i++)
+            {
+                Fix64 spawnSeconds = leaderSeconds + (Fix64)group[i].OrdinalInGroup * sameGroupSpawnIntervalSeconds;
+                group[i].ScheduledSpawnSeconds = spawnSeconds;
+                scheduledTimes.Add(spawnSeconds);
+            }
+            scheduledTimes.Sort();
+        }
     }
 
-    private static int CompareWaveSpawnCandidates(WaveSpawnCandidate left, WaveSpawnCandidate right)
+    private static Fix64 FindBestLeaderSpawnSeconds(
+        IReadOnlyList<WaveSpawnCandidate> group,
+        IReadOnlyList<Fix64> scheduledTimes,
+        Fix64 sameGroupSpawnIntervalSeconds)
     {
-        int deadline = left.LatestSpawnSeconds.CompareTo(right.LatestSpawnSeconds);
-        if (deadline != 0)
-            return deadline;
-        int ordinal = left.OrdinalInGroup.CompareTo(right.OrdinalInGroup);
-        if (ordinal != 0)
-            return ordinal;
-        int group = string.CompareOrdinal(left.Group.Identifier, right.Group.Identifier);
-        return group != 0 ? group : left.StableSequence.CompareTo(right.StableSequence);
+        Fix64 earliest = group[0].EarliestSpawnSeconds;
+        Fix64 latest = group[0].LatestSpawnSeconds;
+        var candidates = new List<Fix64> { earliest, latest };
+        var collisionLeaderTimes = new List<Fix64>();
+        for (int scheduledIndex = 0; scheduledIndex < scheduledTimes.Count; scheduledIndex++)
+        {
+            for (int memberIndex = 0; memberIndex < group.Count; memberIndex++)
+            {
+                Fix64 collision = scheduledTimes[scheduledIndex]
+                                  - (Fix64)group[memberIndex].OrdinalInGroup * sameGroupSpawnIntervalSeconds;
+                collisionLeaderTimes.Add(collision);
+            }
+        }
+        collisionLeaderTimes.Sort();
+        for (int i = 1; i < collisionLeaderTimes.Count; i++)
+        {
+            Fix64 midpoint = (collisionLeaderTimes[i - 1] + collisionLeaderTimes[i]) / (Fix64)2;
+            if (midpoint >= earliest && midpoint <= latest)
+                candidates.Add(midpoint);
+        }
+
+        Fix64 best = earliest;
+        Fix64 bestSeparation = Fix64.FromRaw(-1);
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            Fix64 minimumSeparation = Fix64.FromRaw(long.MaxValue);
+            for (int memberIndex = 0; memberIndex < group.Count; memberIndex++)
+            {
+                Fix64 memberTime = candidates[i]
+                                   + (Fix64)group[memberIndex].OrdinalInGroup * sameGroupSpawnIntervalSeconds;
+                for (int scheduledIndex = 0; scheduledIndex < scheduledTimes.Count; scheduledIndex++)
+                    minimumSeparation = Fix64.Min(minimumSeparation, Fix64.Abs(memberTime - scheduledTimes[scheduledIndex]));
+            }
+            if (minimumSeparation > bestSeparation
+                || (minimumSeparation == bestSeparation && candidates[i] < best))
+            {
+                best = candidates[i];
+                bestSeparation = minimumSeparation;
+            }
+        }
+        return best;
     }
 
     private static void AddPlannedSpawnEvent(
         WaveSpawnCandidate candidate,
         Fix64 spawnSeconds,
+        IReadOnlyDictionary<string, Fix64> leaderSpawnSecondsByGroup,
         IDictionary<string, EngagementPathEstimate> distanceCache,
         ICollection<PlannedSpawnEvent> events)
     {
@@ -1478,19 +1468,22 @@ public static class DefendPhaseRuntime
             distanceCache.Add(distanceCacheKey, pathEstimate);
         }
 
-        Fix64 engagementSeconds = group.StartSeconds + group.ExpectedEngagementSeconds;
-        if (engagementSeconds <= spawnSeconds)
+        Fix64 engagementSeconds = group.ExpectedEngagementSeconds;
+        if (!leaderSpawnSecondsByGroup.TryGetValue(group.Identifier, out Fix64 leaderSpawnSeconds))
+            throw new InvalidOperationException($"Defend group '{group.Identifier}' has no scheduled leader.");
+        if (engagementSeconds <= leaderSpawnSeconds)
         {
             throw new InvalidOperationException(
-                $"Defend group '{group.Identifier}' scheduled a unit at or after its expected engagement time.");
+                $"Defend group '{group.Identifier}' scheduled its leader at or after its expected engagement time.");
         }
         ulong requestTicks = SecondsToTicksCeiling(spawnSeconds);
         ulong expectedEngagementTicks = SecondsToTicksCeiling(engagementSeconds);
-        if (expectedEngagementTicks <= requestTicks)
-            throw new InvalidOperationException($"Defend group '{group.Identifier}' has no travel ticks after scheduling.");
-        Fix64 remainingTravelSeconds = TicksToDuration(expectedEngagementTicks - requestTicks);
+        ulong leaderRequestTicks = SecondsToTicksCeiling(leaderSpawnSeconds);
+        if (expectedEngagementTicks <= leaderRequestTicks)
+            throw new InvalidOperationException($"Defend group '{group.Identifier}' leader has no travel ticks after scheduling.");
+        Fix64 remainingTravelSeconds = TicksToDuration(expectedEngagementTicks - leaderRequestTicks);
         Fix64 speedWorld = CalculateExpectedEngagementSpeed(pathEstimate.Distance, remainingTravelSeconds);
-        Fix64 speedProperty = DistanceUnitConverter.ConvertFromWorld(speedWorld, s_DistanceConversionRate);
+        Fix64 speedProperty = speedWorld;
         events.Add(new PlannedSpawnEvent
         {
             RequestFrameOffset = requestTicks,
@@ -1613,7 +1606,7 @@ public static class DefendPhaseRuntime
 
     private static Fix64 ResolveFiniteConfigFixed(string key, Fix64 minimum)
     {
-        return Fix64.Max(minimum, DistanceUnitConverter.ReadRequiredPositiveFixedConfig(key));
+        return Fix64.Max(minimum, FixedConfigReader.ReadRequiredPositiveFixedConfig(key));
     }
 
     private static ulong SecondsToTicksCeiling(Fix64 duration)
@@ -1694,7 +1687,7 @@ public static class DefendPhaseRuntime
         }
         if (s_MinSpeedWorld <= Fix64.Zero
             || s_MaxSpeedWorld < s_MinSpeedWorld
-            || s_SpawnIntervalSeconds <= Fix64.Zero
+            || s_SameGroupSpawnIntervalSeconds <= Fix64.Zero
             || s_WaypointArrivalRadiusWorld <= Fix64.Zero)
         {
             throw new InvalidOperationException("DefendPhaseRuntime prepared config contains a non-positive value.");
@@ -1715,7 +1708,10 @@ public static class DefendPhaseRuntime
         if (!keepRoundIndex)
             s_TutorialFirstDefenseConsumed = false;
         if (!keepRoundIndex)
-            s_DefendRoundIndex = 0;
+        {
+            s_DefendDay = 0;
+            s_DefenseWaveIndex = 0;
+        }
     }
 
     public static void WriteDeterministicState(LogicStateHasher hasher)
@@ -1723,7 +1719,8 @@ public static class DefendPhaseRuntime
         if (hasher == null)
             throw new ArgumentNullException(nameof(hasher));
 
-        hasher.Add(s_DefendRoundIndex);
+        hasher.Add(s_DefendDay);
+        hasher.Add(s_DefenseWaveIndex);
         hasher.Add(s_SpawnScheduleCompleted);
         hasher.Add(s_WaitingForNavigationDistancePrewarm);
         hasher.Add(s_SpawnRequestStartFrame);
@@ -1859,6 +1856,42 @@ public static class DefendPhaseRuntime
         return CalculateExpectedEngagementSpeed(engagementDistance, remainingTravelSeconds);
     }
 
+    public static Fix64 GetEditorTestWaveEngagementShift(
+        Fix64[] minimumTravelLeadSeconds,
+        Fix64[] relativeEngagementSeconds)
+    {
+        if (minimumTravelLeadSeconds == null || relativeEngagementSeconds == null)
+            throw new ArgumentNullException("Wave engagement shift inputs cannot be null.");
+        if (minimumTravelLeadSeconds.Length != relativeEngagementSeconds.Length)
+            throw new ArgumentException("Wave engagement shift input lengths are mismatched.");
+        Fix64 shift = Fix64.Zero;
+        for (int i = 0; i < minimumTravelLeadSeconds.Length; i++)
+            shift = Fix64.Max(shift, minimumTravelLeadSeconds[i] - relativeEngagementSeconds[i]);
+        return Fix64.Max(Fix64.Zero, shift);
+    }
+
+    public static Fix64[] GetEditorTestGroupExpectedEngagementSpeeds(
+        Fix64 engagementDistance,
+        Fix64 engagementSeconds,
+        Fix64[] scheduledSpawnSeconds,
+        int[] ordinalsInGroup)
+    {
+        if (scheduledSpawnSeconds == null || ordinalsInGroup == null)
+            throw new ArgumentNullException("Group speed test inputs cannot be null.");
+        if (scheduledSpawnSeconds.Length != ordinalsInGroup.Length || scheduledSpawnSeconds.Length == 0)
+            throw new ArgumentException("Group speed test input lengths are invalid.");
+        int leaderIndex = Array.IndexOf(ordinalsInGroup, 0);
+        if (leaderIndex < 0)
+            throw new ArgumentException("Group speed test input has no leader.");
+        Fix64 speed = CalculateExpectedEngagementSpeed(
+            engagementDistance,
+            engagementSeconds - scheduledSpawnSeconds[leaderIndex]);
+        var result = new Fix64[scheduledSpawnSeconds.Length];
+        for (int i = 0; i < result.Length; i++)
+            result[i] = speed;
+        return result;
+    }
+
     public static int GetEditorTestFirstPlayerWaypointIndex(
         string routeIdentifier,
         string[] waypointStrongholdIds)
@@ -1895,19 +1928,16 @@ public static class DefendPhaseRuntime
     {
         public readonly List<DefendAttackEntry> Enemies = new();
         public string Identifier;
-        public int DefendRound;
-        public int[] ActiveDays;
+        public int[] ActiveDefenseWaves;
+        public Fix64[] RelativeLeaderEngagementSecondsByWave;
         public DefendRouteDefinition Route;
         public UnitType UnitType;
-        public Fix64 InitialStrengthValue;
+        public Fix64 InitialResourceEquivalent;
         public Fix64 CountGrowthWeight;
-        public string AfterGroupIdentifier;
-        public Fix64 DelaySeconds;
+        public Fix64 RelativeLeaderEngagementSeconds;
         public Fix64 ExpectedEngagementSeconds;
-        public Fix64 FirstSpawnLeadSeconds;
-        public Fix64 LastSpawnLeadSeconds;
-        public Fix64 StartSeconds;
-        public bool StartResolved;
+        public Fix64 MaximumTravelLeadSeconds;
+        public Fix64 MinimumTravelLeadSeconds;
     }
 
     private sealed class DefendAttackEntry
@@ -1963,20 +1993,20 @@ public static class DefendPhaseRuntime
         public TutorialTriggeredSpawnPoint(
             FixVector2 position,
             UnitType unitType,
-            Fix64 initialStrengthValue,
+            Fix64 initialResourceEquivalent,
             Fix64 countGrowthWeight,
             string name)
         {
             Position = position;
             UnitType = unitType;
-            InitialStrengthValue = initialStrengthValue;
+            InitialResourceEquivalent = initialResourceEquivalent;
             CountGrowthWeight = countGrowthWeight;
             Name = name;
         }
 
         public FixVector2 Position { get; }
         public UnitType UnitType { get; }
-        public Fix64 InitialStrengthValue { get; }
+        public Fix64 InitialResourceEquivalent { get; }
         public Fix64 CountGrowthWeight { get; }
         public string Name { get; }
     }

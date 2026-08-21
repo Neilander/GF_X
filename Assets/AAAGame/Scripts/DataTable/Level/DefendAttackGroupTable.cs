@@ -47,9 +47,9 @@ public class DefendAttackGroupTable : DataRowBase
         }
 
         /// <summary>
-        /// 启用防御日；编辑器顶部选择天数后勾选，不生成按日实例
+        /// 显式启用的防御波次；空缺波完整沿用最近上一波编排
         /// </summary>
-        public int[] ActiveDays
+        public int[] ActiveDefenseWaves
         {
             get;
             private set;
@@ -74,16 +74,16 @@ public class DefendAttackGroupTable : DataRowBase
         }
 
         /// <summary>
-        /// 初始橙髓等价战力；由兵种、数量和等级的非线性价值换算
+        /// 初始小队资源等价量，当前以橙髓计；按各等级单兵资源等价量乘数量后求和
         /// </summary>
-        public Fix64 InitialStrengthValue
+        public Fix64 InitialResourceEquivalent
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 新增强度在数量成长中的分配权重，0=全投等级，1=全投数量
+        /// 新增资源等价量在数量成长中的分配权重，0=全投等级，1=全投数量
         /// </summary>
         public Fix64 CountGrowthWeight
         {
@@ -92,27 +92,9 @@ public class DefendAttackGroupTable : DataRowBase
         }
 
         /// <summary>
-        /// 前置小队；前置与本小队必须在同一天启用
+        /// 与启用防御波次一一对应的队首相对接战秒数；可为0，运行时不足则全波统一延后
         /// </summary>
-        public string AfterGroupIdentifier
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 前置小队固定出兵窗口结束后的延迟秒；无前置时为防御阶段开始延迟
-        /// </summary>
-        public Fix64 StartDelaySeconds
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 从本小队计时基准到预计接战时刻的秒数
-        /// </summary>
-        public Fix64 ExpectedEngagementSeconds
+        public Fix64[] RelativeLeaderEngagementSeconds
         {
             get;
             private set;
@@ -141,14 +123,12 @@ public class DefendAttackGroupTable : DataRowBase
             index++;
             Identifier = columnStrings[index++];
             LevelIdentifier = columnStrings[index++];
-            ActiveDays = DataTableExtension.ParseArray<int>(columnStrings[index++]);
+            ActiveDefenseWaves = DataTableExtension.ParseArray<int>(columnStrings[index++]);
             RouteIdentifier = columnStrings[index++];
             UnitIdentifier = columnStrings[index++];
-            InitialStrengthValue = DataTableExtension.ParseFix64(columnStrings[index++]);
+            InitialResourceEquivalent = DataTableExtension.ParseFix64(columnStrings[index++]);
             CountGrowthWeight = DataTableExtension.ParseFix64(columnStrings[index++]);
-            AfterGroupIdentifier = columnStrings[index++];
-            StartDelaySeconds = DataTableExtension.ParseFix64(columnStrings[index++]);
-            ExpectedEngagementSeconds = DataTableExtension.ParseFix64(columnStrings[index++]);
+            RelativeLeaderEngagementSeconds = DataTableExtension.ParseFix64Array(columnStrings[index++]);
             Suffix = columnStrings[index++];
 
             return true;
@@ -163,14 +143,12 @@ public class DefendAttackGroupTable : DataRowBase
                     m_Id = binaryReader.Read7BitEncodedInt32();
                     Identifier = binaryReader.ReadString();
                     LevelIdentifier = binaryReader.ReadString();
-                    ActiveDays = binaryReader.ReadArray<int>();
+                    ActiveDefenseWaves = binaryReader.ReadArray<int>();
                     RouteIdentifier = binaryReader.ReadString();
                     UnitIdentifier = binaryReader.ReadString();
-                    InitialStrengthValue = binaryReader.ReadFix64();
+                    InitialResourceEquivalent = binaryReader.ReadFix64();
                     CountGrowthWeight = binaryReader.ReadFix64();
-                    AfterGroupIdentifier = binaryReader.ReadString();
-                    StartDelaySeconds = binaryReader.ReadFix64();
-                    ExpectedEngagementSeconds = binaryReader.ReadFix64();
+                    RelativeLeaderEngagementSeconds = binaryReader.ReadFix64Array();
                     Suffix = binaryReader.ReadString();
                 }
             }

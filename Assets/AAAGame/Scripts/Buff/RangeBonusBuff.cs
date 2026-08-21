@@ -1,6 +1,6 @@
 ﻿/// <summary>
 /// 固定射程提升 Buff：作用于单位的 Weapon.Range（SimpleStat.Additive）。
-/// 表里单位一般是"码"；WeaponData.Range 已经按同一标准存储。
+/// 表里单位为地块格；WeaponData.Range 直接存储同量纲值。
 /// </summary>
 public sealed class RangeBonusBuff : BuffCallback
 {

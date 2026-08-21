@@ -73,7 +73,7 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
         }
 
         FixVector2 manualMove = _ctx.Brain?.MoveFixed ?? FixVector2.Zero;
-        Fix64 speed = DistanceUnitConverter.ConvertToWorld(_ctx.GetProperty(CreatureMainProperty.Speed));
+        Fix64 speed = (_ctx.GetProperty(CreatureMainProperty.Speed));
         FixVector2 finalVelocity = FixVector2.Zero;
 
         if (FixVector2.SqrMagnitude(manualMove) > s_MoveInputThresholdSquared)
@@ -217,7 +217,7 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
 
     private Fix64 ResolveArriveDistanceFixed()
     {
-        Fix64 collisionRadius = DistanceUnitConverter.ConvertToWorld(_ctx.GetProperty(CreatureMainProperty.CollisionRadius));
+        Fix64 collisionRadius = (_ctx.GetProperty(CreatureMainProperty.CollisionRadius));
         if (collisionRadius > Fix64.FromRaw(1))
             return Fix64.Max(Fix64.FromRaw(328), collisionRadius * Fix64.FromRaw(2458));
 

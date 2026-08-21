@@ -147,6 +147,8 @@ public sealed class DeterministicStaticCollisionGeometryTests
             $"start={start} requested={requested} radiusRaw={radius.RawValue} box={boxCenter}/{boxHalfExtents}");
         Assert.Greater(result.ResolvedDisplacement.x.RawValue, 0);
         Assert.Less(result.ResolvedDisplacement.x.RawValue, requested.x.RawValue);
+        Assert.Less(result.ResolvedDisplacement.y.RawValue, 0,
+            "A horizontal sweep into the lower-left rounded corner must retain the collision tangent instead of stopping at the contact point.");
         Assert.IsTrue(DeterministicStaticCollisionSolver.SolveCircleAgainstObstacles(
             start + result.ResolvedDisplacement,
             FixVector2.Zero,
@@ -192,6 +194,42 @@ public sealed class DeterministicStaticCollisionGeometryTests
         Assert.GreaterOrEqual(end.x.RawValue, radius.RawValue);
         Assert.GreaterOrEqual(end.y.RawValue, radius.RawValue);
         Assert.IsTrue(DeterministicStaticCollisionSolver.IsCircleClear(world, end, radius));
+    }
+
+    [Test]
+    public void RuntimeBoxAndAuthoredBoundaryPinch_StopsAtContactManifold()
+    {
+        Fix64 boundaryTop = Fix64.FromRaw(222412);
+        LogicStaticCollisionWorld world = CreateRectangleWorld(
+            Fix64.Zero,
+            Fix64.Zero,
+            (Fix64)20,
+            boundaryTop);
+        var obstacles = new[]
+        {
+            new LogicStaticCollisionObstacle(
+                -49153,
+                LogicStaticCollisionObstacleKind.Box,
+                new FixVector2(Fix64.FromRaw(51200), Fix64.FromRaw(210944)),
+                new FixVector2(Fix64.FromRaw(8192), Fix64.FromRaw(8192)),
+                Fix64.Zero),
+        };
+
+        FixVector2 start = new FixVector2(Fix64.FromRaw(59869), Fix64.FromRaw(220773));
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            start,
+            new FixVector2(Fix64.FromRaw(-2340), Fix64.Zero),
+            Fix64.FromRaw(1639),
+            obstacles,
+            LogicStaticCollisionSlideMode.PreserveTangentialComponent);
+
+        Assert.IsTrue(result.Success, result.Failure.ToString());
+        Assert.GreaterOrEqual(result.ContactCount, 1);
+        Assert.Less(result.ResolvedDisplacement.x.RawValue, 0);
+        Assert.AreEqual(0, result.ResolvedDisplacement.y.RawValue);
+        FixVector2 end = start + result.ResolvedDisplacement;
+        Assert.IsTrue(DeterministicStaticCollisionSolver.IsCircleClear(world, end, Fix64.FromRaw(1639), obstacles));
     }
 
     [Test]

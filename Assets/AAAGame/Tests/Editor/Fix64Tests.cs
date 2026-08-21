@@ -37,33 +37,6 @@ public sealed class Fix64Tests
     }
 
     [Test]
-    public void DistanceConversion_QuantizesOnlyFinalWorldValue()
-    {
-        Fix64 result = DistanceUnitConverter.ConvertToWorld((Fix64)10);
-
-        Assert.AreEqual(((Fix64)0.5f).RawValue, result.RawValue);
-    }
-
-    [TestCase(1, 205L)]
-    [TestCase(-1, -205L)]
-    public void DistanceConversion_PreservesFix64OutwardQuantization(int tableValue, long expectedRaw)
-    {
-        Fix64 result = DistanceUnitConverter.ConvertToWorld((Fix64)tableValue);
-
-        Assert.AreEqual(expectedRaw, result.RawValue);
-    }
-
-    [Test]
-    public void DistanceConversion_HighPrecisionRateDoesNotRoundThroughFloat()
-    {
-        DistanceUnitConverter.SetEditorTestDistanceConversionRateText("0.015136718751");
-
-        Fix64 result = DistanceUnitConverter.ConvertToWorld(Fix64.One);
-
-        Assert.AreEqual(63L, result.RawValue);
-    }
-
-    [Test]
     public void RuntimeAuthorityNumericConstants_UseRawFixedValues()
     {
         string scriptsRoot = System.IO.Path.Combine(UnityEngine.Application.dataPath, "AAAGame", "Scripts");
@@ -129,24 +102,12 @@ public sealed class Fix64Tests
             Assert.AreEqual(expectedRaw[i], legacyValues[i].RawValue, $"Legacy runtime Q12 raw mismatch at index {i}.");
     }
 
-    [Test]
-    public void DistanceConversion_ExactWorldValueRoundTripsToTableValue()
-    {
-        DistanceUnitConverter.SetEditorTestDistanceConversionRateText("0.05");
-        Fix64 tableValue = (Fix64)10;
-
-        Fix64 worldValue = DistanceUnitConverter.ConvertToWorld(tableValue);
-        Fix64 roundTrip = DistanceUnitConverter.ConvertFromWorld(worldValue);
-
-        Assert.AreEqual(tableValue.RawValue, roundTrip.RawValue);
-    }
-
     [TestCase("0.015136718751", 63L)]
     [TestCase("-0.015136718751", -63L)]
     [TestCase("12", 49152L)]
     public void FixedConfigParsing_QuantizesInvariantTextDirectlyToRaw(string text, long expectedRaw)
     {
-        Fix64 result = DistanceUnitConverter.ParseFixedConfigText("TestFixedConfig", text);
+        Fix64 result = FixedConfigReader.ParseFixedConfigText("TestFixedConfig", text);
 
         Assert.AreEqual(expectedRaw, result.RawValue);
     }
@@ -157,7 +118,7 @@ public sealed class Fix64Tests
         const string text = "0.015136718751";
         float oldFloatValue = float.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
         Fix64 oldFloatRoundTrip = (Fix64)oldFloatValue;
-        Fix64 direct = DistanceUnitConverter.ParseFixedConfigText("TestFixedConfig", text);
+        Fix64 direct = FixedConfigReader.ParseFixedConfigText("TestFixedConfig", text);
 
         Assert.AreEqual(62L, oldFloatRoundTrip.RawValue, "The regression sample must prove the old float boundary loses one raw unit.");
         Assert.AreEqual(63L, direct.RawValue);
@@ -172,7 +133,7 @@ public sealed class Fix64Tests
     public void FixedConfigParsing_RejectsMissingOrNonInvariantText(string text)
     {
         Assert.Throws<System.InvalidOperationException>(
-            () => DistanceUnitConverter.ParseFixedConfigText("TestFixedConfig", text));
+            () => FixedConfigReader.ParseFixedConfigText("TestFixedConfig", text));
     }
 
     [Test]

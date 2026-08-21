@@ -288,7 +288,7 @@ internal static class LvTestSlopeSideCliffDiagnosticRunner
     {
         if (hero is not ILogicFrameEntity logicHero)
             throw new InvalidOperationException("Slope-side hero is not a logic-frame entity.");
-        Fix64 radius = DistanceUnitConverter.ConvertToWorld(
+        Fix64 radius = (
             hero.GetProperty(CreatureMainProperty.CollisionRadius));
         FixVector2 start = new FixVector2((Fix64)hero.Position.x, (Fix64)hero.Position.z);
         bool available = LogicStaticCollisionShadowService.TrySolveFixed(

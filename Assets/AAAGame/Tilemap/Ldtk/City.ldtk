@@ -1123,8 +1123,8 @@
 					"tilesetUid": null
 				},
 				{
-					"identifier": "StrengthValue",
-					"doc": "初始橙髓等价战力",
+					"identifier": "ResourceEquivalent",
+					"doc": "初始小队资源等价量，当前以橙髓计",
 					"__type": "Float",
 					"uid": 18,
 					"type": "F_Float",
@@ -1132,7 +1132,7 @@
 					"canBeNull": false,
 					"arrayMinLength": null,
 					"arrayMaxLength": null,
-					"editorDisplayMode": "NameAndValue",
+					"editorDisplayMode": "Hidden",
 					"editorDisplayScale": 1,
 					"editorDisplayPos": "Above",
 					"editorLinkStyle": "StraightArrow",
@@ -1161,7 +1161,7 @@
 				},
 				{
 					"identifier": "CountGrowthWeight",
-					"doc": "新增强度分配给数量的权重，0偏等级，1偏数量",
+					"doc": "新增资源等价量分配给数量的权重，0偏等级，1偏数量",
 					"__type": "Float",
 					"uid": 64,
 					"type": "F_Float",
@@ -1169,7 +1169,7 @@
 					"canBeNull": false,
 					"arrayMinLength": null,
 					"arrayMaxLength": null,
-					"editorDisplayMode": "NameAndValue",
+					"editorDisplayMode": "Hidden",
 					"editorDisplayScale": 1,
 					"editorDisplayPos": "Above",
 					"editorLinkStyle": "StraightArrow",
@@ -1393,7 +1393,7 @@
 					"canBeNull": false,
 					"arrayMinLength": null,
 					"arrayMaxLength": null,
-					"editorDisplayMode": "NameAndValue",
+					"editorDisplayMode": "Hidden",
 					"editorDisplayScale": 1,
 					"editorDisplayPos": "Above",
 					"editorLinkStyle": "StraightArrow",
@@ -1430,7 +1430,7 @@
 					"canBeNull": false,
 					"arrayMinLength": null,
 					"arrayMaxLength": null,
-					"editorDisplayMode": "NameAndValue",
+					"editorDisplayMode": "Hidden",
 					"editorDisplayScale": 1,
 					"editorDisplayPos": "Above",
 					"editorLinkStyle": "StraightArrow",
@@ -1539,20 +1539,7 @@
 			"savedSelections": [],
 			"cachedPixelData": { "opaqueTiles": "1", "averageColors": "fb9a" }
 		}
-	], "enums": [
-		{
-			"identifier": "EnvironmentType",
-			"uid": 62,
-			"values": [
-				{ "id": "CoastalCity", "tileRect": null, "color": 26367 },
-				{ "id": "Void", "tileRect": null, "color": 6908265 }
-			],
-			"iconTilesetUid": null,
-			"externalRelPath": null,
-			"externalFileChecksum": null,
-			"tags": []
-		}
-	], "externalEnums": [], "levelFields": [
+	], "enums": [{ "identifier": "EnvironmentType", "uid": 62, "values": [ { "id": "CoastalCity", "tileRect": null, "color": 26367 }, { "id": "Void", "tileRect": null, "color": 6908265 } ], "iconTilesetUid": null, "externalRelPath": null, "externalFileChecksum": null, "tags": [] }], "externalEnums": [], "levelFields": [
 		{
 			"identifier": "EnvironmentType",
 			"doc": "Controls the automatic rendering of positions without authored terrain.",
@@ -1580,7 +1567,10 @@
 			"max": null,
 			"regex": null,
 			"acceptFileTypes": null,
-			"defaultOverride": { "id": "V_String", "params": ["CoastalCity"] },
+			"defaultOverride": {
+				"id": "V_String",
+				"params": ["CoastalCity"]
+			},
 			"textLanguageMode": null,
 			"symmetricalRef": false,
 			"autoChainRef": true,
@@ -1611,7 +1601,10 @@
 			"__smartColor": "#ADADB5",
 			"__bgPos": null,
 			"externalRelPath": "City/Lv3.ldtkl",
-			"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{ "id": "V_String", "params": ["CoastalCity"] }] }],
+			"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{
+				"id": "V_String",
+				"params": ["CoastalCity"]
+			}] }],
 			"layerInstances": null,
 			"__neighbours": []
 		},
@@ -1634,7 +1627,10 @@
 			"__smartColor": "#ADADB5",
 			"__bgPos": null,
 			"externalRelPath": "City/Lv3_Backup.ldtkl",
-			"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{ "id": "V_String", "params": ["CoastalCity"] }] }],
+			"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{
+				"id": "V_String",
+				"params": ["CoastalCity"]
+			}] }],
 			"layerInstances": null,
 			"__neighbours": [{ "levelIid": "f60f3fa0-6fc0-11f1-ba80-ab51bbb7fda9", "dir": "w" }]
 		},
@@ -1642,11 +1638,11 @@
 			"identifier": "Lv2",
 			"iid": "8684dc60-48b0-11f1-9656-8bb06757e875",
 			"uid": 25,
-			"worldX": 1216,
-			"worldY": 16,
+			"worldX": 1312,
+			"worldY": 64,
 			"worldDepth": 0,
-			"pxWid": 1392,
-			"pxHei": 1232,
+			"pxWid": 1312,
+			"pxHei": 960,
 			"__bgColor": "#696A79",
 			"bgColor": null,
 			"useAutoIdentifier": false,
@@ -1657,9 +1653,12 @@
 			"__smartColor": "#ADADB5",
 			"__bgPos": null,
 			"externalRelPath": "City/Lv2.ldtkl",
-			"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{ "id": "V_String", "params": ["CoastalCity"] }] }],
+			"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{
+				"id": "V_String",
+				"params": ["CoastalCity"]
+			}] }],
 			"layerInstances": null,
-			"__neighbours": [{ "levelIid": "3b31da10-48b0-11f1-9e84-db94604cbb12", "dir": "w" }]
+			"__neighbours": []
 		},
 		{
 			"identifier": "Lv2_Backup",
@@ -1680,7 +1679,10 @@
 			"__smartColor": "#ADADB5",
 			"__bgPos": null,
 			"externalRelPath": "City/Lv2_Backup.ldtkl",
-			"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{ "id": "V_String", "params": ["CoastalCity"] }] }],
+			"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{
+				"id": "V_String",
+				"params": ["CoastalCity"]
+			}] }],
 			"layerInstances": null,
 			"__neighbours": [ { "levelIid": "f8352ce0-6fc0-11f1-ba80-c5fac84c684a", "dir": "e" }, { "levelIid": "f3724da0-6fc0-11f1-ba80-496776fd0105", "dir": "w" } ]
 		},
@@ -1703,7 +1705,10 @@
 			"__smartColor": "#ADADB5",
 			"__bgPos": null,
 			"externalRelPath": "City/LvTest.ldtkl",
-			"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{ "id": "V_String", "params": ["CoastalCity"] }] }],
+			"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{
+				"id": "V_String",
+				"params": ["CoastalCity"]
+			}] }],
 			"layerInstances": null,
 			"__neighbours": [{ "levelIid": "3b31da10-48b0-11f1-9e84-db94604cbb12", "dir": "s" }]
 		},
@@ -1726,9 +1731,12 @@
 			"__smartColor": "#ADADB5",
 			"__bgPos": null,
 			"externalRelPath": "City/Lv1.ldtkl",
-			"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{ "id": "V_String", "params": ["CoastalCity"] }] }],
+			"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{
+				"id": "V_String",
+				"params": ["CoastalCity"]
+			}] }],
 			"layerInstances": null,
-			"__neighbours": [ { "levelIid": "8684dc60-48b0-11f1-9656-8bb06757e875", "dir": "e" }, { "levelIid": "ef816340-48b0-11f1-bab9-837fb0260b2c", "dir": "n" } ]
+			"__neighbours": [{ "levelIid": "ef816340-48b0-11f1-bab9-837fb0260b2c", "dir": "n" }]
 		},
 		{
 			"identifier": "Lv1_Backup",
@@ -1749,7 +1757,10 @@
 			"__smartColor": "#ADADB5",
 			"__bgPos": null,
 			"externalRelPath": "City/Lv1_Backup.ldtkl",
-			"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{ "id": "V_String", "params": ["CoastalCity"] }] }],
+			"fieldInstances": [{ "__identifier": "EnvironmentType", "__type": "LocalEnum.EnvironmentType", "__value": "CoastalCity", "__tile": null, "defUid": 63, "realEditorValues": [{
+				"id": "V_String",
+				"params": ["CoastalCity"]
+			}] }],
 			"layerInstances": null,
 			"__neighbours": [{ "levelIid": "f60f3fa0-6fc0-11f1-ba80-ab51bbb7fda9", "dir": "e" }]
 		}

@@ -38,6 +38,8 @@ public sealed class LogicCombatQueryTests
             Position = new Vector3(5f, 0f, 0f),
             Side = SideType.EnemySide,
         };
+        inside.SetProperty(CreatureMainProperty.CollisionRadius, Fix64.Zero);
+        outside.SetProperty(CreatureMainProperty.CollisionRadius, Fix64.Zero);
         EntityRegistry.Register(inside);
         EntityRegistry.Register(outside);
 

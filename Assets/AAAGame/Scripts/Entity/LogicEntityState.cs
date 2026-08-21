@@ -227,7 +227,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             if (IsBuildingEntity)
                 return m_BuildingCombatShape;
             Fix64 radius = m_CreatureProperties != null
-                ? DistanceUnitConverter.ConvertToWorld(m_CreatureProperties.GetProperty(CreatureMainProperty.CollisionRadius))
+                ? (m_CreatureProperties.GetProperty(CreatureMainProperty.CollisionRadius))
                 : Fix64.Zero;
             return LogicCombatShape.Circle(Position, Fix64.Max(Fix64.Zero, radius));
         }
@@ -706,7 +706,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
 
         if (IsBuildingEntity && modType == HealthModifyType.reduce)
             damage = Fix64.Max(Fix64.Zero, damage - Fix64.Max(Fix64.Zero, GetProperty(CreatureMainProperty.Def)));
-        Fix64 minimumDamage = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(MinimumDamagePerHitConfigKey);
+        Fix64 minimumDamage = FixedConfigReader.ReadRequiredPositiveFixedConfig(MinimumDamagePerHitConfigKey);
         damage = Fix64.Max(minimumDamage, damage);
 
         if (IsPlayerEntity && IsHeroEntity && LogicTeleportCommandService.IsActive)
@@ -902,7 +902,10 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
                     m_MoveComp.Move(deltaTime);
                 break;
             case MAEntityLogicFramePhase.MoveResolve:
-                m_MoveExecutor.PrepareLogicFrame(LogicFrameRuntime.CurrentFrame, deltaTime, Alive);
+                m_MoveExecutor.PrepareLogicFrame(
+                    LogicFrameRuntime.CurrentFrame,
+                    deltaTime,
+                    Alive && !IsBuildingEntity);
                 break;
             case MAEntityLogicFramePhase.MoveCommit:
                 FixVector2 resolved = LogicAgentCollisionShadowService.GetRequiredResolvedPosition(EntityId, LogicFrameRuntime.CurrentFrame);

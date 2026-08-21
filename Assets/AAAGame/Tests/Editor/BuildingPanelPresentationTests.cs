@@ -142,7 +142,7 @@ public sealed class BuildingPanelPresentationTests
 
         BuildingPanelPresentation.CollectUnitStats(data, stats);
 
-        AssertStat(stats, BuildingPanelPresentation.SplashGlyph, "250");
+        AssertStat(stats, BuildingPanelPresentation.SplashGlyph, "4.5");
         Assert.IsFalse(stats.Exists(stat => stat.Value.StartsWith("B ", StringComparison.Ordinal)));
         Assert.IsFalse(stats.Exists(stat => stat.Value.StartsWith("U ", StringComparison.Ordinal)));
     }
@@ -190,10 +190,24 @@ public sealed class BuildingPanelPresentationTests
     public void LateRiderDescriptions_UseAllFinalChargeValuesAtEachLevel()
     {
         CollectionAssert.AreEqual(
-            new[] { (Fix64)200, (Fix64)700, (Fix64)460, (Fix64)50, (Fix64)5 },
+            new[]
+            {
+                Fix64.Parse("3.6"),
+                Fix64.Parse("10.8") + Fix64.Parse("1.8"),
+                Fix64.Parse("7.2") + Fix64.Parse("1.1"),
+                (Fix64)40 + (Fix64)10,
+                (Fix64)5,
+            },
             SoldierFactory.ResolveArmyPresentationAbilityValues(UnitType.Unit_LateRider, 2));
         CollectionAssert.AreEqual(
-            new[] { (Fix64)200, (Fix64)800, (Fix64)580, (Fix64)70, (Fix64)5 },
+            new[]
+            {
+                Fix64.Parse("3.6"),
+                Fix64.Parse("10.8") + Fix64.Parse("1.8") + Fix64.Parse("1.8"),
+                Fix64.Parse("7.2") + Fix64.Parse("1.1") + Fix64.Parse("2.2"),
+                (Fix64)40 + (Fix64)10 + (Fix64)20,
+                (Fix64)5,
+            },
             SoldierFactory.ResolveArmyPresentationAbilityValues(UnitType.Unit_LateRider, 3));
     }
 

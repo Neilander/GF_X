@@ -21,14 +21,17 @@ namespace AAAGame.MiniMap.FOG3
         {
             public EntityRegistryPresentationRequest(
                 EntityRegistryPresentationKind kind,
-                LogicEntityId logicEntityId)
+                LogicEntityId logicEntityId,
+                int retiringViewEntityId)
             {
                 Kind = kind;
                 LogicEntityId = logicEntityId;
+                RetiringViewEntityId = retiringViewEntityId;
             }
 
             public EntityRegistryPresentationKind Kind { get; }
             public LogicEntityId LogicEntityId { get; }
+            public int RetiringViewEntityId { get; }
         }
 
         private const string HeroVisionRadiusConfigKey = "HeroVisionRadius";
@@ -882,7 +885,7 @@ namespace AAAGame.MiniMap.FOG3
 
         private static float ResolveVisibilityFadeSpeed()
         {
-            float speed = (float)DistanceUnitConverter.ReadRequiredPositiveFixedConfig(VisionFadeSpeedConfigKey);
+            float speed = (float)FixedConfigReader.ReadRequiredPositiveFixedConfig(VisionFadeSpeedConfigKey);
             if (speed <= 0f || float.IsNaN(speed) || float.IsInfinity(speed))
                 throw new InvalidOperationException($"FOG3 visibility fade speed must be finite and positive. value={speed}.");
             return speed;
@@ -1500,8 +1503,15 @@ namespace AAAGame.MiniMap.FOG3
             if (!logicEntity.LogicEntityId.IsValid)
                 throw new InvalidOperationException($"FOG3 received {kind} for an invalid logic entity id.");
 
+            int retiringViewEntityId = kind == EntityRegistryPresentationKind.Unregistered
+                                       && logicEntity is LogicEntityState state
+                ? state.BoundViewEntityId
+                : 0;
             entityRegistryPresentationRequests.Enqueue(
-                new EntityRegistryPresentationRequest(kind, logicEntity.LogicEntityId));
+                new EntityRegistryPresentationRequest(
+                    kind,
+                    logicEntity.LogicEntityId,
+                    retiringViewEntityId));
         }
 
         private void UpdateEntityRegistryPresentation()
@@ -1509,17 +1519,24 @@ namespace AAAGame.MiniMap.FOG3
             while (entityRegistryPresentationRequests.Count > 0)
             {
                 EntityRegistryPresentationRequest request = entityRegistryPresentationRequests.Dequeue();
-                if (!LogicEntityLifecycleService.TryGetBoundView(request.LogicEntityId, out MAEntity view))
-                    continue;
-
                 switch (request.Kind)
                 {
                     case EntityRegistryPresentationKind.Registered:
                         if (!autoRegisterPlayerSideEntities
-                            || !EntityRegistry.TryGet(request.LogicEntityId, out IEntityContext registered)
-                            || !ReferenceEquals(registered, view.LogicState))
+                            || !EntityRegistry.TryGet(request.LogicEntityId, out IEntityContext registered))
                         {
                             continue;
+                        }
+                        if (!LogicEntityLifecycleService.TryGetBoundView(
+                                request.LogicEntityId,
+                                out MAEntity view))
+                        {
+                            continue;
+                        }
+                        if (!ReferenceEquals(registered, view.LogicState))
+                        {
+                            throw new InvalidOperationException(
+                                $"FOG3 registered entity identity mismatch. view={view.Id}, logic={request.LogicEntityId.Value}.");
                         }
                         if (TryRegisterEntity(view.Id, view))
                         {
@@ -1528,7 +1545,10 @@ namespace AAAGame.MiniMap.FOG3
                         }
                         break;
                     case EntityRegistryPresentationKind.Unregistered:
-                        if (entityRevealers.TryGetValue(view.Id, out int revealerId))
+                        if (request.RetiringViewEntityId > 0
+                            && entityRevealers.TryGetValue(
+                                request.RetiringViewEntityId,
+                                out int revealerId))
                         {
                             UnregisterRevealer(revealerId);
                             RequestVisibilityRefresh();
@@ -2102,7 +2122,7 @@ namespace AAAGame.MiniMap.FOG3
                 return false;
             }
 
-            radius = configDistance * DistanceUnitConverter.DistanceConversionRate;
+            radius = configDistance;
             if (radius <= 0f)
             {
                 Log.Error($"[FOG3] Config '{configKey}' converted radius is invalid: {radius}.");

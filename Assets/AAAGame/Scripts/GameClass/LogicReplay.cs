@@ -208,8 +208,8 @@ public sealed class LogicReplayFrameRecord
 
 public sealed class LogicReplayLog
 {
-    public const int CurrentProtocolVersion = 99;
-    public const string CurrentContentVersion = "Avenge-30Hz-v99";
+    public const int CurrentProtocolVersion = 100;
+    public const string CurrentContentVersion = "Avenge-30Hz-v100";
 
     internal LogicReplayLog(
         LogicTimeControlSnapshot initialTimeControlSnapshot,

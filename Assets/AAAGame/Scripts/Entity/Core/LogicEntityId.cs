@@ -105,6 +105,29 @@ public static class LogicEntityObstacleId
         int encoded = checked((entityId.Value - 1) * LocalIdCapacity + localOrdinal + 1);
         return -encoded;
     }
+
+    public static bool TryDecodeBuildingCollider(int obstacleId, out LogicEntityId entityId, out int localOrdinal)
+    {
+        if (obstacleId >= 0)
+        {
+            entityId = default;
+            localOrdinal = -1;
+            return false;
+        }
+
+        int encoded = checked(-obstacleId);
+        int entityValue = checked((encoded - 1) / LocalIdCapacity + 1);
+        localOrdinal = (encoded - 1) % LocalIdCapacity;
+        if (entityValue > MaxEntityId || localOrdinal > MaxLocalOrdinal)
+        {
+            entityId = default;
+            localOrdinal = -1;
+            return false;
+        }
+
+        entityId = new LogicEntityId(entityValue);
+        return true;
+    }
 }
 
 public readonly struct LogicPersistentIdAllocatorSnapshot

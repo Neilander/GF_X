@@ -205,7 +205,7 @@ public sealed class BlindSpotRangeBuff : BuffCallback
         IEntityContext target = hostEntity.TargetComp?.CurrentTarget
             ?? throw new InvalidOperationException(
                 $"Blind spot building tried to attack without a target. building={hostEntity.CharacterKey}.");
-        Fix64 worldDistance = DistanceUnitConverter.ConvertToWorld(Fix64.Max(Fix64.Zero, gameDistance));
+        Fix64 worldDistance = (Fix64.Max(Fix64.Zero, gameDistance));
         return hostEntity.LogicFrameDistanceToTargetSurfaceFixed(target) >= worldDistance;
     }
 }

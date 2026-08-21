@@ -21,7 +21,7 @@ public class DurationMoveEffectTests
         var executor = new SimMoveExecutor();
         ctx.MoveExecutor = executor;
         ctx.SetProperty(CreatureMainProperty.WeightLevel, (Fix64)2);
-        ctx.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)5);
+        ctx.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)0.1f);
         var attack = new NoAtkComp();
         attack.Init(ctx);
         ctx.AtkComp = attack;
@@ -208,19 +208,19 @@ public class DurationMoveEffectTests
         Assert.IsTrue(DisplacementForceUtility.TryResolveKnockbackVelocity((Fix64)3, (Fix64)2, out Fix64 level1));
         Assert.IsFalse(DisplacementForceUtility.TryResolveKnockbackVelocity(Fix64.Zero, (Fix64)2, out Fix64 rejected));
 
-        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)300).RawValue, levelM1.RawValue);
-        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)800).RawValue, level0.RawValue);
-        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)1200).RawValue, level1.RawValue);
+        Assert.AreEqual(FixedConfigReader.ParseFixedConfigText("ExpectedKnockbackM1", "1.8").RawValue, levelM1.RawValue);
+        Assert.AreEqual(FixedConfigReader.ParseFixedConfigText("ExpectedKnockback0", "5.4").RawValue, level0.RawValue);
+        Assert.AreEqual(FixedConfigReader.ParseFixedConfigText("ExpectedKnockback1", "8.1").RawValue, level1.RawValue);
         Assert.AreEqual(Fix64.Zero, rejected);
 
         Assert.IsTrue(DisplacementForceUtility.TryResolvePull((Fix64)1, (Fix64)2, out Fix64 pullM1, out Fix64 durationM1));
         Assert.IsTrue(DisplacementForceUtility.TryResolvePull((Fix64)2, (Fix64)2, out Fix64 pull0, out Fix64 duration0));
         Assert.IsTrue(DisplacementForceUtility.TryResolvePull((Fix64)3, (Fix64)2, out Fix64 pull1, out Fix64 duration1));
-        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)500).RawValue, pullM1.RawValue);
-        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)2500).RawValue, pull0.RawValue);
-        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)10000).RawValue, pull1.RawValue);
+        Assert.AreEqual(FixedConfigReader.ParseFixedConfigText("ExpectedPullM1", "3.6").RawValue, pullM1.RawValue);
+        Assert.AreEqual(FixedConfigReader.ParseFixedConfigText("ExpectedPull0", "14.4").RawValue, pull0.RawValue);
+        Assert.AreEqual(FixedConfigReader.ParseFixedConfigText("ExpectedPull1", "54.0").RawValue, pull1.RawValue);
         Assert.AreEqual(
-            DistanceUnitConverter.ReadRequiredPositiveFixedConfig(DisplacementForceUtility.PullDurationLevelM1Key).RawValue,
+            FixedConfigReader.ReadRequiredPositiveFixedConfig(DisplacementForceUtility.PullDurationLevelM1Key).RawValue,
             durationM1.RawValue);
         Assert.AreEqual(Fix64.One.RawValue, duration0.RawValue);
         Assert.AreEqual(Fix64.One.RawValue, duration1.RawValue);
@@ -242,7 +242,7 @@ public class DurationMoveEffectTests
 
         Assert.IsTrue(effectComp.TryApplyKnockback(new FixVector2(Fix64.One, Fix64.Zero), (Fix64)3));
         Assert.IsTrue(effectComp.TryApplyKnockback(new FixVector2(Fix64.One, Fix64.Zero), (Fix64)3));
-        Fix64 oneImpulse = DistanceUnitConverter.ConvertToWorld((Fix64)1200);
+        Fix64 oneImpulse = FixedConfigReader.ParseFixedConfigText("ExpectedKnockback1", "8.1");
         Assert.AreEqual((oneImpulse + oneImpulse).RawValue, effectComp.DisplacementVelocity.x.RawValue);
         Assert.IsFalse(ctx.CanRun(ctx.AtkComp), "失衡期间攻击组件必须被锁定");
 
@@ -322,15 +322,15 @@ public class DurationMoveEffectTests
             frameCount++;
         }
 
-        Fix64 mediumUnitRadius = DistanceUnitConverter.ConvertToWorld((Fix64)22);
+        Fix64 visibleDisplacement = target.GetProperty(CreatureMainProperty.CollisionRadius);
         Assert.IsFalse(effectComp.IsInLossOfBalance, "推力应在摩擦作用下结束");
         Assert.GreaterOrEqual(
             executor.Position.x,
-            (float)mediumUnitRadius,
+            (float)visibleDisplacement,
             $"一级推力命中二级重量单位后应产生可见位移。" +
             $" initialVelocity={(float)initialVelocity:F6}, friction={(float)friction:F6}," +
             $" frames={frameCount}, displacement={executor.Position.x:F6}," +
-            $" mediumRadius={(float)mediumUnitRadius:F6}");
+            $" visibleDisplacement={(float)visibleDisplacement:F6}");
     }
 
     [Test]
@@ -351,15 +351,15 @@ public class DurationMoveEffectTests
         target.Position = new Vector3(1.65f, 0f, 0f);
         effectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
 
-        Fix64 sourceRadius = DistanceUnitConverter.ConvertToWorld((Fix64)5);
+        Fix64 sourceRadius = FixedConfigReader.ParseFixedConfigText("ExpectedSourceRadius", "0.1");
         Fix64 initialDistance = (Fix64)2 - sourceRadius;
         Fix64 currentDistance = (Fix64)1.65f - sourceRadius;
         Fix64 ratio = currentDistance / initialDistance;
         Fix64 ratioSquared = ratio * ratio;
-        Fix64 acceleration = DistanceUnitConverter.ConvertToWorld((Fix64)10000)
+        Fix64 acceleration = FixedConfigReader.ParseFixedConfigText("ExpectedPull1", "54.0")
                              * ratioSquared
                              * ratioSquared;
-        Fix64 friction = DistanceUnitConverter.ConvertToWorld((Fix64)1200);
+        Fix64 friction = FixedConfigReader.ParseFixedConfigText("ExpectedFriction", "7.2");
         Fix64 expectedSpeed = (acceleration - friction) * LogicFrameRuntime.FixedDeltaTime;
         Assert.That(
             Fix64.Abs(effectComp.DisplacementVelocity.x).RawValue,
@@ -411,8 +411,8 @@ public class DurationMoveEffectTests
         target.SetProperty(CreatureMainProperty.WeightLevel, (Fix64)4);
         effectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
 
-        Fix64 acceleration = DistanceUnitConverter.ConvertToWorld((Fix64)10000) * (Fix64)2;
-        Fix64 friction = DistanceUnitConverter.ConvertToWorld((Fix64)1200);
+        Fix64 acceleration = FixedConfigReader.ParseFixedConfigText("ExpectedPull1", "54.0") * (Fix64)2;
+        Fix64 friction = FixedConfigReader.ParseFixedConfigText("ExpectedFriction", "7.2");
         Fix64 expectedSpeed = (acceleration - friction) * LogicFrameRuntime.FixedDeltaTime;
         Assert.That(
             Fix64.Abs(effectComp.DisplacementVelocity.x).RawValue,
@@ -544,7 +544,7 @@ public class DurationMoveEffectTests
                 (Fix64)3,
                 properties.GetProperty(CreatureMainProperty.WeightLevel),
                 out Fix64 heavierVelocity));
-            Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)800).RawValue, heavierVelocity.RawValue);
+            Assert.AreEqual(FixedConfigReader.ParseFixedConfigText("ExpectedKnockback0", "5.4").RawValue, heavierVelocity.RawValue);
 
             Assert.IsTrue(buffComp.RemoveBuff("test_level_tag_heavy_stride"));
             Assert.AreEqual(((Fix64)2).RawValue, properties.GetProperty(CreatureMainProperty.WeightLevel).RawValue);

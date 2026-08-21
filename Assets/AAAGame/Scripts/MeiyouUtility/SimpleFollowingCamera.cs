@@ -18,7 +18,7 @@ public class SimpleFollowingCamera : MonoBehaviour
         if (CameraController.Instance == null)
             throw new System.InvalidOperationException("SimpleFollowingCamera.Start failed: CameraController.Instance is null.");
 
-        CameraController.Instance.SetFollowTargetLegacyIsometric(presentation, false);
+        CameraController.Instance.SetFollowTarget(presentation);
         // playerTransform = GameObject.FindWithTag("Player").transform;
     }
 

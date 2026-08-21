@@ -12,7 +12,7 @@ public class WeaponComp : ICapability
     public bool HasAmmoToAttack => !HasAmmunition || CurrentAmmo > 0;
 
     /// <summary>武器攻击距离（已转换为游戏单位）</summary>
-    public Fix64 AttackRange => Data != null ? DistanceUnitConverter.ConvertToWorld(Data.Range) : Fix64.Zero;
+    public Fix64 AttackRange => Data != null ? (Data.Range) : Fix64.Zero;
 
     public WeaponComp(Weapon data)
     {

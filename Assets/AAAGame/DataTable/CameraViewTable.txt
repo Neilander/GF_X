@@ -1,8 +1,5 @@
-#	相机视角			
-#	ID		FollowOffset	AimOffset
-#	int		Vector3	Vector3
-#		备注	跟随偏移	
-	1	默认视角	-41,27.5,-23.5	0,0,0
-	2	打伞视角	0,7,-10	0,-2,0
-#	3	CPI视角	8.5,25.5,-14	0,7.5,0
-#	4	Chibi视角	8.5,14,-14	0,4.5,0
+#	正交相机配置					参数
+#	ID		Rotation	OrthographicSize	CameraHeight	AimOffset
+#	int		Vector3	float	float	Vector3
+#		备注	相机欧拉角（X=俯角，Y=朝向）	正交半屏高度（世界单位）	相机相对跟随点的竖直高度（世界单位）	瞄准点偏移
+	1	默认正交视角	35,45,0	12	56.1638	0,0,0

@@ -50,6 +50,7 @@ public static class LogicEntityViewSpawnQueue
     }
 
     private static readonly Queue<PendingView> s_Pending = new Queue<PendingView>();
+    private static readonly Queue<PendingView> s_PendingRetentionScratch = new Queue<PendingView>();
     private static readonly Dictionary<int, PendingView> s_InFlight = new Dictionary<int, PendingView>();
     private static readonly List<int> s_CancelViewIds = new List<int>();
     private static readonly Queue<PendingHide> s_PendingHides = new Queue<PendingHide>();
@@ -118,6 +119,89 @@ public static class LogicEntityViewSpawnQueue
         return EnqueueView(PendingViewKind.Building, prefabName, entityGroup, entityParams);
     }
 
+    public static bool HasRequest(LogicEntityId logicEntityId)
+    {
+        EnsureActive();
+        if (!logicEntityId.IsValid)
+            throw new ArgumentException("LogicEntityViewSpawnQueue request query has an invalid logic entity id.", nameof(logicEntityId));
+
+        int matchCount = CountRequests(logicEntityId);
+        if (matchCount > 1)
+        {
+            throw new InvalidOperationException(
+                $"LogicEntityViewSpawnQueue has duplicate requests for logic entity {logicEntityId.Value}. count={matchCount}.");
+        }
+
+        return matchCount == 1;
+    }
+
+    public static void CancelRequestForDespawn(LogicEntityId logicEntityId)
+    {
+        EnsureActive();
+        if (LogicFrameRuntime.IsExecutingFrame)
+            throw new InvalidOperationException("LogicEntityViewSpawnQueue cannot cancel a view request during a logic frame.");
+        if (!logicEntityId.IsValid)
+            throw new ArgumentException("LogicEntityViewSpawnQueue cancellation has an invalid logic entity id.", nameof(logicEntityId));
+
+        int matchCount = CountRequests(logicEntityId);
+        if (matchCount != 1)
+        {
+            throw new InvalidOperationException(
+                $"LogicEntityViewSpawnQueue expected one despawned view request for logic entity {logicEntityId.Value}, actual={matchCount}.");
+        }
+
+        while (s_Pending.Count > 0)
+        {
+            PendingView request = s_Pending.Dequeue();
+            if (request.Params.LogicEntityId == logicEntityId)
+            {
+                ReferencePool.Release(request.Params);
+                s_BatchCanceled++;
+            }
+            else
+            {
+                s_PendingRetentionScratch.Enqueue(request);
+            }
+        }
+        while (s_PendingRetentionScratch.Count > 0)
+            s_Pending.Enqueue(s_PendingRetentionScratch.Dequeue());
+
+        s_CancelViewIds.Clear();
+        foreach (KeyValuePair<int, PendingView> pair in s_InFlight)
+        {
+            if (pair.Value.Params.LogicEntityId == logicEntityId)
+                s_CancelViewIds.Add(pair.Key);
+        }
+        for (int i = 0; i < s_CancelViewIds.Count; i++)
+        {
+            int viewId = s_CancelViewIds[i];
+            PendingView request = s_InFlight[viewId];
+            GF.Entity.HideEntity(viewId);
+            s_InFlight.Remove(viewId);
+            ReferencePool.Release(request.Params);
+            s_BatchCanceled++;
+        }
+        s_CancelViewIds.Clear();
+        TryCompleteBatch();
+    }
+
+    private static int CountRequests(LogicEntityId logicEntityId)
+    {
+        int count = 0;
+        foreach (PendingView request in s_Pending)
+        {
+            if (request.Params.LogicEntityId == logicEntityId)
+                count++;
+        }
+        foreach (PendingView request in s_InFlight.Values)
+        {
+            if (request.Params.LogicEntityId == logicEntityId)
+                count++;
+        }
+
+        return count;
+    }
+
     private static int EnqueueView(
         PendingViewKind kind,
         string prefabName,
@@ -136,6 +220,7 @@ public static class LogicEntityViewSpawnQueue
 
         if (s_BatchRequested == 0)
             s_BatchStartRenderFrame = -1;
+        LogicEntityLifecycleService.RegisterPendingViewRequest(entityParams.LogicEntityId);
         s_Pending.Enqueue(new PendingView(kind, prefabName, entityGroup, entityParams));
         s_BatchRequested++;
         return entityParams.Id;
@@ -274,6 +359,7 @@ public static class LogicEntityViewSpawnQueue
 
         while (s_Pending.Count > 0)
             ReferencePool.Release(s_Pending.Dequeue().Params);
+        s_PendingRetentionScratch.Clear();
 
         s_CancelViewIds.Clear();
         foreach (int viewId in s_InFlight.Keys)

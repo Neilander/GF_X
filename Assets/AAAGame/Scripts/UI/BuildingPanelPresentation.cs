@@ -296,9 +296,9 @@ public static class BuildingPanelPresentation
         Fix64 duration = skill.GetDuration(level);
         Fix64 cooldown = skill.GetCooldown(level);
         if (castDistance > Fix64.Zero)
-            results.Add(new BuildingPanelStat(CastDistanceGlyph, castDistance.ToString()));
+            results.Add(new BuildingPanelStat(CastDistanceGlyph, FormatStatValue(castDistance)));
         if (areaRange > Fix64.Zero)
-            results.Add(new BuildingPanelStat(SplashGlyph, areaRange.ToString()));
+            results.Add(new BuildingPanelStat(SplashGlyph, FormatStatValue(areaRange)));
         if (duration > Fix64.Zero)
             results.Add(new BuildingPanelStat(DurationGlyph, duration.ToString()));
         if (skill.Type == SkillType.Active)

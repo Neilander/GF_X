@@ -13,13 +13,6 @@ public class CameraController : MonoBehaviour
 
     public static CameraController Instance { get; private set; }
 
-    [Header("Legacy Isometric (Orthographic)")]
-    [SerializeField] bool useLegacyIsometricOnFollow = false;
-    [SerializeField] Vector3 legacyPivotLocalPosition = new Vector3(85.6f, -67f, 84.55f);
-    [SerializeField] Vector3 legacyPivotEuler = new Vector3(30f, 45f, 0f);
-    [SerializeField] Vector3 legacyInnerCameraLocalPosition = new Vector3(0f, 0f, -250f);
-    [SerializeField] float legacyOrthographicSize = 14.4f;
-
     [Header("Screen Edge Pan")]
     [SerializeField] bool enableScreenEdgePan = true;
     [SerializeField, Range(0f, 0.45f)] float edgeThresholdRatio = 0.1f;
@@ -41,7 +34,6 @@ public class CameraController : MonoBehaviour
     Transform target;
     Transform followProxy;
     [SerializeField] CinemachineVirtualCamera followerVCamera;
-    Vector3 initOffset = Vector3.zero;
     public Camera mainCam { get; private set; }
     InputManager inputManager;
     InputAction selectPositionAction;
@@ -49,8 +41,6 @@ public class CameraController : MonoBehaviour
     bool edgePanActivated;
     Vector3 currentPanOffset;
     Vector3 panOffsetVelocity;
-    LevelEntity cameraBoundsLevel;
-    LevelCameraBounds levelCameraBounds;
 
 
     private void Awake()
@@ -152,11 +142,6 @@ public class CameraController : MonoBehaviour
         }
 
     }
-    public void SetViewZoom(float height)
-    {
-        float offset = Mathf.Max(initOffset.y, height + height * Mathf.Tan(15 * Mathf.Deg2Rad));
-        SwitchCameraView(new Vector3(0, offset, -offset), Vector3.zero);
-    }
     public void SetFollowTarget(Transform target)
     {
         this.target = target;
@@ -167,27 +152,7 @@ public class CameraController : MonoBehaviour
         followerVCamera.LookAt = followProxy;
         followerVCamera.Follow = followProxy;
 
-        if (useLegacyIsometricOnFollow)
-        {
-            ApplyLegacyIsometricView(false);
-        }
-        else
-        {
-            mainCam.orthographic = false;
-            SetCameraView(1, false);
-        }
-    }
-
-    public void SetFollowTargetLegacyIsometric(Transform target, bool smooth = false)
-    {
-        this.target = target;
-        EnsureFollowProxy();
-        ResetEdgePanState(true);
-
-        followerVCamera.gameObject.SetActive(true);
-        followerVCamera.LookAt = followProxy;
-        followerVCamera.Follow = followProxy;
-        ApplyLegacyIsometricView(smooth);
+        SetCameraView(1, false);
     }
 
     public void SetScreenEdgePanEnabled(bool enabled)
@@ -238,25 +203,7 @@ public class CameraController : MonoBehaviour
 
     private void UpdateFollowProxyPosition()
     {
-        Vector3 desiredPosition = target.position + currentPanOffset;
-        LevelEntity activeLevel = LevelEntity.ActiveLevelEntity;
-        if (activeLevel == null)
-        {
-            followProxy.position = desiredPosition;
-            return;
-        }
-
-        if (cameraBoundsLevel != activeLevel || levelCameraBounds == null)
-        {
-            LevelCameraBounds[] bounds = activeLevel.GetComponentsInChildren<LevelCameraBounds>(true);
-            if (bounds.Length != 1)
-                throw new System.InvalidOperationException(
-                    $"Active level requires exactly one LevelCameraBounds component. count={bounds.Length}.");
-            cameraBoundsLevel = activeLevel;
-            levelCameraBounds = bounds[0];
-        }
-
-        followProxy.position = levelCameraBounds.ClampWorldPoint(desiredPosition);
+        followProxy.position = target.position + currentPanOffset;
     }
 
     private bool CanRunScreenEdgePan()
@@ -395,36 +342,53 @@ public class CameraController : MonoBehaviour
         return false;
     }
 
-    void ApplyLegacyIsometricView(bool smooth)
-    {
-        followerVCamera.transform.rotation = Quaternion.Euler(legacyPivotEuler);
-
-        var lens = followerVCamera.m_Lens;
-        lens.Orthographic = true;
-        lens.OrthographicSize = legacyOrthographicSize;
-        followerVCamera.m_Lens = lens;
-
-        mainCam.orthographic = true;
-        mainCam.orthographicSize = legacyOrthographicSize;
-
-        var transposer = followerVCamera.GetCinemachineComponent<CinemachineTransposer>();
-        transposer.m_BindingMode = CinemachineTransposer.BindingMode.WorldSpace;
-
-        var legacyOffset = legacyPivotLocalPosition + Quaternion.Euler(legacyPivotEuler) * legacyInnerCameraLocalPosition;
-        var offset = Quaternion.Euler(legacyPivotEuler) * Vector3.back * legacyOffset.magnitude;
-        SwitchCameraView(offset, Vector3.zero, smooth);
-    }
-
     internal void SetCameraView(int viewId, bool smooth = true)
     {
         var camTb = GF.DataTable.GetDataTable<CameraViewTable>();
+        if (camTb == null)
+            throw new System.InvalidOperationException("CameraViewTable is not loaded.");
         if (!camTb.HasDataRow(viewId))
-        {
-            return;
-        }
+            throw new System.InvalidOperationException($"CameraViewTable row is missing. viewId={viewId}.");
+
         var camRow = camTb.GetDataRow(viewId);
-        initOffset = camRow.FollowOffset;
-        SwitchCameraView(camRow.FollowOffset, camRow.AimOffset, smooth);
+        ApplyCameraView(camRow, smooth);
+    }
+
+    private void ApplyCameraView(CameraViewTable camRow, bool smooth)
+    {
+        if (camRow == null)
+            throw new System.ArgumentNullException(nameof(camRow));
+        if (!float.IsFinite(camRow.OrthographicSize) || camRow.OrthographicSize <= 0f)
+            throw new System.InvalidOperationException($"Camera view OrthographicSize must be positive and finite. viewId={camRow.Id}, actual={camRow.OrthographicSize}.");
+        if (!float.IsFinite(camRow.CameraHeight) || camRow.CameraHeight <= 0f)
+            throw new System.InvalidOperationException($"Camera view CameraHeight must be positive and finite. viewId={camRow.Id}, actual={camRow.CameraHeight}.");
+
+        Quaternion rotation = Quaternion.Euler(camRow.Rotation);
+        followerVCamera.transform.rotation = rotation;
+
+        var lens = followerVCamera.m_Lens;
+        lens.Orthographic = true;
+        lens.OrthographicSize = camRow.OrthographicSize;
+        followerVCamera.m_Lens = lens;
+
+        mainCam.orthographic = true;
+        mainCam.orthographicSize = camRow.OrthographicSize;
+
+        var transposer = followerVCamera.GetCinemachineComponent<CinemachineTransposer>();
+        if (transposer == null)
+            throw new System.InvalidOperationException("Follower virtual camera requires a CinemachineTransposer.");
+        transposer.m_BindingMode = CinemachineTransposer.BindingMode.WorldSpace;
+
+        SwitchCameraView(CalculateFollowOffset(camRow.Rotation, camRow.CameraHeight), camRow.AimOffset, smooth);
+    }
+
+    private static Vector3 CalculateFollowOffset(Vector3 rotation, float cameraHeight)
+    {
+        Vector3 direction = Quaternion.Euler(rotation) * Vector3.back;
+        if (!float.IsFinite(direction.y) || direction.y <= 0f)
+            throw new System.InvalidOperationException($"Camera rotation must place the camera above its aim point. rotation={rotation}.");
+
+        return direction * (cameraHeight / direction.y);
     }
     internal void ShakeCamera(float power = 1f)
     {
@@ -435,6 +399,8 @@ public class CameraController : MonoBehaviour
     {
         var transposer = followerVCamera.GetCinemachineComponent<CinemachineTransposer>();
         var aimCom = followerVCamera.GetCinemachineComponent<CinemachineComposer>();
+        if (transposer == null || aimCom == null)
+            throw new System.InvalidOperationException("Follower virtual camera requires CinemachineTransposer and CinemachineComposer components.");
         transposer.m_XDamping = transposer.m_YDamping = transposer.m_ZDamping = smooth ? 1f : 0f;
         aimCom.m_HorizontalDamping = aimCom.m_VerticalDamping = smooth ? 0.5f : 0f;
         transposer.m_FollowOffset = offset;
