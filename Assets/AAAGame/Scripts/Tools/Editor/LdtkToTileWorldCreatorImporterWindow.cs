@@ -3453,8 +3453,8 @@ namespace AAAGame.Tools.Editor
                 identifier = GetFieldString(entity, "Identifier");
                 if (string.IsNullOrWhiteSpace(identifier))
                     throw new InvalidOperationException("LDtk Soldier requires a non-empty Identifier field.");
-                if (!TryGetPositiveFixedField(entity, "ResourceEquivalent", out unitResourceEquivalent))
-                    throw new InvalidOperationException($"LDtk Soldier '{identifier}' ResourceEquivalent must be a finite positive number, actual={GetFieldValue(entity, "ResourceEquivalent")}.");
+                if (!TryGetNonNegativeFixedField(entity, "ResourceEquivalent", out unitResourceEquivalent))
+                    throw new InvalidOperationException($"LDtk Soldier '{identifier}' ResourceEquivalent must be a finite non-negative number, actual={GetFieldValue(entity, "ResourceEquivalent")}.");
                 if (!TryGetUnitIntervalFixedField(entity, "CountGrowthWeight", out unitCountGrowthWeight))
                     throw new InvalidOperationException($"LDtk Soldier '{identifier}' CountGrowthWeight must be between zero and one, actual={GetFieldValue(entity, "CountGrowthWeight")}.");
             }
@@ -3688,11 +3688,6 @@ namespace AAAGame.Tools.Editor
             {
                 return false;
             }
-        }
-
-        private static bool TryGetPositiveFixedField(LdtkEntityInstance entity, string fieldName, out Fix64 value)
-        {
-            return TryGetNonNegativeFixedField(entity, fieldName, out value) && value > Fix64.Zero;
         }
 
         private static bool TryGetUnitIntervalFixedField(LdtkEntityInstance entity, string fieldName, out Fix64 value)

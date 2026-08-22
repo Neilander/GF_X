@@ -93,7 +93,7 @@ public static class EnemySquadResourceEquivalentResolver
         EnemySquadResourceEquivalentCurveSettings curveSettings,
         int maximumResolvedUnitCount)
     {
-        if (initialResourceEquivalent <= Fix64.Zero)
+        if (initialResourceEquivalent < Fix64.Zero)
             throw new ArgumentOutOfRangeException(nameof(initialResourceEquivalent));
         if (countGrowthWeight < Fix64.Zero || countGrowthWeight > Fix64.One)
             throw new ArgumentOutOfRangeException(nameof(countGrowthWeight));
@@ -109,24 +109,25 @@ public static class EnemySquadResourceEquivalentResolver
             curveSettings);
         Fix64 targetResourceEquivalent = initialResourceEquivalent * squadResourceEquivalentMultiplier;
         Fix64 minimumResourceEquivalent = unitLevelResourceEquivalents[0];
-        if (targetResourceEquivalent < minimumResourceEquivalent)
-        {
-            throw new InvalidOperationException(
-                $"Enemy squad target resource equivalent is below one level-one unit. targetRaw={targetResourceEquivalent.RawValue}, minimumRaw={minimumResourceEquivalent.RawValue}.");
-        }
+        long minimumNonEmptyTargetRaw = minimumResourceEquivalent.RawValue / 2
+                                        + minimumResourceEquivalent.RawValue % 2;
+        if (targetResourceEquivalent.RawValue < minimumNonEmptyTargetRaw)
+            return Array.Empty<EnemySquadCompositionEntry>();
 
         Fix64 minimumAllowedCount = targetResourceEquivalent / unitLevelResourceEquivalents[unitLevelResourceEquivalents.Count - 1];
         Fix64 maximumAllowedCount = targetResourceEquivalent / unitLevelResourceEquivalents[0];
-        int minimumTotalCount = CeilingPositiveToInt(minimumAllowedCount);
-        if (minimumTotalCount > maximumResolvedUnitCount)
+        if (minimumAllowedCount >= (Fix64)maximumResolvedUnitCount + (Fix64)0.5m)
         {
             throw new InvalidOperationException(
                     $"Enemy squad resource equivalent requires more than {maximumResolvedUnitCount} units.");
         }
 
-        int maximumTotalCount = Math.Min(
-            maximumResolvedUnitCount,
-            FloorPositiveToInt(maximumAllowedCount));
+        int minimumTotalCount = Math.Max(
+            1,
+            RoundPositiveToInt(minimumAllowedCount, maximumResolvedUnitCount));
+        int maximumTotalCount = Math.Max(
+            1,
+            RoundPositiveToInt(maximumAllowedCount, maximumResolvedUnitCount));
         Fix64 desiredCount = Fix64.Lerp(
             minimumAllowedCount,
             maximumAllowedCount,
@@ -168,9 +169,11 @@ public static class EnemySquadResourceEquivalentResolver
         IReadOnlyList<EnemySquadCompositionEntry> composition,
         IReadOnlyList<Fix64> unitLevelResourceEquivalents)
     {
-        if (composition == null || composition.Count == 0)
-            throw new ArgumentException("Enemy squad composition is empty.", nameof(composition));
+        if (composition == null)
+            throw new ArgumentNullException(nameof(composition));
         ValidateUnitLevelResourceEquivalents(unitLevelResourceEquivalents);
+        if (composition.Count == 0)
+            return Fix64.Zero;
 
         Fix64 totalResourceEquivalent = Fix64.Zero;
         for (int i = 0; i < composition.Count; i++)
@@ -192,20 +195,6 @@ public static class EnemySquadResourceEquivalentResolver
         if (value >= (Fix64)maximum)
             return maximum;
         return checked((int)((value.RawValue + Fix64.One.RawValue / 2) / Fix64.One.RawValue));
-    }
-
-    private static int CeilingPositiveToInt(Fix64 value)
-    {
-        if (value <= Fix64.Zero)
-            return 0;
-        return checked((int)((value.RawValue + Fix64.One.RawValue - 1) / Fix64.One.RawValue));
-    }
-
-    private static int FloorPositiveToInt(Fix64 value)
-    {
-        if (value <= Fix64.Zero)
-            return 0;
-        return checked((int)(value.RawValue / Fix64.One.RawValue));
     }
 
     private static int FindLowerLevelIndex(

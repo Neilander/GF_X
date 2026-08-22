@@ -30,6 +30,168 @@ public sealed class DefendRouteRuntimeTests
             new[] { Fix64.Zero + shift, (Fix64)4 + shift, (Fix64)10 + shift });
     }
 
+    [Test]
+    public void PlayerOwnedEarlySourcesDoNotDelayRemainingDefenseGroups()
+    {
+        const System.Reflection.BindingFlags staticFlags =
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+        const System.Reflection.BindingFlags instanceFlags =
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic;
+        LogicStrongholdMap.Clear();
+        try
+        {
+            LogicStrongholdMap.Initialize(
+                FixVector2.Zero,
+                new FixVector2(Fix64.One, Fix64.Zero),
+                new FixVector2(Fix64.Zero, Fix64.One),
+                Fix64.One,
+                new[]
+                {
+                    new LogicStrongholdCellDefinition(
+                        "SH_PLAYER_SOURCE",
+                        0,
+                        0,
+                        EntitySideHelper.PlayerFactionId),
+                    new LogicStrongholdCellDefinition(
+                        "SH_ENEMY_SOURCE",
+                        1,
+                        0,
+                        EntitySideHelper.EnemyFactionId)
+                });
+
+            Type routeType = typeof(DefendPhaseRuntime).GetNestedType(
+                "DefendRouteDefinition",
+                System.Reflection.BindingFlags.NonPublic);
+            Type groupType = typeof(DefendPhaseRuntime).GetNestedType(
+                "DefendAttackGroupDefinition",
+                System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(routeType);
+            Assert.NotNull(groupType);
+
+            object earlyRoute = Activator.CreateInstance(routeType, true);
+            routeType.GetField("SourceStrongholdId", instanceFlags)
+                .SetValue(earlyRoute, "SH_PLAYER_SOURCE");
+            object laterRoute = Activator.CreateInstance(routeType, true);
+            routeType.GetField("SourceStrongholdId", instanceFlags)
+                .SetValue(laterRoute, "SH_ENEMY_SOURCE");
+
+            object earlyGroup = Activator.CreateInstance(groupType, true);
+            groupType.GetField("Identifier", instanceFlags).SetValue(earlyGroup, "EarlyOccupied");
+            groupType.GetField("Route", instanceFlags).SetValue(earlyGroup, earlyRoute);
+            groupType.GetField("MinimumTravelLeadSeconds", instanceFlags).SetValue(earlyGroup, (Fix64)5);
+            groupType.GetField("RelativeLeaderEngagementSeconds", instanceFlags).SetValue(earlyGroup, Fix64.Zero);
+            object laterGroup = Activator.CreateInstance(groupType, true);
+            groupType.GetField("Identifier", instanceFlags).SetValue(laterGroup, "LaterActive");
+            groupType.GetField("Route", instanceFlags).SetValue(laterGroup, laterRoute);
+            groupType.GetField("MinimumTravelLeadSeconds", instanceFlags).SetValue(laterGroup, (Fix64)3);
+            groupType.GetField("RelativeLeaderEngagementSeconds", instanceFlags).SetValue(laterGroup, (Fix64)10);
+            object latestGroup = Activator.CreateInstance(groupType, true);
+            groupType.GetField("Identifier", instanceFlags).SetValue(latestGroup, "LatestActive");
+            groupType.GetField("Route", instanceFlags).SetValue(latestGroup, laterRoute);
+            groupType.GetField("MinimumTravelLeadSeconds", instanceFlags).SetValue(latestGroup, (Fix64)5);
+            groupType.GetField("RelativeLeaderEngagementSeconds", instanceFlags).SetValue(latestGroup, (Fix64)14);
+
+            Type listType = typeof(List<>).MakeGenericType(groupType);
+            var groups = (System.Collections.IList)Activator.CreateInstance(listType);
+            groups.Add(earlyGroup);
+            groups.Add(laterGroup);
+            groups.Add(latestGroup);
+            object activeGroups = typeof(DefendPhaseRuntime)
+                .GetMethod("FilterActiveAttackGroups", staticFlags)
+                .Invoke(null, new object[] { groups });
+            var activeList = (System.Collections.IList)activeGroups;
+            Assert.AreEqual(2, activeList.Count);
+            Assert.AreSame(laterGroup, activeList[0]);
+            Assert.AreSame(latestGroup, activeList[1]);
+
+            Fix64 activeShift = (Fix64)typeof(DefendPhaseRuntime)
+                .GetMethod("CalculateWaveEngagementShift", staticFlags)
+                .Invoke(null, new[] { activeGroups });
+            Assert.AreEqual(Fix64.Zero, activeShift);
+            Assert.AreEqual(
+                (Fix64)10,
+                groupType.GetField("RelativeLeaderEngagementSeconds", instanceFlags).GetValue(laterGroup),
+                "过滤来源据点后只能重算全波共同平移，不能改写小队相对接战时间。");
+            Assert.AreEqual(
+                (Fix64)14,
+                groupType.GetField("RelativeLeaderEngagementSeconds", instanceFlags).GetValue(latestGroup));
+        }
+        finally
+        {
+            LogicStrongholdMap.Clear();
+        }
+    }
+
+    [Test]
+    public void EmptyResolvedDefenseWaveCompletesAndSchedulesTheNextPhase()
+    {
+        LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(DefendRouteRuntimeTests));
+        LogicTimeControlService.BeginTimeline();
+        LogicPhaseCommandService.BeginTimeline();
+        try
+        {
+            LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
+            DefendPhaseRuntime.CancelRuntime();
+            typeof(DefendPhaseRuntime)
+                .GetField("s_DefenseWaveIndex", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+                .SetValue(null, 1);
+            typeof(DefendPhaseRuntime)
+                .GetField("s_DefendDay", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+                .SetValue(null, 2);
+
+            typeof(DefendPhaseRuntime)
+                .GetMethod("CompleteEmptyDefendWave", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(null, null);
+
+            Assert.IsTrue(DefendPhaseRuntime.GetEditorTestIsSpawnScheduleCompleted());
+            Assert.AreEqual(1, LogicPhaseCommandService.PendingCount);
+            Assert.AreEqual(GamePhase.BuildBeforeInvade, LogicPhaseCommandService.History.Single().Phase);
+        }
+        finally
+        {
+            DefendPhaseRuntime.CancelRuntime();
+            if (LogicPhaseCommandService.IsActive)
+                LogicPhaseCommandService.EndTimeline();
+            if (LogicTimeControlService.IsActive)
+                LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    [Test]
+    public void ZeroResourceEquivalentPresetPassesIntoInvadeAndTutorialRuntimeCaches()
+    {
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Static
+            | System.Reflection.BindingFlags.NonPublic;
+        System.Reflection.MethodInfo configure = typeof(PhaseManager).GetMethod("ConfigureInvadeSpawnPoints", flags);
+        System.Reflection.MethodInfo clear = typeof(PhaseManager).GetMethod("ClearInvadeSpawnPoints", flags);
+        Assert.NotNull(configure);
+        Assert.NotNull(clear);
+
+        UnityEngine.GameObject pointObject = new UnityEngine.GameObject("ZeroResourceEquivalentPreset");
+        try
+        {
+            clear.Invoke(null, null);
+            EntityPresetPoint point = pointObject.AddComponent<EntityPresetPoint>();
+            point.PointType = EntityPresetPointType.Unit;
+            point.Identifier = "Unit_CanMaker";
+            point.SetUnitResourceEquivalent(Fix64.Zero, (Fix64)0.5m);
+
+            Assert.AreEqual(Fix64.Zero, point.UnitResourceEquivalent);
+            Assert.DoesNotThrow(() =>
+                configure.Invoke(null, new object[] { new List<EntityPresetPoint> { point } }));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                point.SetUnitResourceEquivalent(Fix64.FromRaw(-1), Fix64.Zero));
+        }
+        finally
+        {
+            clear.Invoke(null, null);
+            UnityEngine.Object.DestroyImmediate(pointObject);
+        }
+    }
+
     [TearDown]
     public void TearDown()
     {
@@ -280,7 +442,7 @@ public sealed class DefendRouteRuntimeTests
         StringAssert.Contains("? \"出兵点\"", source);
         StringAssert.Contains("? \"最终目标\"", source);
         StringAssert.Contains("$\"中转 {pointIndex}\"", source);
-        StringAssert.Contains("if (i != _selectedRouteIndex)", source);
+        StringAssert.Contains("if (i != previewRouteIndex)", source);
         StringAssert.DoesNotContain("SRC TP:", source);
         StringAssert.DoesNotContain("TARGET", source);
         StringAssert.DoesNotContain("$\"TP:{routes[i]", source);
@@ -400,6 +562,222 @@ public sealed class DefendRouteRuntimeTests
             if (restored != null)
                 UnityEngine.Object.DestroyImmediate(restored);
         }
+    }
+
+    [Test]
+    public void DefenseEditorPreviewSelectionAndPreferencesFollowUserChoices()
+    {
+        const string levelPreferenceKey = "AAAGame.DefenseRouteEditor.SelectedLevel";
+        const string showAllPreferenceKey = "AAAGame.DefenseRouteEditor.ShowAllRoutes";
+        const string unitSizePreferenceKey = "AAAGame.DefenseRouteEditor.PreviewUnitSize";
+        bool hadLevelPreference = UnityEditor.EditorPrefs.HasKey(levelPreferenceKey);
+        bool hadShowAllPreference = UnityEditor.EditorPrefs.HasKey(showAllPreferenceKey);
+        bool hadUnitSizePreference = UnityEditor.EditorPrefs.HasKey(unitSizePreferenceKey);
+        string previousLevelPreference = UnityEditor.EditorPrefs.GetString(levelPreferenceKey, string.Empty);
+        bool previousShowAllPreference = UnityEditor.EditorPrefs.GetBool(showAllPreferenceKey, true);
+        int previousUnitSizePreference = UnityEditor.EditorPrefs.GetInt(unitSizePreferenceKey, (int)UnitSize.Small);
+
+        Type windowType = AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType("DefendRouteEditorWindow", false))
+            .First(type => type != null);
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic;
+        UnityEditor.EditorWindow window = null;
+        UnityEditor.EditorWindow restored = null;
+        try
+        {
+            UnityEditor.EditorPrefs.SetString(levelPreferenceKey, "Lv_1");
+            UnityEditor.EditorPrefs.SetBool(showAllPreferenceKey, true);
+            UnityEditor.EditorPrefs.SetInt(unitSizePreferenceKey, (int)UnitSize.Small);
+
+            window = (UnityEditor.EditorWindow)UnityEngine.ScriptableObject.CreateInstance(windowType);
+            windowType.GetMethod("OnEnable", flags).Invoke(window, null);
+            System.Collections.IList levels =
+                (System.Collections.IList)windowType.GetField("_levels", flags).GetValue(window);
+            int levelIndex = Enumerable.Range(0, levels.Count).Single(index =>
+                string.Equals(
+                    (string)levels[index].GetType().GetField("Identifier", flags).GetValue(levels[index]),
+                    "Lv_2",
+                    StringComparison.Ordinal));
+            windowType.GetMethod("SelectLevel", flags).Invoke(window, new object[] { levelIndex });
+            windowType.GetMethod("SetShowAllRoutes", flags).Invoke(window, new object[] { false });
+            windowType.GetMethod("SetPreviewUnitSize", flags).Invoke(window, new object[] { UnitSize.Large });
+            Assert.GreaterOrEqual(
+                (int)windowType.GetField("_selectedRouteIndex", flags).GetValue(window),
+                0,
+                "关闭显示全部路线时必须立即选中一条可显示路线。");
+
+            var routes = (System.Collections.IList)windowType
+                .GetMethod("CurrentRoutes", flags)
+                .Invoke(window, null);
+            Assert.GreaterOrEqual(routes.Count, 2, "Lv_2 至少需要两条路线才能验证预览切换。");
+            Type routeType = windowType.GetNestedType("RouteRecord", System.Reflection.BindingFlags.NonPublic);
+            Type groupType = windowType.GetNestedType("GroupRecord", System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(routeType);
+            Assert.NotNull(groupType);
+            var groups = (System.Collections.IList)windowType
+                .GetMethod("CurrentGroups", flags)
+                .Invoke(window, null);
+            Assert.IsNotEmpty(groups, "Lv_2 至少需要一个小队才能验证小队路线预览同步。");
+            object group = groups[0];
+            string groupRouteIdentifier = (string)groupType.GetField("RouteIdentifier", flags).GetValue(group);
+            int groupRouteIndex = Enumerable.Range(0, routes.Count).Single(index =>
+                string.Equals(
+                    (string)routeType.GetField("Identifier", flags).GetValue(routes[index]),
+                    groupRouteIdentifier,
+                    StringComparison.Ordinal));
+
+            int routeEditorIndex = groupRouteIndex == 0 ? 1 : 0;
+            windowType.GetField("_selectedRouteIndex", flags).SetValue(window, routeEditorIndex);
+            windowType.GetMethod("SelectGroupPreviewRoute", flags)
+                .Invoke(window, new[] { group });
+            Assert.AreEqual(
+                routeEditorIndex,
+                windowType.GetField("_selectedRouteIndex", flags).GetValue(window),
+                "小队预览不能改变路线栏当前选择。");
+            Assert.AreEqual(
+                groupRouteIdentifier,
+                windowType.GetField("_previewRouteIdentifier", flags).GetValue(window));
+            Assert.AreEqual(
+                groupRouteIdentifier,
+                groupType.GetField("RouteIdentifier", flags).GetValue(group),
+                "切换小队只能读取其路线用于预览，不能反向改写小队路线。");
+
+            int changedRouteIndex = routeEditorIndex;
+            string changedRouteIdentifier =
+                (string)routeType.GetField("Identifier", flags).GetValue(routes[changedRouteIndex]);
+            windowType.GetMethod("SelectRouteEditorPreview", flags).Invoke(window, null);
+            Assert.AreEqual(
+                routeEditorIndex,
+                windowType.GetField("_selectedRouteIndex", flags).GetValue(window));
+            Assert.AreEqual(
+                changedRouteIdentifier,
+                windowType.GetField("_previewRouteIdentifier", flags).GetValue(window),
+                "从小队页切回路线页时应恢复路线栏自己的预览路线。");
+            Assert.AreEqual(
+                groupRouteIdentifier,
+                groupType.GetField("RouteIdentifier", flags).GetValue(group),
+                "切回路线页不能把路线栏选择写入小队路线。");
+
+            windowType.GetMethod("ChangeGroupRoute", flags)
+                .Invoke(window, new[] { group, changedRouteIdentifier });
+            Assert.AreEqual(
+                changedRouteIdentifier,
+                groupType.GetField("RouteIdentifier", flags).GetValue(group));
+            Assert.AreEqual(
+                routeEditorIndex,
+                windowType.GetField("_selectedRouteIndex", flags).GetValue(window),
+                "修改小队路线只能改变 SceneView 预览，不能改变路线栏当前选择。");
+            Assert.AreEqual(
+                changedRouteIdentifier,
+                windowType.GetField("_previewRouteIdentifier", flags).GetValue(window));
+
+            UnityEngine.Object.DestroyImmediate(window);
+            window = null;
+            restored = (UnityEditor.EditorWindow)UnityEngine.ScriptableObject.CreateInstance(windowType);
+            windowType.GetMethod("OnEnable", flags).Invoke(restored, null);
+            Assert.AreEqual(
+                "Lv_2",
+                windowType.GetProperty("CurrentLevelIdentifier", flags).GetValue(restored));
+            Assert.IsFalse((bool)windowType.GetField("_showAllRoutes", flags).GetValue(restored));
+            Assert.AreEqual(UnitSize.Large, windowType.GetField("_previewUnitSize", flags).GetValue(restored));
+        }
+        finally
+        {
+            if (window != null)
+                UnityEngine.Object.DestroyImmediate(window);
+            if (restored != null)
+                UnityEngine.Object.DestroyImmediate(restored);
+            if (hadLevelPreference)
+                UnityEditor.EditorPrefs.SetString(levelPreferenceKey, previousLevelPreference);
+            else
+                UnityEditor.EditorPrefs.DeleteKey(levelPreferenceKey);
+            if (hadShowAllPreference)
+                UnityEditor.EditorPrefs.SetBool(showAllPreferenceKey, previousShowAllPreference);
+            else
+                UnityEditor.EditorPrefs.DeleteKey(showAllPreferenceKey);
+            if (hadUnitSizePreference)
+                UnityEditor.EditorPrefs.SetInt(unitSizePreferenceKey, previousUnitSizePreference);
+            else
+                UnityEditor.EditorPrefs.DeleteKey(unitSizePreferenceKey);
+        }
+    }
+
+    [Test]
+    public void DefenseEditorSeparatesSquadTemplatesFromDailyWaveAssignments()
+    {
+        string source = File.ReadAllText(
+            "Assets/AAAGame/ScriptsBuiltin/Editor/Defense/DefendRouteEditorWindow.cs");
+        string onGui = ExtractSourceBlock(source, "private void OnGUI()", "private void DrawToolbar()");
+        string squadUi = ExtractSourceBlock(source, "private void DrawGroups()", "private void DrawDailyWaves()");
+        string dailyWaveUi = ExtractSourceBlock(
+            source,
+            "private void DrawDailyWaves()",
+            "private bool DrawRecordSelector(");
+        string dailyGroupUi = ExtractSourceBlock(
+            source,
+            "private void DrawDailyWaveGroups(int previewDay)",
+            "private void SetGroupWaveActive(");
+
+        StringAssert.Contains("new[] { \"路线\", \"小队\", \"每日波次\" }", onGui);
+        StringAssert.Contains("DrawDailyWaves();", onGui);
+        StringAssert.DoesNotContain("DrawDefenseWavePopup();", squadUi);
+        StringAssert.DoesNotContain("ActiveDefenseWaves", squadUi);
+        Assert.Less(
+            dailyWaveUi.IndexOf("DrawDailyWaveGroups(previewDay);", StringComparison.Ordinal),
+            dailyWaveUi.IndexOf("DrawDailyWaveSpawnPreview();", StringComparison.Ordinal),
+            "每日小队配置必须紧跟日期选择，不能放在预览曲线下方。");
+        Assert.Less(
+            dailyWaveUi.IndexOf("DrawDailyWaveSpawnPreview();", StringComparison.Ordinal),
+            dailyWaveUi.IndexOf("DrawDailyWaveSchedulePreview();", StringComparison.Ordinal),
+            "每日总价必须位于出兵配置下方、排程预览上方。");
+        StringAssert.Contains("foreach (GroupRecord group in groups)", dailyGroupUi);
+        StringAssert.Contains("EditorGUILayout.Toggle(active", dailyGroupUi);
+        StringAssert.Contains("SetGroupWaveActive(group, _previewDefenseWave, nextActive);", dailyGroupUi);
+    }
+
+    [Test]
+    public void DefenseEditorTotalSpawnPreviewAggregatesEachUnitTypeAndLevel()
+    {
+        Type windowType = AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType("DefendRouteEditorWindow", false))
+            .First(type => type != null);
+        System.Reflection.MethodInfo buildSummary = windowType.GetMethod(
+            "BuildSpawnCountSummary",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(buildSummary);
+
+        string summary = (string)buildSummary.Invoke(
+            null,
+            new object[]
+            {
+                new[] { "Unit_Brat", "Unit_CanMaker", "Unit_Brat", "Unit_Brat" },
+                new[] { 1, 2, 1, 3 },
+                new[] { 2, 4, 5, 1 }
+            });
+
+        Assert.AreEqual(
+            "Unit_Brat Lv1 x7 / Unit_Brat Lv3 x1 / Unit_CanMaker Lv2 x4",
+            summary);
+    }
+
+    [Test]
+    public void DefenseEditorOffersSaveWithoutGeneratingDataTables()
+    {
+        string source = File.ReadAllText(
+            "Assets/AAAGame/ScriptsBuiltin/Editor/Defense/DefendRouteEditorWindow.cs");
+        string toolbar = ExtractSourceBlock(source, "private void DrawToolbar()", "private void DrawMapSummary()");
+        string save = ExtractSourceBlock(source, "private void Save(bool generateDataTables)", "private void WriteRoutes()");
+
+        StringAssert.Contains("Button(\"仅保存\"", toolbar);
+        StringAssert.Contains("Save(generateDataTables: false);", toolbar);
+        StringAssert.Contains("Save(generateDataTables: true);", toolbar);
+        StringAssert.Contains("WriteRoutes();", save);
+        StringAssert.Contains("WriteGroups();", save);
+        StringAssert.Contains("if (generateDataTables)", save);
+        StringAssert.Contains("GameDataGenerator.RefreshAllDataTable", save);
     }
 
     [Test]
@@ -619,9 +997,9 @@ public sealed class DefendRouteRuntimeTests
             string source = File.ReadAllText(
                 "Assets/AAAGame/ScriptsBuiltin/Editor/Defense/DefendRouteEditorWindow.cs");
             string routeUi = ExtractSourceBlock(source, "private void DrawRoutes()", "private void DrawGroups()");
-            string groupUi = ExtractSourceBlock(source, "private void DrawGroups()", "private void DrawRecordSelector(");
+            string groupUi = ExtractSourceBlock(source, "private void DrawGroups()", "private void DrawDailyWaves()");
             StringAssert.Contains("TextField(\"路线后缀（可空）\"", routeUi);
-            StringAssert.Contains("TextField(\"出兵组后缀（可空）\"", groupUi);
+            StringAssert.Contains("TextField(\"小队后缀（可空）\"", groupUi);
             StringAssert.DoesNotContain("route.Identifier = EditorGUILayout.TextField", routeUi);
             StringAssert.DoesNotContain("group.Identifier = EditorGUILayout.TextField", groupUi);
         }
@@ -678,6 +1056,118 @@ public sealed class DefendRouteRuntimeTests
     }
 
     [Test]
+    public void DefenseEditorRealLv2RouteZeroDayTwoResolvesTwoLevelOneUnitsAndAllowsZero()
+    {
+        Type windowType = AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType("DefendRouteEditorWindow", false))
+            .First(type => type != null);
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic;
+
+        UnityEditor.EditorWindow window = null;
+        try
+        {
+            window = (UnityEditor.EditorWindow)UnityEngine.ScriptableObject.CreateInstance(windowType);
+            windowType.GetMethod("OnEnable", flags).Invoke(window, null);
+            System.Collections.IList levels =
+                (System.Collections.IList)windowType.GetField("_levels", flags).GetValue(window);
+            int levelIndex = Enumerable.Range(0, levels.Count).Single(index =>
+                string.Equals(
+                    (string)levels[index].GetType().GetField("Identifier", flags).GetValue(levels[index]),
+                    "Lv_2",
+                    StringComparison.Ordinal));
+            windowType.GetField("_levelIndex", flags).SetValue(window, levelIndex);
+
+            Type groupType = windowType.GetNestedType("GroupRecord", System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(groupType);
+            System.Collections.IList groups =
+                (System.Collections.IList)windowType.GetField("_groups", flags).GetValue(window);
+            object group = groups.Cast<object>().Single(candidate =>
+                string.Equals((string)groupType.GetField("LevelIdentifier", flags).GetValue(candidate), "Lv_2", StringComparison.Ordinal)
+                && string.Equals((string)groupType.GetField("Identifier", flags).GetValue(candidate), "0", StringComparison.Ordinal));
+            System.Reflection.MethodInfo buildPreview =
+                windowType.GetMethod("TryBuildGroupResourceEquivalentPreview", flags);
+            Assert.NotNull(buildPreview);
+
+            groupType.GetField("InitialResourceEquivalent", flags).SetValue(group, 2f);
+            groupType.GetField("CountGrowthWeight", flags).SetValue(group, 1f);
+            object[] dayTwoArguments = { group, 2, null, null };
+            Assert.IsTrue((bool)buildPreview.Invoke(window, dayTwoArguments), dayTwoArguments[3] as string);
+            object dayTwoPreview = dayTwoArguments[2];
+            Type previewType = dayTwoPreview.GetType();
+            Assert.AreEqual(2, previewType.GetProperty("TotalCount", flags).GetValue(dayTwoPreview));
+            Assert.AreEqual("Lv1 x2", previewType.GetProperty("CompositionText", flags).GetValue(dayTwoPreview));
+            Fix64 target = (Fix64)previewType.GetProperty("Target", flags).GetValue(dayTwoPreview);
+            Assert.That(target.RawValue, Is.EqualTo(((Fix64)3.2m).RawValue).Within(2));
+
+            groupType.GetField("InitialResourceEquivalent", flags).SetValue(group, 0f);
+            object[] zeroArguments = { group, 2, null, null };
+            Assert.IsTrue((bool)buildPreview.Invoke(window, zeroArguments), zeroArguments[3] as string);
+            object zeroPreview = zeroArguments[2];
+            Assert.AreEqual(0, previewType.GetProperty("TotalCount", flags).GetValue(zeroPreview));
+            Assert.AreEqual(Fix64.Zero, previewType.GetProperty("Actual", flags).GetValue(zeroPreview));
+            Assert.AreEqual(Fix64.Zero, previewType.GetProperty("ErrorRate", flags).GetValue(zeroPreview));
+            Assert.AreEqual("无单位", previewType.GetProperty("CompositionText", flags).GetValue(zeroPreview));
+
+            foreach (object candidate in groups.Cast<object>().Where(candidate =>
+                         string.Equals(
+                             (string)groupType.GetField("LevelIdentifier", flags).GetValue(candidate),
+                             "Lv_2",
+                             StringComparison.Ordinal)))
+            {
+                ((List<int>)groupType.GetField("ActiveDefenseWaves", flags).GetValue(candidate)).Clear();
+            }
+            ((List<int>)groupType.GetField("ActiveDefenseWaves", flags).GetValue(group)).Add(1);
+            groupType.GetField("RelativeLeaderEngagementSecondsByWave", flags)
+                .SetValue(group, new List<float> { 0f });
+            groupType.GetField("RouteIdentifier", flags).SetValue(group, "MissingRouteForEmptyComposition");
+            object[] shiftArguments = { 1, 2, null, null };
+            bool shiftResolved = (bool)windowType
+                .GetMethod("TryCalculatePreviewEngagementShift", flags)
+                .Invoke(window, shiftArguments);
+            Assert.IsTrue(shiftResolved, shiftArguments[3] as string);
+            Assert.AreEqual(0f, (float)shiftArguments[2]);
+        }
+        finally
+        {
+            if (window != null)
+                UnityEngine.Object.DestroyImmediate(window);
+        }
+    }
+
+    [Test]
+    public void DefenseEditorFix64TextRoundTripPreservesTinyPositiveValuesAndRejectsNonFiniteValues()
+    {
+        Type windowType = AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType("DefendRouteEditorWindow", false))
+            .First(type => type != null);
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Static
+            | System.Reflection.BindingFlags.NonPublic;
+        System.Reflection.MethodInfo format = windowType.GetMethod("FormatFloat", flags);
+        System.Reflection.MethodInfo parse = windowType.GetMethod("ParseFloat", flags);
+        Assert.NotNull(format);
+        Assert.NotNull(parse);
+
+        float source = (float)Fix64.FromRaw(1);
+        string text = (string)format.Invoke(null, new object[] { source });
+        Assert.AreNotEqual("0", text);
+        float parsed = (float)parse.Invoke(null, new object[] { text });
+        Assert.AreEqual(Fix64.FromRaw(1), (Fix64)parsed);
+
+        System.Reflection.TargetInvocationException nanException =
+            Assert.Throws<System.Reflection.TargetInvocationException>(
+                () => format.Invoke(null, new object[] { float.NaN }));
+        Assert.IsInstanceOf<FormatException>(nanException.InnerException);
+        System.Reflection.TargetInvocationException emptyException =
+            Assert.Throws<System.Reflection.TargetInvocationException>(
+                () => parse.Invoke(null, new object[] { string.Empty }));
+        Assert.IsInstanceOf<FormatException>(emptyException.InnerException);
+    }
+
+    [Test]
     public void GameConfigDoesNotContainDefenseEditorDraftDefaults()
     {
         string config = File.ReadAllText("Assets/AAAGame/Config/GameConfig.txt");
@@ -718,7 +1208,7 @@ public sealed class DefendRouteRuntimeTests
     }
 
     [Test]
-    public void FirstDefenseGroupsUseDefenseWaveOneRegardlessOfStartDay()
+    public void EachDefenseLevelHasAtLeastOneGroupInDefenseWaveOne()
     {
         string[] lines = File.ReadAllLines(
             "Assets/AAAGame/DataTable/Level/DefendAttackGroupTable.txt");
@@ -736,12 +1226,14 @@ public sealed class DefendRouteRuntimeTests
                 continue;
             }
 
-            string[] activeWaves = columns[5].Split(',');
-            CollectionAssert.Contains(activeWaves, "1", $"First defense group is not active in defense wave 1: {line}");
-            matchedLevels.Add(levelIdentifier);
+            if (columns[5].Split(',').Contains("1"))
+                matchedLevels.Add(levelIdentifier);
         }
 
-        CollectionAssert.AreEquivalent(new[] { "Lv_2", "Lv_3", "LvTest" }, matchedLevels);
+        CollectionAssert.AreEquivalent(
+            new[] { "Lv_2", "Lv_3", "LvTest" },
+            matchedLevels,
+            "每个防御关卡的第一波必须至少有一个小队，后续波专属小队不要求在第一波启用。");
     }
 
     [Test]

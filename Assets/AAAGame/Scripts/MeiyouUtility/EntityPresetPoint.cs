@@ -71,8 +71,8 @@ public class EntityPresetPoint : MonoBehaviour
 
     public void SetUnitResourceEquivalent(Fix64 resourceEquivalent, Fix64 countGrowthWeight)
     {
-        if (resourceEquivalent <= Fix64.Zero)
-            throw new ArgumentOutOfRangeException(nameof(resourceEquivalent), "Unit squad resource equivalent must be positive.");
+        if (resourceEquivalent < Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(resourceEquivalent), "Unit squad resource equivalent cannot be negative.");
         if (countGrowthWeight < Fix64.Zero || countGrowthWeight > Fix64.One)
             throw new ArgumentOutOfRangeException(nameof(countGrowthWeight), "Unit count growth weight must be between zero and one.");
         unitResourceEquivalentRaw = resourceEquivalent.RawValue;

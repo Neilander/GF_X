@@ -73,8 +73,8 @@ public static class DefendPhaseRuntime
                 throw new InvalidOperationException(
                     $"Tutorial spawn point has invalid unit identifier. point={point.name} identifier={point.Identifier}.");
             }
-            if (point.UnitResourceEquivalent <= Fix64.Zero)
-                throw new InvalidOperationException($"Tutorial spawn point '{point.name}' has a non-positive resource equivalent.");
+            if (point.UnitResourceEquivalent < Fix64.Zero)
+                throw new InvalidOperationException($"Tutorial spawn point '{point.name}' has a negative resource equivalent.");
             if (point.UnitCountGrowthWeight < Fix64.Zero || point.UnitCountGrowthWeight > Fix64.One)
                 throw new InvalidOperationException($"Tutorial spawn point '{point.name}' has an invalid count growth weight.");
 
@@ -187,11 +187,16 @@ public static class DefendPhaseRuntime
         LevelTable level = LogicRuntimeDataTableCache.GetLevelRequired(ResolveCurrentLevelIdentifier());
         s_DefenseWaveIndex = DefenseWaveCalendar.GetDefenseWaveIndex(level.StartPhase, s_DefendDay);
 
-        List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForWave(s_DefenseWaveIndex, s_DefendDay);
-        if (groups.Count == 0)
+        if (ResolveAuthoredSourceWave(s_DefenseWaveIndex) <= 0)
         {
             throw new InvalidOperationException(
                 $"Defense wave {s_DefenseWaveIndex} on Day {s_DefendDay} has no authored or inherited attack groups.");
+        }
+        List<DefendAttackGroupDefinition> groups = ResolveActiveAttackGroupsForWave(s_DefenseWaveIndex, s_DefendDay);
+        if (groups.Count == 0)
+        {
+            CompleteEmptyDefendWave();
+            return;
         }
 
         if (!FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted)
@@ -250,6 +255,7 @@ public static class DefendPhaseRuntime
         if (assignedSpeed <= Fix64.Zero)
             throw new InvalidOperationException("Tutorial first defense resolved a non-positive assigned speed.");
 
+        int eligiblePointCount = 0;
         int spawnedCount = 0;
         int currentDay = Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
         LevelTable level = LogicRuntimeDataTableCache.GetLevelRequired(ResolveCurrentLevelIdentifier());
@@ -261,6 +267,7 @@ public static class DefendPhaseRuntime
             TutorialTriggeredSpawnPoint point = s_TutorialTriggeredSpawnPoints[i];
             if (LogicStrongholdMap.TryResolveStrongholdId(point.Position, out _))
                 continue;
+            eligiblePointCount++;
 
             IReadOnlyList<EnemySquadCompositionEntry> composition = ResolveSquadComposition(
                 point.UnitType,
@@ -296,13 +303,15 @@ public static class DefendPhaseRuntime
             }
         }
 
-        if (spawnedCount == 0)
+        if (eligiblePointCount == 0)
             throw new InvalidOperationException("Tutorial first defense found no Unit presets outside authored strongholds.");
 
         s_TutorialFirstDefenseWaiting = false;
         s_TutorialFirstDefenseActive = true;
         s_SpawnScheduleCompleted = true;
         Log.Info("[DefendPhase] Tutorial first defense started. stronghold={0}, enemies={1}.", strongholdId, spawnedCount);
+        if (spawnedCount == 0)
+            TryCompleteDefendPhase();
     }
 
     public static void ApplyScheduledSpawnRequests(ulong frame)
@@ -403,16 +412,13 @@ public static class DefendPhaseRuntime
         int previewDay = Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
         LevelTable level = LogicRuntimeDataTableCache.GetLevelRequired(ResolveCurrentLevelIdentifier());
         int previewWave = DefenseWaveCalendar.GetDefenseWaveIndex(level.StartPhase, previewDay);
-        List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForWave(previewWave, previewDay);
+        List<DefendAttackGroupDefinition> groups = ResolveActiveAttackGroupsForWave(previewWave, previewDay);
         if (groups.Count == 0)
             return false;
 
         for (int i = 0; i < groups.Count; i++)
         {
             DefendAttackGroupDefinition group = groups[i];
-            if (!IsAttackGroupSourceActive(group.Route.SourceStrongholdId))
-                continue;
-
             for (int j = 0; j < group.Enemies.Count; j++)
             {
                 DefendAttackEntry entry = group.Enemies[j];
@@ -502,9 +508,14 @@ public static class DefendPhaseRuntime
         if (LogicPhaseCommandService.GetRequiredCurrentPhase() != GamePhase.Defend)
             throw new InvalidOperationException("Navigation distance prewarm completed for a pending wave outside the Defend phase.");
 
-        List<DefendAttackGroupDefinition> groups = ResolveAttackGroupsForWave(s_DefenseWaveIndex, s_DefendDay);
+        List<DefendAttackGroupDefinition> groups = ResolveActiveAttackGroupsForWave(s_DefenseWaveIndex, s_DefendDay);
         if (groups.Count == 0)
-            throw new InvalidOperationException($"Pending defense wave {s_DefenseWaveIndex} on Day {s_DefendDay} has no attack groups.");
+        {
+            if (ResolveAuthoredSourceWave(s_DefenseWaveIndex) <= 0)
+                throw new InvalidOperationException($"Pending defense wave {s_DefenseWaveIndex} on Day {s_DefendDay} has no authored or inherited attack groups.");
+            CompleteEmptyDefendWave();
+            return;
+        }
         ulong startFrame = LogicTimeControlService.CurrentFrame > 0
             ? checked(LogicTimeControlService.CurrentFrame + 1UL)
             : 1UL;
@@ -650,6 +661,14 @@ public static class DefendPhaseRuntime
 
         Log.Info("[DefendPhase] 防御阶段结束：敌兵已全部清空。wave={0}, day={1}", s_DefenseWaveIndex, s_DefendDay);
         PhaseManager.SwitchToPhase(GamePhase.BuildBeforeInvade);
+    }
+
+    private static void CompleteEmptyDefendWave()
+    {
+        s_WaitingForNavigationDistancePrewarm = false;
+        s_SpawnScheduleCompleted = true;
+        Log.Info("[DefendPhase] Defense wave resolved to an empty composition. wave={0}, day={1}", s_DefenseWaveIndex, s_DefendDay);
+        TryCompleteDefendPhase();
     }
 
     private static void ConfigureArchetypeCacheIfNeeded()
@@ -960,8 +979,8 @@ public static class DefendPhaseRuntime
                 throw new InvalidOperationException($"Defend attack group '{row.Identifier}' references unknown route '{row.RouteIdentifier}'.");
             if (!UnitTypeHelper.TryParseUnitType(row.UnitIdentifier, out UnitType unitType))
                 throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has invalid unit '{row.UnitIdentifier}'.");
-            if (row.InitialResourceEquivalent <= Fix64.Zero)
-                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has non-positive initial resource equivalent.");
+            if (row.InitialResourceEquivalent < Fix64.Zero)
+                throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has negative initial resource equivalent.");
             if (row.CountGrowthWeight < Fix64.Zero || row.CountGrowthWeight > Fix64.One)
                 throw new InvalidOperationException($"Defend attack group '{row.Identifier}' has count growth weight outside zero to one.");
             if (row.RelativeLeaderEngagementSeconds == null
@@ -1032,6 +1051,8 @@ public static class DefendPhaseRuntime
         for (int groupIndex = 0; groupIndex < s_DefendAttackGroups.Count; groupIndex++)
         {
             DefendAttackGroupDefinition group = s_DefendAttackGroups[groupIndex];
+            if (group.InitialResourceEquivalent == Fix64.Zero)
+                continue;
             DefendRouteDefinition route = group.Route
                 ?? throw new InvalidOperationException($"Defend group '{group.Identifier}' has no route for navigation prewarm.");
             int agentTypeId = ResolveAgentTypeId(group.UnitType);
@@ -1112,6 +1133,8 @@ public static class DefendPhaseRuntime
     {
         DefendRouteDefinition route = group.Route
             ?? throw new InvalidOperationException($"Defend group '{group.Identifier}' has no route.");
+        if (group.InitialResourceEquivalent == Fix64.Zero)
+            return;
         if (route.PresetFirstPlayerWaypointIndex < 0 && !route.UsesInitialGameEndTarget)
         {
             throw new InvalidOperationException(
@@ -1225,6 +1248,8 @@ public static class DefendPhaseRuntime
                 initialResourceEquivalentScale,
                 resourceEquivalentGrowthSpeedScale,
                 resourceEquivalentSettings);
+            if (composition.Count == 0)
+                continue;
             for (int entryIndex = 0; entryIndex < composition.Count; entryIndex++)
             {
                 EnemySquadCompositionEntry entry = composition[entryIndex];
@@ -1238,6 +1263,31 @@ public static class DefendPhaseRuntime
             result.Add(clone);
         }
 
+        return result;
+    }
+
+    private static List<DefendAttackGroupDefinition> ResolveActiveAttackGroupsForWave(
+        int defenseWaveIndex,
+        int realDay)
+    {
+        return FilterActiveAttackGroups(ResolveAttackGroupsForWave(defenseWaveIndex, realDay));
+    }
+
+    private static List<DefendAttackGroupDefinition> FilterActiveAttackGroups(
+        IReadOnlyList<DefendAttackGroupDefinition> groups)
+    {
+        if (groups == null)
+            throw new ArgumentNullException(nameof(groups));
+        var result = new List<DefendAttackGroupDefinition>(groups.Count);
+        for (int i = 0; i < groups.Count; i++)
+        {
+            DefendAttackGroupDefinition group = groups[i]
+                ?? throw new InvalidOperationException($"Defense wave group at index {i} is null.");
+            if (group.Route == null)
+                throw new InvalidOperationException($"Defend group '{group.Identifier}' has no route.");
+            if (IsAttackGroupSourceActive(group.Route.SourceStrongholdId))
+                result.Add(group);
+        }
         return result;
     }
 
@@ -1782,6 +1832,11 @@ public static class DefendPhaseRuntime
     public static bool GetEditorTestIsWaitingForNavigationDistancePrewarm()
     {
         return s_WaitingForNavigationDistancePrewarm;
+    }
+
+    public static bool GetEditorTestIsSpawnScheduleCompleted()
+    {
+        return s_SpawnScheduleCompleted;
     }
 
     public static int GetEditorTestPlannedSpawnCount()

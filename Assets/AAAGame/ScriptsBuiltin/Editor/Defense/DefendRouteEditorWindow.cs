@@ -23,6 +23,9 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     private const float NewGroupCountGrowthWeight = 0.5f;
     private const float NewGroupRelativeEngagementSeconds = 0f;
     private const float PreviewWarningErrorRate = 0.15f;
+    private const string SelectedLevelPreferenceKey = "AAAGame.DefenseRouteEditor.SelectedLevel";
+    private const string ShowAllRoutesPreferenceKey = "AAAGame.DefenseRouteEditor.ShowAllRoutes";
+    private const string PreviewUnitSizePreferenceKey = "AAAGame.DefenseRouteEditor.PreviewUnitSize";
 
     private readonly List<LevelRecord> _levels = new();
     [SerializeField] private List<RouteRecord> _routes = new();
@@ -36,6 +39,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     [SerializeField] private Vector2 _scroll;
     [SerializeField] private int _levelIndex;
     [SerializeField] private int _selectedRouteIndex = -1;
+    [SerializeField] private string _previewRouteIdentifier = string.Empty;
     [SerializeField] private int _selectedGroupIndex = -1;
     [SerializeField] private bool _showAllRoutes = true;
     [SerializeField] private bool _dirty;
@@ -69,7 +73,8 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     private enum EditMode
     {
         Routes,
-        Groups
+        Groups,
+        DailyWaves
     }
 
     [MenuItem("Tools/Defense Route Editor")]
@@ -83,6 +88,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     private void OnEnable()
     {
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+        RestoreEditorPreferences();
         SceneView.duringSceneGui -= DrawScenePreview;
         SceneView.duringSceneGui += DrawScenePreview;
         if (_draftInitialized)
@@ -94,6 +100,129 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     private void OnDisable()
     {
         SceneView.duringSceneGui -= DrawScenePreview;
+    }
+
+    private void RestoreEditorPreferences()
+    {
+        if (EditorPrefs.HasKey(ShowAllRoutesPreferenceKey))
+            _showAllRoutes = EditorPrefs.GetBool(ShowAllRoutesPreferenceKey);
+        else
+            EditorPrefs.SetBool(ShowAllRoutesPreferenceKey, _showAllRoutes);
+
+        if (EditorPrefs.HasKey(PreviewUnitSizePreferenceKey))
+        {
+            int storedUnitSize = EditorPrefs.GetInt(PreviewUnitSizePreferenceKey);
+            if (!Enum.IsDefined(typeof(UnitSize), storedUnitSize))
+                throw new InvalidOperationException($"防御路线编辑器保存了无效的预览体型值 '{storedUnitSize}'。");
+            _previewUnitSize = (UnitSize)storedUnitSize;
+        }
+        else
+        {
+            EditorPrefs.SetInt(PreviewUnitSizePreferenceKey, (int)_previewUnitSize);
+        }
+    }
+
+    private void RestorePreferredLevel()
+    {
+        if (_levels.Count == 0)
+            return;
+
+        string preferredIdentifier = EditorPrefs.GetString(SelectedLevelPreferenceKey, string.Empty);
+        int preferredIndex = _levels.FindIndex(level =>
+            string.Equals(level.Identifier, preferredIdentifier, StringComparison.Ordinal));
+        if (preferredIndex >= 0)
+            _levelIndex = preferredIndex;
+        else
+            _levelIndex = Mathf.Clamp(_levelIndex, 0, _levels.Count - 1);
+        RememberSelectedLevel();
+    }
+
+    private void RememberSelectedLevel()
+    {
+        if (_levelIndex < 0 || _levelIndex >= _levels.Count)
+            return;
+        EditorPrefs.SetString(SelectedLevelPreferenceKey, _levels[_levelIndex].Identifier);
+    }
+
+    private void SelectLevel(int levelIndex)
+    {
+        if (levelIndex < 0 || levelIndex >= _levels.Count)
+            throw new ArgumentOutOfRangeException(nameof(levelIndex), levelIndex, "关卡索引超出防御路线编辑器的关卡列表。");
+        if (_levelIndex == levelIndex)
+            return;
+
+        _levelIndex = levelIndex;
+        RememberSelectedLevel();
+        _selectedRouteIndex = -1;
+        _previewRouteIdentifier = string.Empty;
+        _selectedGroupIndex = -1;
+        LoadLevelGeometry();
+        EnsurePreviewRouteSelection();
+        ValidateAll();
+    }
+
+    private void SetShowAllRoutes(bool showAllRoutes)
+    {
+        if (_showAllRoutes == showAllRoutes)
+            return;
+
+        _showAllRoutes = showAllRoutes;
+        if (!showAllRoutes)
+            EnsurePreviewRouteSelection();
+        EditorPrefs.SetBool(ShowAllRoutesPreferenceKey, showAllRoutes);
+        EditorUtility.SetDirty(this);
+        RepaintScenePreview();
+    }
+
+    private void SetPreviewUnitSize(UnitSize previewUnitSize)
+    {
+        if (_previewUnitSize == previewUnitSize)
+            return;
+
+        _previewUnitSize = previewUnitSize;
+        EditorPrefs.SetInt(PreviewUnitSizePreferenceKey, (int)previewUnitSize);
+        _routePreviewCache.Clear();
+        EditorUtility.SetDirty(this);
+        RepaintScenePreview();
+    }
+
+    private void SelectPreviewRouteIfNeeded(string routeIdentifier)
+    {
+        if (string.Equals(_previewRouteIdentifier, routeIdentifier, StringComparison.Ordinal))
+            return;
+
+        _previewRouteIdentifier = routeIdentifier;
+        RepaintScenePreview();
+    }
+
+    private void EnsurePreviewRouteSelection()
+    {
+        List<RouteRecord> routes = CurrentRoutes();
+        if (routes.Count == 0)
+        {
+            _selectedRouteIndex = -1;
+            _previewRouteIdentifier = string.Empty;
+            return;
+        }
+        if (_selectedRouteIndex < 0 || _selectedRouteIndex >= routes.Count)
+            _selectedRouteIndex = 0;
+        if (!routes.Any(route =>
+                string.Equals(route.Identifier, _previewRouteIdentifier, StringComparison.Ordinal)))
+        {
+            _previewRouteIdentifier = routes[_selectedRouteIndex].Identifier;
+        }
+    }
+
+    private int CurrentPreviewRouteIndex()
+    {
+        return CurrentRoutes().FindIndex(route =>
+            string.Equals(route.Identifier, _previewRouteIdentifier, StringComparison.Ordinal));
+    }
+
+    private void RepaintScenePreview()
+    {
+        SceneView.RepaintAll();
+        Repaint();
     }
 
     private void OnGUI()
@@ -111,12 +240,14 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         }
 
         DrawMapSummary();
-        _editMode = (EditMode)GUILayout.Toolbar((int)_editMode, new[] { "路线", "出兵组" });
+        _editMode = (EditMode)GUILayout.Toolbar((int)_editMode, new[] { "路线", "小队", "每日波次" });
         _scroll = EditorGUILayout.BeginScrollView(_scroll);
         if (_editMode == EditMode.Routes)
             DrawRoutes();
-        else
+        else if (_editMode == EditMode.Groups)
             DrawGroups();
+        else
+            DrawDailyWaves();
         EditorGUILayout.EndScrollView();
         DrawValidationMessages();
     }
@@ -129,18 +260,17 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             int nextLevel = levelNames.Length == 0
                 ? 0
                 : EditorGUILayout.Popup(_levelIndex, levelNames, EditorStyles.toolbarPopup, GUILayout.Width(150f));
-            if (nextLevel != _levelIndex)
-            {
-                _levelIndex = nextLevel;
-                _selectedRouteIndex = -1;
-                _selectedGroupIndex = -1;
-                LoadLevelGeometry();
-                ValidateAll();
-            }
+            if (levelNames.Length > 0 && nextLevel != _levelIndex)
+                SelectLevel(nextLevel);
 
             if (GUILayout.Button("打开关卡 Prefab", EditorStyles.toolbarButton, GUILayout.Width(110f)))
                 OpenLevelPrefab();
-            _showAllRoutes = GUILayout.Toggle(_showAllRoutes, "显示全部路线", EditorStyles.toolbarButton, GUILayout.Width(95f));
+            bool nextShowAllRoutes = GUILayout.Toggle(
+                _showAllRoutes,
+                "显示全部路线",
+                EditorStyles.toolbarButton,
+                GUILayout.Width(95f));
+            SetShowAllRoutes(nextShowAllRoutes);
             GUILayout.FlexibleSpace();
             if (_dirty)
                 GUILayout.Label("未保存", EditorStyles.miniBoldLabel);
@@ -148,8 +278,10 @@ public sealed class DefendRouteEditorWindow : EditorWindow
                 ReloadAll();
             if (GUILayout.Button("校验", EditorStyles.toolbarButton, GUILayout.Width(50f)))
                 ValidateAll();
+            if (GUILayout.Button("仅保存", EditorStyles.toolbarButton, GUILayout.Width(60f)))
+                Save(generateDataTables: false);
             if (GUILayout.Button("保存并生成", EditorStyles.toolbarButton, GUILayout.Width(85f)))
-                SaveAndGenerate();
+                Save(generateDataTables: true);
         }
     }
 
@@ -165,11 +297,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             EditorGUI.BeginChangeCheck();
             UnitSize nextPreviewUnitSize = (UnitSize)EditorGUILayout.EnumPopup("路径预览体型", _previewUnitSize);
             if (EditorGUI.EndChangeCheck())
-            {
-                _previewUnitSize = nextPreviewUnitSize;
-                _routePreviewCache.Clear();
-                SceneView.RepaintAll();
-            }
+                SetPreviewUnitSize(nextPreviewUnitSize);
             EditorGUILayout.LabelField("中转抵达半径（Unity单位）", _waypointArrivalRadiusWorld.ToString("F3", CultureInfo.InvariantCulture));
             EditorGUILayout.LabelField(
                 "小队固定排程",
@@ -182,16 +310,19 @@ public sealed class DefendRouteEditorWindow : EditorWindow
     private void DrawRoutes()
     {
         List<RouteRecord> routes = CurrentRoutes();
-        DrawRecordSelector(
+        bool selectionChanged = DrawRecordSelector(
             routes.Select(x => x.Identifier).ToArray(),
             ref _selectedRouteIndex,
             "新增路线",
             AddRoute,
             RemoveSelectedRoute);
+        if (selectionChanged)
+            RepaintScenePreview();
         if (_selectedRouteIndex < 0 || _selectedRouteIndex >= routes.Count)
             return;
 
         RouteRecord route = routes[_selectedRouteIndex];
+        SelectRouteEditorPreview();
         Dictionary<RouteRecord, string> previousRouteIdentifiers = CurrentRoutes()
             .ToDictionary(x => x, x => x.Identifier);
         Dictionary<GroupRecord, string> previousGroupIdentifiers = CurrentGroups()
@@ -233,6 +364,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         if (EditorGUI.EndChangeCheck())
         {
             RebuildDerivedIdentifiers(CurrentLevelIdentifier, previousRouteIdentifiers, previousGroupIdentifiers);
+            SelectPreviewRouteIfNeeded(route.Identifier);
             MarkDirty();
         }
 
@@ -241,85 +373,64 @@ public sealed class DefendRouteEditorWindow : EditorWindow
 
     private void DrawGroups()
     {
-        DrawDefenseWavePopup();
-        int previewDay = CurrentPreviewDay();
-        DrawResourceEquivalentCurvePreview();
-        DrawDailyWaveValuePreview();
-        EditorGUILayout.Space(6f);
         List<GroupRecord> groups = CurrentGroups();
         DrawRecordSelector(
             groups.Select(x => x.Identifier).ToArray(),
             ref _selectedGroupIndex,
-            "新增出兵组",
+            "新增小队",
             AddGroup,
             RemoveSelectedGroup);
         if (_selectedGroupIndex < 0 || _selectedGroupIndex >= groups.Count)
             return;
 
         GroupRecord group = groups[_selectedGroupIndex];
+        SelectGroupPreviewRoute(group);
         Dictionary<RouteRecord, string> previousRouteIdentifiers = CurrentRoutes()
             .ToDictionary(x => x, x => x.Identifier);
         Dictionary<GroupRecord, string> previousGroupIdentifiers = CurrentGroups()
             .ToDictionary(x => x, x => x.Identifier);
         EditorGUI.BeginChangeCheck();
-        EditorGUILayout.LabelField("出兵组 ID", group.Identifier);
-        int sourceWave = ResolveAuthoredSourceWave(_previewDefenseWave);
-        bool active = sourceWave > 0 && group.ActiveDefenseWaves.Contains(sourceWave);
-        bool nextActive = EditorGUILayout.Toggle($"第 {_previewDefenseWave} 次防御启用（Day {previewDay}）", active);
-        if (nextActive != active)
-        {
-            MaterializeInheritedWave(_previewDefenseWave);
-            if (nextActive)
-            {
-                if (!group.ActiveDefenseWaves.Contains(_previewDefenseWave))
-                    AddActiveDefenseWave(group, _previewDefenseWave, ResolveNewWaveEngagementSeconds(group, _previewDefenseWave));
-            }
-            else
-                RemoveActiveDefenseWave(group, _previewDefenseWave);
-            sourceWave = _previewDefenseWave;
-        }
-        group.RouteIdentifier = DrawRoutePopup("路线", group.RouteIdentifier);
-        group.Suffix = EditorGUILayout.TextField("出兵组后缀（可空）", group.Suffix ?? string.Empty);
+        EditorGUILayout.LabelField("小队 ID", group.Identifier);
+        string nextRouteIdentifier = DrawRoutePopup("路线", group.RouteIdentifier);
+        if (!string.Equals(nextRouteIdentifier, group.RouteIdentifier, StringComparison.Ordinal))
+            ChangeGroupRoute(group, nextRouteIdentifier);
+        group.Suffix = EditorGUILayout.TextField("小队后缀（可空）", group.Suffix ?? string.Empty);
         EditorGUILayout.Space(4f);
         EditorGUILayout.LabelField("单兵种编成", EditorStyles.boldLabel);
         group.UnitIdentifier = DrawUnitPopup(group.UnitIdentifier);
         group.InitialResourceEquivalent = Mathf.Max(0f, EditorGUILayout.FloatField("初始资源等价量（橙髓）", group.InitialResourceEquivalent));
         group.CountGrowthWeight = EditorGUILayout.Slider("数量成长权重", group.CountGrowthWeight, 0f, 1f);
-
-        EditorGUILayout.Space(4f);
-        EditorGUILayout.LabelField("当日队首接战", EditorStyles.boldLabel);
-        if (nextActive)
-        {
-            float engagement = GetRelativeLeaderEngagementSeconds(group, sourceWave);
-            float nextEngagement = Mathf.Max(0f, EditorGUILayout.FloatField("队首相对接战（秒）", engagement));
-            if (!Mathf.Approximately(nextEngagement, engagement))
-            {
-                MaterializeInheritedWave(_previewDefenseWave);
-                SetRelativeLeaderEngagementSeconds(group, _previewDefenseWave, nextEngagement);
-            }
-        }
-        else
-        {
-            EditorGUILayout.HelpBox("该日未启用，不参与排程。", MessageType.Info);
-        }
         if (EditorGUI.EndChangeCheck())
         {
             RebuildDerivedIdentifiers(CurrentLevelIdentifier, previousRouteIdentifiers, previousGroupIdentifiers);
             MarkDirty();
         }
 
-        DrawGroupResourceEquivalentPreview(group, previewDay);
+        DrawGroupResourceEquivalentPreview(group, 1);
         DrawGroupDailyCompositionPreview(group);
-        DrawGroupTimeline(group);
     }
 
-    private void DrawRecordSelector(
+    private void DrawDailyWaves()
+    {
+        DrawDefenseWavePopup();
+        int previewDay = CurrentPreviewDay();
+        DrawDailyWaveGroups(previewDay);
+        EditorGUILayout.Space(8f);
+        DrawDailyWaveSpawnPreview();
+        EditorGUILayout.Space(8f);
+        DrawDailyWaveSchedulePreview();
+        EditorGUILayout.Space(8f);
+        DrawResourceEquivalentCurvePreview();
+    }
+
+    private bool DrawRecordSelector(
         string[] labels,
         ref int selectedIndex,
         string addLabel,
         Action add,
         Action remove)
     {
+        int previousIndex = selectedIndex;
         using (new EditorGUILayout.HorizontalScope())
         {
             int popupIndex = labels.Length == 0 ? 0 : Mathf.Clamp(selectedIndex, 0, labels.Length - 1);
@@ -335,6 +446,145 @@ public sealed class DefendRouteEditorWindow : EditorWindow
                 remove();
             GUI.enabled = true;
         }
+        return selectedIndex != previousIndex;
+    }
+
+    private void DrawDailyWaveGroups(int previewDay)
+    {
+        List<GroupRecord> groups = CurrentGroups();
+        EditorGUILayout.LabelField(
+            $"第 {_previewDefenseWave} 次防御（Day {previewDay}）小队",
+            EditorStyles.boldLabel);
+        if (groups.Count == 0)
+        {
+            EditorGUILayout.HelpBox("当前关卡没有可编排小队。", MessageType.Info);
+            return;
+        }
+
+        using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
+        {
+            GUILayout.Label("启用", GUILayout.Width(34f));
+            GUILayout.Label("小队", GUILayout.MinWidth(130f));
+            GUILayout.Label("路线", GUILayout.MinWidth(100f));
+            GUILayout.Label("兵种", GUILayout.MinWidth(100f));
+            GUILayout.Label("队首相对接战（秒）", GUILayout.Width(115f));
+            GUILayout.Label("当日构成", GUILayout.MinWidth(100f));
+        }
+
+        bool changed = false;
+        foreach (GroupRecord group in groups)
+        {
+            string previewFailure = string.Empty;
+            int sourceWave = ResolveAuthoredSourceWave(_previewDefenseWave);
+            bool active = sourceWave > 0 && group.ActiveDefenseWaves.Contains(sourceWave);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                bool nextActive = EditorGUILayout.Toggle(active, GUILayout.Width(34f));
+                if (nextActive != active)
+                {
+                    SetGroupWaveActive(group, _previewDefenseWave, nextActive);
+                    active = nextActive;
+                    sourceWave = _previewDefenseWave;
+                    changed = true;
+                }
+
+                EditorGUILayout.LabelField(group.Identifier, GUILayout.MinWidth(130f));
+                EditorGUILayout.LabelField(group.RouteIdentifier, GUILayout.MinWidth(100f));
+                EditorGUILayout.LabelField(group.UnitIdentifier, GUILayout.MinWidth(100f));
+                using (new EditorGUI.DisabledScope(!active))
+                {
+                    float engagement = active
+                        ? GetRelativeLeaderEngagementSeconds(group, sourceWave)
+                        : 0f;
+                    float nextEngagement = Mathf.Max(
+                        0f,
+                        EditorGUILayout.FloatField(engagement, GUILayout.Width(115f)));
+                    if (active && !Mathf.Approximately(nextEngagement, engagement))
+                    {
+                        MaterializeInheritedWave(_previewDefenseWave);
+                        SetRelativeLeaderEngagementSeconds(group, _previewDefenseWave, nextEngagement);
+                        sourceWave = _previewDefenseWave;
+                        changed = true;
+                    }
+                }
+
+                if (TryBuildGroupResourceEquivalentPreview(
+                        group,
+                        previewDay,
+                        out GroupResourceEquivalentPreview preview,
+                        out string failure))
+                {
+                    EditorGUILayout.LabelField(
+                        $"{preview.CompositionText} / {FormatFix(preview.Actual)} 橙髓",
+                        GUILayout.MinWidth(100f));
+                }
+                else
+                {
+                    EditorGUILayout.LabelField("预览失败", GUILayout.MinWidth(100f));
+                    previewFailure = failure;
+                }
+            }
+            if (!string.IsNullOrEmpty(previewFailure))
+            {
+                EditorGUILayout.HelpBox(
+                    $"小队 '{group.Identifier}' Day {previewDay} 预览失败：{previewFailure}",
+                    MessageType.Error);
+            }
+        }
+
+        if (changed)
+            MarkDirty();
+    }
+
+    private void DrawDailyWaveSchedulePreview()
+    {
+        int authoredWave = ResolveAuthoredSourceWave(_previewDefenseWave);
+        if (authoredWave <= 0)
+            return;
+        EditorGUILayout.LabelField("当前波次排程预览", EditorStyles.boldLabel);
+        foreach (GroupRecord group in CurrentGroups().Where(candidate =>
+                     candidate.ActiveDefenseWaves.Contains(authoredWave)))
+        {
+            EditorGUILayout.LabelField(group.Identifier, EditorStyles.miniBoldLabel);
+            DrawGroupTimeline(group);
+        }
+    }
+
+    private void SetGroupWaveActive(GroupRecord group, int wave, bool active)
+    {
+        if (group == null)
+            throw new ArgumentNullException(nameof(group));
+        MaterializeInheritedWave(wave);
+        bool explicitlyActive = group.ActiveDefenseWaves.Contains(wave);
+        if (active == explicitlyActive)
+            return;
+        if (active)
+            AddActiveDefenseWave(group, wave, ResolveNewWaveEngagementSeconds(group, wave));
+        else
+            RemoveActiveDefenseWave(group, wave);
+    }
+
+    private void SelectGroupPreviewRoute(GroupRecord group)
+    {
+        if (group == null)
+            throw new ArgumentNullException(nameof(group));
+        SelectPreviewRouteIfNeeded(group.RouteIdentifier);
+    }
+
+    private void SelectRouteEditorPreview()
+    {
+        List<RouteRecord> routes = CurrentRoutes();
+        if (_selectedRouteIndex < 0 || _selectedRouteIndex >= routes.Count)
+            throw new InvalidOperationException("路线栏没有可用于场景预览的当前路线。");
+        SelectPreviewRouteIfNeeded(routes[_selectedRouteIndex].Identifier);
+    }
+
+    private void ChangeGroupRoute(GroupRecord group, string routeIdentifier)
+    {
+        if (group == null)
+            throw new ArgumentNullException(nameof(group));
+        group.RouteIdentifier = routeIdentifier;
+        SelectPreviewRouteIfNeeded(routeIdentifier);
     }
 
     private void DrawRouteMetrics(RouteRecord route)
@@ -358,6 +608,17 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         int sourceWave = ResolveAuthoredSourceWave(_previewDefenseWave);
         if (sourceWave <= 0 || !group.ActiveDefenseWaves.Contains(sourceWave))
             return;
+        int previewDay = CurrentPreviewDay();
+        if (!TryResolveGroupComposition(group, previewDay, out IReadOnlyList<EnemySquadCompositionEntry> composition, out string compositionFailure))
+        {
+            EditorGUILayout.HelpBox($"无法求解当前小队：{compositionFailure}", MessageType.Error);
+            return;
+        }
+        if (composition.Count == 0)
+        {
+            EditorGUILayout.HelpBox("该小队当日量化为空编成，不参与接战平移和出兵窗口排程。", MessageType.Info);
+            return;
+        }
 
         RouteRecord route = CurrentRoutes().FirstOrDefault(x => string.Equals(x.Identifier, group.RouteIdentifier, StringComparison.Ordinal));
         if (route == null || !TryBuildNavigationPreview(route, out RoutePreview preview))
@@ -379,7 +640,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             return;
         }
         float relativeEngagement = GetRelativeLeaderEngagementSeconds(group, sourceWave);
-        if (!TryCalculatePreviewEngagementShift(sourceWave, out float shift, out string shiftFailure))
+        if (!TryCalculatePreviewEngagementShift(sourceWave, previewDay, out float shift, out string shiftFailure))
         {
             EditorGUILayout.HelpBox($"无法计算全波接战平移：{shiftFailure}", MessageType.Error);
             return;
@@ -604,11 +865,15 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         Fix64 actual = EnemySquadResourceEquivalentResolver.CalculateCompositionResourceEquivalent(
             composition,
             resourceEquivalents.EffectiveResourceEquivalents);
-        Fix64 errorRate = Fix64.Abs(actual - target) / target;
+        Fix64 errorRate = target == Fix64.Zero
+            ? Fix64.Zero
+            : Fix64.Abs(actual - target) / target;
         int totalCount = composition.Sum(x => x.Count);
-        Fix64 averageLevel = composition.Aggregate(
-            Fix64.Zero,
-            (sum, x) => sum + (Fix64)(x.Level * x.Count)) / (Fix64)totalCount;
+        Fix64 averageLevel = totalCount == 0
+            ? Fix64.Zero
+            : composition.Aggregate(
+                Fix64.Zero,
+                (sum, x) => sum + (Fix64)(x.Level * x.Count)) / (Fix64)totalCount;
         preview = new GroupResourceEquivalentPreview(
             multiplier,
             target,
@@ -616,8 +881,11 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             errorRate,
             totalCount,
             averageLevel,
-            composition.Max(x => x.Level),
-            string.Join(" + ", composition.Select(x => $"Lv{x.Level} x{x.Count}")));
+            composition.Count == 0 ? 0 : composition.Max(x => x.Level),
+            composition.Count == 0
+                ? "无单位"
+                : string.Join(" + ", composition.Select(x => $"Lv{x.Level} x{x.Count}")),
+            composition);
         failure = string.Empty;
         return true;
     }
@@ -863,12 +1131,13 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             ReadRoutes();
             ReadGroups();
             bool identifiersMigrated = MigrateDerivedIdentifiers();
-            _levelIndex = Mathf.Clamp(_levelIndex, 0, Mathf.Max(0, _levels.Count - 1));
+            RestorePreferredLevel();
             _selectedRouteIndex = -1;
             _selectedGroupIndex = -1;
             _dirty = identifiersMigrated;
             _draftInitialized = true;
             LoadLevelGeometry();
+            EnsurePreviewRouteSelection();
             ValidateAll();
             _supportingDataReady = true;
         }
@@ -896,8 +1165,9 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             MigrateLegacyDraftGroups();
             if (_derivedIdentifierVersion < DerivedIdentifierVersion && MigrateDerivedIdentifiers())
                 _dirty = true;
-            _levelIndex = Mathf.Clamp(_levelIndex, 0, Mathf.Max(0, _levels.Count - 1));
+            RestorePreferredLevel();
             LoadLevelGeometry();
+            EnsurePreviewRouteSelection();
             ValidateAll();
             _supportingDataReady = true;
         }
@@ -1115,11 +1385,18 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         }
     }
 
-    private bool TryCalculatePreviewEngagementShift(int sourceWave, out float shift, out string failure)
+    private bool TryCalculatePreviewEngagementShift(int sourceWave, int day, out float shift, out string failure)
     {
         shift = 0f;
         foreach (GroupRecord group in CurrentGroups().Where(candidate => candidate.ActiveDefenseWaves.Contains(sourceWave)))
         {
+            if (!TryResolveGroupComposition(group, day, out IReadOnlyList<EnemySquadCompositionEntry> composition, out string compositionFailure))
+            {
+                failure = $"出兵组 '{group.Identifier}'：{compositionFailure}";
+                return false;
+            }
+            if (composition.Count == 0)
+                continue;
             if (!TryGetPresetSpawnLeads(group, out _, out float minimumTravelLead, out string leadFailure))
             {
                 failure = $"出兵组 '{group.Identifier}'：{leadFailure}";
@@ -1134,11 +1411,11 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         return true;
     }
 
-    private void DrawDailyWaveValuePreview()
+    private void DrawDailyWaveSpawnPreview()
     {
         LevelRecord level = CurrentLevel();
         int maximumWave = DefenseWaveCalendar.GetLastAuthorableDefenseWave(level.StartPhase, level.ExpectedDays);
-        EditorGUILayout.LabelField("每日防御出怪总价值", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("总出怪预览", EditorStyles.boldLabel);
         for (int wave = 1; wave <= maximumWave; wave++)
         {
             int day = DefenseWaveCalendar.GetDefenseDay(level.StartPhase, wave);
@@ -1148,6 +1425,9 @@ public sealed class DefendRouteEditorWindow : EditorWindow
                 : CurrentGroups().Where(group => group.ActiveDefenseWaves.Contains(sourceWave)).ToList();
             Fix64 totalTarget = Fix64.Zero;
             Fix64 totalActual = Fix64.Zero;
+            var unitIdentifiers = new List<string>();
+            var unitLevels = new List<int>();
+            var unitCounts = new List<int>();
             string failure = string.Empty;
             foreach (GroupRecord group in groups)
             {
@@ -1158,15 +1438,54 @@ public sealed class DefendRouteEditorWindow : EditorWindow
                 }
                 totalTarget += preview.Target;
                 totalActual += preview.Actual;
+                foreach (EnemySquadCompositionEntry entry in preview.Composition)
+                {
+                    unitIdentifiers.Add(group.UnitIdentifier);
+                    unitLevels.Add(entry.Level);
+                    unitCounts.Add(entry.Count);
+                }
             }
-            EditorGUILayout.LabelField(
-                $"Day {day} / 第 {wave} 次防御",
-                sourceWave <= 0
-                    ? "无可继承编排"
-                    : !string.IsNullOrEmpty(failure)
-                        ? $"来源第 {sourceWave} 波 / 预览失败：{failure}"
-                    : $"来源第 {sourceWave} 波 / {groups.Count} 小队 / 目标 {FormatFix(totalTarget)} 橙髓 / 实际 {FormatFix(totalActual)} 橙髓");
+            string countSummary = BuildSpawnCountSummary(unitIdentifiers, unitLevels, unitCounts);
+            string summary = sourceWave <= 0
+                ? "无可继承编排"
+                : !string.IsNullOrEmpty(failure)
+                    ? $"来源第 {sourceWave} 波 / 预览失败：{failure}"
+                    : $"来源第 {sourceWave} 波 / {groups.Count} 小队 / 目标 {FormatFix(totalTarget)} 橙髓 / 实际 {FormatFix(totalActual)} 橙髓\n合计出怪数量：{countSummary}";
+            EditorGUILayout.LabelField($"Day {day} / 第 {wave} 次防御", EditorStyles.miniBoldLabel);
+            GUILayout.Label(summary, EditorStyles.wordWrappedLabel);
         }
+    }
+
+    private static string BuildSpawnCountSummary(
+        IReadOnlyList<string> unitIdentifiers,
+        IReadOnlyList<int> unitLevels,
+        IReadOnlyList<int> unitCounts)
+    {
+        if (unitIdentifiers == null || unitLevels == null || unitCounts == null)
+            throw new ArgumentNullException("总出怪数量输入不能为 null。");
+        if (unitIdentifiers.Count != unitLevels.Count || unitIdentifiers.Count != unitCounts.Count)
+            throw new ArgumentException("总出怪数量输入长度不一致。");
+
+        var countsByUnitAndLevel = new Dictionary<(string UnitIdentifier, int Level), int>();
+        for (int i = 0; i < unitIdentifiers.Count; i++)
+        {
+            if (string.IsNullOrWhiteSpace(unitIdentifiers[i]))
+                throw new ArgumentException($"第 {i} 个总出怪兵种标识为空。");
+            if (unitLevels[i] <= 0 || unitCounts[i] <= 0)
+                throw new ArgumentOutOfRangeException(nameof(unitCounts), $"第 {i} 个总出怪等级或数量不大于 0。");
+            var key = (unitIdentifiers[i], unitLevels[i]);
+            countsByUnitAndLevel.TryGetValue(key, out int previousCount);
+            countsByUnitAndLevel[key] = checked(previousCount + unitCounts[i]);
+        }
+
+        return countsByUnitAndLevel.Count == 0
+            ? "无单位"
+            : string.Join(
+                " / ",
+                countsByUnitAndLevel
+                    .OrderBy(x => x.Key.UnitIdentifier, StringComparer.Ordinal)
+                    .ThenBy(x => x.Key.Level)
+                    .Select(x => $"{x.Key.UnitIdentifier} Lv{x.Key.Level} x{x.Value}"));
     }
 
     private static float RequiredConfigFloat(IReadOnlyDictionary<string, string> values, string key)
@@ -1415,15 +1734,16 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         }
 
         List<RouteRecord> routes = CurrentRoutes();
+        int previewRouteIndex = CurrentPreviewRouteIndex();
         for (int i = 0; i < routes.Count; i++)
         {
-            if (!_showAllRoutes && i != _selectedRouteIndex)
+            if (!_showAllRoutes && i != previewRouteIndex)
                 continue;
             if (!TryBuildNavigationPreview(routes[i], out RoutePreview preview) || preview.NavigationPoints.Count < 2)
                 continue;
-            Handles.color = RouteColor(routes[i].Identifier, i == _selectedRouteIndex);
-            Handles.DrawAAPolyLine(i == _selectedRouteIndex ? 6f : 3f, preview.NavigationPoints.ToArray());
-            if (i != _selectedRouteIndex)
+            Handles.color = RouteColor(routes[i].Identifier, i == previewRouteIndex);
+            Handles.DrawAAPolyLine(i == previewRouteIndex ? 6f : 3f, preview.NavigationPoints.ToArray());
+            if (i != previewRouteIndex)
                 continue;
 
             for (int pointIndex = 0; pointIndex < preview.TopologyPoints.Count; pointIndex++)
@@ -1602,7 +1922,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             else if (!group.ActiveDefenseWaves.SequenceEqual(group.ActiveDefenseWaves.OrderBy(x => x)))
                 AddValidation($"出兵组 '{group.Identifier}' 的启用防御波次必须升序，避免相对接战时间错配。");
             if (group.RelativeLeaderEngagementSecondsByWave.Count != group.ActiveDefenseWaves.Count
-                || group.RelativeLeaderEngagementSecondsByWave.Any(x => x < 0f))
+                || group.RelativeLeaderEngagementSecondsByWave.Any(x => !IsFinite(x) || x < 0f))
                 AddValidation($"出兵组 '{group.Identifier}' 的队首相对接战时间必须与启用波次一一对应且不小于零。");
             RouteRecord route = _routes.FirstOrDefault(x =>
                 string.Equals(x.LevelIdentifier, group.LevelIdentifier, StringComparison.Ordinal)
@@ -1611,7 +1931,11 @@ public sealed class DefendRouteEditorWindow : EditorWindow
                 AddValidation($"出兵组 '{group.Identifier}' 引用了未知路线 '{group.RouteIdentifier}'。");
             if (!UnitTypeHelper.TryParseUnitType(group.UnitIdentifier, out _) || !_unitResourceEquivalentsByIdentifier.ContainsKey(group.UnitIdentifier))
                 AddValidation($"出兵组 '{group.Identifier}' 的兵种没有对应军事建筑：'{group.UnitIdentifier}'。");
-            if (group.InitialResourceEquivalent <= 0f || group.CountGrowthWeight < 0f || group.CountGrowthWeight > 1f)
+            if (!IsFinite(group.InitialResourceEquivalent)
+                || !IsFinite(group.CountGrowthWeight)
+                || group.InitialResourceEquivalent < 0f
+                || group.CountGrowthWeight < 0f
+                || group.CountGrowthWeight > 1f)
                 AddValidation($"出兵组 '{group.Identifier}' 的初始资源等价量或数量成长权重无效。");
             LevelRecord groupLevel = _levels.FirstOrDefault(x => string.Equals(x.Identifier, group.LevelIdentifier, StringComparison.Ordinal));
             if (groupLevel == null)
@@ -1626,7 +1950,8 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             }
             if (string.Equals(group.LevelIdentifier, CurrentLevelIdentifier, StringComparison.Ordinal))
             {
-                if (!TryGetPresetSpawnLeads(group, out _, out _, out string leadFailure))
+                if (group.InitialResourceEquivalent > 0f
+                    && !TryGetPresetSpawnLeads(group, out _, out _, out string leadFailure))
                 {
                     AddValidation($"出兵组 '{group.Identifier}' 无法推导固定出兵窗口：{leadFailure}");
                 }
@@ -1655,7 +1980,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             if (sourceWave <= 0)
                 continue;
             int day = DefenseWaveCalendar.GetDefenseDay(CurrentLevel().StartPhase, wave);
-            if (!TryCalculatePreviewEngagementShift(sourceWave, out float engagementShift, out string shiftFailure))
+            if (!TryCalculatePreviewEngagementShift(sourceWave, day, out float engagementShift, out string shiftFailure))
             {
                 AddValidation($"第 {wave} 次防御无法计算全波接战平移：{shiftFailure}");
                 continue;
@@ -1663,6 +1988,11 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             var windows = new List<PreviewSpawnWindow>();
             foreach (GroupRecord group in CurrentGroups().Where(x => x.ActiveDefenseWaves.Contains(sourceWave)))
             {
+                if (!TryResolveGroupComposition(group, day, out IReadOnlyList<EnemySquadCompositionEntry> composition, out _)
+                    || composition.Count == 0)
+                {
+                    continue;
+                }
                 if (!TryGetPresetSpawnLeads(group, out float firstLead, out float lastLead, out _))
                 {
                     continue;
@@ -1671,9 +2001,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
                 float engagement = GetRelativeLeaderEngagementSeconds(group, sourceWave) + engagementShift;
                 float earliest = Mathf.Max(0f, engagement - firstLead);
                 float latest = engagement - lastLead;
-                int count = TryResolveGroupComposition(group, day, out IReadOnlyList<EnemySquadCompositionEntry> composition, out _)
-                    ? composition.Sum(x => x.Count)
-                    : 0;
+                int count = composition.Sum(x => x.Count);
                 for (int i = 0; i < count; i++)
                 {
                     windows.Add(new PreviewSpawnWindow
@@ -1704,7 +2032,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         }
     }
 
-    private void SaveAndGenerate()
+    private void Save(bool generateDataTables)
     {
         ValidateAll();
         if (_validationMessages.Count > 0)
@@ -1717,14 +2045,20 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         {
             WriteRoutes();
             WriteGroups();
-            GameDataGenerator.RefreshAllDataTable(new[]
+            if (generateDataTables)
             {
-                Path.GetFullPath(RouteExcelPath),
-                Path.GetFullPath(GroupExcelPath)
-            });
+                GameDataGenerator.RefreshAllDataTable(new[]
+                {
+                    Path.GetFullPath(RouteExcelPath),
+                    Path.GetFullPath(GroupExcelPath)
+                });
+            }
             _dirty = false;
             EditorUtility.SetDirty(this);
-            Debug.Log($"Defense route data saved. routes={_routes.Count}, groups={_groups.Count}.");
+            Debug.Log(
+                generateDataTables
+                    ? $"Defense route data saved and generated. routes={_routes.Count}, groups={_groups.Count}."
+                    : $"Defense route source tables saved. routes={_routes.Count}, groups={_groups.Count}.");
         }
         catch (Exception exception)
         {
@@ -1975,11 +2309,13 @@ public sealed class DefendRouteEditorWindow : EditorWindow
                 levelTwoProduction,
                 buildingIdentifier,
                 "Lv3Production");
+            int cumulativeLevelTwoCost = checked(levelOneCost + levelTwoCost);
+            int cumulativeLevelThreeCost = checked(cumulativeLevelTwoCost + levelThreeCost);
             var investment = new[]
             {
                 (Fix64)levelOneCost / (Fix64)levelOneProduction,
-                (Fix64)(levelOneCost + levelTwoCost) / (Fix64)levelTwoProduction,
-                (Fix64)(levelOneCost + levelTwoCost + levelThreeCost) / (Fix64)levelThreeProduction
+                (Fix64)cumulativeLevelTwoCost / (Fix64)levelTwoProduction,
+                (Fix64)cumulativeLevelThreeCost / (Fix64)levelThreeProduction
             };
             var effective = new[]
             {
@@ -2347,14 +2683,28 @@ public sealed class DefendRouteEditorWindow : EditorWindow
 
     private static float ParseFloat(string value)
     {
-        if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float result))
-            throw new FormatException($"Invalid numeric value '{value}'.");
-        return result;
+        if (string.IsNullOrWhiteSpace(value))
+            throw new FormatException("Fix64 numeric value must not be empty.");
+        try
+        {
+            return (float)DataTableExtension.ParseFix64(value);
+        }
+        catch (Exception exception)
+        {
+            throw new FormatException($"Invalid Fix64 numeric value '{value}'.", exception);
+        }
     }
 
     private static string FormatFloat(float value)
     {
-        return value.ToString("0.###", CultureInfo.InvariantCulture);
+        if (!IsFinite(value))
+            throw new FormatException($"Cannot save non-finite Fix64 numeric value '{value}'.");
+        return ((decimal)(Fix64)value).ToString("0.############", CultureInfo.InvariantCulture);
+    }
+
+    private static bool IsFinite(float value)
+    {
+        return !float.IsNaN(value) && !float.IsInfinity(value);
     }
 
     private static float PolylineDistance(IReadOnlyList<Vector3> points)
@@ -2446,7 +2796,8 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             int totalCount,
             Fix64 averageLevel,
             int maximumLevel,
-            string compositionText)
+            string compositionText,
+            IReadOnlyList<EnemySquadCompositionEntry> composition)
         {
             Multiplier = multiplier;
             Target = target;
@@ -2456,6 +2807,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
             AverageLevel = averageLevel;
             MaximumLevel = maximumLevel;
             CompositionText = compositionText;
+            Composition = composition ?? throw new ArgumentNullException(nameof(composition));
         }
 
         public Fix64 Multiplier { get; }
@@ -2466,6 +2818,7 @@ public sealed class DefendRouteEditorWindow : EditorWindow
         public Fix64 AverageLevel { get; }
         public int MaximumLevel { get; }
         public string CompositionText { get; }
+        public IReadOnlyList<EnemySquadCompositionEntry> Composition { get; }
     }
 
     private sealed class PreviewSpawnWindow

@@ -54,10 +54,10 @@ public class PhaseManager : GameFrameworkComponent
                 throw new InvalidOperationException(
                     $"PhaseManager invade spawn point has invalid unit identifier. point={point.name} identifier={point.Identifier}.");
             }
-            if (point.UnitResourceEquivalent <= Fix64.Zero)
+            if (point.UnitResourceEquivalent < Fix64.Zero)
             {
                 throw new InvalidOperationException(
-                    $"PhaseManager invade authored resource equivalent is not positive. point={point.name} raw={point.UnitResourceEquivalent.RawValue}.");
+                    $"PhaseManager invade authored resource equivalent is negative. point={point.name} raw={point.UnitResourceEquivalent.RawValue}.");
             }
             if (point.UnitCountGrowthWeight < Fix64.Zero || point.UnitCountGrowthWeight > Fix64.One)
                 throw new InvalidOperationException($"PhaseManager invade count growth weight is outside zero to one. point={point.name} raw={point.UnitCountGrowthWeight.RawValue}.");

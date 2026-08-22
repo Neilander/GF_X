@@ -176,8 +176,252 @@ public sealed class EnemySquadResourceEquivalentResolverTests
             UnitLevelResourceEquivalents, CurveSettings, MaximumResolvedUnitCount);
 
         Assert.That(TotalCount(quantity), Is.EqualTo(12));
-        Assert.That(TotalCount(quality), Is.EqualTo(3));
+        Assert.That(TotalCount(quality), Is.EqualTo(2));
         Assert.That(AverageLevel(quantity), Is.LessThan(AverageLevel(quality)));
+    }
+
+    [Test]
+    public void Lv2RouteZeroDayTwoWithFullCountWeightResolvesTwoLevelOneCanMakers()
+    {
+        BuildingTable drinkStand = CreateArmyBuilding(
+            "Buil_DrinkStand",
+            5, 10, 15,
+            3, 0, 4);
+        EnemyUnitResourceEquivalentResolver.Result unitResourceEquivalents =
+            EnemyUnitResourceEquivalentResolver.ResolveFromArmyBuilding(
+                drinkStand,
+                (Fix64)0.8m,
+                (Fix64)0.7m);
+        var defenseCurve = new EnemySquadResourceEquivalentCurveSettings(
+            (Fix64)0.6m,
+            (Fix64)0.6m,
+            (Fix64)0.7m);
+
+        IReadOnlyList<EnemySquadCompositionEntry> composition =
+            EnemySquadResourceEquivalentResolver.Resolve(
+                (Fix64)2m,
+                Fix64.One,
+                2,
+                8,
+                Fix64.One,
+                Fix64.One,
+                unitResourceEquivalents.EffectiveResourceEquivalents,
+                defenseCurve,
+                100);
+
+        Assert.That(unitResourceEquivalents.EffectiveResourceEquivalents[0], Is.EqualTo((Fix64)5m / (Fix64)3m));
+        Assert.That(composition.Count, Is.EqualTo(1));
+        Assert.That(composition[0].Level, Is.EqualTo(1));
+        Assert.That(composition[0].Count, Is.EqualTo(2));
+    }
+
+    [TestCase(0L)]
+    [TestCase(1L)]
+    public void ZeroOrTinyInitialResourceEquivalentResolvesEmptyComposition(long initialRawValue)
+    {
+        IReadOnlyList<EnemySquadCompositionEntry> composition =
+            EnemySquadResourceEquivalentResolver.Resolve(
+                Fix64.FromRaw(initialRawValue),
+                Fix64.One,
+                1,
+                8,
+                Fix64.One,
+                Fix64.One,
+                UnitLevelResourceEquivalents,
+                CurveSettings,
+                MaximumResolvedUnitCount);
+
+        Assert.That(composition, Is.Empty);
+        Assert.That(
+            EnemySquadResourceEquivalentResolver.CalculateCompositionResourceEquivalent(
+                composition,
+                UnitLevelResourceEquivalents),
+            Is.EqualTo(Fix64.Zero));
+    }
+
+    [Test]
+    public void ZeroInitialResourceEquivalentStaysEmptyAfterGrowth()
+    {
+        IReadOnlyList<EnemySquadCompositionEntry> composition =
+            EnemySquadResourceEquivalentResolver.Resolve(
+                Fix64.Zero,
+                Fix64.One,
+                100,
+                8,
+                (Fix64)3m,
+                (Fix64)4m,
+                UnitLevelResourceEquivalents,
+                CurveSettings,
+                MaximumResolvedUnitCount);
+
+        Assert.That(composition, Is.Empty);
+    }
+
+    [Test]
+    public void SmallPositiveInitialResourceEquivalentCanCrossTheHalfUnitBoundaryAfterGrowth()
+    {
+        Fix64 initial = (Fix64)0.25m;
+        IReadOnlyList<EnemySquadCompositionEntry> dayOne =
+            EnemySquadResourceEquivalentResolver.Resolve(
+                initial, Fix64.One, 1, 8, Fix64.One, Fix64.One,
+                UnitLevelResourceEquivalents, CurveSettings, MaximumResolvedUnitCount);
+        IReadOnlyList<EnemySquadCompositionEntry> laterDay =
+            EnemySquadResourceEquivalentResolver.Resolve(
+                initial, Fix64.One, 20, 8, Fix64.One, (Fix64)10m,
+                UnitLevelResourceEquivalents, CurveSettings, MaximumResolvedUnitCount);
+
+        Assert.That(dayOne, Is.Empty);
+        Assert.That(TotalCount(laterDay), Is.GreaterThan(0));
+    }
+
+    [Test]
+    public void HalfLevelOneResourceEquivalentRoundsUpToOneUnit()
+    {
+        IReadOnlyList<EnemySquadCompositionEntry> composition =
+            EnemySquadResourceEquivalentResolver.Resolve(
+                UnitLevelResourceEquivalents[0] / (Fix64)2,
+                Fix64.One,
+                1,
+                8,
+                Fix64.One,
+                Fix64.One,
+                UnitLevelResourceEquivalents,
+                CurveSettings,
+                MaximumResolvedUnitCount);
+
+        Assert.That(TotalCount(composition), Is.EqualTo(1));
+        Assert.That(composition[0].Level, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void OddRawLevelOneBoundaryDoesNotRoundUpOneRawBelowHalf()
+    {
+        Fix64[] oddRawResourceEquivalents =
+        {
+            Fix64.FromRaw(5),
+            Fix64.FromRaw(10),
+            Fix64.FromRaw(15)
+        };
+
+        IReadOnlyList<EnemySquadCompositionEntry> belowHalf =
+            EnemySquadResourceEquivalentResolver.Resolve(
+                Fix64.FromRaw(2), Fix64.One, 1, 8, Fix64.One, Fix64.One,
+                oddRawResourceEquivalents, CurveSettings, MaximumResolvedUnitCount);
+        IReadOnlyList<EnemySquadCompositionEntry> aboveHalf =
+            EnemySquadResourceEquivalentResolver.Resolve(
+                Fix64.FromRaw(3), Fix64.One, 1, 8, Fix64.One, Fix64.One,
+                oddRawResourceEquivalents, CurveSettings, MaximumResolvedUnitCount);
+
+        Assert.That(belowHalf, Is.Empty);
+        Assert.That(TotalCount(aboveHalf), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void FullLevelWeightUsesNearestHighLevelUnitCountInsteadOfCeiling()
+    {
+        IReadOnlyList<EnemySquadCompositionEntry> composition =
+            EnemySquadResourceEquivalentResolver.Resolve(
+                (Fix64)7m,
+                Fix64.Zero,
+                1,
+                8,
+                Fix64.One,
+                Fix64.One,
+                UnitLevelResourceEquivalents,
+                CurveSettings,
+                MaximumResolvedUnitCount);
+
+        Assert.That(TotalCount(composition), Is.EqualTo(1));
+        Assert.That(composition[0].Level, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void NearestHighLevelCountAtConfiguredLimitDoesNotReportFalseOverflow()
+    {
+        const int maximumCount = 100;
+        Fix64 target = UnitLevelResourceEquivalents[2] * (Fix64)100.4m;
+
+        IReadOnlyList<EnemySquadCompositionEntry> composition =
+            EnemySquadResourceEquivalentResolver.Resolve(
+                target,
+                Fix64.Zero,
+                1,
+                8,
+                Fix64.One,
+                Fix64.One,
+                UnitLevelResourceEquivalents,
+                CurveSettings,
+                maximumCount);
+
+        Assert.That(TotalCount(composition), Is.EqualTo(maximumCount));
+        Assert.That(composition[0].Level, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void HighLevelCountHalfAboveConfiguredLimitReportsOverflow()
+    {
+        const int maximumCount = 100;
+        Fix64 target = UnitLevelResourceEquivalents[2] * (Fix64)100.5m;
+
+        Assert.Throws<System.InvalidOperationException>(() =>
+            EnemySquadResourceEquivalentResolver.Resolve(
+                target,
+                Fix64.Zero,
+                1,
+                8,
+                Fix64.One,
+                Fix64.One,
+                UnitLevelResourceEquivalents,
+                CurveSettings,
+                maximumCount));
+    }
+
+    [Test]
+    public void CountWeightSweepStaysMonotonicAndInsideRoundedEndpoints()
+    {
+        const int maximumCount = 100;
+        for (int targetQuarter = 2; targetQuarter <= 400; targetQuarter++)
+        {
+            Fix64 target = (Fix64)targetQuarter / (Fix64)4;
+            int qualityEndpoint = System.Math.Max(
+                1,
+                RoundHalfUp(target / UnitLevelResourceEquivalents[2]));
+            int quantityEndpoint = System.Math.Min(
+                maximumCount,
+                System.Math.Max(1, RoundHalfUp(target / UnitLevelResourceEquivalents[0])));
+            int previousCount = qualityEndpoint;
+
+            for (int weightTenth = 0; weightTenth <= 10; weightTenth++)
+            {
+                IReadOnlyList<EnemySquadCompositionEntry> composition =
+                    EnemySquadResourceEquivalentResolver.Resolve(
+                        target,
+                        (Fix64)weightTenth / (Fix64)10,
+                        1,
+                        8,
+                        Fix64.One,
+                        Fix64.One,
+                        UnitLevelResourceEquivalents,
+                        CurveSettings,
+                        maximumCount);
+                int count = TotalCount(composition);
+
+                Assert.That(count, Is.InRange(qualityEndpoint, quantityEndpoint),
+                    $"target={target}, weight={weightTenth}/10");
+                if (weightTenth == 0)
+                    Assert.That(count, Is.EqualTo(qualityEndpoint), $"target={target}, quality endpoint");
+                if (weightTenth == 10)
+                    Assert.That(count, Is.EqualTo(quantityEndpoint), $"target={target}, quantity endpoint");
+                Assert.That(count, Is.GreaterThanOrEqualTo(previousCount),
+                    $"target={target}, weight={weightTenth}/10");
+                Assert.That(composition.Count, Is.LessThanOrEqualTo(2),
+                    $"target={target}, weight={weightTenth}/10");
+                if (composition.Count == 2)
+                    Assert.That(composition[1].Level, Is.EqualTo(composition[0].Level + 1),
+                        $"target={target}, weight={weightTenth}/10");
+                previousCount = count;
+            }
+        }
     }
 
     [Test]
@@ -270,6 +514,21 @@ public sealed class EnemySquadResourceEquivalentResolverTests
                 (Fix64)0.1m));
     }
 
+    [Test]
+    public void ArmyBuildingValuesRejectCumulativeCostOverflow()
+    {
+        BuildingTable building = CreateArmyBuilding(
+            "Buil_OverflowArmy",
+            int.MaxValue, 1, 1,
+            1, 1, 1);
+
+        Assert.Throws<System.OverflowException>(() =>
+            EnemyUnitResourceEquivalentResolver.ResolveFromArmyBuilding(
+                building,
+                Fix64.One,
+                Fix64.One));
+    }
+
     private static int TotalCount(IReadOnlyList<EnemySquadCompositionEntry> entries)
     {
         int total = 0;
@@ -288,6 +547,11 @@ public sealed class EnemySquadResourceEquivalentResolverTests
             levels += entries[i].Count * entries[i].Level;
         }
         return (Fix64)levels / (Fix64)count;
+    }
+
+    private static int RoundHalfUp(Fix64 value)
+    {
+        return (int)((value.RawValue + Fix64.One.RawValue / 2) / Fix64.One.RawValue);
     }
 
     private static BuildingTable CreateArmyBuilding(

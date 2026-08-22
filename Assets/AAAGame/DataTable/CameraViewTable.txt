@@ -2,4 +2,4 @@
 #	ID		Rotation	OrthographicSize	CameraHeight	AimOffset
 #	int		Vector3	float	float	Vector3
 #		备注	相机欧拉角（X=俯角，Y=朝向）	正交半屏高度（世界单位）	相机相对跟随点的竖直高度（世界单位）	瞄准点偏移
-	1	默认正交视角	35,45,0	10	56.1638	0,0,0
+	1	默认正交视角	35,45,0	12	56.1638	0,0,0
