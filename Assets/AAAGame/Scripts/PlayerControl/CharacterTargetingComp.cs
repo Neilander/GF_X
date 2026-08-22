@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+// Aggro behavior contract: AIDoc/当前仇恨与索敌系统.md. Update that document with behavioral changes.
 public interface ILastSeenTargetingComp
 {
     bool HasLastSeenPursuit { get; }
@@ -9,7 +10,7 @@ public interface ILastSeenTargetingComp
     FixVector2 LastSeenPursuitDestinationFixed { get; }
 }
 
-public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITargetSearchRangeComp, IFollowTargetingComp, IAlertTargetingComp, IDefendTargetingModeComp, INavigationReachabilityTargetingComp, ILastSeenTargetingComp, ILogicDeterministicStateContributor
+public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITargetSearchRangeComp, IFollowTargetingComp, IAlertTargetingComp, IAggroCandidateTargetingComp, IDefendTargetingModeComp, INavigationReachabilityTargetingComp, ILastSeenTargetingComp, ILogicDeterministicStateContributor
 {
     private readonly struct AlertRecord
     {
@@ -53,6 +54,7 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
     private static readonly Fix64 ScanInterval = Fix64.FromRaw(820);
     private static readonly Fix64 LastSeenArrivalRadius = Fix64.FromRaw(410);
     private readonly List<AlertRecord> _alerts = new List<AlertRecord>();
+    private IEntityContext _propagatedCandidate;
     private readonly List<NavigationRejectedTarget> _navigationRejectedTargets = new List<NavigationRejectedTarget>();
     private readonly List<AggroCandidate> _candidateBuffer = new List<AggroCandidate>();
     private IEntityContext _ctx;
@@ -105,6 +107,7 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
         _defendFallbackTarget = null;
         _defendMode = false;
         _alerts.Clear();
+        _propagatedCandidate = null;
         ClearNavigationRejections();
     }
 
@@ -131,12 +134,14 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
             SetCurrentTarget(null, true);
             FollowTarget = null;
             _alerts.Clear();
+            _propagatedCandidate = null;
             return;
         }
 
         AdvanceAlerts(deltaTime);
         _scanTimer += deltaTime;
-        bool requiresImmediateScan = (_currentTarget != null
+        bool requiresImmediateScan = _propagatedCandidate != null
+                                     || (_currentTarget != null
                                       && (!_currentTarget.IsAttackTargetable()
                                           || !EntityCombatTeamHelper.IsEnemy(_ctx, _currentTarget)
                                           || !LogicFactionVisionService.IsEntityVisibleToSide(_ctx.Side, _currentTarget)))
@@ -157,6 +162,7 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
         Fix64 normalCandidateRange = Fix64.Max(
             LogicFactionVisionService.ReadWorldDistance(LogicFactionVisionService.MinimumAggroCandidateRangeConfigKey),
             attackRange);
+        bool hadAggroCandidateBeforeEvaluation = HasAggroCandidate();
 
         IEntityContext previousTarget = _currentTarget;
         if (previousTarget != null && !IsTargetStateValid(previousTarget))
@@ -214,8 +220,9 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
 
             Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(candidate);
             bool isAlert = IsAlertTarget(candidate);
+            bool isPropagated = IsPropagatedCandidate(candidate);
             bool retained = ReferenceEquals(candidate, rankingCurrentTarget) || ReferenceEquals(candidate, _lostTarget);
-            if (distance > normalCandidateRange && !isAlert && !retained)
+            if (distance > normalCandidateRange && !isAlert && !isPropagated && !retained)
                 continue;
             if (!LogicFactionVisionService.IsEntityVisibleToSide(_ctx.Side, candidate))
                 continue;
@@ -231,12 +238,13 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
         }
 
         IEntityContext best = ResolveBestReachableCandidate(attackRange, out bool waitForCandidateNavigation);
+        _propagatedCandidate = null;
         if (waitForCandidateNavigation)
             return;
 
         if (best != null)
         {
-            SetCurrentTarget(best, true);
+            SetCurrentTarget(best, true, !hadAggroCandidateBeforeEvaluation);
             _lastSeenPosition = best.LogicFramePositionFixed();
         }
         else if (_currentTarget != null)
@@ -245,7 +253,10 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
         }
 
         if (_currentTarget == null && _lostTarget == null && _defendMode && IsFallbackEligible(outerRange))
-            SetCurrentTarget(_defendFallbackTarget, true);
+            SetCurrentTarget(
+                _defendFallbackTarget,
+                true,
+                !hadAggroCandidateBeforeEvaluation);
     }
 
     private IEntityContext ResolveBestReachableCandidate(Fix64 attackRange, out bool waitForNavigation)
@@ -462,10 +473,25 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
         _alerts.Add(new AlertRecord(enemy, duration));
     }
 
+    public bool TryNotifyAllyAggroCandidate(IEntityContext enemy)
+    {
+        if (_ctx == null)
+            throw new InvalidOperationException("CharacterTargetingComp.TryNotifyAllyAggroCandidate called before Init.");
+        if (enemy == null)
+            throw new ArgumentNullException(nameof(enemy));
+        if (!EntityCombatTeamHelper.IsEnemy(_ctx, enemy))
+            throw new InvalidOperationException("A propagated aggro candidate must be an enemy of the receiver.");
+        if (HasAggroCandidate())
+            return false;
+        _propagatedCandidate = enemy;
+        return true;
+    }
+
     public void ClearAggro()
     {
         SetCurrentTarget(null, true);
         _alerts.Clear();
+        _propagatedCandidate = null;
     }
 
     private void AdvanceAlerts(Fix64 deltaTime)
@@ -491,11 +517,28 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
         return false;
     }
 
-    private void SetCurrentTarget(IEntityContext value, bool clearLostTarget)
+    private bool IsPropagatedCandidate(IEntityContext target)
     {
+        return ReferenceEquals(_propagatedCandidate, target);
+    }
+
+    private bool HasAggroCandidate()
+    {
+        return AggroTarget != null || _alerts.Count > 0 || _propagatedCandidate != null;
+    }
+
+    private void SetCurrentTarget(
+        IEntityContext value,
+        bool clearLostTarget,
+        bool allowAggroPropagation = true)
+    {
+        bool hadAggroCandidate = HasAggroCandidate();
+        bool targetChanged = !ReferenceEquals(_currentTarget, value);
         _currentTarget = value;
         if (clearLostTarget)
             ClearLostTarget();
+        if (!hadAggroCandidate && targetChanged && value != null && allowAggroPropagation)
+            LogicFactionVisionService.HandleAggroAcquired(_ctx, value);
     }
 
     private void ClearLostTarget()
@@ -570,6 +613,7 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
         ClearLostTarget();
         FollowTarget = null;
         _alerts.Clear();
+        _propagatedCandidate = null;
         _candidateBuffer.Clear();
         ClearNavigationRejections();
     }
@@ -598,6 +642,7 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
             hasher.Add(GetLogicId(_alerts[i].Target));
             hasher.Add(_alerts[i].Remaining.RawValue);
         }
+        hasher.Add(GetLogicId(_propagatedCandidate));
     }
 
     private static int GetLogicId(IEntityContext entity) =>

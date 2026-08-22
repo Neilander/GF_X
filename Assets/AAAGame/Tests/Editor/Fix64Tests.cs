@@ -37,6 +37,14 @@ public sealed class Fix64Tests
     }
 
     [Test]
+    public void Vector2Magnitude_DiagonalBelowSquaredRawResolution_RemainsNonZero()
+    {
+        var value = new FixVector2(Fix64.FromRaw(51), Fix64.FromRaw(50));
+
+        Assert.AreEqual(71, FixVector2.Magnitude(value).RawValue);
+    }
+
+    [Test]
     public void RuntimeAuthorityNumericConstants_UseRawFixedValues()
     {
         string scriptsRoot = System.IO.Path.Combine(UnityEngine.Application.dataPath, "AAAGame", "Scripts");

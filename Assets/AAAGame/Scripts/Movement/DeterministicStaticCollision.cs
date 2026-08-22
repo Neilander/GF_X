@@ -1039,7 +1039,7 @@ public static class DeterministicStaticCollisionSolver
                 break;
 
             startedOverlapping = true;
-            position += penetration.Normal * (penetration.Depth + s_Epsilon);
+            position += penetration.Normal * penetration.Depth;
         }
 
         if (TryFindRuntimeObstaclePenetration(obstacles, position, radius, 0, out _))
@@ -1148,14 +1148,27 @@ public static class DeterministicStaticCollisionSolver
 
         if (world.HasBoundaryGeometry)
         {
-            return world.ContainsPointInBoundaryGeometry(center)
-                   && !TryFindBoundaryGeometryPenetration(world, center, radius, out _)
-                   && !TryFindRuntimeObstaclePenetration(
+            if (!world.ContainsPointInBoundaryGeometry(center))
+                return false;
+
+            bool hasBoundary = TryFindBoundaryGeometryPenetration(world, center, radius, out Penetration boundary);
+            bool hasRuntimeObstacle = TryFindRuntimeObstaclePenetration(
+                world,
+                runtimeObstacles,
+                center,
+                runtimeObstacleRadius,
+                out Penetration runtimeObstacle);
+            return (!hasBoundary && !hasRuntimeObstacle)
+                   || IsQuantizedBoundaryObstacleContact(
                        world,
                        runtimeObstacles,
                        center,
+                       radius,
                        runtimeObstacleRadius,
-                       out _);
+                       hasBoundary,
+                       boundary,
+                       hasRuntimeObstacle,
+                       runtimeObstacle);
         }
 
         Fix64 minX = world.Origin.x + radius;
@@ -1226,30 +1239,54 @@ public static class DeterministicStaticCollisionSolver
             {
                 if (!world.ContainsPointInBoundaryGeometry(position))
                     return false;
-                if (TryFindBoundaryGeometryPenetration(world, position, radius, out Penetration geometryBoundary))
-                {
-                    startedOverlapping = true;
-                    position += geometryBoundary.Normal * (geometryBoundary.Depth + s_Epsilon);
-                    continue;
-                }
-                if (TryFindRuntimeObstaclePenetration(
+
+                bool hasBoundary = TryFindBoundaryGeometryPenetration(
+                    world,
+                    position,
+                    radius,
+                    out Penetration geometryBoundary);
+                bool hasRuntimeObstacle = TryFindRuntimeObstaclePenetration(
+                    world,
+                    runtimeObstacles,
+                    position,
+                    runtimeObstacleRadius,
+                    out Penetration geometryRuntimeObstacle);
+                if ((!hasBoundary && !hasRuntimeObstacle)
+                    || IsQuantizedBoundaryObstacleContact(
                         world,
                         runtimeObstacles,
                         position,
+                        radius,
                         runtimeObstacleRadius,
-                        out Penetration geometryRuntimeObstacle))
+                        hasBoundary,
+                        geometryBoundary,
+                        hasRuntimeObstacle,
+                        geometryRuntimeObstacle))
+                {
+                    return true;
+                }
+
+                if (hasBoundary)
                 {
                     startedOverlapping = true;
-                    position += geometryRuntimeObstacle.Normal * (geometryRuntimeObstacle.Depth + s_Epsilon);
+                    position += geometryBoundary.Normal * geometryBoundary.Depth;
                     continue;
                 }
-                return true;
+
+                if (hasRuntimeObstacle)
+                {
+                    startedOverlapping = true;
+                    position += geometryRuntimeObstacle.Normal * geometryRuntimeObstacle.Depth;
+                    continue;
+                }
+
+                throw new InvalidOperationException("Static collision geometry recovery reached an inconsistent penetration state.");
             }
 
             if (TryFindWorldBoundaryPenetration(world, position, radius, out Penetration boundary))
             {
                 startedOverlapping = true;
-                position += boundary.Normal * (boundary.Depth + s_Epsilon);
+                position += boundary.Normal * boundary.Depth;
                 continue;
             }
 
@@ -1274,7 +1311,7 @@ public static class DeterministicStaticCollisionSolver
             if (TryFindCellPenetration(world, position, radius, out Penetration cell))
             {
                 startedOverlapping = true;
-                position += cell.Normal * (cell.Depth + s_Epsilon);
+                position += cell.Normal * cell.Depth;
                 continue;
             }
 
@@ -1285,7 +1322,7 @@ public static class DeterministicStaticCollisionSolver
                     out Penetration topologyEdge))
             {
                 startedOverlapping = true;
-                position += topologyEdge.Normal * (topologyEdge.Depth + s_Epsilon);
+                position += topologyEdge.Normal * topologyEdge.Depth;
                 continue;
             }
 
@@ -1297,7 +1334,7 @@ public static class DeterministicStaticCollisionSolver
                     out Penetration runtimeObstacle))
             {
                 startedOverlapping = true;
-                position += runtimeObstacle.Normal * (runtimeObstacle.Depth + s_Epsilon);
+                position += runtimeObstacle.Normal * runtimeObstacle.Depth;
                 continue;
             }
 
@@ -1310,6 +1347,51 @@ public static class DeterministicStaticCollisionSolver
                    position,
                    Fix64.Max(topologyEdgeRadius, s_Epsilon),
                    out _);
+    }
+
+    private static bool IsQuantizedBoundaryObstacleContact(
+        LogicStaticCollisionWorld world,
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
+        FixVector2 position,
+        Fix64 boundaryRadius,
+        Fix64 runtimeObstacleRadius,
+        bool hasBoundary,
+        Penetration boundary,
+        bool hasRuntimeObstacle,
+        Penetration runtimeObstacle)
+    {
+        if (hasBoundary == hasRuntimeObstacle)
+            return false;
+
+        Penetration first = hasBoundary ? boundary : runtimeObstacle;
+        if (first.Depth <= Fix64.Zero || first.Depth > s_Epsilon)
+            return false;
+
+        FixVector2 adjacent = position + first.Normal * first.Depth;
+        if (adjacent == position || !world.ContainsPointInBoundaryGeometry(adjacent))
+            return false;
+
+        bool adjacentHasBoundary = TryFindBoundaryGeometryPenetration(
+            world,
+            adjacent,
+            boundaryRadius,
+            out Penetration adjacentBoundary);
+        bool adjacentHasRuntimeObstacle = TryFindRuntimeObstaclePenetration(
+            world,
+            runtimeObstacles,
+            adjacent,
+            runtimeObstacleRadius,
+            out Penetration adjacentRuntimeObstacle);
+        if (adjacentHasBoundary == adjacentHasRuntimeObstacle
+            || adjacentHasBoundary == hasBoundary)
+        {
+            return false;
+        }
+
+        Penetration second = adjacentHasBoundary ? adjacentBoundary : adjacentRuntimeObstacle;
+        return second.Depth > Fix64.Zero
+               && second.Depth <= s_Epsilon
+               && adjacent + second.Normal * second.Depth == position;
     }
 
     private static bool TryRecoverBlockedCenter(
@@ -1504,15 +1586,29 @@ public static class DeterministicStaticCollisionSolver
                             ref penetration);
                         continue;
                     }
-                    Fix64 projection = FixVector2.Dot(position - start, edge) / lengthSquared;
-                    projection = Fix64.Max(Fix64.Zero, Fix64.Min(Fix64.One, projection));
-                    FixVector2 closest = start + edge * projection;
+                    FixVector2 closest;
+                    if (edge.y == Fix64.Zero)
+                    {
+                        closest = new FixVector2(
+                            Fix64.Max(Fix64.Min(start.x, end.x), Fix64.Min(Fix64.Max(start.x, end.x), position.x)),
+                            start.y);
+                    }
+                    else if (edge.x == Fix64.Zero)
+                    {
+                        closest = new FixVector2(
+                            start.x,
+                            Fix64.Max(Fix64.Min(start.y, end.y), Fix64.Min(Fix64.Max(start.y, end.y), position.y)));
+                    }
+                    else
+                    {
+                        Fix64 projection = FixVector2.Dot(position - start, edge) / lengthSquared;
+                        projection = Fix64.Max(Fix64.Zero, Fix64.Min(Fix64.One, projection));
+                        closest = start + edge * projection;
+                    }
                     FixVector2 delta = position - closest;
-                    Fix64 distanceSquared = FixVector2.SqrMagnitude(delta);
-                    if (distanceSquared >= radius * radius)
+                    Fix64 distance = FixVector2.Magnitude(delta);
+                    if (distance >= radius)
                         continue;
-
-                    Fix64 distance = Fix64.Sqrt(distanceSquared);
                     FixVector2 normal;
                     if (distance > Fix64.Zero)
                     {
@@ -1545,10 +1641,9 @@ public static class DeterministicStaticCollisionSolver
         ref Penetration penetration)
     {
         FixVector2 delta = position - boundaryPoint;
-        Fix64 distanceSquared = FixVector2.SqrMagnitude(delta);
-        if (distanceSquared >= radius * radius)
+        Fix64 distance = FixVector2.Magnitude(delta);
+        if (distance >= radius)
             return;
-        Fix64 distance = Fix64.Sqrt(distanceSquared);
         FixVector2 normal;
         if (distance > Fix64.Zero)
         {
@@ -1676,10 +1771,9 @@ public static class DeterministicStaticCollisionSolver
                         Fix64.Max(minX, Fix64.Min(maxX, position.x)),
                         Fix64.Max(minY, Fix64.Min(maxY, position.y)));
                     FixVector2 boxDelta = position - closest;
-                    Fix64 boxDistanceSquared = FixVector2.SqrMagnitude(boxDelta);
-                    if (boxDistanceSquared >= radius * radius)
+                    Fix64 boxDistance = FixVector2.Magnitude(boxDelta);
+                    if (boxDistance >= radius)
                         break;
-                    Fix64 boxDistance = Fix64.Sqrt(boxDistanceSquared);
                     if (boxDistance <= Fix64.Zero)
                         throw new InvalidOperationException($"Rounded box penetration produced no normal. obstacle={obstacle.StableId}.");
                     SelectPenetration(
@@ -1693,11 +1787,9 @@ public static class DeterministicStaticCollisionSolver
                 case LogicStaticCollisionObstacleKind.Circle:
                     Fix64 expandedRadius = obstacle.Radius + radius;
                     FixVector2 delta = position - obstacle.Center;
-                    Fix64 distanceSquared = FixVector2.SqrMagnitude(delta);
-                    if (distanceSquared >= expandedRadius * expandedRadius)
+                    Fix64 distance = FixVector2.Magnitude(delta);
+                    if (distance >= expandedRadius)
                         break;
-
-                    Fix64 distance = Fix64.Sqrt(distanceSquared);
                     FixVector2 normal = distance > Fix64.Zero
                         ? delta / distance
                         : new FixVector2(-1, 0);
@@ -2341,12 +2433,11 @@ public static class DeterministicStaticCollisionSolver
         }
 
         FixVector2 relativeStart = start - center;
-        Fix64 radiusSquared = radius * radius;
-        Fix64 startDistanceSquared = FixVector2.SqrMagnitude(relativeStart);
+        Fix64 startDistance = FixVector2.Magnitude(relativeStart);
         long projectionNumeratorRaw = checked(-checked(
             checked(relativeStart.x.RawValue * displacementXRaw)
             + checked(relativeStart.y.RawValue * displacementYRaw)));
-        if (projectionNumeratorRaw <= 0 && startDistanceSquared >= radiusSquared)
+        if (projectionNumeratorRaw <= 0 && startDistance >= radius)
         {
             hit = default;
             return false;
@@ -2367,22 +2458,22 @@ public static class DeterministicStaticCollisionSolver
                 projectionNumeratorRaw,
                 displacementLengthSquaredRaw);
             long ceilTimeRaw = Math.Min(Fix64.One.RawValue, checked(floorTimeRaw + 1));
-            Fix64 floorDistanceSquared = EvaluateSweepCircleDistanceSquared(
+            Fix64 floorDistance = EvaluateSweepCircleDistance(
                 relativeStart,
                 displacement,
                 floorTimeRaw);
-            Fix64 ceilDistanceSquared = EvaluateSweepCircleDistanceSquared(
+            Fix64 ceilDistance = EvaluateSweepCircleDistance(
                 relativeStart,
                 displacement,
                 ceilTimeRaw);
-            closestTimeRaw = floorDistanceSquared <= ceilDistanceSquared ? floorTimeRaw : ceilTimeRaw;
+            closestTimeRaw = floorDistance <= ceilDistance ? floorTimeRaw : ceilTimeRaw;
         }
 
-        Fix64 closestDistanceSquared = EvaluateSweepCircleDistanceSquared(
+        Fix64 closestDistance = EvaluateSweepCircleDistance(
             relativeStart,
             displacement,
             closestTimeRaw);
-        if (closestDistanceSquared >= radiusSquared)
+        if (closestDistance >= radius)
         {
             hit = default;
             return false;
@@ -2391,7 +2482,7 @@ public static class DeterministicStaticCollisionSolver
         // Search the Q12 time lattice for the last non-penetrating sample before first entry.
         long clearTimeRaw = 0;
         long penetratingTimeRaw = closestTimeRaw;
-        if (startDistanceSquared < radiusSquared)
+        if (startDistance < radius)
         {
             penetratingTimeRaw = 0;
         }
@@ -2400,11 +2491,11 @@ public static class DeterministicStaticCollisionSolver
             while (penetratingTimeRaw - clearTimeRaw > 1)
             {
                 long middleTimeRaw = clearTimeRaw + (penetratingTimeRaw - clearTimeRaw) / 2;
-                Fix64 middleDistanceSquared = EvaluateSweepCircleDistanceSquared(
+                Fix64 middleDistance = EvaluateSweepCircleDistance(
                     relativeStart,
                     displacement,
                     middleTimeRaw);
-                if (middleDistanceSquared < radiusSquared)
+                if (middleDistance < radius)
                     penetratingTimeRaw = middleTimeRaw;
                 else
                     clearTimeRaw = middleTimeRaw;
@@ -2451,7 +2542,7 @@ public static class DeterministicStaticCollisionSolver
         return result;
     }
 
-    private static Fix64 EvaluateSweepCircleDistanceSquared(
+    private static Fix64 EvaluateSweepCircleDistance(
         FixVector2 relativeStart,
         FixVector2 displacement,
         long timeRaw)
@@ -2459,7 +2550,7 @@ public static class DeterministicStaticCollisionSolver
         if (timeRaw < 0 || timeRaw > Fix64.One.RawValue)
             throw new ArgumentOutOfRangeException(nameof(timeRaw));
         FixVector2 delta = relativeStart + displacement * Fix64.FromRaw(timeRaw);
-        return FixVector2.SqrMagnitude(delta);
+        return FixVector2.Magnitude(delta);
     }
 
     private static FixVector2 NormalizeContactVector(FixVector2 value)

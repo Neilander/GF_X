@@ -116,7 +116,7 @@ public static class EnemySquadResourceEquivalentResolver
 
         Fix64 minimumAllowedCount = targetResourceEquivalent / unitLevelResourceEquivalents[unitLevelResourceEquivalents.Count - 1];
         Fix64 maximumAllowedCount = targetResourceEquivalent / unitLevelResourceEquivalents[0];
-        if (minimumAllowedCount >= (Fix64)maximumResolvedUnitCount + (Fix64)0.5m)
+        if (minimumAllowedCount >= (Fix64)maximumResolvedUnitCount + Fix64.FromRaw(2048))
         {
             throw new InvalidOperationException(
                     $"Enemy squad resource equivalent requires more than {maximumResolvedUnitCount} units.");

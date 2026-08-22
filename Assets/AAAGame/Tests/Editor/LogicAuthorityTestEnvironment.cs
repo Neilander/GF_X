@@ -46,7 +46,7 @@ public sealed class LogicAuthorityConfigTestScope : System.IDisposable
         "AggroOuterRange",
         "DamageAlertVisionDuration",
         "DamageAlertVisionRadius",
-        "DamageAlertAllyRadius",
+        "AggroCandidatePropagationRadius",
         "DamageAlertTargetDuration",
         "MinimumAggroCandidateRange",
         "DefendPursuitDistance",

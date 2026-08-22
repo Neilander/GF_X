@@ -963,29 +963,58 @@ public struct FixVector2
 
     public static Fix64 Magnitude(FixVector2 a)
     {
-        if (a.x == Fix64.Zero)
+        long rawX = a.x.RawValue;
+        long rawY = a.y.RawValue;
+        if (rawX == 0)
             return Fix64.Abs(a.y);
-        if (a.y == Fix64.Zero)
+        if (rawY == 0)
             return Fix64.Abs(a.x);
-        return Fix64.Sqrt(FixVector2.SqrMagnitude(a));
+
+        ulong absX = rawX > 0 ? (ulong)rawX : checked((ulong)(-rawX));
+        ulong absY = rawY > 0 ? (ulong)rawY : checked((ulong)(-rawY));
+        const ulong maximumExactComponent = 3037000499UL;
+        if (absX > maximumExactComponent || absY > maximumExactComponent)
+        {
+            throw new OverflowException(
+                $"FixVector2.Magnitude exceeds the exact raw-square range. raw=({rawX},{rawY}).");
+        }
+
+        ulong squaredMagnitude = checked(absX * absX + absY * absY);
+        if (squaredMagnitude == 0)
+            return Fix64.Zero;
+
+        ulong result = 0;
+        ulong bit = 1UL << 62;
+        while (bit > squaredMagnitude)
+            bit >>= 2;
+
+        while (bit != 0)
+        {
+            if (squaredMagnitude >= result + bit)
+            {
+                squaredMagnitude -= result + bit;
+                result = (result >> 1) + bit;
+            }
+            else
+            {
+                result >>= 1;
+            }
+            bit >>= 2;
+        }
+
+        return Fix64.FromRaw(checked((long)result));
     }
 
     public void Normalize()
     {
-        Fix64 n = x * x + y * y;
-        if (n == Fix64.Zero)
-            return;
-
-        n = Fix64.Sqrt(n);
-
-        if (n < Fix64.FromRaw(1))
+        Fix64 magnitude = Magnitude(this);
+        if (magnitude < Fix64.FromRaw(1))
         {
             return;
         }
 
-        n = 1 / n;
-        x *= n;
-        y *= n;
+        x /= magnitude;
+        y /= magnitude;
     }
 
     public FixVector2 GetNormalized()
@@ -1015,14 +1044,13 @@ public struct FixVector2
     public static FixVector2 MoveTowards(FixVector2 current, FixVector2 target, Fix64 maxDistanceDelta)
     {
         FixVector2 delta = target - current;
-        Fix64 sqrMagnitude = SqrMagnitude(delta);
+        Fix64 magnitude = Magnitude(delta);
 
-        if (sqrMagnitude == Fix64.Zero || (maxDistanceDelta >= Fix64.Zero && sqrMagnitude <= maxDistanceDelta * maxDistanceDelta))
+        if (magnitude == Fix64.Zero || (maxDistanceDelta >= Fix64.Zero && magnitude <= maxDistanceDelta))
         {
             return target;
         }
 
-        Fix64 magnitude = Fix64.Sqrt(sqrMagnitude);
         return current + delta / magnitude * maxDistanceDelta;
     }
 

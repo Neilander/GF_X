@@ -1,5 +1,6 @@
 using System;
 
+// Priority contract: AIDoc/当前仇恨与索敌系统.md. Update that document when fields/order change.
 public readonly struct TargetPriority : IComparable<TargetPriority>
 {
     public TargetPriority(

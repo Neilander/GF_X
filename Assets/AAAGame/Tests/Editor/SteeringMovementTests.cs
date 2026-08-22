@@ -1226,6 +1226,266 @@ public class SteeringMovementTests
     }
 
     [Test]
+    public void AggroAcquisition_PropagatesTargetToNearbyFriendlyUnits()
+    {
+        ConfigureOpenNavigationGrid(160, 16, new Vector3(-80f, 0f, -8f));
+        SimEntityContext source = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext firstAlly = MakeSoldier(new Vector3(9f, 0f, 0f), SideType.PlayerSide);
+        SimEntityContext secondAlly = MakeSoldier(new Vector3(10f, 0f, 0f), SideType.PlayerSide);
+        SimEntityContext enemy = MakeSoldier(new Vector3(-5f, 0f, 0f), SideType.EnemySide);
+        var sourceTargeting = new CharacterTargetingComp();
+        var firstAllyTargeting = new CharacterTargetingComp();
+        var secondAllyTargeting = new CharacterTargetingComp();
+        sourceTargeting.Init(source);
+        firstAllyTargeting.Init(firstAlly);
+        secondAllyTargeting.Init(secondAlly);
+        source.TargetComp = sourceTargeting;
+        firstAlly.TargetComp = firstAllyTargeting;
+        secondAlly.TargetComp = secondAllyTargeting;
+        EntityRegistry.Register(source);
+        EntityRegistry.Register(firstAlly);
+        EntityRegistry.Register(secondAlly);
+        EntityRegistry.Register(enemy);
+
+        sourceTargeting.CurrentTarget = enemy;
+        firstAllyTargeting.UpdateTargeting((Fix64)0.01f);
+        secondAllyTargeting.UpdateTargeting((Fix64)0.01f);
+
+        Assert.AreSame(enemy, firstAllyTargeting.CurrentTarget,
+            "Propagation must reach every nearby receiver that had no candidate.");
+        Assert.AreSame(enemy, secondAllyTargeting.CurrentTarget,
+            "A propagated candidate must trigger each receiver's next targeting update without waiting for its scan interval.");
+    }
+
+    [Test]
+    public void AggroCandidatePropagation_DoesNotReachReceiverWithExistingAggroTarget()
+    {
+        SimEntityContext source = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext ally = MakeSoldier(new Vector3(9f, 0f, 0f), SideType.PlayerSide);
+        SimEntityContext propagatedCandidate = MakeSoldier(new Vector3(-5f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext currentTarget = MakeSoldier(new Vector3(10f, 0f, 0f), SideType.EnemySide);
+        var sourceTargeting = new CharacterTargetingComp();
+        var allyTargeting = new CharacterTargetingComp();
+        sourceTargeting.Init(source);
+        allyTargeting.Init(ally);
+        source.TargetComp = sourceTargeting;
+        ally.TargetComp = allyTargeting;
+        EntityRegistry.Register(source);
+        EntityRegistry.Register(ally);
+        EntityRegistry.Register(propagatedCandidate);
+        EntityRegistry.Register(currentTarget);
+        allyTargeting.CurrentTarget = currentTarget;
+
+        sourceTargeting.CurrentTarget = propagatedCandidate;
+
+        Assert.AreSame(currentTarget, allyTargeting.CurrentTarget,
+            "A receiver with an aggro target must reject propagated candidates.");
+        allyTargeting.UpdateTargeting((Fix64)0.2f);
+        Assert.AreSame(currentTarget, allyTargeting.CurrentTarget,
+            "Rejected propagation must not participate in the receiver's later ranking.");
+    }
+
+    [Test]
+    public void AggroCandidatePropagation_DoesNotGrantAlertPriority()
+    {
+        ConfigureOpenNavigationGrid(160, 16, new Vector3(-80f, 0f, -8f));
+        SimEntityContext source = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext ally = MakeSoldier(new Vector3(9f, 0f, 0f), SideType.PlayerSide);
+        SimEntityContext propagatedCandidate = MakeSoldier(new Vector3(-5f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext closerCandidate = MakeSoldier(new Vector3(4f, 0f, 0f), SideType.EnemySide);
+        var sourceTargeting = new CharacterTargetingComp();
+        var allyTargeting = new CharacterTargetingComp();
+        sourceTargeting.Init(source);
+        allyTargeting.Init(ally);
+        source.TargetComp = sourceTargeting;
+        ally.TargetComp = allyTargeting;
+        EntityRegistry.Register(source);
+        EntityRegistry.Register(ally);
+        EntityRegistry.Register(propagatedCandidate);
+        EntityRegistry.Register(closerCandidate);
+
+        sourceTargeting.CurrentTarget = propagatedCandidate;
+        allyTargeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(closerCandidate, allyTargeting.CurrentTarget,
+            "A propagated candidate must not gain alert priority over an otherwise equal closer candidate.");
+    }
+
+    [Test]
+    public void AggroCandidatePropagation_IsClearedWhileReceiverIsDead()
+    {
+        ConfigureOpenNavigationGrid(160, 16, new Vector3(-80f, 0f, -8f));
+        SimEntityContext source = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext ally = MakeSoldier(new Vector3(9f, 0f, 0f), SideType.PlayerSide);
+        SimEntityContext propagatedCandidate = MakeSoldier(new Vector3(-5f, 0f, 0f), SideType.EnemySide);
+        var sourceTargeting = new CharacterTargetingComp();
+        var allyTargeting = new CharacterTargetingComp();
+        sourceTargeting.Init(source);
+        allyTargeting.Init(ally);
+        source.TargetComp = sourceTargeting;
+        ally.TargetComp = allyTargeting;
+        EntityRegistry.Register(source);
+        EntityRegistry.Register(ally);
+        EntityRegistry.Register(propagatedCandidate);
+
+        sourceTargeting.CurrentTarget = propagatedCandidate;
+        ally.Alive = false;
+        allyTargeting.UpdateTargeting((Fix64)0.2f);
+        ally.Alive = true;
+        allyTargeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.IsNull(allyTargeting.CurrentTarget,
+            "A candidate received before death must not survive into a later revived targeting scan.");
+    }
+
+    [Test]
+    public void AggroTargetSwitch_DoesNotPropagateCandidate()
+    {
+        ConfigureOpenNavigationGrid(160, 16, new Vector3(-80f, 0f, -8f));
+        SimEntityContext source = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext previousTarget = MakeSoldier(new Vector3(-7f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext switchedTarget = MakeSoldier(new Vector3(-5f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext ally = MakeSoldier(new Vector3(9f, 0f, 0f), SideType.PlayerSide);
+        var sourceTargeting = new CharacterTargetingComp();
+        var allyTargeting = new CharacterTargetingComp();
+        sourceTargeting.Init(source);
+        allyTargeting.Init(ally);
+        source.TargetComp = sourceTargeting;
+        ally.TargetComp = allyTargeting;
+        EntityRegistry.Register(source);
+        EntityRegistry.Register(previousTarget);
+        sourceTargeting.CurrentTarget = previousTarget;
+        EntityRegistry.Register(switchedTarget);
+        EntityRegistry.Register(ally);
+
+        sourceTargeting.CurrentTarget = switchedTarget;
+        allyTargeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.IsNull(allyTargeting.CurrentTarget,
+            "Switching between two existing aggro targets must not emit another candidate propagation.");
+    }
+
+    [Test]
+    public void AggroCandidatePropagation_DoesNotChainThroughReceiver()
+    {
+        ConfigureOpenNavigationGrid(192, 16, new Vector3(-96f, 0f, -8f));
+        SimEntityContext source = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext firstReceiver = MakeSoldier(new Vector3(9f, 0f, 0f), SideType.PlayerSide);
+        SimEntityContext secondReceiver = MakeSoldier(new Vector3(21f, 0f, 0f), SideType.PlayerSide);
+        SimEntityContext propagatedEnemy = MakeSoldier(new Vector3(-5f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext locallyPreferredEnemy = MakeSoldier(new Vector3(7f, 0f, 0f), SideType.EnemySide);
+        var sourceTargeting = new CharacterTargetingComp();
+        var firstTargeting = new CharacterTargetingComp();
+        var secondTargeting = new CharacterTargetingComp();
+        sourceTargeting.Init(source);
+        firstTargeting.Init(firstReceiver);
+        secondTargeting.Init(secondReceiver);
+        source.TargetComp = sourceTargeting;
+        firstReceiver.TargetComp = firstTargeting;
+        secondReceiver.TargetComp = secondTargeting;
+        EntityRegistry.Register(source);
+        EntityRegistry.Register(firstReceiver);
+        EntityRegistry.Register(secondReceiver);
+        EntityRegistry.Register(propagatedEnemy);
+        EntityRegistry.Register(locallyPreferredEnemy);
+
+        sourceTargeting.CurrentTarget = propagatedEnemy;
+        firstTargeting.UpdateTargeting((Fix64)0.01f);
+        secondTargeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(locallyPreferredEnemy, firstTargeting.CurrentTarget,
+            "The receiver must still perform its own complete target ranking.");
+        Assert.IsNull(secondTargeting.CurrentTarget,
+            "A targeting pass triggered by propagation must not emit another propagation, even when another candidate wins.");
+    }
+
+    [Test]
+    public void AggroCandidatePropagation_ReceiverWithPendingCandidateKeepsFirst()
+    {
+        ConfigureOpenNavigationGrid(192, 16, new Vector3(-96f, 0f, -8f));
+        SimEntityContext firstSource = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext receiver = MakeSoldier(new Vector3(9f, 0f, 0f), SideType.PlayerSide);
+        SimEntityContext secondSource = MakeSoldier(new Vector3(18f, 0f, 0f), SideType.PlayerSide);
+        SimEntityContext firstEnemy = MakeSoldier(new Vector3(-5f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext secondEnemy = MakeSoldier(new Vector3(23f, 0f, 0f), SideType.EnemySide);
+        var firstSourceTargeting = new CharacterTargetingComp();
+        var receiverTargeting = new CharacterTargetingComp();
+        var secondSourceTargeting = new CharacterTargetingComp();
+        firstSourceTargeting.Init(firstSource);
+        receiverTargeting.Init(receiver);
+        secondSourceTargeting.Init(secondSource);
+        firstSource.TargetComp = firstSourceTargeting;
+        receiver.TargetComp = receiverTargeting;
+        secondSource.TargetComp = secondSourceTargeting;
+        EntityRegistry.Register(firstSource);
+        EntityRegistry.Register(receiver);
+        EntityRegistry.Register(secondSource);
+        EntityRegistry.Register(firstEnemy);
+        EntityRegistry.Register(secondEnemy);
+
+        firstSourceTargeting.CurrentTarget = firstEnemy;
+        secondSourceTargeting.CurrentTarget = secondEnemy;
+        receiverTargeting.UpdateTargeting((Fix64)0.01f);
+
+        Assert.AreSame(firstEnemy, receiverTargeting.CurrentTarget,
+            "A receiver that already has a pending propagated candidate must reject later propagation.");
+    }
+
+    [Test]
+    public void AggroCandidatePropagation_SenderWithAlertCandidateDoesNotPropagate()
+    {
+        ConfigureOpenNavigationGrid(160, 16, new Vector3(-80f, 0f, -8f));
+        SimEntityContext source = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext ally = MakeSoldier(new Vector3(9f, 0f, 0f), SideType.PlayerSide);
+        SimEntityContext alertEnemy = MakeSoldier(new Vector3(-5f, 0f, 0f), SideType.EnemySide);
+        var sourceTargeting = new CharacterTargetingComp();
+        var allyTargeting = new CharacterTargetingComp();
+        sourceTargeting.Init(source);
+        allyTargeting.Init(ally);
+        source.TargetComp = sourceTargeting;
+        ally.TargetComp = allyTargeting;
+        EntityRegistry.Register(source);
+        EntityRegistry.Register(ally);
+        EntityRegistry.Register(alertEnemy);
+
+        sourceTargeting.NotifyAllyFoundEnemy(alertEnemy);
+        sourceTargeting.UpdateTargeting((Fix64)0.2f);
+        allyTargeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(alertEnemy, sourceTargeting.CurrentTarget);
+        Assert.IsNull(allyTargeting.CurrentTarget,
+            "A sender that already had an alert candidate must not emit aggro-candidate propagation.");
+    }
+
+    [Test]
+    public void AggroCandidatePropagation_ReceiverWithAlertCandidateRejectsPropagation()
+    {
+        ConfigureOpenNavigationGrid(192, 16, new Vector3(-96f, 0f, -8f));
+        SimEntityContext source = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext receiver = MakeSoldier(new Vector3(9f, 0f, 0f), SideType.PlayerSide);
+        SimEntityContext propagatedEnemy = MakeSoldier(new Vector3(-5f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext alertEnemy = MakeSoldier(new Vector3(23f, 0f, 0f), SideType.EnemySide);
+        propagatedEnemy.TauntLevel = 2;
+        var sourceTargeting = new CharacterTargetingComp();
+        var receiverTargeting = new CharacterTargetingComp();
+        sourceTargeting.Init(source);
+        receiverTargeting.Init(receiver);
+        source.TargetComp = sourceTargeting;
+        receiver.TargetComp = receiverTargeting;
+        EntityRegistry.Register(source);
+        EntityRegistry.Register(receiver);
+        EntityRegistry.Register(propagatedEnemy);
+        EntityRegistry.Register(alertEnemy);
+
+        receiverTargeting.NotifyAllyFoundEnemy(alertEnemy);
+        sourceTargeting.CurrentTarget = propagatedEnemy;
+        receiverTargeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(alertEnemy, receiverTargeting.CurrentTarget,
+            "A receiver that already had an alert candidate must reject propagated candidates.");
+    }
+
+    [Test]
     public void DamageAlert_StationaryRevealExpiresAfterConfiguredDuration()
     {
         SimEntityContext observer = MakeSoldier(Vector3.zero, SideType.PlayerSide);

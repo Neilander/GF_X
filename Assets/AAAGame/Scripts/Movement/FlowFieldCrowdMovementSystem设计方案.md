@@ -341,3 +341,7 @@ Editor 测试配置写入点已全量复核：除 Flow fixture 外，`SteeringMo
 `TrimSharedGoalFields` 现保留原 `LastUsedFrame + stable key` 淘汰次序，但只选择非预热请求项；若容量内全是有效预热工作集，则允许临时超限。请求清除后循环淘汰至配置容量，不形成永久增长。没有扩大配置容量、同步全图重算、重试、fallback 或吞异常。容量 16、17 个有效请求的现象红测由 job `3aa1c065c79d459db0f01bb601a3a8f4` 的 `0/1` 转绿；生命周期与稳定 LRU `2/2` job `496c8aa3bfc64693833f6cbf36eff06c`、完整 Flow `255/255` job `fe9321cb624841d8862917ba17177389` 通过。最终 Lv2 3k FullHash `PASS`，敌兵逻辑/View/Fog `23/23/23`，`pendingFlow 30 -> 0`、`pendingShared=0`、`projectionFailures=0`。
 
 最终全量验收补充（2026-08-21）：完整 EditMode 初轮 `1296/1299` 的 3 条失败均为 UI/相机旧测试复制历史策划数值，与 Flow 修复无关。测试现以当前表行为数值权威，只锁定字段传播、必要数组结构与索引映射，不复制可变配置常量，也不调用被测方法生成 expected；新增数组项不会因精确长度断言误报。最终版本定向 `3/3`、相关 fixture `57/57`、完整 EditMode `1299/1299` 均通过；完整 job `1c3e3d862c864d529ac13c7d0708a3ca`，失败/跳过 `0/0`。
+
+固定点极限接触补充（2026-08-22）：Lv2 研发中心上沿到 Ground 边界的 authored 缝为 `3277 raw`，正式英雄直径为 `3278 raw`；这是连续空间相切经各自向外量化后没有共同 Q12 格点，不是 Flow 拓扑或障碍重建问题。连续碰撞现统一使用轴向精确最近点和 `FixVector2.Magnitude`，起点投影只应用精确 MTV；仅当两个相邻格点各自只穿入相反约束 `1 raw` 且 MTV 精确互返时，视为同一量化接触流形。更深穿入、两侧同时穿入或不能互返仍严格拒绝。现场与窄 `2 raw` 反例共同锁定该边界，禁止以后通过缩半径、累计 epsilon、增加恢复迭代或坐标特判替代。权威位移变化使 replay 升为 `101 / Avenge-30Hz-v101 / v101`。
+
+圆角小量下溢补充（2026-08-22）：研发中心圆角现场向量 `(51,50) raw` 非零，但旧 Q12 `SqrMagnitude` 的两个分量平方分别右移后都为 0，导致 `Magnitude=0` 和零法线异常。长度现由 raw 平方和的确定性整数平方根直接计算；penetration、圆 sweep、Normalize 和 MoveTowards 复用同一长度语义，超出精确 raw 平方范围明确报错。现场门禁与数学门禁锁定该行为，禁止默认法线或跳过碰撞。权威 fixed 几何变化使 replay 升为 `102 / Avenge-30Hz-v102 / v102`。

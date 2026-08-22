@@ -1,7 +1,7 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 
-public interface ITargetingComp:ICapability
+public interface ITargetingComp : ICapability
 {
     void Init(IEntityContext ctx);
     void UpdateTargeting(Fix64 deltaTime);
@@ -27,6 +27,11 @@ public interface IFollowTargetingComp
 public interface IAlertTargetingComp
 {
     void NotifyAllyFoundEnemy(IEntityContext enemy);
+}
+
+public interface IAggroCandidateTargetingComp
+{
+    bool TryNotifyAllyAggroCandidate(IEntityContext enemy);
 }
 
 public interface IDefendTargetingModeComp

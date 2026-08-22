@@ -46,7 +46,7 @@
 	AggroOuterRange	仇恨外圈距离（格）	32
 	DamageAlertVisionDuration	受击警报临时视野持续秒数	2
 	DamageAlertVisionRadius	受击警报临时视野半径（格）	4
-	DamageAlertAllyRadius	受击警报友军接收半径（格）	12
+	AggroCandidatePropagationRadius	仇恨候选传播半径（格）	12
 	DamageAlertTargetDuration	受击警报目标持续秒数	2
 	MinimumAggroCandidateRange	最小仇恨候选距离（格）	12
 	DefendPursuitDistance	驻守单位最大追击距离（格）	32

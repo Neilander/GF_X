@@ -229,7 +229,120 @@ public sealed class DeterministicStaticCollisionGeometryTests
         Assert.Less(result.ResolvedDisplacement.x.RawValue, 0);
         Assert.AreEqual(0, result.ResolvedDisplacement.y.RawValue);
         FixVector2 end = start + result.ResolvedDisplacement;
-        Assert.IsTrue(DeterministicStaticCollisionSolver.IsCircleClear(world, end, Fix64.FromRaw(1639), obstacles));
+        Assert.IsTrue(
+            DeterministicStaticCollisionSolver.IsCircleClear(world, end, Fix64.FromRaw(1639), obstacles),
+            $"start={start} recovered={result.RecoveredStart} resolved={result.ResolvedDisplacement} end={end} " +
+            $"contacts={result.ContactCount} firstKey={result.FirstHitStableKey} firstNormal={result.FirstHitNormal}");
+    }
+
+    [Test]
+    public void Lv2ResearchCenterAndGroundBoundary_OneRawQuantizationGap_AllowsTangentialMotion()
+    {
+        LogicStaticCollisionWorld world = CreateRectangleWorld(
+            Fix64.Zero,
+            Fix64.Zero,
+            (Fix64)20,
+            Fix64.FromRaw(222413));
+        var obstacles = new[]
+        {
+            new LogicStaticCollisionObstacle(
+                -49153,
+                LogicStaticCollisionObstacleKind.Box,
+                new FixVector2(Fix64.FromRaw(51200), Fix64.FromRaw(210944)),
+                new FixVector2(Fix64.FromRaw(8192), Fix64.FromRaw(8192)),
+                Fix64.Zero),
+        };
+        FixVector2 start = new FixVector2(Fix64.FromRaw(48373), Fix64.FromRaw(220773));
+        FixVector2 desired = new FixVector2(Fix64.FromRaw(2244), Fix64.FromRaw(-1));
+        Fix64 radius = Fix64.FromRaw(1639);
+
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            start,
+            desired,
+            radius,
+            obstacles,
+            LogicStaticCollisionSlideMode.PreserveTangentialComponent);
+
+        Assert.IsTrue(
+            result.Success,
+            $"failure={result.Failure} start={start} recovered={result.RecoveredStart} resolved={result.ResolvedDisplacement}");
+        Assert.AreEqual(start.x.RawValue, result.RecoveredStart.x.RawValue);
+        Assert.AreEqual(desired.x.RawValue, result.ResolvedDisplacement.x.RawValue);
+        Assert.IsTrue(
+            DeterministicStaticCollisionSolver.IsCircleClear(
+                world,
+                start + result.ResolvedDisplacement,
+                radius,
+                obstacles));
+    }
+
+    [Test]
+    public void Lv2ResearchCenterAndGroundBoundary_TwoRawNarrowerThanDiameter_RemainsBlocked()
+    {
+        LogicStaticCollisionWorld world = CreateRectangleWorld(
+            Fix64.Zero,
+            Fix64.Zero,
+            (Fix64)20,
+            Fix64.FromRaw(222412));
+        var obstacles = new[]
+        {
+            new LogicStaticCollisionObstacle(
+                -49153,
+                LogicStaticCollisionObstacleKind.Box,
+                new FixVector2(Fix64.FromRaw(51200), Fix64.FromRaw(210944)),
+                new FixVector2(Fix64.FromRaw(8192), Fix64.FromRaw(8192)),
+                Fix64.Zero),
+        };
+
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            new FixVector2(Fix64.FromRaw(48373), Fix64.FromRaw(220773)),
+            new FixVector2(Fix64.FromRaw(2244), Fix64.FromRaw(-1)),
+            Fix64.FromRaw(1639),
+            obstacles,
+            LogicStaticCollisionSlideMode.PreserveTangentialComponent);
+
+        Assert.IsFalse(result.Success);
+        Assert.AreEqual(LogicStaticCollisionFailure.StartOverlapUnresolved, result.Failure);
+    }
+
+    [Test]
+    public void Lv2ResearchCenterRoundedCorner_SubSquaredRawDiagonal_RecoversWithoutZeroNormal()
+    {
+        LogicStaticCollisionWorld world = CreateRectangleWorld(
+            Fix64.Zero,
+            Fix64.Zero,
+            (Fix64)20,
+            Fix64.FromRaw(222413));
+        var obstacles = new[]
+        {
+            new LogicStaticCollisionObstacle(
+                -49153,
+                LogicStaticCollisionObstacleKind.Box,
+                new FixVector2(Fix64.FromRaw(51200), Fix64.FromRaw(210944)),
+                new FixVector2(Fix64.FromRaw(8192), Fix64.FromRaw(8192)),
+                Fix64.Zero),
+        };
+        FixVector2 start = new FixVector2(Fix64.FromRaw(59443), Fix64.FromRaw(219186));
+        Fix64 radius = Fix64.FromRaw(1639);
+
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            start,
+            FixVector2.Zero,
+            radius,
+            obstacles,
+            LogicStaticCollisionSlideMode.PreserveTangentialComponent);
+
+        Assert.IsTrue(result.Success, result.Failure.ToString());
+        Assert.IsTrue(result.StartedOverlapping);
+        Assert.AreNotEqual(start, result.RecoveredStart);
+        Assert.IsTrue(DeterministicStaticCollisionSolver.IsCircleClear(
+            world,
+            start + result.ResolvedDisplacement,
+            radius,
+            obstacles));
     }
 
     [Test]

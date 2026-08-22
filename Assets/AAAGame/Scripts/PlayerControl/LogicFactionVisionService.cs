@@ -2,12 +2,13 @@ using System;
 using System.Collections.Generic;
 using AAAGame.MiniMap.FOG3;
 
+// Vision/alert/propagation contract: AIDoc/当前仇恨与索敌系统.md. Keep the document in sync.
 public static class LogicFactionVisionService
 {
     public const string AggroOuterRangeConfigKey = "AggroOuterRange";
     public const string DamageAlertVisionDurationConfigKey = "DamageAlertVisionDuration";
     public const string DamageAlertVisionRadiusConfigKey = "DamageAlertVisionRadius";
-    public const string DamageAlertAllyRadiusConfigKey = "DamageAlertAllyRadius";
+    public const string AggroCandidatePropagationRadiusConfigKey = "AggroCandidatePropagationRadius";
     public const string DamageAlertTargetDurationConfigKey = "DamageAlertTargetDuration";
     public const string MinimumAggroCandidateRangeConfigKey = "MinimumAggroCandidateRange";
     public const string SlopeUpperVisionRadiusConfigKey = "SlopeUpperVisionRadius";
@@ -106,19 +107,62 @@ public static class LogicFactionVisionService
             return;
 
         AddDamageReveal(victim.Side, attacker.LogicFramePositionFixed());
-        Fix64 allyRadius = ReadWorldDistance(DamageAlertAllyRadiusConfigKey);
+        PropagateDamageAlert(victim.Side, victim.LogicFramePositionFixed(), attacker);
+    }
+
+    public static void HandleAggroAcquired(IEntityContext source, IEntityContext target)
+    {
+        if (source == null)
+            throw new ArgumentNullException(nameof(source));
+        if (target == null)
+            throw new ArgumentNullException(nameof(target));
+        if (!source.Alive || !EntityCombatTeamHelper.IsEnemy(source, target))
+            throw new InvalidOperationException(
+                $"LogicFactionVisionService.HandleAggroAcquired requires an alive source and enemy target. " +
+                $"source={source.CharacterKey}, sourceAlive={source.Alive}, target={target.CharacterKey}.");
+
+        PropagateAggroCandidate(source.Side, source.LogicFramePositionFixed(), target);
+    }
+
+    private static void PropagateDamageAlert(
+        SideType sourceSide,
+        FixVector2 sourcePosition,
+        IEntityContext target)
+    {
+        Fix64 allyRadius = ReadWorldDistance(AggroCandidatePropagationRadiusConfigKey);
         Fix64 allyRadiusSquared = allyRadius * allyRadius;
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
             IEntityContext ally = entities[i]
                 ?? throw new InvalidOperationException($"LogicFactionVisionService found a null registry entity at index {i}.");
-            if (!ally.Alive || ally.Side != victim.Side)
+            if (!ally.Alive || ally.Side != sourceSide)
                 continue;
-            if (FixVector2.SqrMagnitude(ally.LogicFramePositionFixed() - victim.LogicFramePositionFixed()) > allyRadiusSquared)
+            if (FixVector2.SqrMagnitude(ally.LogicFramePositionFixed() - sourcePosition) > allyRadiusSquared)
                 continue;
             if (ally.TargetComp is IAlertTargetingComp alertTargeting)
-                alertTargeting.NotifyAllyFoundEnemy(attacker);
+                alertTargeting.NotifyAllyFoundEnemy(target);
+        }
+    }
+
+    private static void PropagateAggroCandidate(
+        SideType sourceSide,
+        FixVector2 sourcePosition,
+        IEntityContext target)
+    {
+        Fix64 allyRadius = ReadWorldDistance(AggroCandidatePropagationRadiusConfigKey);
+        Fix64 allyRadiusSquared = allyRadius * allyRadius;
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            IEntityContext ally = entities[i]
+                ?? throw new InvalidOperationException($"LogicFactionVisionService found a null registry entity at index {i}.");
+            if (!ally.Alive || ally.Side != sourceSide || ReferenceEquals(ally.TargetComp?.CurrentTarget, target))
+                continue;
+            if (FixVector2.SqrMagnitude(ally.LogicFramePositionFixed() - sourcePosition) > allyRadiusSquared)
+                continue;
+            if (ally.TargetComp is IAggroCandidateTargetingComp candidateTargeting)
+                candidateTargeting.TryNotifyAllyAggroCandidate(target);
         }
     }
 
