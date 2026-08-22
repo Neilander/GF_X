@@ -628,7 +628,11 @@ namespace AAAGame.Card
 
             if (invalidReason == CardPlacementInvalidReason.EnemyStrongholdForbiddenArea)
             {
-                Debug.Log($"[Card] Cannot confirm placement: 防御阶段命中敌方据点禁区. pos={position}, radius={m_DetectionRadius:F2}");
+                GamePhase phase = LogicPhaseCommandService.GetRequiredCurrentPhase();
+                string detail = phase == GamePhase.Defend
+                    ? "防御阶段命中敌方据点禁区"
+                    : "进攻阶段敌方据点内无我方单位接应";
+                Debug.Log($"[Card] Cannot confirm placement: {detail}. pos={position}, radius={m_DetectionRadius:F2}");
                 return;
             }
 

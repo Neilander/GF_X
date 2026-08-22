@@ -3918,6 +3918,52 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 导航距离预热工作集超过共享缓存容量时_未完成请求不得被淘汰()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.FlowTileCacheLimit = 32;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 80;
+        const int height = 4;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        var start = new FixVector2((Fix64)0.5f, (Fix64)1.5f);
+        const int requestCount = 17;
+        for (int i = 0; i < requestCount; i++)
+        {
+            int goalX = 9 + i * 4;
+            FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(
+                start,
+                new FixVector2((Fix64)(goalX + 0.5f), (Fix64)1.5f),
+                0);
+        }
+
+        Assert.DoesNotThrow(() => FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue());
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.IsNavigationDistancePrewarmCompleted,
+            FlowFieldCrowdMovementSystem.GetEditorTestNavigationDistancePrewarmDiagnostics());
+        Assert.AreEqual(
+            requestCount,
+            FlowFieldCrowdMovementSystem.GetEditorTestSharedGoalFieldCacheCount(),
+            "未完成预热批次的工作集可以暂时超过通用 LRU 容量，但不得在完成检查前自相驱逐。");
+
+        FlowFieldCrowdMovementSystem.ClearNavigationDistancePrewarmRequests();
+        FlowFieldCrowdMovementSystem.RequestNavigationDistancePrewarmFixed(
+            start,
+            new FixVector2((Fix64)77.5f, (Fix64)1.5f),
+            0);
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        Assert.AreEqual(
+            16,
+            FlowFieldCrowdMovementSystem.GetEditorTestSharedGoalFieldCacheCount(),
+            "旧请求解除后，超额 pinned 工作集必须在下一次缓存提交时收敛回配置容量。");
+    }
+
+    [Test]
     public void 同一目标已缓存裁剪场后新增起点_必须扩展预热覆盖并完成()
     {
         const int width = 64;

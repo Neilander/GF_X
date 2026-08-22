@@ -33,7 +33,6 @@
 	31	投名状	敌方据点在被我方占领后的{0}天内，训练的单位+{1}%攻击，+{2}%生命上限	2,30,50		LvTag_PledgeOfLoyalty	UI/LvTag/PledgeOfLoyalty	LvTag_Name_PledgeOfLoyalty	LvTag_Desc_PledgeOfLoyalty			True		6
 	32	战利品劣化	杀敌转化为每1橙髓所需的频段+{0}	2		LvTag_LootDeterioration	UI/LvTag/LootDeterioration	LvTag_Name_LootDeterioration	LvTag_Desc_LootDeterioration			False	1	1
 	34	编制缩减	手牌上限-{0}张	1		LvTag_ForceReduction	UI/LvTag/ForceReduction	LvTag_Name_ForceReduction	LvTag_Desc_ForceReduction			False	1	1
-	35	严密布控	敌方建筑阻止单位部署的范围扩大{0}%	60		LvTag_TightSecurity	UI/LvTag/TightSecurity	LvTag_Name_TightSecurity	LvTag_Desc_TightSecurity			False	1	1
 	36	补给匮乏	每天的基础橙髓收获-{0}	1		LvTag_SupplyShortage	UI/LvTag/SupplyShortage	LvTag_Name_SupplyShortage	LvTag_Desc_SupplyShortage			False	1	1
 	37	维稳成本	每占领一个据点，每天便消耗{0}橙髓	1		LvTag_StabilityCost	UI/LvTag/StabilityCost	LvTag_Name_StabilityCost	LvTag_Desc_StabilityCost			False	1	1
 	38	贫矿区	橙髓采集点位的初始橙髓储量-{0}%	33		LvTag_PoorDeposit	UI/LvTag/PoorDeposit	LvTag_Name_PoorDeposit	LvTag_Desc_PoorDeposit			False	1	1

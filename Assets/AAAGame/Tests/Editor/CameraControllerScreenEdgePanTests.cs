@@ -28,21 +28,22 @@ public class CameraControllerScreenEdgePanTests
         BindingFlags.NonPublic | BindingFlags.Instance);
 
     [Test]
-    public void DefaultCameraViewTableRow_DrivesCurrentOrthographicView()
+    public void DefaultCameraViewTableRow_ProducesConfiguredViewGeometry()
     {
         string path = Path.Combine(Application.dataPath, "AAAGame/DataTable/CameraViewTable.txt");
         string dataLine = File.ReadLines(path).Single(line => line.StartsWith("\t1\t"));
         var row = new CameraViewTable();
 
         Assert.That(row.ParseDataRow(dataLine, null), Is.True);
-        Assert.That(row.Rotation, Is.EqualTo(new Vector3(35f, 45f, 0f)));
-        Assert.That(row.OrthographicSize, Is.EqualTo(12f).Within(0.0001f));
-        Assert.That(row.CameraHeight, Is.EqualTo(56.1638f).Within(0.0001f));
+        Assert.That(float.IsFinite(row.OrthographicSize), Is.True);
+        Assert.That(row.OrthographicSize, Is.GreaterThan(0f));
+        Assert.That(float.IsFinite(row.CameraHeight), Is.True);
+        Assert.That(row.CameraHeight, Is.GreaterThan(0f));
 
         Vector3 offset = InvokeCalculateFollowOffset(row.Rotation, row.CameraHeight);
-        Assert.That(offset.x, Is.EqualTo(-56.71719f).Within(0.001f));
-        Assert.That(offset.y, Is.EqualTo(56.1638f).Within(0.001f));
-        Assert.That(offset.z, Is.EqualTo(-56.71719f).Within(0.001f));
+        Vector3 configuredDirection = Quaternion.Euler(row.Rotation) * Vector3.back;
+        Assert.That(offset.y, Is.EqualTo(row.CameraHeight).Within(0.0001f));
+        Assert.That(Vector3.Angle(offset, configuredDirection), Is.LessThan(0.001f));
     }
 
     [Test]

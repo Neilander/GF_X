@@ -22600,29 +22600,34 @@ public static partial class FlowFieldCrowdMovementSystem
     private static void TrimSharedGoalFields()
     {
         int limit = Mathf.Max(16, Config.FlowTileCacheLimit / 4);
-        if (SharedGoalFields.Count <= limit)
-            return;
-
-        SharedGoalFieldKey oldestKey = default;
-        int oldestFrame = int.MaxValue;
-        bool found = false;
-        foreach (KeyValuePair<SharedGoalFieldKey, SharedGoalField> pair in SharedGoalFields)
+        while (SharedGoalFields.Count > limit)
         {
-            int frame = pair.Value?.LastUsedFrame ?? int.MinValue;
-            if (found)
+            SharedGoalFieldKey oldestKey = default;
+            int oldestFrame = int.MaxValue;
+            bool found = false;
+            foreach (KeyValuePair<SharedGoalFieldKey, SharedGoalField> pair in SharedGoalFields)
             {
-                int frameOrder = frame.CompareTo(oldestFrame);
-                if (frameOrder > 0 || (frameOrder == 0 && CompareSharedGoalKeys(pair.Key, oldestKey) >= 0))
+                if (IsNavigationDistancePrewarmSharedGoalKey(pair.Key))
                     continue;
+
+                int frame = pair.Value?.LastUsedFrame ?? int.MinValue;
+                if (found)
+                {
+                    int frameOrder = frame.CompareTo(oldestFrame);
+                    if (frameOrder > 0 || (frameOrder == 0 && CompareSharedGoalKeys(pair.Key, oldestKey) >= 0))
+                        continue;
+                }
+
+                oldestKey = pair.Key;
+                oldestFrame = frame;
+                found = true;
             }
 
-            oldestKey = pair.Key;
-            oldestFrame = frame;
-            found = true;
-        }
+            if (!found)
+                return;
 
-        if (found)
             RemoveSharedGoalFieldCacheEntry(oldestKey);
+        }
     }
 
     private static void IncrementPathHandleRebuildReason(string reason)

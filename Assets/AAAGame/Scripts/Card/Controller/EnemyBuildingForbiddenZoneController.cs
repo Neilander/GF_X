@@ -115,9 +115,8 @@ namespace AAAGame.Card
                     $"Enemy building {building.LogicEntityId.Value} requires an axis-aligned logic combat shape.");
             }
 
-            Fix64 padding = LogicCardPlacementAuthority.ResolveEnemyBuildingPadding();
-            Fix64 halfX = shape.HalfExtents.x + padding;
-            Fix64 halfZ = shape.HalfExtents.y + padding;
+            Fix64 halfX = shape.HalfExtents.x;
+            Fix64 halfZ = shape.HalfExtents.y;
             float minX = (float)(shape.Center.x - halfX);
             float maxX = (float)(shape.Center.x + halfX);
             float minZ = (float)(shape.Center.y - halfZ);

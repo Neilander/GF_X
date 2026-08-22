@@ -14,6 +14,7 @@ public sealed class LogicCardPlacementAuthorityTests
     {
         EntityRegistry.Clear();
         LogicStrongholdMap.Clear();
+        InitializeStrongholdMap(Array.Empty<LogicStrongholdCellDefinition>());
         LogicTimeControlService.BeginTimeline();
         LogicCardPlacementAuthority.BeginTimeline();
         LogicEntityStateStore.BeginTimeline();
@@ -689,7 +690,13 @@ public sealed class LogicCardPlacementAuthorityTests
         Assert.AreEqual(
             LogicCardPlacementInvalidReason.EnemyBuildingForbiddenArea,
             LogicCardPlacementAuthority.Evaluate(
-                new FixVector2((Fix64)9.4f, (Fix64)7),
+                new FixVector2((Fix64)8.4f, (Fix64)7),
+                (Fix64)0.5f,
+                GamePhase.Invade));
+        Assert.AreEqual(
+            LogicCardPlacementInvalidReason.None,
+            LogicCardPlacementAuthority.Evaluate(
+                new FixVector2((Fix64)8.6f, (Fix64)7),
                 (Fix64)0.5f,
                 GamePhase.Invade));
         Assert.AreEqual(
@@ -720,7 +727,7 @@ public sealed class LogicCardPlacementAuthorityTests
                     new FixVector2(Fix64.One, Fix64.One)),
             });
         EntityRegistry.Register(enemy);
-        var placementPosition = new FixVector2((Fix64)9.4f, (Fix64)7);
+        var placementPosition = new FixVector2((Fix64)8.4f, (Fix64)7);
 
         Assert.AreEqual(
             LogicCardPlacementInvalidReason.EnemyBuildingForbiddenArea,
@@ -766,6 +773,7 @@ public sealed class LogicCardPlacementAuthorityTests
     public void RevealCircle_BlocksHiddenPropagationBeyondEnemyStronghold()
     {
         Fog3MapData map = CreateMap(5, 1);
+        LogicStrongholdMap.Clear();
         LogicStrongholdMap.Initialize(
             FixVector2.Zero,
             new FixVector2(Fix64.One, Fix64.Zero),
@@ -799,6 +807,7 @@ public sealed class LogicCardPlacementAuthorityTests
     public void RevealCircle_WhenEnemyStrongholdBlockIsDisabled_RevealsBeyondEnemyStronghold()
     {
         Fog3MapData map = CreateMap(5, 1);
+        LogicStrongholdMap.Clear();
         LogicStrongholdMap.Initialize(
             FixVector2.Zero,
             new FixVector2(Fix64.One, Fix64.Zero),
@@ -834,10 +843,11 @@ public sealed class LogicCardPlacementAuthorityTests
     }
 
     [Test]
-    public void Evaluate_EnemyStrongholdIsForbiddenOnlyDuringDefendPhase()
+    public void Evaluate_EnemyStrongholdRequiresNearbyFriendlyUnitDuringInvadeAndIsForbiddenDuringDefend()
     {
-        Fog3MapData map = CreateMap(3, 1);
+        Fog3MapData map = CreateMap(8, 1);
         MarkAllExplored(map);
+        LogicStrongholdMap.Clear();
         LogicStrongholdMap.Initialize(
             FixVector2.Zero,
             new FixVector2(Fix64.One, Fix64.Zero),
@@ -846,9 +856,30 @@ public sealed class LogicCardPlacementAuthorityTests
             new[]
             {
                 new LogicStrongholdCellDefinition("enemy-stronghold", 1, 0, EntitySideHelper.EnemyFactionId),
+                new LogicStrongholdCellDefinition("enemy-stronghold", 4, 0, EntitySideHelper.EnemyFactionId),
             });
         Bind(map, Array.Empty<LogicCombatShape>(), Fix64.One);
         FixVector2 enemyStrongholdPosition = new FixVector2(Fix64.One, Fix64.Zero);
+
+        Assert.AreEqual(
+            LogicCardPlacementInvalidReason.EnemyStrongholdForbiddenArea,
+            LogicCardPlacementAuthority.Evaluate(
+                enemyStrongholdPosition,
+                Fix64.Zero,
+                GamePhase.Invade));
+        Assert.AreEqual(
+            LogicCardPlacementInvalidReason.None,
+            LogicCardPlacementAuthority.Evaluate(
+                new FixVector2((Fix64)7, Fix64.Zero),
+                Fix64.Zero,
+                GamePhase.Invade));
+
+        LogicEntityState friendlyUnit = CreateUnit(
+            100,
+            new FixVector2((Fix64)4, Fix64.Zero),
+            SideType.PlayerSide,
+            false);
+        EntityRegistry.Register(friendlyUnit);
 
         Assert.AreEqual(
             LogicCardPlacementInvalidReason.None,
@@ -862,6 +893,102 @@ public sealed class LogicCardPlacementAuthorityTests
                 enemyStrongholdPosition,
                 Fix64.Zero,
                 GamePhase.Defend));
+    }
+
+    [Test]
+    public void Evaluate_EnemyStrongholdFriendlyUnitRadiusUsesConfiguredBoundaryAndIgnoresBuildings()
+    {
+        Fog3MapData map = CreateMap(8, 1);
+        MarkAllExplored(map);
+        LogicStrongholdMap.Clear();
+        InitializeStrongholdMap(new[]
+        {
+            new LogicStrongholdCellDefinition("enemy-stronghold", 1, 0, EntitySideHelper.EnemyFactionId),
+        });
+        LogicCardPlacementAuthority.BindWorldForTests(
+            map,
+            Array.Empty<LogicCombatShape>(),
+            Fix64.One,
+            Fix64.One,
+            Fix64.One,
+            false,
+            (Fix64)3);
+        FixVector2 placement = new FixVector2(Fix64.One, Fix64.Zero);
+        LogicEntityState friendlyUnit = CreateUnit(
+            101,
+            new FixVector2((Fix64)4, Fix64.Zero),
+            SideType.PlayerSide,
+            false);
+        LogicEntityState friendlyBuilding = CreateBuilding(
+            102,
+            1,
+            EntitySideHelper.PlayerFactionId,
+            LogicCombatShape.AxisAlignedBox(
+                new FixVector2((Fix64)1.5f, Fix64.Zero),
+                new FixVector2((Fix64)0.25f, (Fix64)0.25f)));
+        EntityRegistry.Register(friendlyUnit);
+        EntityRegistry.Register(friendlyBuilding);
+
+        Assert.AreEqual(
+            LogicCardPlacementInvalidReason.None,
+            LogicCardPlacementAuthority.Evaluate(placement, Fix64.Zero, GamePhase.Invade));
+
+        EntityRegistry.Unregister(friendlyUnit);
+        LogicEntityState outsideFriendlyUnit = CreateUnit(
+            103,
+            new FixVector2(Fix64.FromRaw(((Fix64)4).RawValue + 1), Fix64.Zero),
+            SideType.PlayerSide,
+            false);
+        EntityRegistry.Register(outsideFriendlyUnit);
+
+        Assert.AreEqual(
+            LogicCardPlacementInvalidReason.EnemyStrongholdForbiddenArea,
+            LogicCardPlacementAuthority.Evaluate(placement, Fix64.Zero, GamePhase.Invade));
+
+        EntityRegistry.Unregister(outsideFriendlyUnit);
+        LogicEntityState ghostHero = CreateUnit(
+            106,
+            placement,
+            SideType.PlayerSide,
+            true);
+        FieldInfo ghostStateField = typeof(LogicEntityState).GetField(
+            "<IsGhostState>k__BackingField",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(ghostStateField);
+        ghostStateField.SetValue(ghostHero, true);
+        EntityRegistry.Register(ghostHero);
+
+        Assert.AreEqual(
+            LogicCardPlacementInvalidReason.EnemyStrongholdForbiddenArea,
+            LogicCardPlacementAuthority.Evaluate(placement, Fix64.Zero, GamePhase.Invade));
+    }
+
+    [Test]
+    public void Evaluate_EnemyBuildingOverlapStillBlocksInsideEnemyStrongholdWithFriendlyUnit()
+    {
+        Fog3MapData map = CreateMap(8, 1);
+        MarkAllExplored(map);
+        LogicStrongholdMap.Clear();
+        InitializeStrongholdMap(new[]
+        {
+            new LogicStrongholdCellDefinition("enemy-stronghold", 2, 0, EntitySideHelper.EnemyFactionId),
+        });
+        Bind(map, Array.Empty<LogicCombatShape>(), Fix64.One);
+        FixVector2 placement = new FixVector2((Fix64)2, Fix64.Zero);
+        EntityRegistry.Register(CreateUnit(
+            104,
+            placement,
+            SideType.PlayerSide,
+            false));
+        EntityRegistry.Register(CreateBuilding(
+            105,
+            1,
+            EntitySideHelper.EnemyFactionId,
+            LogicCombatShape.AxisAlignedBox(placement, new FixVector2(Fix64.One, Fix64.One))));
+
+        Assert.AreEqual(
+            LogicCardPlacementInvalidReason.EnemyBuildingForbiddenArea,
+            LogicCardPlacementAuthority.Evaluate(placement, Fix64.Zero, GamePhase.Invade));
     }
 
     [Test]
@@ -884,6 +1011,16 @@ public sealed class LogicCardPlacementAuthorityTests
             visionRadius,
             visionRadius,
             visionRadius);
+    }
+
+    private static void InitializeStrongholdMap(IReadOnlyList<LogicStrongholdCellDefinition> cells)
+    {
+        LogicStrongholdMap.Initialize(
+            FixVector2.Zero,
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            Fix64.One,
+            cells);
     }
 
     private static Fog3MapData CreateMap(int width, int height)

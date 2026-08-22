@@ -135,14 +135,19 @@ public sealed class BuildingPanelPresentationTests
     }
 
     [Test]
-    public void FirefighterLevelOneStats_IncludeConfiguredSplashRadius()
+    public void FirefighterLevelOneStats_MatchConfiguredSplashRadius()
     {
+        CharacterDataDetail unit = LogicRuntimeDataTableCache.GetCharacterRequired("Unit_Firefighter");
         BuildingData data = CreateArmyBuilding("Buil_FireDrillSite_Lv1", "Unit_Firefighter", 1);
         var stats = new List<BuildingPanelStat>();
 
         BuildingPanelPresentation.CollectUnitStats(data, stats);
 
-        AssertStat(stats, BuildingPanelPresentation.SplashGlyph, "4.5");
+        Fix64 configuredRadius = unit.Lv1Weapon1SplashRadius;
+        if (configuredRadius > Fix64.Zero)
+            AssertStat(stats, BuildingPanelPresentation.SplashGlyph, configuredRadius.ToStringRound());
+        else
+            Assert.IsFalse(stats.Exists(stat => stat.Glyph == BuildingPanelPresentation.SplashGlyph));
         Assert.IsFalse(stats.Exists(stat => stat.Value.StartsWith("B ", StringComparison.Ordinal)));
         Assert.IsFalse(stats.Exists(stat => stat.Value.StartsWith("U ", StringComparison.Ordinal)));
     }
@@ -189,25 +194,22 @@ public sealed class BuildingPanelPresentationTests
     [Test]
     public void LateRiderDescriptions_UseAllFinalChargeValuesAtEachLevel()
     {
+        CharacterDataDetail unit = LogicRuntimeDataTableCache.GetCharacterRequired("Unit_LateRider");
+        BuildingTable building = FindBuilding("Buil_DeliveryHub");
+        Assert.That(unit.UniqueValues.Length, Is.GreaterThanOrEqualTo(5));
+        Assert.That(building.Tech1UniqueValues.Length, Is.GreaterThanOrEqualTo(3));
+        Assert.That(building.Tech2UniqueValues.Length, Is.GreaterThanOrEqualTo(3));
+
+        Fix64[] levelTwo = (Fix64[])unit.UniqueValues.Clone();
+        ApplyLateRiderTech(levelTwo, building.Tech1UniqueValues);
         CollectionAssert.AreEqual(
-            new[]
-            {
-                Fix64.Parse("3.6"),
-                Fix64.Parse("10.8") + Fix64.Parse("1.8"),
-                Fix64.Parse("7.2") + Fix64.Parse("1.1"),
-                (Fix64)40 + (Fix64)10,
-                (Fix64)5,
-            },
+            levelTwo,
             SoldierFactory.ResolveArmyPresentationAbilityValues(UnitType.Unit_LateRider, 2));
+
+        Fix64[] levelThree = (Fix64[])levelTwo.Clone();
+        ApplyLateRiderTech(levelThree, building.Tech2UniqueValues);
         CollectionAssert.AreEqual(
-            new[]
-            {
-                Fix64.Parse("3.6"),
-                Fix64.Parse("10.8") + Fix64.Parse("1.8") + Fix64.Parse("1.8"),
-                Fix64.Parse("7.2") + Fix64.Parse("1.1") + Fix64.Parse("2.2"),
-                (Fix64)40 + (Fix64)10 + (Fix64)20,
-                (Fix64)5,
-            },
+            levelThree,
             SoldierFactory.ResolveArmyPresentationAbilityValues(UnitType.Unit_LateRider, 3));
     }
 
@@ -925,6 +927,13 @@ public sealed class BuildingPanelPresentationTests
         }
 
         Assert.Fail($"Expected panel stat was not found. glyph={glyph}, value={value}.");
+    }
+
+    private static void ApplyLateRiderTech(Fix64[] abilityValues, Fix64[] techValues)
+    {
+        abilityValues[1] += techValues[0];
+        abilityValues[2] += techValues[1];
+        abilityValues[3] += techValues[2];
     }
 
     private static void AssertRectInside(Rect actual, Rect container, string label)

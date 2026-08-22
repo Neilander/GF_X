@@ -20,12 +20,13 @@ namespace AAAGame.Card
         private const string HeroVisionRadiusConfigKey = "HeroVisionRadius";
         private const string UnitVisionRadiusConfigKey = "UnitVisionRadius";
         private const string BuildingVisionRadiusConfigKey = "BuildingVisionRadius";
-        private static readonly Fix64 s_EnemyBuildingBasePadding = (Fix64)BuildingFootprint.GridCellWorldSize;
+        private const string EnemyStrongholdFriendlyUnitDeployRadiusConfigKey = "EnemyStrongholdFriendlyUnitDeployRadius";
         private static readonly List<LogicCombatShape> s_StaticForbiddenShapes = new();
         private static Fog3MapData s_MapData;
         private static Fix64 s_HeroVisionRadius;
         private static Fix64 s_UnitVisionRadius;
         private static Fix64 s_BuildingVisionRadius;
+        private static Fix64 s_EnemyStrongholdFriendlyUnitDeployRadius;
         private static bool s_BlockHiddenRevealByEnemyStronghold;
         private static ulong s_StaticForbiddenHash;
 
@@ -71,6 +72,7 @@ namespace AAAGame.Card
                 ResolveVisionRadius(HeroVisionRadiusConfigKey),
                 ResolveVisionRadius(UnitVisionRadiusConfigKey),
                 ResolveVisionRadius(BuildingVisionRadiusConfigKey),
+                ResolvePositiveConfig(EnemyStrongholdFriendlyUnitDeployRadiusConfigKey),
                 blockHiddenRevealByEnemyStronghold);
         }
 
@@ -184,7 +186,6 @@ namespace AAAGame.Card
                     return LogicCardPlacementInvalidReason.StaticForbiddenArea;
             }
 
-            Fix64 enemyPadding = ResolveEnemyBuildingPadding() + placementRadius;
             IList<IEntityContext> entities = EntityRegistry.AllEntities;
             for (int i = 0; i < entities.Count; i++)
             {
@@ -195,11 +196,44 @@ namespace AAAGame.Card
                     continue;
                 if (!GeneratesEnemyBuildingForbiddenZone(building))
                     continue;
-                if (building.CombatShape.DistanceToSurface(position) <= enemyPadding)
+                if (building.CombatShape.DistanceToSurface(position) <= placementRadius)
                     return LogicCardPlacementInvalidReason.EnemyBuildingForbiddenArea;
             }
 
+            if (LogicStrongholdMap.TryResolveStrongholdId(position, out string strongholdId)
+                && LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId) != EntitySideHelper.PlayerFactionId
+                && !IsWithinFriendlyUnitDeployRadius(position, entities))
+            {
+                return LogicCardPlacementInvalidReason.EnemyStrongholdForbiddenArea;
+            }
+
             return LogicCardPlacementInvalidReason.None;
+        }
+
+        private static bool IsWithinFriendlyUnitDeployRadius(
+            FixVector2 position,
+            IList<IEntityContext> entities)
+        {
+            Fix64 radiusSquared = s_EnemyStrongholdFriendlyUnitDeployRadius
+                                  * s_EnemyStrongholdFriendlyUnitDeployRadius;
+            for (int i = 0; i < entities.Count; i++)
+            {
+                IEntityContext entity = entities[i];
+                if (entity == null)
+                    throw new InvalidOperationException($"LogicCardPlacementAuthority found a null registry entity at index {i}.");
+                if (!entity.Alive
+                    || entity.Side != SideType.PlayerSide
+                    || entity.IsLogicBuilding()
+                    || entity.TryGetLogicHero(out IHeroLogicContext hero) && hero.IsGhostState)
+                {
+                    continue;
+                }
+
+                if (FixVector2.SqrMagnitude(entity.PositionFixed - position) <= radiusSquared)
+                    return true;
+            }
+
+            return false;
         }
 
         public static bool GeneratesEnemyBuildingForbiddenZone(IBuildingLogicContext building)
@@ -250,11 +284,6 @@ namespace AAAGame.Card
             return s_MapData.GetCellState(position) == Fog3CellState.Visible;
         }
 
-        public static Fix64 ResolveEnemyBuildingPadding()
-        {
-            return s_EnemyBuildingBasePadding * LevelTagRuntime.GetEnemyBuildingForbiddenZonePaddingMultiplier();
-        }
-
         public static void WriteDeterministicState(LogicStateHasher hasher)
         {
             EnsureActive();
@@ -272,7 +301,7 @@ namespace AAAGame.Card
             hasher.Add(s_HeroVisionRadius.RawValue);
             hasher.Add(s_UnitVisionRadius.RawValue);
             hasher.Add(s_BuildingVisionRadius.RawValue);
-            hasher.Add(ResolveEnemyBuildingPadding().RawValue);
+            hasher.Add(s_EnemyStrongholdFriendlyUnitDeployRadius.RawValue);
             hasher.Add(s_BlockHiddenRevealByEnemyStronghold);
         }
 
@@ -283,14 +312,18 @@ namespace AAAGame.Card
             Fix64 heroVisionRadius,
             Fix64 unitVisionRadius,
             Fix64 buildingVisionRadius,
-            bool blockHiddenRevealByEnemyStronghold = false)
+            bool blockHiddenRevealByEnemyStronghold = false,
+            Fix64 enemyStrongholdFriendlyUnitDeployRadius = default)
         {
+            if (enemyStrongholdFriendlyUnitDeployRadius == Fix64.Zero)
+                enemyStrongholdFriendlyUnitDeployRadius = (Fix64)3;
             BindWorld(
                 mapData,
                 staticForbiddenShapes,
                 heroVisionRadius,
                 unitVisionRadius,
                 buildingVisionRadius,
+                enemyStrongholdFriendlyUnitDeployRadius,
                 blockHiddenRevealByEnemyStronghold);
         }
 
@@ -307,6 +340,7 @@ namespace AAAGame.Card
             Fix64 heroVisionRadius,
             Fix64 unitVisionRadius,
             Fix64 buildingVisionRadius,
+            Fix64 enemyStrongholdFriendlyUnitDeployRadius,
             bool blockHiddenRevealByEnemyStronghold)
         {
             EnsureActive();
@@ -316,8 +350,15 @@ namespace AAAGame.Card
                 throw new ArgumentNullException(nameof(mapData));
             if (staticForbiddenShapes == null)
                 throw new ArgumentNullException(nameof(staticForbiddenShapes));
-            if (heroVisionRadius <= Fix64.Zero || unitVisionRadius <= Fix64.Zero || buildingVisionRadius <= Fix64.Zero)
-                throw new ArgumentOutOfRangeException(nameof(heroVisionRadius), "All card-placement vision radii must be positive.");
+            if (heroVisionRadius <= Fix64.Zero
+                || unitVisionRadius <= Fix64.Zero
+                || buildingVisionRadius <= Fix64.Zero
+                || enemyStrongholdFriendlyUnitDeployRadius <= Fix64.Zero)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(heroVisionRadius),
+                    "All card-placement radii must be positive.");
+            }
             if (blockHiddenRevealByEnemyStronghold && !LogicStrongholdMap.IsInitialized)
             {
                 throw new InvalidOperationException(
@@ -329,6 +370,7 @@ namespace AAAGame.Card
             s_HeroVisionRadius = heroVisionRadius;
             s_UnitVisionRadius = unitVisionRadius;
             s_BuildingVisionRadius = buildingVisionRadius;
+            s_EnemyStrongholdFriendlyUnitDeployRadius = enemyStrongholdFriendlyUnitDeployRadius;
             s_BlockHiddenRevealByEnemyStronghold = blockHiddenRevealByEnemyStronghold;
             s_StaticForbiddenShapes.Clear();
             for (int i = 0; i < staticForbiddenShapes.Count; i++)
@@ -342,11 +384,15 @@ namespace AAAGame.Card
 
         private static Fix64 ResolveVisionRadius(string configKey)
         {
-            Fix64 configured = FixedConfigReader.ReadRequiredPositiveFixedConfig(configKey);
-            Fix64 radius = (configured);
+            Fix64 radius = ResolvePositiveConfig(configKey);
             if (radius <= Fix64.Zero)
                 throw new InvalidOperationException($"Logic card-placement vision config '{configKey}' converted to {radius.RawValue} raw.");
             return radius;
+        }
+
+        private static Fix64 ResolvePositiveConfig(string configKey)
+        {
+            return FixedConfigReader.ReadRequiredPositiveFixedConfig(configKey);
         }
 
         private static void RevealCircle(FixVector2 position, Fix64 radius)
@@ -578,6 +624,7 @@ namespace AAAGame.Card
             s_HeroVisionRadius = Fix64.Zero;
             s_UnitVisionRadius = Fix64.Zero;
             s_BuildingVisionRadius = Fix64.Zero;
+            s_EnemyStrongholdFriendlyUnitDeployRadius = Fix64.Zero;
             s_BlockHiddenRevealByEnemyStronghold = false;
             s_StaticForbiddenHash = 0;
             s_StaticForbiddenShapes.Clear();

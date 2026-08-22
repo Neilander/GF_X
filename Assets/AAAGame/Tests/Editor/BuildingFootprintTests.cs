@@ -25,13 +25,4 @@ public sealed class BuildingFootprintTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => BuildingFootprint.ResolveGridSize(BuilType.Tech));
     }
-
-    [Test]
-    public void ForbiddenBorder_IsExactlyOneGridCell()
-    {
-        Assert.AreEqual(1, BuildingFootprint.ForbiddenBorderGridSize);
-        Assert.AreEqual(
-            (Fix64)BuildingFootprint.GridCellWorldSize,
-            AAAGame.Card.LogicCardPlacementAuthority.ResolveEnemyBuildingPadding());
-    }
 }

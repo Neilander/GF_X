@@ -16,6 +16,7 @@
 	HeroVisionRadius	英雄视野半径（格）	24
 	UnitVisionRadius	单位视野半径（格）	20
 	BuildingVisionRadius	建筑视野半径（格）	20
+	EnemyStrongholdFriendlyUnitDeployRadius	敌方据点内允许部署卡牌的我方单位接应半径（格）	3
 	KillRewardSupplyRatio	击杀人口与奖励资源之比	10
 	ResourcePointInitialAmount	资源点初始资源量	50
 	BaseCriticalDamageRate	基础暴击伤害百分比	50

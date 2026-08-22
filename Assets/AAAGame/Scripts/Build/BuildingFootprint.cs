@@ -3,7 +3,6 @@ using System;
 public static class BuildingFootprint
 {
     public const float GridCellWorldSize = 1f;
-    public const int ForbiddenBorderGridSize = 1;
     public const string ColliderObjectName = "_BuildingFootprint";
 
     public static int ResolveGridSize(BuilType buildingType)

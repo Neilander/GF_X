@@ -436,18 +436,6 @@ public static class LevelTagRuntime
         return Mathf.Max(1, result);
     }
 
-    public static Fix64 GetEnemyBuildingForbiddenZonePaddingMultiplier()
-    {
-        Fix64 percent = Fix64.Zero;
-        foreach (LevelTagTable tag in ResolveActiveTags())
-        {
-            if (tag.Identifier == "LvTag_TightSecurity")
-                percent += Value(tag, 0);
-        }
-
-        return Fix64.One + percent / (Fix64)100;
-    }
-
     public static int ModifyResourcePointInitialAmount(int baseAmount)
     {
         Fix64 result = (Fix64)Mathf.Max(0, baseAmount);
