@@ -14,8 +14,10 @@ public sealed class LogicSkillCastCommandServiceTests
         public void OnLogicFrameUpdate(Fix64 deltaTime) => TickCount++;
     }
 
-    private sealed class SkillPreviewProbe : ISkillComp, ISkillCastPreviewProvider
+    private sealed class SkillPreviewProbe : ISkillComp, ISkillCastPreviewProvider, ILogicSkillCastCommandConsumer
     {
+        public bool IsCasting => false;
+        public int AcceptedCastCount { get; private set; }
         public bool CanRequestSkillCast(int slotIndex) => true;
 
         public SkillCastPreviewDescriptor GetRequiredSkillCastPreview(int slotIndex) =>
@@ -28,10 +30,12 @@ public sealed class LogicSkillCastCommandServiceTests
 
         public void Init(IEntityContext entity, List<ActiveSkillSO> activeSkills, List<PassiveSkillSO> passiveSkills) { }
         public void Skill(Fix64 deltaTime) { }
+        public void TickCooldown(Fix64 deltaTime) { }
         public void CancelSkills() { }
         public void OnSkillChanged() { }
         public void ShutDown() { }
         public void Resume() { }
+        public void AcceptSkillCastCommand(LogicSkillCastCommand command) => AcceptedCastCount++;
     }
 
     private sealed class SkillAimPresenterProbe : ICastRangePresenter
@@ -207,6 +211,22 @@ public sealed class LogicSkillCastCommandServiceTests
     }
 
     [Test]
+    public void CommandDistinguishesNoTargetFromWorldOriginTarget()
+    {
+        LogicSkillCastCommand noTarget = LogicSkillCastCommandService.ScheduleForNextFrame(
+            new LogicEntityId(11),
+            0);
+        LogicSkillCastCommand worldOriginTarget = LogicSkillCastCommandService.ScheduleForNextFrame(
+            new LogicEntityId(12),
+            0,
+            FixVector2.Zero);
+
+        Assert.IsFalse(noTarget.HasRequestedWorldPosition);
+        Assert.IsTrue(worldOriginTarget.HasRequestedWorldPosition);
+        Assert.AreEqual(FixVector2.Zero, worldOriginTarget.RequestedWorldPosition);
+    }
+
+    [Test]
     public void DuplicatePendingCastForCasterIsRejected()
     {
         LogicSkillCastCommandService.ScheduleForNextFrame(
@@ -301,6 +321,41 @@ public sealed class LogicSkillCastCommandServiceTests
         AssertAimPresentationStateCleared();
     }
 
+    [Test]
+    public void GhostHero_CannotRequestOrCommitAnActiveSkill()
+    {
+        LogicEntityState caster = CreateAimCaster();
+        var presenter = new SkillAimPresenterProbe();
+        SkillCastPreviewDescriptor descriptor = ((ISkillCastPreviewProvider)caster.skillComp)
+            .GetRequiredSkillCastPreview(1);
+        BeginAimPresentation(1, caster, presenter, descriptor);
+        SetAimWorldPosition(new FixVector2((Fix64)4, (Fix64)5));
+
+        SetGhostState(caster, true);
+
+        Assert.IsFalse(SkillCastPresentationService.CanRequestSkillCast(1));
+        Assert.IsFalse(SkillCastPresentationService.CommitAim());
+        Assert.IsFalse(SkillCastPresentationService.IsAiming);
+        Assert.AreEqual(0, LogicSkillCastCommandService.PendingCount);
+        Assert.AreEqual(0, LogicSkillCastCommandService.History.Count);
+        Assert.AreEqual(1, presenter.HideCount);
+    }
+
+    [Test]
+    public void PendingActiveSkillCommand_IsRejectedWhenHeroBecomesGhostBeforeExecution()
+    {
+        LogicEntityState caster = CreateAimCaster();
+        var skill = (SkillPreviewProbe)caster.skillComp;
+        LogicSkillCastCommandService.ScheduleForNextFrame(caster.LogicEntityId, 0);
+        SetGhostState(caster, true);
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicSkillCastCommandService.ApplyFrame(1);
+
+        Assert.AreEqual(0, skill.AcceptedCastCount);
+        Assert.AreEqual(0, LogicSkillCastCommandService.PendingCount);
+    }
+
     private static ulong ComputeHash()
     {
         var hasher = new LogicStateHasher();
@@ -353,6 +408,20 @@ public sealed class LogicSkillCastCommandServiceTests
         Assert.IsNull(GetPresentationField<ICastRangePresenter>("s_RangePresenter", flags));
         Assert.IsNull(GetPresentationField<CylinderTargetSelector>("s_Selector", flags));
         Assert.IsFalse(GetPresentationField<bool>("s_HasWorldPosition", flags));
+    }
+
+    private static void SetGhostState(LogicEntityState state, bool enabled)
+    {
+        FieldInfo heroField = typeof(LogicEntityState).GetField(
+            "<IsHeroEntity>k__BackingField",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        FieldInfo ghostField = typeof(LogicEntityState).GetField(
+            "<IsGhostState>k__BackingField",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(heroField);
+        Assert.NotNull(ghostField);
+        heroField.SetValue(state, true);
+        ghostField.SetValue(state, enabled);
     }
 
     private static T GetPresentationField<T>(string name, BindingFlags flags)

@@ -130,7 +130,18 @@ namespace UnityGameFramework.Runtime
         FlowSteeringVelocity = 119,
         FlowSteeringDirectStatic = 120,
         FlowSteeringDirectLineOfSight = 121,
-        Count = 122
+        CharacterTargetingEvaluate = 122,
+        CharacterTargetingCandidateScan = 123,
+        CharacterTargetingReachability = 124,
+        CharacterTargetingWallDetour = 125,
+        FlowAttackAreaSetup = 126,
+        FlowAttackAreaScan = 127,
+        FlowAttackAreaClearance = 128,
+        FlowPrepareStartCell = 129,
+        FlowPrepareStableGoal = 130,
+        FlowPreparePathHandle = 131,
+        FlowPrepareTileDemand = 132,
+        Count = 133
     }
 
     public static class MainThreadFrameProfiler
@@ -146,6 +157,8 @@ namespace UnityGameFramework.Runtime
         private static readonly long ForceTrackedLogTicks = Stopwatch.Frequency * ForceTrackedLogMilliseconds / 1000;
         private static readonly long[] ScopeTicks = new long[(int)MainThreadPerfScope.Count];
         private static readonly int[] ScopeCalls = new int[(int)MainThreadPerfScope.Count];
+        private static readonly long[] LastCompletedScopeTicks = new long[(int)MainThreadPerfScope.Count];
+        private static readonly int[] LastCompletedScopeCalls = new int[(int)MainThreadPerfScope.Count];
         private static readonly long[] ScopeAllocatedBytes = new long[(int)MainThreadPerfScope.Count];
         private static readonly long[] IntervalScopeAllocatedBytes = new long[(int)MainThreadPerfScope.Count];
         private static readonly Dictionary<Type, LogicListenerSample> LogicListenerSamples = new Dictionary<Type, LogicListenerSample>();
@@ -184,6 +197,7 @@ namespace UnityGameFramework.Runtime
         private static long _intervalAllocatedBytes;
 
         public static bool LoggingEnabled { get; set; }
+        public static bool ConsoleLoggingEnabled { get; set; } = true;
         public static int LastCompletedFrame { get; private set; } = -1;
         public static double LastCompletedFrameMilliseconds { get; private set; }
         public static double LastCompletedTrackedMilliseconds { get; private set; }
@@ -194,11 +208,30 @@ namespace UnityGameFramework.Runtime
         private static void ResetForPlaySession()
         {
             LoggingEnabled = false;
+            ConsoleLoggingEnabled = true;
             LastCompletedFrame = -1;
             LastCompletedFrameMilliseconds = 0.0;
             LastCompletedTrackedMilliseconds = 0.0;
             LastCompletedUntrackedMilliseconds = 0.0;
             LastCompletedLogicFrameMilliseconds = 0.0;
+            Array.Clear(LastCompletedScopeTicks, 0, LastCompletedScopeTicks.Length);
+            Array.Clear(LastCompletedScopeCalls, 0, LastCompletedScopeCalls.Length);
+        }
+
+        public static double GetLastCompletedScopeMilliseconds(MainThreadPerfScope scope)
+        {
+            int index = (int)scope;
+            if (index < 0 || index >= LastCompletedScopeTicks.Length)
+                throw new ArgumentOutOfRangeException(nameof(scope), scope, "Unknown main thread perf scope.");
+            return TicksToMs(LastCompletedScopeTicks[index]);
+        }
+
+        public static int GetLastCompletedScopeCalls(MainThreadPerfScope scope)
+        {
+            int index = (int)scope;
+            if (index < 0 || index >= LastCompletedScopeCalls.Length)
+                throw new ArgumentOutOfRangeException(nameof(scope), scope, "Unknown main thread perf scope.");
+            return LastCompletedScopeCalls[index];
         }
 
         public static void PulseFrame()
@@ -310,6 +343,8 @@ namespace UnityGameFramework.Runtime
             LastCompletedUntrackedMilliseconds = untrackedMs;
             long logicFrameTicks = ScopeTicks[(int)MainThreadPerfScope.LogicFrameAdvance];
             LastCompletedLogicFrameMilliseconds = TicksToMs(logicFrameTicks);
+            Array.Copy(ScopeTicks, LastCompletedScopeTicks, ScopeTicks.Length);
+            Array.Copy(ScopeCalls, LastCompletedScopeCalls, ScopeCalls.Length);
 
             EnsureRecorders();
 
@@ -321,6 +356,8 @@ namespace UnityGameFramework.Runtime
                             || allocatedBytes >= ForceAllocationLogBytes
                             || collectionCount > 0
                             || ScopeCalls[(int)MainThreadPerfScope.ClusterSpawnUnits] > 0;
+            if (!ConsoleLoggingEnabled)
+                return;
             if (!slowFrame && !highAllocation && !forceLog)
                 return;
             int minLogFrameInterval = highAllocation ? 10 : MinLogFrameInterval;
@@ -375,7 +412,7 @@ namespace UnityGameFramework.Runtime
                 BuildAllocationScopeSummary(ScopeAllocatedBytes),
                 BuildAllocationScopeSummary(IntervalScopeAllocatedBytes),
                 BuildScopeSummary(MainThreadPerfScope.FlowWorldBuildQueue, MainThreadPerfScope.FlowTileBuildQueue),
-                BuildScopeSummary(MainThreadPerfScope.LogicFrameAdvance, MainThreadPerfScope.FlowSteeringDirectLineOfSight),
+                BuildScopeSummary(MainThreadPerfScope.LogicFrameAdvance, MainThreadPerfScope.FlowAttackAreaClearance),
                 BuildLogicListenerSummary());
 
             if (collectionCount > 0)

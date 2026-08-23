@@ -108,7 +108,7 @@ public static class LogicUnitDeathEventService
     }
 }
 
-public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuildingLogicContext, IHeroLogicContext
+public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, ISkillFacingContext, IBuildingLogicContext, IHeroLogicContext
 {
     private const string ArmyForcePropertyId = "Building_ArmyForce";
     private const string ArmySupplyPerUnitPropertyId = "Building_ArmySupplyPerUnit";
@@ -142,6 +142,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     private bool m_HasDamageAtCombatClock;
     private bool m_CombatCapabilitiesLockedForDisabled;
     private bool m_CombatCapabilitiesLockedForGhost;
+    private bool m_SkillCapabilityLockedForGhost;
     private BuildingData m_BuildingData;
     private string m_BuildingInstanceId;
     private string m_StrongholdId;
@@ -519,12 +520,26 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             LockComp(m_AtkComp, GhostCapabilityLocker);
             LockComp(m_TargetingComp, GhostCapabilityLocker);
             m_CombatCapabilitiesLockedForGhost = true;
+            if (m_SkillComp != null)
+            {
+                CancelRunningSkills();
+                LockComp(m_SkillComp, GhostCapabilityLocker);
+                m_SkillCapabilityLockedForGhost = true;
+            }
         }
-        else if (m_CombatCapabilitiesLockedForGhost)
+        else
         {
-            ResumeComp(m_AtkComp, GhostCapabilityLocker);
-            ResumeComp(m_TargetingComp, GhostCapabilityLocker);
-            m_CombatCapabilitiesLockedForGhost = false;
+            if (m_CombatCapabilitiesLockedForGhost)
+            {
+                ResumeComp(m_AtkComp, GhostCapabilityLocker);
+                ResumeComp(m_TargetingComp, GhostCapabilityLocker);
+                m_CombatCapabilitiesLockedForGhost = false;
+            }
+            if (m_SkillCapabilityLockedForGhost)
+            {
+                ResumeComp(m_SkillComp, GhostCapabilityLocker);
+                m_SkillCapabilityLockedForGhost = false;
+            }
         }
         GhostStateChanged?.Invoke(enabled);
     }
@@ -615,7 +630,16 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public void SetAtkComp(IAtkComp atkComp) => m_AtkComp = atkComp ?? throw new ArgumentNullException(nameof(atkComp));
     public void SetTargetingComp(ITargetingComp targetingComp) => m_TargetingComp = targetingComp ?? throw new ArgumentNullException(nameof(targetingComp));
     public void SetWeaponComp(WeaponComp weaponComp) => m_WeaponComp = weaponComp ?? throw new ArgumentNullException(nameof(weaponComp));
-    public void SetSkillComp(ISkillComp skillComp) => m_SkillComp = skillComp ?? throw new ArgumentNullException(nameof(skillComp));
+    public void SetSkillComp(ISkillComp skillComp)
+    {
+        m_SkillComp = skillComp ?? throw new ArgumentNullException(nameof(skillComp));
+        if (!IsGhostState)
+            return;
+
+        m_SkillComp.CancelSkills();
+        LockComp(m_SkillComp, GhostCapabilityLocker);
+        m_SkillCapabilityLockedForGhost = true;
+    }
     public void CancelRunningSkills()
     {
         m_SkillComp?.CancelSkills();
@@ -894,6 +918,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             case MAEntityLogicFramePhase.Attack:
                 if (CanRun(m_AtkComp))
                     m_AtkComp.Attack(deltaTime);
+                UpdateForwardForAttack();
                 break;
             case MAEntityLogicFramePhase.MoveIntent:
                 if (Alive && CanRun(m_DurationMoveEffectComp))
@@ -918,7 +943,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
                 }
                 FixVector2 frameStartPosition = Position;
                 FixVector2 displacement = resolved - frameStartPosition;
-                UpdateForwardForMoveCommit(frameStartPosition);
+                UpdateForwardForMoveCommit();
                 Position = resolved;
                 m_MoveComp.CommitResolvedDisplacement(displacement);
                 m_MoveExecutor.CommitPreparedLogicFrame(LogicFrameRuntime.CurrentFrame);
@@ -926,6 +951,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             case MAEntityLogicFramePhase.PostUpdate:
                 if (CanRun(m_SkillComp))
                     m_SkillComp.Skill(deltaTime);
+                else if (m_SkillCapabilityLockedForGhost)
+                    m_SkillComp.TickCooldown(deltaTime);
                 break;
         }
 
@@ -933,35 +960,40 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         m_NextPhase = (MAEntityLogicFramePhase)((int)phase + 1);
     }
 
-    private void UpdateForwardForMoveCommit(FixVector2 frameStartPosition)
+    private void UpdateForwardForAttack()
     {
-        if (IsBuildingEntity)
+        if (IsBuildingEntity || m_AtkComp?.IsAttacking != true)
             return;
 
         IEntityContext target = m_TargetingComp?.CurrentTarget;
-        if (m_AtkComp?.IsAttacking == true && target?.Alive == true)
-        {
-            FixVector2 toTarget = LogicEntityFrameSnapshotService.GetRequiredPosition(target) - frameStartPosition;
-            if (FixVector2.SqrMagnitude(toTarget) > Fix64.Zero)
-            {
-                Forward = toTarget.GetNormalized();
-                return;
-            }
-        }
-
-        FixVector2 moveIntent = m_MoveComp?.NavDirectionFixed ?? FixVector2.Zero;
-        if (FixVector2.SqrMagnitude(moveIntent) > Fix64.Zero)
-        {
-            Forward = moveIntent;
+        if (target?.Alive != true)
             return;
-        }
 
-        if (target?.Alive == true)
-        {
-            FixVector2 toTarget = LogicEntityFrameSnapshotService.GetRequiredPosition(target) - frameStartPosition;
-            if (FixVector2.SqrMagnitude(toTarget) > Fix64.Zero)
-                Forward = toTarget.GetNormalized();
-        }
+        FixVector2 toTarget = LogicEntityFrameSnapshotService.GetRequiredPosition(target) - Position;
+        if (FixVector2.SqrMagnitude(toTarget) > Fix64.Zero)
+            Forward = toTarget.GetNormalized();
+    }
+
+    private void UpdateForwardForMoveCommit()
+    {
+        if (IsBuildingEntity || m_AtkComp?.IsAttacking == true || m_SkillComp?.IsCasting == true)
+            return;
+        if (m_MoveComp == null)
+            throw new InvalidOperationException($"LogicEntityState has no move component. entity={EntityId.Value}.");
+        if (!m_MoveComp.IsMoving)
+            return;
+
+        FixVector2 moveIntent = m_MoveComp.NavDirectionFixed;
+        if (FixVector2.SqrMagnitude(moveIntent) == Fix64.Zero)
+            throw new InvalidOperationException($"Moving entity has zero navigation direction. entity={EntityId.Value}.");
+        Forward = moveIntent.GetNormalized();
+    }
+
+    public void SetSkillFacingDirectionFixed(FixVector2 direction)
+    {
+        if (FixVector2.SqrMagnitude(direction) == Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(direction), direction, "Skill facing direction must be non-zero.");
+        Forward = direction.GetNormalized();
     }
 
     public void CompleteLogicFrame(Fix64 deltaTime)

@@ -208,8 +208,8 @@ public sealed class LogicReplayFrameRecord
 
 public sealed class LogicReplayLog
 {
-    public const int CurrentProtocolVersion = 102;
-    public const string CurrentContentVersion = "Avenge-30Hz-v102";
+    public const int CurrentProtocolVersion = 105;
+    public const string CurrentContentVersion = "Avenge-30Hz-v105";
 
     internal LogicReplayLog(
         LogicTimeControlSnapshot initialTimeControlSnapshot,
@@ -942,6 +942,7 @@ public static class LogicReplayComparer
                 || left.Sequence != right.Sequence
                 || left.CasterId != right.CasterId
                 || left.SlotIndex != right.SlotIndex
+                || left.HasRequestedWorldPosition != right.HasRequestedWorldPosition
                 || left.RequestedWorldPosition != right.RequestedWorldPosition)
             {
                 return new LogicReplayDivergence(

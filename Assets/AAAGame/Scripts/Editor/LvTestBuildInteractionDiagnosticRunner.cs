@@ -43,6 +43,7 @@ internal static class LvTestBuildInteractionDiagnosticRunner
     private static bool s_NavigationReadyObserved;
     private static int s_NavigationReadyWorldCount;
     private static int s_RuntimeEnemyViewCount;
+    private static int s_NavigationTopologyBeforeDefend;
     private static double s_EditorPauseReleaseTime;
     private static ulong s_EditorPauseStartFrame;
     private static ulong s_EditorPauseResumeRequestFrame;
@@ -787,7 +788,7 @@ internal static class LvTestBuildInteractionDiagnosticRunner
             .Append(" rebaseLogFrame=").Append(s_EditorPauseRebaseLogFrame)
             .Append(" catchUps=").Append(s_EditorPauseCatchUpCount)
             .AppendLine();
-        PreparePendingNavigationRebuild();
+        PrepareNavigationRebuildBeforeDefend();
         s_RuntimeIssueDeadline = EditorApplication.timeSinceStartup + RuntimeIssueTimeoutSeconds;
         PhaseManager.SwitchToPhase(GamePhase.Defend);
         WriteResult(s_Report.ToString());
@@ -808,8 +809,12 @@ internal static class LvTestBuildInteractionDiagnosticRunner
         if (s_NavigationReadyObserved && s_NavigationReadyWorldCount != ExpectedNavigationWorldCount)
         {
             throw new InvalidOperationException(
-                $"Defend navigation completion rebuilt {s_NavigationReadyWorldCount} worlds; expected {ExpectedNavigationWorldCount}.");
+                $"Defend navigation readiness reported {s_NavigationReadyWorldCount} worlds; expected {ExpectedNavigationWorldCount}.");
         }
+        if (FlowFieldCrowdMovementSystem.NavigationTopologyVersion != s_NavigationTopologyBeforeDefend)
+            throw new InvalidOperationException(
+                $"Defend phase changed navigation topology after readiness. before={s_NavigationTopologyBeforeDefend}, " +
+                $"after={FlowFieldCrowdMovementSystem.NavigationTopologyVersion}.");
 
         if (!s_NavigationReadyObserved
             || !s_DefendSpawnObserved
@@ -908,7 +913,7 @@ internal static class LvTestBuildInteractionDiagnosticRunner
         return count;
     }
 
-    private static void PreparePendingNavigationRebuild()
+    private static void PrepareNavigationRebuildBeforeDefend()
     {
         Vector3 center = new Vector3(10.35f, 0f, 5.35f);
         Vector3 halfExtents = new Vector3(0.04f, 0f, 0.04f);
@@ -920,6 +925,28 @@ internal static class LvTestBuildInteractionDiagnosticRunner
 
         if (!FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty())
             throw new InvalidOperationException("LvTest diagnostic failed to create a pending runtime navigation rebuild before Defend.");
+
+        try
+        {
+            FlowFieldCrowdMovementSystem.RequireRuntimeNavigationReady("lvtest-before-obstacle-update-complete");
+            throw new InvalidOperationException("LvTest navigation readiness accepted a pending runtime obstacle rebuild.");
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (!exception.Message.Contains("runtime obstacle update is pending", StringComparison.Ordinal))
+                throw;
+        }
+
+        for (int i = 0; i < 4096 && FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(); i++)
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+        if (FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty())
+            throw new InvalidOperationException("LvTest obstacle update chain did not complete navigation before Defend.");
+
+        int readyWorldCount = FlowFieldCrowdMovementSystem.RequireRuntimeNavigationReady("lvtest-before-defend");
+        if (readyWorldCount != ExpectedNavigationWorldCount)
+            throw new InvalidOperationException(
+                $"LvTest prepared {readyWorldCount} navigation worlds before Defend; expected {ExpectedNavigationWorldCount}.");
+        s_NavigationTopologyBeforeDefend = FlowFieldCrowdMovementSystem.NavigationTopologyVersion;
     }
 
     private static void ObserveEnemyAttacksAndViewScales()
@@ -1013,6 +1040,7 @@ internal static class LvTestBuildInteractionDiagnosticRunner
         s_EnemyAttackObserved = false;
         s_NavigationReadyObserved = false;
         s_NavigationReadyWorldCount = 0;
+        s_NavigationTopologyBeforeDefend = 0;
         s_RuntimeEnemyViewCount = 0;
         s_EditorPauseReleaseTime = 0.0;
         s_EditorPauseStartFrame = 0;

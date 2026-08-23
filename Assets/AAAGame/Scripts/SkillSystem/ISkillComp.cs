@@ -2,10 +2,44 @@
 
 public interface ISkillComp : ICapability
 {
+    bool IsCasting { get; }
     void Init(IEntityContext entity, List<ActiveSkillSO> activeSkills, List<PassiveSkillSO> passiveSkills);
     void Skill(Fix64 deltaTime);
+    void TickCooldown(Fix64 deltaTime);
     void CancelSkills();
     void OnSkillChanged();
+}
+
+public static class ActiveSkillCastEligibility
+{
+    public static bool CanCast(IEntityContext caster)
+    {
+        if (caster == null)
+            throw new System.ArgumentNullException(nameof(caster));
+        return !caster.TryGetLogicHero(out IHeroLogicContext hero) || !hero.IsGhostState;
+    }
+}
+
+public static class SkillFacingUtility
+{
+    public static void ApplyAtCastStart(IEntityContext caster, ActiveSkillSO skill, SkillInfo info)
+    {
+        if (caster == null)
+            throw new System.ArgumentNullException(nameof(caster));
+        if (skill == null)
+            throw new System.ArgumentNullException(nameof(skill));
+        if (info == null)
+            throw new System.ArgumentNullException(nameof(info));
+        if (!skill.TryResolveCastFacingDirection(caster, info, out FixVector2 direction))
+            return;
+        if (caster is not ISkillFacingContext facingContext)
+        {
+            throw new System.InvalidOperationException(
+                $"Directional skill caster does not support skill facing. caster={caster.LogicEntityId.Value}, skill={skill.skillId}.");
+        }
+
+        facingContext.SetSkillFacingDirectionFixed(direction);
+    }
 }
 
 public interface ISkillActionPresentationProvider

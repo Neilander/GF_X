@@ -99,7 +99,7 @@ public static class LogicFactionVisionService
     {
         if (victim == null)
             throw new ArgumentNullException(nameof(victim));
-        if (attacker == null || !EntityCombatTeamHelper.IsEnemy(victim, attacker))
+        if (attacker == null || !attacker.Alive || !EntityCombatTeamHelper.IsEnemy(victim, attacker))
             return;
 
         Fix64 outerRange = ReadWorldDistance(AggroOuterRangeConfigKey);

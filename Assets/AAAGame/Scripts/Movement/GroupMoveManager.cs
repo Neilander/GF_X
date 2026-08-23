@@ -375,9 +375,9 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
         FlowFieldCrowdMovementSystem.MarkWorldDirty(reason);
     }
 
-    public void PrewarmNavigationWorlds()
+    public void PrepareInitialNavigationWorlds()
     {
-        FlowFieldCrowdMovementSystem.PrewarmNavigationWorlds();
+        FlowFieldCrowdMovementSystem.PrepareInitialNavigationWorlds();
     }
 
     public int CompleteRuntimeRebuildQueue()

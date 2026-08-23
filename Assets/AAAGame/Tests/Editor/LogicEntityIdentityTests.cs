@@ -9,13 +9,44 @@ public class LogicEntityIdentityTests
 {
     private sealed class SkillRefreshProbe : ISkillComp
     {
+        public bool IsCasting => false;
         public int RefreshCount { get; private set; }
         public void Init(IEntityContext entity, List<ActiveSkillSO> activeSkills, List<PassiveSkillSO> passiveSkills) { }
         public void Skill(Fix64 deltaTime) { }
+        public void TickCooldown(Fix64 deltaTime) { }
         public void CancelSkills() { }
         public void OnSkillChanged() => RefreshCount++;
         public void ShutDown() { }
         public void Resume() { }
+    }
+
+    private sealed class GhostSkillProbe : ISkillComp
+    {
+        public bool IsCasting { get; private set; } = true;
+        public bool PassiveEffectActive { get; private set; } = true;
+        public int CancelCount { get; private set; }
+        public int ShutdownCount { get; private set; }
+        public int ResumeCount { get; private set; }
+
+        public void Init(IEntityContext entity, List<ActiveSkillSO> activeSkills, List<PassiveSkillSO> passiveSkills) { }
+        public void Skill(Fix64 deltaTime) { }
+        public void TickCooldown(Fix64 deltaTime) { }
+        public void CancelSkills()
+        {
+            CancelCount++;
+            IsCasting = false;
+        }
+        public void OnSkillChanged() { }
+        public void ShutDown()
+        {
+            ShutdownCount++;
+            PassiveEffectActive = false;
+        }
+        public void Resume()
+        {
+            ResumeCount++;
+            PassiveEffectActive = true;
+        }
     }
 
     private sealed class HealingProbeBuff : BuffCallback
@@ -2789,6 +2820,8 @@ public class LogicEntityIdentityTests
     public void HeroGhostState_LocksCombatAndInvincibilitySourceBlocksDirectDamage()
     {
         LogicEntityState state = CreateConfiguredState("Hero_Ghost", true);
+        var skill = new GhostSkillProbe();
+        state.SetSkillComp(skill);
         ActivateRequestedState(state.EntityId, 1);
         int ghostChangeCount = 0;
         state.GhostStateChanged += _ => ghostChangeCount++;
@@ -2799,6 +2832,11 @@ public class LogicEntityIdentityTests
         Assert.AreEqual(0u, state.AgentCollisionMask);
         Assert.IsFalse(state.CanRun(state.AtkComp));
         Assert.IsFalse(state.CanRun(state.TargetComp));
+        Assert.IsFalse(state.CanRun(state.skillComp));
+        Assert.IsFalse(skill.IsCasting);
+        Assert.IsFalse(skill.PassiveEffectActive);
+        Assert.AreEqual(1, skill.CancelCount);
+        Assert.AreEqual(1, skill.ShutdownCount);
 
         Assert.IsTrue(state.RegisterInvincibleSource("test-ghost"));
         state.TakeDamage((Fix64)50, HealthModifyType.empty);
@@ -2812,6 +2850,9 @@ public class LogicEntityIdentityTests
         Assert.AreEqual((Fix64)100, state.HealthValue);
         Assert.IsTrue(state.CanRun(state.AtkComp));
         Assert.IsTrue(state.CanRun(state.TargetComp));
+        Assert.IsTrue(state.CanRun(state.skillComp));
+        Assert.IsTrue(skill.PassiveEffectActive);
+        Assert.AreEqual(1, skill.ResumeCount);
         Assert.AreEqual(2, ghostChangeCount);
     }
 

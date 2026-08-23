@@ -47,7 +47,7 @@ public static class SkillCastPresentationService
             return true;
         }
 
-        Schedule(caster, slotIndex, FixVector2.Zero);
+        Schedule(caster, slotIndex);
         return true;
     }
 
@@ -92,6 +92,11 @@ public static class SkillCastPresentationService
         if (inputManager == null)
             throw new ArgumentNullException(nameof(inputManager));
         if (s_Caster == null || !s_Caster.IsRegisteredInLogicWorld())
+        {
+            Cancel();
+            return;
+        }
+        if (!ActiveSkillCastEligibility.CanCast(s_Caster))
         {
             Cancel();
             return;
@@ -144,6 +149,11 @@ public static class SkillCastPresentationService
             return false;
         if (!s_HasWorldPosition)
             return false;
+        if (!ActiveSkillCastEligibility.CanCast(s_Caster))
+        {
+            Cleanup();
+            return false;
+        }
 
         IEntityContext caster = s_Caster;
         int slotIndex = s_SlotIndex;
@@ -189,6 +199,11 @@ public static class SkillCastPresentationService
             provider = null;
             return false;
         }
+        if (!ActiveSkillCastEligibility.CanCast(caster))
+        {
+            provider = null;
+            return false;
+        }
         if (caster is not ISkillCompHost host || host.skillComp is not ISkillCastPreviewProvider resolved)
             throw new InvalidOperationException($"Player has no skill cast preview provider. caster={caster.LogicEntityId.Value}.");
         provider = resolved;
@@ -203,6 +218,14 @@ public static class SkillCastPresentationService
             caster.LogicEntityId,
             slotIndex,
             requestedWorldPosition);
+        Changed?.Invoke();
+    }
+
+    private static void Schedule(IEntityContext caster, int slotIndex)
+    {
+        if (caster == null || !caster.LogicEntityId.IsValid)
+            throw new InvalidOperationException("Skill cast scheduling requires a valid caster.");
+        LogicSkillCastCommandService.Submit(caster.LogicEntityId, slotIndex);
         Changed?.Invoke();
     }
 

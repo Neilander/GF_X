@@ -279,10 +279,7 @@ public partial class GeneralSetup : GameFrameworkComponent
                 $"GeneralSetup initial phase changed during level spawn. expected={initialPhase}, authority={authoritativePhase}.");
         }
         LogicEntityLifecycleService.CommitPendingInitializationEntities();
-        GroupMoveManager groupMoveManager = GroupMoveManager.Instance
-                                            ?? throw new System.InvalidOperationException("GeneralSetup requires GroupMoveManager before navigation prewarm.");
-        groupMoveManager.PrewarmNavigationWorlds();
-        LogSetupTiming("navigation-prewarmed");
+        StageCheckpoint restoredCheckpoint = null;
         if (pending != null)
         {
             GlobalBuffManager globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>()
@@ -291,13 +288,24 @@ public partial class GeneralSetup : GameFrameworkComponent
             globalBuffManager.RestoreStageCheckpointTechEffects(pending.InGameData);
             for (int i = 0; i < pending.Buildings.Count; i++)
                 BuildManager.ApplyStageCheckpointBuildingProperties(pending.Buildings[i]);
-            StageCheckpoint checkpoint = StageCheckpointRuntimeCoordinator.BeginRestoredSession(levelId);
-            PhaseManager.EnterRestoredPhaseOnGameStart(checkpoint.Phase);
-            StageCheckpointRuntimeCoordinator.CompleteRestore();
+            restoredCheckpoint = StageCheckpointRuntimeCoordinator.BeginRestoredSession(levelId);
         }
         else
         {
             StageCheckpointRuntimeCoordinator.BeginSession(levelId);
+        }
+
+        GroupMoveManager groupMoveManager = GroupMoveManager.Instance
+                                            ?? throw new System.InvalidOperationException("GeneralSetup requires GroupMoveManager before initial navigation preparation.");
+        groupMoveManager.PrepareInitialNavigationWorlds();
+        LogSetupTiming("initial-navigation-ready");
+        if (pending != null)
+        {
+            PhaseManager.EnterRestoredPhaseOnGameStart(restoredCheckpoint.Phase);
+            StageCheckpointRuntimeCoordinator.CompleteRestore();
+        }
+        else
+        {
             PhaseManager.EnterCurrentPhaseOnGameStart();
         }
         m_InitialPhaseEntered = true;

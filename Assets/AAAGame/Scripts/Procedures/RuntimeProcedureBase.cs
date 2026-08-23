@@ -158,6 +158,13 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         m_EditorPauseNeedsClockRebase = false;
 #endif
         FlowFieldCrowdMovementSystem.ForceEndRuntimeNavigationTransition();
+        bool logicInputTimelineStarted = InputModel.RequireActive().LogicTimeline.IsStarted;
+        if (m_LogicFrameClockStarted && logicInputTimelineStarted)
+        {
+            if (ReferenceEquals(m_LogicInputManager, null))
+                throw new InvalidOperationException("RuntimeProcedureBase cannot end a started logic input timeline without InputManager.");
+            m_LogicInputManager.EndLogicInputTimeline();
+        }
         if (StageCheckpointRuntimeCoordinator.IsActive)
             StageCheckpointRuntimeCoordinator.EndSession();
         StageCheckpointRuntimeCoordinator.AbortPendingRestore();

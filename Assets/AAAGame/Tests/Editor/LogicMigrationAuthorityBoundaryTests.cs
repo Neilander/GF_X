@@ -359,14 +359,18 @@ public sealed class LogicMigrationAuthorityBoundaryTests
     {
         string procedureSource = ReadProjectSource("AAAGame/Scripts/Procedures/RuntimeProcedureBase.cs");
         int onLeave = procedureSource.IndexOf("protected override void OnLeave", StringComparison.Ordinal);
-        int deactivate = procedureSource.IndexOf("LogicEntityLifecycleService.DeactivateAllForShutdown();", onLeave, StringComparison.Ordinal);
+        int checkInputTimeline = procedureSource.IndexOf("InputModel.RequireActive().LogicTimeline.IsStarted", onLeave, StringComparison.Ordinal);
+        int endInput = procedureSource.IndexOf("m_LogicInputManager.EndLogicInputTimeline();", onLeave, StringComparison.Ordinal);
+        int deactivate = procedureSource.IndexOf("LogicEntityLifecycleService.DeactivateAllForShutdown();", endInput, StringComparison.Ordinal);
         int hideViews = procedureSource.IndexOf("GF.Entity.HideAllLoadedEntities();", deactivate, StringComparison.Ordinal);
         int releaseModels = procedureSource.IndexOf("m_RuntimeInitPipeline?.Shutdown();", hideViews, StringComparison.Ordinal);
         int endPresentation = procedureSource.IndexOf("ProjectilePresentationService.EndTimeline();", releaseModels, StringComparison.Ordinal);
         int endLifecycle = procedureSource.IndexOf("LogicEntityLifecycleService.EndTimeline();", endPresentation, StringComparison.Ordinal);
 
         Assert.That(onLeave, Is.GreaterThanOrEqualTo(0));
-        Assert.That(deactivate, Is.GreaterThan(onLeave));
+        Assert.That(checkInputTimeline, Is.GreaterThan(onLeave));
+        Assert.That(endInput, Is.GreaterThan(checkInputTimeline));
+        Assert.That(deactivate, Is.GreaterThan(endInput));
         Assert.That(hideViews, Is.GreaterThan(deactivate));
         Assert.That(releaseModels, Is.GreaterThan(hideViews));
         Assert.That(endPresentation, Is.GreaterThan(releaseModels));

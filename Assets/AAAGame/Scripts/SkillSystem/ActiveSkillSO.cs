@@ -146,6 +146,48 @@ public class ActiveSkillSO : SkillEffectSO
         }
     }
 
+    public virtual bool TryResolveCastFacingDirection(
+        IEntityContext caster,
+        SkillInfo info,
+        out FixVector2 direction)
+    {
+        if (caster == null)
+            throw new ArgumentNullException(nameof(caster));
+        if (info == null)
+            throw new ArgumentNullException(nameof(info));
+
+        bool requiresWorldPosition = false;
+        if (actions != null)
+        {
+            for (int i = 0; i < actions.Count; i++)
+            {
+                if (actions[i] is PositionSelectAction)
+                {
+                    requiresWorldPosition = true;
+                    break;
+                }
+            }
+        }
+
+        if (!requiresWorldPosition)
+        {
+            direction = FixVector2.Zero;
+            return false;
+        }
+        if (!info.hasRequestedWorldPosition)
+            throw new InvalidOperationException($"Directional skill has no requested world position. skillId={skillId}.");
+
+        FixVector2 offset = info.requestedWorldPosition - caster.LogicFramePositionFixed();
+        if (FixVector2.SqrMagnitude(offset) == Fix64.Zero)
+        {
+            direction = FixVector2.Zero;
+            return false;
+        }
+
+        direction = offset.GetNormalized();
+        return true;
+    }
+
     protected virtual void SwitchToNextAction(SkillInfo info)
     {
         info.currentIndex += 1;

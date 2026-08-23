@@ -288,9 +288,10 @@ public sealed class LogicPhaseCommandServiceTests
         StringAssert.DoesNotContain("BindFogMap", persistentCommit);
         StringAssert.Contains("RequireBoundFogMap", persistentCommit);
 
-        string navigationBarrier = ExtractMethod(phaseSource, "private static void CompleteNavigationForBattlePhase", "private static void PrepareBattlePhaseCards");
+        string navigationBarrier = ExtractMethod(phaseSource, "private static void RequireNavigationReadyForBattlePhase", "private static void PrepareBattlePhaseCards");
         StringAssert.DoesNotContain("GroupMoveManager.Instance", navigationBarrier);
-        StringAssert.Contains("FlowFieldCrowdMovementSystem.CompleteRuntimeRebuildQueue", navigationBarrier);
+        StringAssert.Contains("FlowFieldCrowdMovementSystem.RequireRuntimeNavigationReady", navigationBarrier);
+        StringAssert.DoesNotContain("FlowFieldCrowdMovementSystem.CompleteRuntimeRebuildQueue", navigationBarrier);
 
         string setValue = ExtractMethod(dataModelSource, "public static void SetValue", "public static bool TryModifyValue");
         StringAssert.DoesNotContain("GF.Event.Fire", setValue);
@@ -305,9 +306,13 @@ public sealed class LogicPhaseCommandServiceTests
         int commitEntities = generalSetupSource.IndexOf(
             "LogicEntityLifecycleService.CommitPendingInitializationEntities()",
             StringComparison.Ordinal);
+        int prepareNavigation = generalSetupSource.IndexOf(
+            "groupMoveManager.PrepareInitialNavigationWorlds()",
+            StringComparison.Ordinal);
         Assert.That(initializePhase, Is.GreaterThanOrEqualTo(0));
         Assert.That(showLevel, Is.GreaterThan(initializePhase));
         Assert.That(commitEntities, Is.GreaterThan(initializePhase));
+        Assert.That(prepareNavigation, Is.GreaterThan(commitEntities));
         StringAssert.DoesNotContain("PhaseManager.CurrentPhase", phaseGuardSource);
 
         string cardDiscard = ExtractMethod(cardControllerSource, "private void ApplyDiscardCommand", "private void ApplyDiscardResourceReward");

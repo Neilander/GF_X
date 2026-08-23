@@ -101,6 +101,47 @@ public class MAEntityLogicFrameSystemTests
     }
 
     [Test]
+    public void GhostHero_ContinuesCooldownWithoutRunningSkillInteractions()
+    {
+        BeginDefendEntityTimeline();
+        try
+        {
+            LogicEntityState hero = CreateProjectileRegressionUnit(
+                FixVector2.Zero,
+                SideType.PlayerSide,
+                "GhostCooldownHero",
+                new ScriptedBrain(),
+                new NoMoveComp(),
+                null,
+                out _,
+                out _,
+                true);
+            var skill = new GhostCooldownSkillComp();
+            hero.SetSkillComp(skill);
+            hero.SetGhostStateByBuff(true);
+
+            LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.AreEqual(1, skill.CooldownTickCount);
+            Assert.AreEqual(LogicFrameRuntime.FixedDeltaTime, skill.TotalCooldownDelta);
+            Assert.AreEqual(0, skill.SkillTickCount);
+            Assert.AreEqual(1, skill.ShutdownCount);
+
+            hero.RestoreFromGhostState();
+            LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.AreEqual(2, skill.CooldownTickCount);
+            Assert.AreEqual(1, skill.SkillTickCount);
+            Assert.AreEqual(1, skill.ResumeCount);
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            EndDefendEntityTimeline();
+        }
+    }
+
+    [Test]
     public void WorldReset_ClearsLastFrameState()
     {
         LogicFrameRuntime.Tick(1);
@@ -424,21 +465,27 @@ public class MAEntityLogicFrameSystemTests
     [Test]
     public void CharacterTargeting_DropsStaleDeadTargetBeforeSnapshotDistanceQuery()
     {
+        EnsureInGameDataModelForCombatTest();
         var self = new PureLogicFrameEntity
         {
             LogicEntityId = new LogicEntityId(17),
-            Alive = false,
+            Alive = true,
             Side = SideType.PlayerSide,
+            WeaponComp = new WeaponComp(null),
         };
-        var staleTarget = new SimEntityContext
+        var staleTarget = new PureLogicFrameEntity
         {
             LogicEntityId = new LogicEntityId(18),
-            Alive = false,
+            Alive = true,
             Side = SideType.EnemySide,
         };
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(staleTarget);
         var targeting = new CharacterTargetingComp();
         targeting.Init(self);
+        self.TargetComp = targeting;
         targeting.CurrentTarget = staleTarget;
+        staleTarget.Alive = false;
         var probe = new TargetingUpdateProbe(targeting);
         LogicFrameRuntime.Register(probe);
 
@@ -1063,7 +1110,7 @@ public class MAEntityLogicFrameSystemTests
     }
 
     [Test]
-    public void MoveCommit_StationaryTargetSwitchFacesFrameStartTarget()
+    public void MoveCommit_StationaryTargetSwitchPreservesFacingWithoutAttack()
     {
         BeginDefendEntityTimeline();
         try
@@ -1100,22 +1147,132 @@ public class MAEntityLogicFrameSystemTests
                 out _,
                 out _);
 
+            FixVector2 initialForward = source.Forward;
             targeting.CurrentTarget = firstTarget;
             LogicFrameRuntime.Tick(1);
-            Assert.AreEqual(
-                (firstTarget.Position - FixVector2.Zero).GetNormalized(),
-                source.Forward);
+            Assert.AreEqual(initialForward, source.Forward);
 
             targeting.CurrentTarget = secondTarget;
             LogicFrameRuntime.Tick(2);
 
-            Assert.AreEqual(
-                (secondTarget.Position - FixVector2.Zero).GetNormalized(),
-                source.Forward);
+            Assert.AreEqual(initialForward, source.Forward);
             Assert.AreEqual(FixVector2.Zero, source.Position);
         }
         finally
         {
+            EntityRegistry.Clear();
+            EndDefendEntityTimeline();
+        }
+    }
+
+    [Test]
+    public void MoveCommit_AttackEndsWhileStationaryPreservesAttackFacing()
+    {
+        BeginDefendEntityTimeline();
+        try
+        {
+            var move = new ProjectileRegressionApproachMoveComp(
+                new FixVector2(Fix64.One, Fix64.Zero));
+            LogicEntityState source = CreateProjectileRegressionUnit(
+                FixVector2.Zero,
+                SideType.PlayerSide,
+                "ForwardAfterAttackSource",
+                new ScriptedBrain(),
+                move,
+                null,
+                out _,
+                out _);
+            var targeting = new FixedTargetingComp();
+            source.SetTargetingComp(targeting);
+            targeting.Init(source);
+            var attack = new AlwaysAttackingComp();
+            source.SetAtkComp(attack);
+            attack.Init(source);
+
+            LogicEntityState target = CreateProjectileRegressionUnit(
+                new FixVector2(Fix64.Zero, (Fix64)10),
+                SideType.EnemySide,
+                "ForwardAfterAttackTarget",
+                new ScriptedBrain(),
+                new NoMoveComp(),
+                null,
+                out _,
+                out _);
+            targeting.CurrentTarget = target;
+
+            LogicFrameRuntime.Tick(1);
+            FixVector2 attackForward = source.Forward;
+            Assert.AreEqual(
+                (target.Position - FixVector2.Zero).GetNormalized(),
+                attackForward);
+
+            attack.IsAttacking = false;
+            move.Enabled = false;
+            LogicFrameRuntime.Tick(2);
+
+            Assert.IsFalse(move.IsMoving);
+            Assert.AreNotEqual(FixVector2.Zero, move.NavDirectionFixed,
+                "The regression requires a stale navigation direction after movement stops.");
+            Assert.AreEqual(attackForward, source.Forward,
+                "A stationary unit must keep its attack-facing direction after the attack ends.");
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            EndDefendEntityTimeline();
+        }
+    }
+
+    [Test]
+    public void MoveCommit_DirectionalCastOwnsFacingWhileMovementContinues()
+    {
+        BeginDefendEntityTimeline();
+        ActiveSkillSO skill = null;
+        PositionSelectAction action = null;
+        try
+        {
+            var move = new ProjectileRegressionApproachMoveComp(
+                new FixVector2(Fix64.One, Fix64.Zero))
+            {
+                Enabled = true,
+            };
+            LogicEntityState source = CreateProjectileRegressionUnit(
+                FixVector2.Zero,
+                SideType.PlayerSide,
+                "DirectionalCastFacingSource",
+                new ScriptedBrain(),
+                move,
+                null,
+                out _,
+                out _);
+            var casting = new CastingSkillComp();
+            source.SetSkillComp(casting);
+
+            action = ScriptableObject.CreateInstance<PositionSelectAction>();
+            skill = ScriptableObject.CreateInstance<ActiveSkillSO>();
+            skill.skillId = "DirectionalCastFacingSkill";
+            skill.actions = new System.Collections.Generic.List<BasicAction> { action };
+            var info = new SkillInfo
+            {
+                entity = source,
+                hasRequestedWorldPosition = true,
+                requestedWorldPosition = new FixVector2(Fix64.Zero, (Fix64)10),
+            };
+            SkillFacingUtility.ApplyAtCastStart(source, skill, info);
+
+            LogicFrameRuntime.Tick(1);
+
+            Assert.IsTrue(move.IsMoving);
+            Assert.IsTrue(casting.IsCasting);
+            Assert.AreEqual(new FixVector2(Fix64.Zero, Fix64.One), source.Forward,
+                "A directional cast must own facing while movement continues in another direction.");
+        }
+        finally
+        {
+            if (skill != null)
+                Object.DestroyImmediate(skill);
+            if (action != null)
+                Object.DestroyImmediate(action);
             EntityRegistry.Clear();
             EndDefendEntityTimeline();
         }
@@ -1916,7 +2073,8 @@ public class MAEntityLogicFrameSystemTests
         IMoveComp move,
         WeaponData weaponData,
         out ITargetingComp targeting,
-        out IAtkComp attack)
+        out IAtkComp attack,
+        bool isHero = false)
     {
         LogicEntityId entityId = LogicEntityLifecycleService.RequestSpawn(
             new LogicEntitySpawnDescriptor(
@@ -1936,7 +2094,9 @@ public class MAEntityLogicFrameSystemTests
             0,
             true,
             brain,
-            false);
+            false,
+            isHero,
+            isHero);
         if (weaponData != null)
             state.SetWeaponComp(new WeaponComp(weaponData.ToWeapon($"{characterKey}_Weapon1")));
         state.SetMoveComp(move);
@@ -2080,11 +2240,12 @@ public class MAEntityLogicFrameSystemTests
 
         public bool Enabled { get; set; }
         public bool IsMoving { get; private set; }
-        public FixVector2 NavDirectionFixed => Enabled ? m_Velocity.GetNormalized() : FixVector2.Zero;
+        public FixVector2 NavDirectionFixed => m_Velocity.GetNormalized();
 
         public void Init(IEntityContext ctx) => m_Context = ctx;
         public void Move(Fix64 deltaTime)
         {
+            IsMoving = Enabled;
             m_Context.MoveExecutor.SetInputFixed(Enabled ? m_Velocity : FixVector2.Zero);
         }
         public void MoveToFixed(FixVector2 destination) { }
@@ -2098,12 +2259,56 @@ public class MAEntityLogicFrameSystemTests
 
     private sealed class AlwaysAttackingComp : IAtkComp
     {
-        public bool IsAttacking => true;
+        public bool IsAttacking { get; set; } = true;
         public void Init(IEntityContext ctx) { }
         public void Attack(Fix64 deltaTime) { }
         public void InterruptAttack(AttackInterruptReason reason = AttackInterruptReason.Forced) { }
         public void ShutDown() { }
         public void Resume() { }
+    }
+
+    private sealed class CastingSkillComp : ISkillComp
+    {
+        public bool IsCasting => true;
+        public void Init(
+            IEntityContext entity,
+            System.Collections.Generic.List<ActiveSkillSO> activeSkills,
+            System.Collections.Generic.List<PassiveSkillSO> passiveSkills) { }
+        public void Skill(Fix64 deltaTime) { }
+        public void TickCooldown(Fix64 deltaTime) { }
+        public void CancelSkills() { }
+        public void OnSkillChanged() { }
+        public void ShutDown() { }
+        public void Resume() { }
+    }
+
+    private sealed class GhostCooldownSkillComp : ISkillComp
+    {
+        public bool IsCasting => false;
+        public int SkillTickCount { get; private set; }
+        public int CooldownTickCount { get; private set; }
+        public int ShutdownCount { get; private set; }
+        public int ResumeCount { get; private set; }
+        public Fix64 TotalCooldownDelta { get; private set; }
+
+        public void Init(
+            IEntityContext entity,
+            System.Collections.Generic.List<ActiveSkillSO> activeSkills,
+            System.Collections.Generic.List<PassiveSkillSO> passiveSkills) { }
+        public void Skill(Fix64 deltaTime)
+        {
+            SkillTickCount++;
+            TickCooldown(deltaTime);
+        }
+        public void TickCooldown(Fix64 deltaTime)
+        {
+            CooldownTickCount++;
+            TotalCooldownDelta += deltaTime;
+        }
+        public void CancelSkills() { }
+        public void OnSkillChanged() { }
+        public void ShutDown() => ShutdownCount++;
+        public void Resume() => ResumeCount++;
     }
 
     private sealed class FixedTargetingComp : ITargetingComp

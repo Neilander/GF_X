@@ -164,6 +164,8 @@ public class PhaseManager : GameFrameworkComponent
 
     public static void SwitchToPhase(GamePhase phase)
     {
+        if (phase == GamePhase.Invade || phase == GamePhase.Defend)
+            FlowFieldCrowdMovementSystem.RequireRuntimeNavigationReady($"phase-submit-{phase}");
         LogicPhaseCommandService.Submit(phase);
     }
 
@@ -345,7 +347,7 @@ public class PhaseManager : GameFrameworkComponent
         DefendPhaseRuntime.CancelRuntime();
         var totalWatch = Stopwatch.StartNew();
 
-        CompleteNavigationForBattlePhase("invade");
+        RequireNavigationReadyForBattlePhase("invade");
 
         PrepareBattlePhaseCards("invade");
 
@@ -361,20 +363,20 @@ public class PhaseManager : GameFrameworkComponent
     private static void HandleEnterDefendPhase()
     {
 		RequestPhaseEnterSound("enterBattle");
-        CompleteNavigationForBattlePhase("defend");
+        RequireNavigationReadyForBattlePhase("defend");
         PrepareBattlePhaseCards("defend");
         DefendPhaseRuntime.EnterDefendPhase();
     }
 
-    private static void CompleteNavigationForBattlePhase(string phaseTag)
+    private static void RequireNavigationReadyForBattlePhase(string phaseTag)
     {
         var watch = Stopwatch.StartNew();
-        int completedWorldCount = FlowFieldCrowdMovementSystem.CompleteRuntimeRebuildQueue();
+        int readyWorldCount = FlowFieldCrowdMovementSystem.RequireRuntimeNavigationReady($"phase-{phaseTag}");
         watch.Stop();
         Log.Info(
             "[PhaseNavigation] {0}.navigation-ready worlds={1}, elapsedMs={2}",
             phaseTag,
-            completedWorldCount,
+            readyWorldCount,
             watch.ElapsedMilliseconds);
     }
 

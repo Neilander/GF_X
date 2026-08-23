@@ -204,8 +204,7 @@ public static class ProjectilePresentationService
             catch
             {
                 s_InFlight.Remove(expectedViewId);
-                LogicProjectileService.CancelViewReservation(request.ProjectileId);
-                ReferencePool.Release(request.EntityParams);
+                CancelInFlightRequest(expectedViewId, request);
                 throw;
             }
 
@@ -291,12 +290,31 @@ public static class ProjectilePresentationService
         {
             int viewId = s_InFlightViewIds[i];
             Request request = s_InFlight[viewId];
-            LogicProjectileService.CancelViewReservation(request.ProjectileId);
-            GF.Entity.HideEntity(viewId);
-            ReferencePool.Release(request.EntityParams);
+            CancelInFlightRequest(viewId, request);
         }
         s_InFlight.Clear();
         s_InFlightViewIds.Clear();
+    }
+
+    private static void CancelInFlightRequest(int viewId, Request request)
+    {
+        LogicProjectileViewBindingState bindingState =
+            LogicProjectileService.GetRequiredViewBindingState(request.ProjectileId);
+        switch (bindingState)
+        {
+            case LogicProjectileViewBindingState.Reserved:
+                LogicProjectileService.CancelViewReservation(request.ProjectileId);
+                GF.Entity.HideEntity(viewId);
+                break;
+            case LogicProjectileViewBindingState.Bound:
+                GF.Entity.HideEntity(viewId);
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"ProjectilePresentationService cannot cancel in-flight view {viewId}: projectile {request.ProjectileId} binding state is {bindingState}.");
+        }
+
+        ReferencePool.Release(request.EntityParams);
     }
 
     private static void OnShowEntitySuccess(object sender, GameEventArgs gameEventArgs)

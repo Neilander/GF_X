@@ -7,6 +7,7 @@ using UnityGameFramework.Runtime;
 internal static class MainThreadFrameProfilerNextPlayCapture
 {
     private const string ArmedKey = "Avenge.MainThreadFrameProfiler.NextPlayCapture";
+    private const string ConsoleLoggingKey = "Avenge.MainThreadFrameProfiler.NextPlayConsoleLogging";
 
     static MainThreadFrameProfilerNextPlayCapture()
     {
@@ -21,10 +22,16 @@ internal static class MainThreadFrameProfilerNextPlayCapture
     [MenuItem("Tools/Logic Frames/Capture MainPerf Next Play")]
     public static void ArmNextPlay()
     {
+        ArmNextPlay(true);
+    }
+
+    public static void ArmNextPlay(bool consoleLoggingEnabled)
+    {
         if (EditorApplication.isPlayingOrWillChangePlaymode)
             throw new InvalidOperationException("Stop Play mode before arming the next-play MainPerf capture.");
 
         EditorPrefs.SetBool(ArmedKey, true);
+        EditorPrefs.SetBool(ConsoleLoggingKey, consoleLoggingEnabled);
         Debug.Log("[MainPerfCapture] Armed for the next Play session.");
     }
 
@@ -44,7 +51,10 @@ internal static class MainThreadFrameProfilerNextPlayCapture
             throw new InvalidOperationException("MainPerf next-play capture was consumed outside Play mode.");
 
         EditorPrefs.DeleteKey(ArmedKey);
+        bool consoleLoggingEnabled = EditorPrefs.GetBool(ConsoleLoggingKey, true);
+        EditorPrefs.DeleteKey(ConsoleLoggingKey);
         MainThreadFrameProfiler.LoggingEnabled = true;
+        MainThreadFrameProfiler.ConsoleLoggingEnabled = consoleLoggingEnabled;
         Debug.Log("[MainPerfCapture] Enabled for this Play session.");
     }
 }

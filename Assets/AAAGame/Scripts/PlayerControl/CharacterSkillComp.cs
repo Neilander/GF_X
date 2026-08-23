@@ -15,6 +15,8 @@ public class CharacterSkillComp : ISkillComp, ILogicDeterministicStateContributo
     private HashSet<string> _appliedPassiveSkillIds;
     private Dictionary<string, GeneralCounter> _cooldownsBySkillId;
 
+    public bool IsCasting => _skillSlots != null && _skillSlots.Any(slot => slot != null && slot.isTicking);
+
     public void Init(IEntityContext entity, List<ActiveSkillSO>skillSet, List<PassiveSkillSO> passiveSkillSet)
     {
         _entity = entity;
@@ -81,8 +83,7 @@ public class CharacterSkillComp : ISkillComp, ILogicDeterministicStateContributo
 
 
         //技能冷却
-        CoolDown(deltaTime);
-        UpdateSkillRuntime();
+        TickCooldown(deltaTime);
 
         //检测输入
         int curSkillPressed = CheckInput();
@@ -121,6 +122,7 @@ public class CharacterSkillComp : ISkillComp, ILogicDeterministicStateContributo
 
     public void Resume()
     {
+        RefreshPassiveSkills();
     }
 
     public void CancelSkills()
@@ -180,6 +182,7 @@ public class CharacterSkillComp : ISkillComp, ILogicDeterministicStateContributo
         //触发其开始函数
         curSlot.runInfo = runInfo;
         curSlot.isTicking = true;
+        SkillFacingUtility.ApplyAtCastStart(_entity, curSlot.skill, runInfo);
 
         //根据技能的需求，关闭其他comp和技能输入
         //如果技能Ban所有其他的，其他的都按不了
@@ -201,7 +204,7 @@ public class CharacterSkillComp : ISkillComp, ILogicDeterministicStateContributo
         SkillRuntimeDataModel.ConsumeUsageAt(slotIndex);
     }
 
-    private void CoolDown(Fix64 deltaTime)
+    public void TickCooldown(Fix64 deltaTime)
     {
         if (_cooldownsBySkillId == null)
             return;
@@ -210,6 +213,8 @@ public class CharacterSkillComp : ISkillComp, ILogicDeterministicStateContributo
         {
             cooldown.Tick(deltaTime);
         }
+
+        UpdateSkillRuntime();
     }
 
     private void UpdateSkillRuntime()
@@ -230,7 +235,8 @@ public class CharacterSkillComp : ISkillComp, ILogicDeterministicStateContributo
     {
         if (_entity?.Brain == null) return -1;
 
-        if (!SkillInputRuntime.CanUseActiveSkillsInCurrentPhase())
+        if (!ActiveSkillCastEligibility.CanCast(_entity)
+            || !SkillInputRuntime.CanUseActiveSkillsInCurrentPhase())
             return -1;
 
         bool[] pressInfo =
@@ -296,6 +302,8 @@ public class CharacterSkillComp : ISkillComp, ILogicDeterministicStateContributo
     private void RefreshPassiveSkills()
     {
         if (_entity == null || _passiveSkillsById == null)
+            return;
+        if (!_entity.CanRun(this))
             return;
 
         foreach (var pair in _passiveSkillsById)

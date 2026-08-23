@@ -20,6 +20,8 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
     private HashSet<string> _appliedPassiveSkillIds;
     private Dictionary<string, GeneralCounter> _cooldownsBySkillId;
 
+    public bool IsCasting => _skillSlots != null && _skillSlots.Any(slot => slot != null && slot.isTicking);
+
     public void Init(IEntityContext entity, List<ActiveSkillSO>skillSet, List<PassiveSkillSO> passiveSkillSet)
     {
         _entity = entity;
@@ -86,8 +88,7 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
 
 
         //技能冷却
-        CoolDown(deltaTime);
-        UpdateSkillRuntime();
+        TickCooldown(deltaTime);
 
         TryStartPendingCast(out _);
 
@@ -112,6 +113,7 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
 
     public void Resume()
     {
+        RefreshPassiveSkills();
     }
 
     public void CancelSkills()
@@ -184,7 +186,10 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
 
         startedSlot = _skillSlots[command.SlotIndex];
         GF.Log("使用技能：" + (command.SlotIndex + 1));
-        StartASkill(startedSlot, command.SlotIndex, command.RequestedWorldPosition);
+        if (command.HasRequestedWorldPosition)
+            StartASkill(startedSlot, command.SlotIndex, command.RequestedWorldPosition);
+        else
+            StartASkill(startedSlot, command.SlotIndex);
         return true;
     }
 
@@ -199,14 +204,26 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
 
     private void StartASkill(SkillSlot curSlot, int slotIndex, FixVector2 requestedWorldPosition)
     {
+        curSlot.skill.StartSkill(_entity, requestedWorldPosition, out SkillInfo runInfo);
+        CompleteSkillStart(curSlot, slotIndex, runInfo);
+    }
+
+    private void StartASkill(SkillSlot curSlot, int slotIndex)
+    {
+        curSlot.skill.StartSkill(_entity, out SkillInfo runInfo);
+        CompleteSkillStart(curSlot, slotIndex, runInfo);
+    }
+
+    private void CompleteSkillStart(SkillSlot curSlot, int slotIndex, SkillInfo runInfo)
+    {
         //技能进入冷却
         //后续要是想要什么持续技能，切换技能，再加上逻辑就可以，想过是可以实现的
         //切换+冷却本质是技能替换，然后新技能开局有个cd
-        curSlot.skill.StartSkill(_entity, requestedWorldPosition, out SkillInfo runInfo);
         curSlot.cooldown.Reset();
         //触发其开始函数
         curSlot.runInfo = runInfo;
         curSlot.isTicking = true;
+        SkillFacingUtility.ApplyAtCastStart(_entity, curSlot.skill, runInfo);
 
         //根据技能的需求，关闭其他comp和技能输入
         //如果技能Ban所有其他的，其他的都按不了
@@ -228,7 +245,7 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
         SkillRuntimeDataModel.ConsumeUsageAt(slotIndex);
     }
 
-    private void CoolDown(Fix64 deltaTime)
+    public void TickCooldown(Fix64 deltaTime)
     {
         if (_cooldownsBySkillId == null)
             return;
@@ -237,6 +254,8 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
         {
             cooldown.Tick(deltaTime);
         }
+
+        UpdateSkillRuntime();
     }
 
     private void UpdateSkillRuntime()
@@ -270,7 +289,8 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
     {
         if (slotIndex < 0 || slotIndex >= SKILL_NUM)
             return false;
-        return !m_HasPendingCast
+        return ActiveSkillCastEligibility.CanCast(_entity)
+               && !m_HasPendingCast
                && SkillInputRuntime.CanUseActiveSkillsInCurrentPhase()
                && SkillRuntimeDataModel.IsUnlockedActiveSkillSlot(slotIndex)
                && SkillRuntimeDataModel.HasRemainingUsageAt(slotIndex)
@@ -357,7 +377,8 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
     {
         if (slotIndex < 0 || slotIndex >= _skillSlots.Count)
             throw new System.ArgumentOutOfRangeException(nameof(slotIndex), slotIndex, "Invalid skill slot index.");
-        if (!SkillInputRuntime.CanUseActiveSkillsInCurrentPhase()
+        if (!ActiveSkillCastEligibility.CanCast(_entity)
+            || !SkillInputRuntime.CanUseActiveSkillsInCurrentPhase()
             || !SkillRuntimeDataModel.IsUnlockedActiveSkillSlot(slotIndex)
             || !SkillRuntimeDataModel.HasRemainingUsageAt(slotIndex))
         {
@@ -410,6 +431,8 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
     {
         if (_entity == null || _passiveSkillsById == null)
             return;
+        if (!_entity.CanRun(this))
+            return;
 
         foreach (var pair in _passiveSkillsById)
         {
@@ -456,8 +479,12 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
             hasher.Add(m_PendingCast.Sequence);
             hasher.Add(m_PendingCast.CasterId.Value);
             hasher.Add(m_PendingCast.SlotIndex);
-            hasher.Add(m_PendingCast.RequestedWorldPosition.x.RawValue);
-            hasher.Add(m_PendingCast.RequestedWorldPosition.y.RawValue);
+            hasher.Add(m_PendingCast.HasRequestedWorldPosition);
+            if (m_PendingCast.HasRequestedWorldPosition)
+            {
+                hasher.Add(m_PendingCast.RequestedWorldPosition.x.RawValue);
+                hasher.Add(m_PendingCast.RequestedWorldPosition.y.RawValue);
+            }
         }
     }
 }

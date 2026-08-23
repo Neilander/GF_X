@@ -213,31 +213,31 @@ public sealed class LogicReplayTests
     }
 
     [Test]
-    public void ProtocolV102_CrossPlatformDeterminismCorpus_IsStable()
+    public void ProtocolV105_CrossPlatformDeterminismCorpus_IsStable()
     {
         LogicTimeControlService.EndTimeline();
-        LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV102();
+        LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV105();
         LogicTimeControlService.BeginTimeline();
 
-        Assert.AreEqual(102, result.ProtocolVersion);
+        Assert.AreEqual(105, result.ProtocolVersion);
         Assert.AreEqual(LogicDeterminismCorpus.GoldenFullHash, result.FullHash);
     }
 
     [Test]
     public void CrossPlatformDeterminismCorpus_RejectsActiveTimeline()
     {
-        Assert.Throws<System.InvalidOperationException>(() => LogicDeterminismCorpus.EvaluateV102());
+        Assert.Throws<System.InvalidOperationException>(() => LogicDeterminismCorpus.EvaluateV105());
     }
 
     [Test]
-    public void ReplayCompatibility_RejectsV101ProtocolAndContent()
+    public void ReplayCompatibility_RejectsV103ProtocolAndContent()
     {
         Assert.Throws<System.InvalidOperationException>(() =>
-            LogicReplayLog.RequireCurrentVersion(101, LogicReplayLog.CurrentContentVersion));
+            LogicReplayLog.RequireCurrentVersion(103, LogicReplayLog.CurrentContentVersion));
         Assert.Throws<System.InvalidOperationException>(() =>
             LogicReplayLog.RequireCurrentVersion(
                 LogicReplayLog.CurrentProtocolVersion,
-                "Avenge-30Hz-v101"));
+                "Avenge-30Hz-v103"));
     }
 
     [Test]

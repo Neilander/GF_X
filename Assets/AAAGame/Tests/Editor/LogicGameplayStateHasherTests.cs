@@ -779,8 +779,10 @@ public class LogicGameplayStateHasherTests
         private readonly int m_Marker;
 
         public HashTestSkillComp(int marker) => m_Marker = marker;
+        public bool IsCasting => false;
         public void Init(IEntityContext entity, System.Collections.Generic.List<ActiveSkillSO> activeSkills, System.Collections.Generic.List<PassiveSkillSO> passiveSkills) { }
         public void Skill(Fix64 deltaTime) { }
+        public void TickCooldown(Fix64 deltaTime) { }
         public void CancelSkills() { }
         public void OnSkillChanged() { }
         public void ShutDown() { }

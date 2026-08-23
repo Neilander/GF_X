@@ -37,9 +37,9 @@ public readonly struct LogicDeterminismCorpusResult
 
 public static class LogicDeterminismCorpus
 {
-    public const string CorpusVersion = "v102";
-    public const int GoldenProtocolVersion = 102;
-    public const string GoldenContentVersion = "Avenge-30Hz-v102";
+    public const string CorpusVersion = "v105";
+    public const int GoldenProtocolVersion = 105;
+    public const string GoldenContentVersion = "Avenge-30Hz-v105";
     public const int GoldenEventCount = 4;
     public const uint GoldenInputChecksum = 565150261u;
     public const ulong GoldenInputHash = 13863065662157724554ul;
@@ -48,12 +48,12 @@ public static class LogicDeterminismCorpus
 
     private const ulong GameplayPayload = 0x123456789ABCDEF0UL;
 
-    public static LogicDeterminismCorpusResult EvaluateV102()
+    public static LogicDeterminismCorpusResult EvaluateV105()
     {
         if (LogicTimeControlService.IsActive)
         {
             throw new InvalidOperationException(
-                "LogicDeterminismCorpus.EvaluateV102 failed: LogicTimeControlService must be inactive.");
+                "LogicDeterminismCorpus.EvaluateV105 failed: LogicTimeControlService must be inactive.");
         }
 
         LogicInputFrame frame = BuildInputFrame();
@@ -92,9 +92,9 @@ public static class LogicDeterminismCorpus
             fullHash);
     }
 
-    public static LogicDeterminismCorpusResult ValidateV102()
+    public static LogicDeterminismCorpusResult ValidateV105()
     {
-        LogicDeterminismCorpusResult result = EvaluateV102();
+        LogicDeterminismCorpusResult result = EvaluateV105();
 
         RequireEqual("ProtocolVersion", GoldenProtocolVersion, result.ProtocolVersion);
         RequireEqual("ContentVersion", GoldenContentVersion, result.ContentVersion);

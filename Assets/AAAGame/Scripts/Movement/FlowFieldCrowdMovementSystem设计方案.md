@@ -1,4 +1,4 @@
-# Flow Field Crowd Movement System 当前方案
+﻿# Flow Field Crowd Movement System 当前方案
 
 ## 0. 原则
 
@@ -345,3 +345,7 @@ Editor 测试配置写入点已全量复核：除 Flow fixture 外，`SteeringMo
 固定点极限接触补充（2026-08-22）：Lv2 研发中心上沿到 Ground 边界的 authored 缝为 `3277 raw`，正式英雄直径为 `3278 raw`；这是连续空间相切经各自向外量化后没有共同 Q12 格点，不是 Flow 拓扑或障碍重建问题。连续碰撞现统一使用轴向精确最近点和 `FixVector2.Magnitude`，起点投影只应用精确 MTV；仅当两个相邻格点各自只穿入相反约束 `1 raw` 且 MTV 精确互返时，视为同一量化接触流形。更深穿入、两侧同时穿入或不能互返仍严格拒绝。现场与窄 `2 raw` 反例共同锁定该边界，禁止以后通过缩半径、累计 epsilon、增加恢复迭代或坐标特判替代。权威位移变化使 replay 升为 `101 / Avenge-30Hz-v101 / v101`。
 
 圆角小量下溢补充（2026-08-22）：研发中心圆角现场向量 `(51,50) raw` 非零，但旧 Q12 `SqrMagnitude` 的两个分量平方分别右移后都为 0，导致 `Magnitude=0` 和零法线异常。长度现由 raw 平方和的确定性整数平方根直接计算；penetration、圆 sweep、Normalize 和 MoveTowards 复用同一长度语义，超出精确 raw 平方范围明确报错。现场门禁与数学门禁锁定该行为，禁止默认法线或跳过碰撞。权威 fixed 几何变化使 replay 升为 `102 / Avenge-30Hz-v102 / v102`。
+
+0.8m 方向对称补充（2026-08-23）：该问题属于连续静态碰撞的 Q12 格点化，不属于 Flow 拓扑。接触流形用 raw 乘加表达半空间，围绕精确有理切平面投影选择最近可行格点；sweep travel 向零量化，剩余位移以 `incoming - traveled` 守恒，长度保持缩放后重新进入同一可行域。连续命中时间只有在相邻空间格点不超过 `1 raw` 且完整世界仍清晰时才向后一个时间格推进。authored boundary 使用完整半径，与其表面距离恰少 `1 raw` 的运行时障碍侧使用半开 `radius - 1 raw`；少 `2 raw` 仍阻挡。四旋转、双向和三种尾差 24 组及静态碰撞/Flow 组合 `321/321` 通过，真实 LvTest 两种相机输入均穿过且同时记录 boundary/building 接触。权威位移版本为 `103 / Avenge-30Hz-v103 / v103`。
+
+完整 EditMode job `35520c836d97460e987dbe923edc59b9` 中 Flow、碰撞、Replay v103 及其他 `1358` 项通过；唯一失败是用户独立修改且与本链无调用关系的 stale-target snapshot 测试，故本轮全量结果明确记为 `1358/1359`。

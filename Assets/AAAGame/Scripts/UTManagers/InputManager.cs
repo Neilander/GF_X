@@ -82,6 +82,18 @@ public partial class InputManager : GameFrameworkComponent
         CleanupUIFormControl();
     }
 
+    private void OnApplicationQuit()
+    {
+        bool timelineStarted = _model != null && _model.LogicTimeline.IsStarted;
+        if (_inputTimestampCalibrated != timelineStarted)
+        {
+            throw new InvalidOperationException(
+                $"InputManager.OnApplicationQuit found mismatched input lifecycle. calibrated={_inputTimestampCalibrated}, timelineStarted={timelineStarted}.");
+        }
+        if (timelineStarted)
+            EndLogicInputTimeline();
+    }
+
     private void Update()
     {
         UpdateLogicPausePresentation();
@@ -140,6 +152,19 @@ public partial class InputManager : GameFrameworkComponent
             realtime,
             initialMove,
             initialHeldBits);
+        _model.ClearCompatibilityState();
+    }
+
+    public void EndLogicInputTimeline()
+    {
+        if (!_inputTimestampCalibrated)
+            throw new InvalidOperationException("InputManager.EndLogicInputTimeline failed: input timeline is not active.");
+        if (_model == null || !_model.LogicTimeline.IsStarted)
+            throw new InvalidOperationException("InputManager.EndLogicInputTimeline failed: logic input timeline is missing.");
+
+        _inputTimestampCalibrated = false;
+        SkillCastPresentationService.Cancel();
+        _model.LogicTimeline.Clear();
         _model.ClearCompatibilityState();
     }
 

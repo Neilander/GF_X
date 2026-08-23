@@ -15,6 +15,13 @@ public readonly struct LogicProjectileViewState
     public bool Hit { get; }
 }
 
+public enum LogicProjectileViewBindingState
+{
+    None,
+    Reserved,
+    Bound,
+}
+
 public readonly struct LogicProjectileDeterministicState
 {
     public LogicProjectileDeterministicState(
@@ -434,6 +441,23 @@ public static class LogicProjectileService
         state.ViewReserved = false;
         if (state.Completed)
             s_States.Remove(projectileId);
+    }
+
+    public static LogicProjectileViewBindingState GetRequiredViewBindingState(ulong projectileId)
+    {
+        EnsureActive();
+        ProjectileState state = GetRequired(projectileId);
+        if (state.ViewReserved && state.ViewBound)
+        {
+            throw new InvalidOperationException(
+                $"LogicProjectileService.GetRequiredViewBindingState failed: projectile {projectileId} is both reserved and bound.");
+        }
+
+        if (state.ViewReserved)
+            return LogicProjectileViewBindingState.Reserved;
+        return state.ViewBound
+            ? LogicProjectileViewBindingState.Bound
+            : LogicProjectileViewBindingState.None;
     }
 
     public static bool TryGetPresentationState(ulong projectileId, out LogicProjectileViewState viewState)

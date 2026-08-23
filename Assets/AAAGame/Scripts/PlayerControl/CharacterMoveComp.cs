@@ -3,13 +3,11 @@ using UnityGameFramework.Runtime;
 
 public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
 {
-    private static readonly Fix64 s_NavigationPrepareTargetEpsilonSquared = Fix64.FromRaw(164);
     private static readonly Fix64 s_MoveInputThresholdSquared = Fix64.FromRaw(5);
     private static readonly Fix64 s_MovingThresholdSquared = Fix64.FromRaw(1);
 
     private IEntityContext _ctx;
     private FixVector2? _targetPosFixed;
-    private FixVector2? _lastPreparedTargetFixed;
     private FixVector2 _navDirectionFixed = FixVector2.Zero;
     private bool _isMoving;
 
@@ -19,7 +17,6 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
     {
         _ctx = ctx;
         _targetPosFixed = null;
-        _lastPreparedTargetFixed = null;
         _navDirectionFixed = FixVector2.Zero;
         _isMoving = false;
     }
@@ -27,13 +24,11 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
     public void SetNavTargetFixed(FixVector2 destination)
     {
         _targetPosFixed = destination;
-        PrepareFlowNavigationRequest(destination, true);
     }
 
     public void MoveToFixed(FixVector2 destination)
     {
         _targetPosFixed = destination;
-        PrepareFlowNavigationRequest(destination, false);
     }
 
     public void StopMove()
@@ -41,7 +36,6 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
         FixVector2? previousTarget = _targetPosFixed;
         bool wasMoving = _isMoving;
         _targetPosFixed = null;
-        _lastPreparedTargetFixed = null;
         _navDirectionFixed = FixVector2.Zero;
         _isMoving = false;
         if ((previousTarget.HasValue || wasMoving)
@@ -165,37 +159,6 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
         return _targetPosFixed.HasValue;
     }
 
-    private void PrepareFlowNavigationRequest(FixVector2 destination, bool force)
-    {
-        if (_ctx == null)
-            return;
-        if (!force
-            && _lastPreparedTargetFixed.HasValue
-            && FixVector2.SqrMagnitude(_targetPosFixed.Value - _lastPreparedTargetFixed.Value)
-            <= s_NavigationPrepareTargetEpsilonSquared)
-        {
-            return;
-        }
-
-        long prepareStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        bool prepared = FlowFieldCrowdMovementSystem.TryPrepareNavigationRequestFixed(
-            _ctx,
-            _targetPosFixed.Value,
-            out string failureReason);
-        if (prepared)
-        {
-            _lastPreparedTargetFixed = _targetPosFixed.Value;
-        }
-        else if (GameDebugSettings.IsEnabled(DebugCategory.Move)
-                 && GameDebugSettings.ShouldLogMovementForCharacter(_ctx.CharacterKey))
-        {
-            GameDebugSettings.Log(
-                DebugCategory.Move,
-                $"[{_ctx.CharacterKey}] Flow prepare pending target={destination} reason={failureReason}");
-        }
-        RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.CharacterMovePrepare, prepareStartTicks);
-    }
-
     private static void RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope scope, long startTicks)
     {
         UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
@@ -233,12 +196,6 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
         {
             hasher.Add(_targetPosFixed.Value.x.RawValue);
             hasher.Add(_targetPosFixed.Value.y.RawValue);
-        }
-        hasher.Add(_lastPreparedTargetFixed.HasValue);
-        if (_lastPreparedTargetFixed.HasValue)
-        {
-            hasher.Add(_lastPreparedTargetFixed.Value.x.RawValue);
-            hasher.Add(_lastPreparedTargetFixed.Value.y.RawValue);
         }
         hasher.Add(_navDirectionFixed.x.RawValue);
         hasher.Add(_navDirectionFixed.y.RawValue);

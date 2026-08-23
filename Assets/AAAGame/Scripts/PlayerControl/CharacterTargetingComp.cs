@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using Stopwatch = System.Diagnostics.Stopwatch;
 using UnityEngine;
+using UnityGameFramework.Runtime;
 
 // Aggro behavior contract: AIDoc/当前仇恨与索敌系统.md. Update that document with behavioral changes.
 public interface ILastSeenTargetingComp
@@ -151,7 +153,17 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
             return;
         _scanTimer = Fix64.Zero;
         RefreshNavigationRejectionEpoch();
-        EvaluateAggroTarget();
+        long evaluateStartTicks = Stopwatch.GetTimestamp();
+        try
+        {
+            EvaluateAggroTarget();
+        }
+        finally
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.CharacterTargetingEvaluate,
+                Stopwatch.GetTimestamp() - evaluateStartTicks);
+        }
         MaintainFollowTarget();
     }
 
@@ -210,31 +222,41 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
 
         IEntityContext rankingCurrentTarget = _currentTarget;
         _candidateBuffer.Clear();
-        IList<IEntityContext> all = EntityRegistry.AllEntities;
-        for (int i = 0; i < all.Count; i++)
+        long candidateScanStartTicks = Stopwatch.GetTimestamp();
+        try
         {
-            IEntityContext candidate = all[i]
-                ?? throw new InvalidOperationException($"CharacterTargetingComp found a null registry entity at index {i}.");
-            if (ReferenceEquals(candidate, _ctx) || !IsHardValid(candidate, outerRange))
-                continue;
+            IList<IEntityContext> all = EntityRegistry.AllEntities;
+            for (int i = 0; i < all.Count; i++)
+            {
+                IEntityContext candidate = all[i]
+                    ?? throw new InvalidOperationException($"CharacterTargetingComp found a null registry entity at index {i}.");
+                if (ReferenceEquals(candidate, _ctx) || !IsHardValid(candidate, outerRange))
+                    continue;
 
-            Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(candidate);
-            bool isAlert = IsAlertTarget(candidate);
-            bool isPropagated = IsPropagatedCandidate(candidate);
-            bool retained = ReferenceEquals(candidate, rankingCurrentTarget) || ReferenceEquals(candidate, _lostTarget);
-            if (distance > normalCandidateRange && !isAlert && !isPropagated && !retained)
-                continue;
-            if (!LogicFactionVisionService.IsEntityVisibleToSide(_ctx.Side, candidate))
-                continue;
+                Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(candidate);
+                bool isAlert = IsAlertTarget(candidate);
+                bool isPropagated = IsPropagatedCandidate(candidate);
+                bool retained = ReferenceEquals(candidate, rankingCurrentTarget) || ReferenceEquals(candidate, _lostTarget);
+                if (distance > normalCandidateRange && !isAlert && !isPropagated && !retained)
+                    continue;
+                if (!LogicFactionVisionService.IsEntityVisibleToSide(_ctx.Side, candidate))
+                    continue;
 
-            TargetPriority priority = TargetPriorityUtility.Create(
-                _ctx,
-                candidate,
-                distance,
-                attackRange,
-                rankingCurrentTarget,
-                isAlert);
-            _candidateBuffer.Add(new AggroCandidate(candidate, distance, priority));
+                TargetPriority priority = TargetPriorityUtility.Create(
+                    _ctx,
+                    candidate,
+                    distance,
+                    attackRange,
+                    rankingCurrentTarget,
+                    isAlert);
+                _candidateBuffer.Add(new AggroCandidate(candidate, distance, priority));
+            }
+        }
+        finally
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.CharacterTargetingCandidateScan,
+                Stopwatch.GetTimestamp() - candidateScanStartTicks);
         }
 
         IEntityContext best = ResolveBestReachableCandidate(attackRange, out bool waitForCandidateNavigation);
@@ -275,11 +297,23 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
             int lastIndex = _candidateBuffer.Count - 1;
             _candidateBuffer[bestIndex] = _candidateBuffer[lastIndex];
             _candidateBuffer.RemoveAt(lastIndex);
-            if (TryResolveCandidateReachability(
+            bool reachable;
+            long reachabilityStartTicks = Stopwatch.GetTimestamp();
+            try
+            {
+                reachable = TryResolveCandidateReachability(
                     candidate.Target,
                     candidate.Distance,
                     attackRange,
-                    out waitForNavigation))
+                    out waitForNavigation);
+            }
+            finally
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.CharacterTargetingReachability,
+                    Stopwatch.GetTimestamp() - reachabilityStartTicks);
+            }
+            if (reachable)
             {
                 _candidateBuffer.Clear();
                 return candidate.Target;
@@ -332,15 +366,32 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
             if (LogicWallRuntime.TryGetBranch(target.LogicEntityId, out _)
                 || !LogicWallRuntime.HasBuiltWalls)
                 return true;
-            if (!FlowFieldCrowdMovementSystem.TryEstimateWallDetourToAttackAreaFixed(
+            bool wallQuerySucceeded;
+            Fix64 noWallDistance;
+            Fix64 wallDistance;
+            bool wallPathReachable;
+            string wallFailureReason;
+            FlowFieldCrowdMovementSystem.NavigationQueryFailureKind wallFailureKind;
+            long wallDetourStartTicks = Stopwatch.GetTimestamp();
+            try
+            {
+                wallQuerySucceeded = FlowFieldCrowdMovementSystem.TryEstimateWallDetourToAttackAreaFixed(
                     _ctx,
                     target,
                     attackRange,
-                    out Fix64 noWallDistance,
-                    out Fix64 wallDistance,
-                    out bool wallPathReachable,
-                    out string wallFailureReason,
-                    out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind wallFailureKind))
+                    out noWallDistance,
+                    out wallDistance,
+                    out wallPathReachable,
+                    out wallFailureReason,
+                    out wallFailureKind);
+            }
+            finally
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.CharacterTargetingWallDetour,
+                    Stopwatch.GetTimestamp() - wallDetourStartTicks);
+            }
+            if (!wallQuerySucceeded)
             {
                 switch (wallFailureKind)
                 {

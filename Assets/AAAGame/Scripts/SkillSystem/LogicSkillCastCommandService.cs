@@ -8,13 +8,34 @@ public readonly struct LogicSkillCastCommand
         ulong effectiveFrame,
         ulong sequence,
         LogicEntityId casterId,
+        int slotIndex)
+        : this(effectiveFrame, sequence, casterId, slotIndex, false, FixVector2.Zero)
+    {
+    }
+
+    public LogicSkillCastCommand(
+        ulong effectiveFrame,
+        ulong sequence,
+        LogicEntityId casterId,
         int slotIndex,
+        FixVector2 requestedWorldPosition)
+        : this(effectiveFrame, sequence, casterId, slotIndex, true, requestedWorldPosition)
+    {
+    }
+
+    private LogicSkillCastCommand(
+        ulong effectiveFrame,
+        ulong sequence,
+        LogicEntityId casterId,
+        int slotIndex,
+        bool hasRequestedWorldPosition,
         FixVector2 requestedWorldPosition)
     {
         EffectiveFrame = effectiveFrame;
         Sequence = sequence;
         CasterId = casterId;
         SlotIndex = slotIndex;
+        HasRequestedWorldPosition = hasRequestedWorldPosition;
         RequestedWorldPosition = requestedWorldPosition;
     }
 
@@ -22,6 +43,7 @@ public readonly struct LogicSkillCastCommand
     public ulong Sequence { get; }
     public LogicEntityId CasterId { get; }
     public int SlotIndex { get; }
+    public bool HasRequestedWorldPosition { get; }
     public FixVector2 RequestedWorldPosition { get; }
 }
 
@@ -90,7 +112,23 @@ public static class LogicSkillCastCommandService
 
     public static LogicSkillCastCommand ScheduleForNextFrame(
         LogicEntityId casterId,
+        int slotIndex)
+    {
+        return ScheduleForNextFrame(casterId, slotIndex, false, FixVector2.Zero);
+    }
+
+    public static LogicSkillCastCommand ScheduleForNextFrame(
+        LogicEntityId casterId,
         int slotIndex,
+        FixVector2 requestedWorldPosition)
+    {
+        return ScheduleForNextFrame(casterId, slotIndex, true, requestedWorldPosition);
+    }
+
+    private static LogicSkillCastCommand ScheduleForNextFrame(
+        LogicEntityId casterId,
+        int slotIndex,
+        bool hasRequestedWorldPosition,
         FixVector2 requestedWorldPosition)
     {
         EnsureActive();
@@ -105,8 +143,16 @@ public static class LogicSkillCastCommandService
             checked(LogicTimeControlService.CurrentFrame + 1),
             casterId,
             slotIndex,
+            hasRequestedWorldPosition,
             requestedWorldPosition,
             true);
+    }
+
+    public static LogicSkillCastCommand Submit(
+        LogicEntityId casterId,
+        int slotIndex)
+    {
+        return Submit(casterId, slotIndex, false, FixVector2.Zero);
     }
 
     public static LogicSkillCastCommand Submit(
@@ -114,15 +160,25 @@ public static class LogicSkillCastCommandService
         int slotIndex,
         FixVector2 requestedWorldPosition)
     {
-        if (!LogicPausedOperationService.CanResolveImmediately)
-            return ScheduleForNextFrame(casterId, slotIndex, requestedWorldPosition);
+        return Submit(casterId, slotIndex, true, requestedWorldPosition);
+    }
 
-        return SubmitImmediate(casterId, slotIndex, requestedWorldPosition, ApplyRuntimeCommand);
+    private static LogicSkillCastCommand Submit(
+        LogicEntityId casterId,
+        int slotIndex,
+        bool hasRequestedWorldPosition,
+        FixVector2 requestedWorldPosition)
+    {
+        if (!LogicPausedOperationService.CanResolveImmediately)
+            return ScheduleForNextFrame(casterId, slotIndex, hasRequestedWorldPosition, requestedWorldPosition);
+
+        return SubmitImmediate(casterId, slotIndex, hasRequestedWorldPosition, requestedWorldPosition, ApplyRuntimeCommand);
     }
 
     private static LogicSkillCastCommand SubmitImmediate(
         LogicEntityId casterId,
         int slotIndex,
+        bool hasRequestedWorldPosition,
         FixVector2 requestedWorldPosition,
         Action<LogicSkillCastCommand> sink)
     {
@@ -132,6 +188,7 @@ public static class LogicSkillCastCommandService
                 LogicTimeControlService.CurrentFrame,
                 casterId,
                 slotIndex,
+                hasRequestedWorldPosition,
                 requestedWorldPosition,
                 false);
             ApplyImmediate(command, sink);
@@ -143,6 +200,7 @@ public static class LogicSkillCastCommandService
         ulong effectiveFrame,
         LogicEntityId casterId,
         int slotIndex,
+        bool hasRequestedWorldPosition,
         FixVector2 requestedWorldPosition,
         bool pending)
     {
@@ -154,12 +212,18 @@ public static class LogicSkillCastCommandService
         if (HasPendingForCaster(casterId))
             throw new InvalidOperationException($"Skill cast command is already pending. caster={casterId.Value}.");
 
-        var command = new LogicSkillCastCommand(
-            effectiveFrame,
-            checked(s_LastSequence + 1),
-            casterId,
-            slotIndex,
-            requestedWorldPosition);
+        LogicSkillCastCommand command = hasRequestedWorldPosition
+            ? new LogicSkillCastCommand(
+                effectiveFrame,
+                checked(s_LastSequence + 1),
+                casterId,
+                slotIndex,
+                requestedWorldPosition)
+            : new LogicSkillCastCommand(
+                effectiveFrame,
+                checked(s_LastSequence + 1),
+                casterId,
+                slotIndex);
         s_LastSequence = command.Sequence;
         if (pending)
             s_Pending.Add(command);
@@ -194,12 +258,22 @@ public static class LogicSkillCastCommandService
     public static LogicSkillCastCommand SubmitForTests(
         LogicEntityId casterId,
         int slotIndex,
+        Action<LogicSkillCastCommand> sink)
+    {
+        if (!LogicPausedOperationService.CanResolveImmediately)
+            return ScheduleForNextFrame(casterId, slotIndex);
+        return SubmitImmediate(casterId, slotIndex, false, FixVector2.Zero, sink);
+    }
+
+    public static LogicSkillCastCommand SubmitForTests(
+        LogicEntityId casterId,
+        int slotIndex,
         FixVector2 requestedWorldPosition,
         Action<LogicSkillCastCommand> sink)
     {
         if (!LogicPausedOperationService.CanResolveImmediately)
             return ScheduleForNextFrame(casterId, slotIndex, requestedWorldPosition);
-        return SubmitImmediate(casterId, slotIndex, requestedWorldPosition, sink);
+        return SubmitImmediate(casterId, slotIndex, true, requestedWorldPosition, sink);
     }
 #endif
 
@@ -305,6 +379,8 @@ public static class LogicSkillCastCommandService
     {
         if (!EntityRegistry.TryGet(command.CasterId, out IEntityContext caster))
             throw new InvalidOperationException($"Skill cast command caster is not registered. caster={command.CasterId.Value}.");
+        if (!ActiveSkillCastEligibility.CanCast(caster))
+            return;
         if (caster is not ISkillCompHost host || host.skillComp is not ILogicSkillCastCommandConsumer consumer)
         {
             throw new InvalidOperationException(
@@ -340,8 +416,12 @@ public static class LogicSkillCastCommandService
         hasher.Add(command.Sequence);
         hasher.Add(command.CasterId.Value);
         hasher.Add(command.SlotIndex);
-        hasher.Add(command.RequestedWorldPosition.x.RawValue);
-        hasher.Add(command.RequestedWorldPosition.y.RawValue);
+        hasher.Add(command.HasRequestedWorldPosition);
+        if (command.HasRequestedWorldPosition)
+        {
+            hasher.Add(command.RequestedWorldPosition.x.RawValue);
+            hasher.Add(command.RequestedWorldPosition.y.RawValue);
+        }
     }
 
     private static void EnsureActive()

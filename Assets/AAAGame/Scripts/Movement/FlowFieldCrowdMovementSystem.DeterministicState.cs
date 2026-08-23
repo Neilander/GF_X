@@ -186,6 +186,7 @@ public static partial class FlowFieldCrowdMovementSystem
     private static ulong _committedWorldSetHash;
     private static ulong _deterministicFlowTileAuthorityContentHash;
     private static ulong _sectorPathAuthorityContentHash;
+    private static ulong _sectorCorridorPolicyAuthorityContentHash;
     private static ulong _sectorPortalAccessAuthorityContentHash;
     private static ulong _sharedGoalFieldAuthorityContentHash;
     private static ulong _costStampAuthorityContentHash;
@@ -572,6 +573,7 @@ public static partial class FlowFieldCrowdMovementSystem
         _committedWorldSetHash = 0;
         _deterministicFlowTileAuthorityContentHash = 0;
         _sectorPathAuthorityContentHash = 0;
+        _sectorCorridorPolicyAuthorityContentHash = 0;
         _sectorPortalAccessAuthorityContentHash = 0;
         _sharedGoalFieldAuthorityContentHash = 0;
         _costStampAuthorityContentHash = 0;
@@ -585,6 +587,7 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(0x4E41564155544843UL);
         AddNavigationDistancePrewarmRequests(hasher);
         AddAuthoritySectorPathCache(hasher);
+        AddAuthoritySectorCorridorPolicyCache(hasher);
         AddAuthoritySectorPortalAccessCache(hasher);
         AddAuthoritySharedGoalFieldCache(hasher);
     }
@@ -611,6 +614,25 @@ public static partial class FlowFieldCrowdMovementSystem
             runtimeSetHash ^= token;
         }
         return runtimeSetHash;
+    }
+
+    private static void AddAuthoritySectorCorridorPolicyCache(LogicStateHasher hasher)
+    {
+        hasher.Add(SectorCorridorPolicies.Count);
+        hasher.Add(_sectorCorridorPolicyAuthorityContentHash);
+        ulong runtimeSetHash = 0;
+        foreach (KeyValuePair<SectorCorridorPolicyKey, SectorCorridorPolicy> pair in SectorCorridorPolicies)
+        {
+            SectorCorridorPolicy policy = pair.Value;
+            if (policy == null || !policy.HasAuthorityContentHash)
+                throw new InvalidOperationException("Navigation authority digest encountered an unhashed sector corridor policy.");
+
+            ulong token = 14695981039346656037UL;
+            AddSectorCorridorPolicyAuthorityToken(ref token, pair.Key);
+            AddAuthorityToken(ref token, policy.LastUsedFrame);
+            runtimeSetHash ^= token;
+        }
+        hasher.Add(runtimeSetHash);
     }
 
     private static void AddAuthoritySectorPortalAccessCache(LogicStateHasher hasher)
@@ -744,6 +766,15 @@ public static partial class FlowFieldCrowdMovementSystem
         AddAuthorityToken(ref token, key.SectorDirtyVersion);
     }
 
+    private static void AddSectorCorridorPolicyAuthorityToken(ref ulong token, SectorCorridorPolicyKey key)
+    {
+        AddAuthorityToken(ref token, key.WorldVersion);
+        AddAuthorityToken(ref token, key.AgentTypeId);
+        AddAuthorityToken(ref token, key.GoalSectorId);
+        AddAuthorityToken(ref token, key.GoalCellIndex);
+        AddAuthorityToken(ref token, key.GoalSectorDirtyVersion);
+    }
+
     private static void AddSharedGoalAuthorityToken(ref ulong token, SharedGoalFieldKey key)
     {
         AddAuthorityToken(ref token, key.WorldVersion);
@@ -775,6 +806,83 @@ public static partial class FlowFieldCrowdMovementSystem
         _sectorPathAuthorityContentHash ^= entry.AuthorityContentHash;
     }
 
+    private static ulong ComputeSectorCorridorPolicyAuthorityContentHash(SectorCorridorPolicyKey key, SectorCorridorPolicy policy)
+    {
+        if (policy == null)
+            throw new InvalidOperationException("Cannot hash a null sector corridor policy.");
+
+        var hasher = new LogicStateHasher();
+        hasher.Add(0x4E4156434F525250UL);
+        hasher.Add(key.WorldVersion);
+        hasher.Add(key.AgentTypeId);
+        hasher.Add(key.GoalSectorId);
+        hasher.Add(key.GoalCellIndex);
+        hasher.Add(key.GoalSectorDirtyVersion);
+        hasher.Add(policy.NodeCosts.Count);
+        hasher.Add(policy.NodeCostsAuthorityContentHash);
+        hasher.Add(policy.NextNodeTowardGoal.Count);
+        hasher.Add(policy.NextNodeTowardGoalAuthorityContentHash);
+        hasher.Add(policy.SettledPortalNodes.Count);
+        hasher.Add(policy.SettledPortalAuthorityContentHash);
+        hasher.Add(policy.PortalOpenSet.Count);
+        hasher.Add(policy.PortalOpenSet.AuthorityContentHash);
+        hasher.Add(policy.HeuristicStartCellIndex);
+        return hasher.Hash;
+    }
+
+    private static void SetSectorCorridorPolicy(SectorCorridorPolicyKey key, SectorCorridorPolicy policy)
+    {
+        RemoveSectorCorridorPolicy(key);
+        policy.AuthorityContentHash = ComputeSectorCorridorPolicyAuthorityContentHash(key, policy);
+        policy.HasAuthorityContentHash = true;
+        SectorCorridorPolicies[key] = policy;
+        _sectorCorridorPolicyAuthorityContentHash ^= policy.AuthorityContentHash;
+    }
+
+    private static bool ExpandHashedSectorCorridorPolicyToStartCell(
+        SectorCorridorPolicyKey key,
+        SectorCorridorPolicy policy,
+        int startSectorId,
+        int startX,
+        int startY)
+    {
+        if (!SectorCorridorPolicies.TryGetValue(key, out SectorCorridorPolicy cached)
+            || !ReferenceEquals(cached, policy)
+            || !policy.HasAuthorityContentHash)
+        {
+            throw new InvalidOperationException("Cannot expand an uncommitted sector corridor policy.");
+        }
+
+        _sectorCorridorPolicyAuthorityContentHash ^= policy.AuthorityContentHash;
+        policy.HasAuthorityContentHash = false;
+        try
+        {
+            return ExpandSectorCorridorPolicyToStartCell(policy, startSectorId, startX, startY);
+        }
+        finally
+        {
+            policy.AuthorityContentHash = ComputeSectorCorridorPolicyAuthorityContentHash(key, policy);
+            policy.HasAuthorityContentHash = true;
+            _sectorCorridorPolicyAuthorityContentHash ^= policy.AuthorityContentHash;
+        }
+    }
+
+    private static void RemoveSectorCorridorPolicy(SectorCorridorPolicyKey key)
+    {
+        if (!SectorCorridorPolicies.TryGetValue(key, out SectorCorridorPolicy policy))
+            return;
+        if (policy == null || !policy.HasAuthorityContentHash)
+            throw new InvalidOperationException("Cannot remove an unhashed sector corridor policy.");
+        _sectorCorridorPolicyAuthorityContentHash ^= policy.AuthorityContentHash;
+        SectorCorridorPolicies.Remove(key);
+    }
+
+    private static void ClearSectorCorridorPolicyCache()
+    {
+        SectorCorridorPolicies.Clear();
+        _sectorCorridorPolicyAuthorityContentHash = 0;
+    }
+
     private static void RemoveSectorPathCacheEntry(SectorPathCacheKey key)
     {
         if (!SectorPathCache.TryGetValue(key, out SectorPathCacheEntry entry))
@@ -789,6 +897,7 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         SectorPathCache.Clear();
         _sectorPathAuthorityContentHash = 0;
+        ClearSectorCorridorPolicies();
     }
 
     private static ulong ComputeSectorPortalAccessAuthorityContentHash(SectorPortalAccessKey key, SectorPortalAccessEntry entry)
@@ -2114,14 +2223,6 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(anchor.ActiveWorldVersion);
             hasher.Add(anchor.ActiveGoalWorldFixed.x.RawValue);
             hasher.Add(anchor.ActiveGoalWorldFixed.y.RawValue);
-            hasher.Add(anchor.PendingRawGoalX);
-            hasher.Add(anchor.PendingRawGoalY);
-            hasher.Add(anchor.PendingGoalX);
-            hasher.Add(anchor.PendingGoalY);
-            hasher.Add(anchor.PendingGoalSectorId);
-            hasher.Add(anchor.PendingWorldVersion);
-            hasher.Add(anchor.PendingGoalWorldFixed.x.RawValue);
-            hasher.Add(anchor.PendingGoalWorldFixed.y.RawValue);
             hasher.Add(anchor.LastUsedFrame);
         }
     }
@@ -2835,6 +2936,25 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(entry.LastUsedFrame);
         }
 
+        var policyKeys = new List<SectorCorridorPolicyKey>(SectorCorridorPolicies.Keys);
+        policyKeys.Sort(CompareSectorCorridorPolicyKeys);
+        hasher.Add(policyKeys.Count);
+        for (int i = 0; i < policyKeys.Count; i++)
+        {
+            SectorCorridorPolicyKey key = policyKeys[i];
+            hasher.Add(key.WorldVersion);
+            hasher.Add(key.AgentTypeId);
+            hasher.Add(key.GoalSectorId);
+            hasher.Add(key.GoalCellIndex);
+            hasher.Add(key.GoalSectorDirtyVersion);
+            SectorCorridorPolicy policy = SectorCorridorPolicies[key];
+            AddSortedLongDictionary(hasher, policy.NodeCosts);
+            AddSortedIntDictionary(hasher, policy.NextNodeTowardGoal);
+            AddSortedInts(hasher, policy.SettledPortalNodes);
+            policy.PortalOpenSet.WriteDeterministicState(hasher);
+            hasher.Add(policy.LastUsedFrame);
+        }
+
         var accessKeys = new List<SectorPortalAccessKey>(SectorPortalAccessCache.Keys);
         accessKeys.Sort(CompareSectorPortalAccessKeys);
         hasher.Add(accessKeys.Count);
@@ -2940,13 +3060,6 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(anchor.ActiveGoalSectorId);
             hasher.Add(anchor.ActiveWorldVersion);
             AddVector3(hasher, anchor.ActiveGoalWorld);
-            hasher.Add(anchor.PendingRawGoalX);
-            hasher.Add(anchor.PendingRawGoalY);
-            hasher.Add(anchor.PendingGoalX);
-            hasher.Add(anchor.PendingGoalY);
-            hasher.Add(anchor.PendingGoalSectorId);
-            hasher.Add(anchor.PendingWorldVersion);
-            AddVector3(hasher, anchor.PendingGoalWorld);
             hasher.Add(anchor.LastUsedFrame);
         }
     }
