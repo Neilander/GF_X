@@ -34,25 +34,74 @@ internal static class Lv2PullChasePerformanceRunner
     private static readonly List<string> s_Samples = new List<string>(2048);
     private static readonly MainThreadPerfScope[] s_ChaseScopes =
     {
+        MainThreadPerfScope.LogicFrameTick,
+        MainThreadPerfScope.LogicFrameListenerCallbacks,
+        MainThreadPerfScope.LogicEntityNavigationSync,
         MainThreadPerfScope.LogicEntityBrain,
         MainThreadPerfScope.LogicEntityTargeting,
         MainThreadPerfScope.LogicEntityMoveIntent,
+        MainThreadPerfScope.LogicEntityMoveResolve,
         MainThreadPerfScope.CharacterMovePrepare,
+        MainThreadPerfScope.FlowGroupMove,
+        MainThreadPerfScope.FlowWorldBuildQueue,
+        MainThreadPerfScope.FlowRuntimeRebuildQueue,
+        MainThreadPerfScope.FlowTileBuildQueue,
         MainThreadPerfScope.FlowSteeringSetupPrepare,
         MainThreadPerfScope.FlowPrepareStartCell,
         MainThreadPerfScope.FlowPrepareStableGoal,
         MainThreadPerfScope.FlowPreparePathHandle,
         MainThreadPerfScope.FlowPrepareTileDemand,
+        MainThreadPerfScope.FlowPrepareGoalOccupancy,
+        MainThreadPerfScope.FlowPrepareWorld,
+        MainThreadPerfScope.FlowPreparePathAdvance,
+        MainThreadPerfScope.FlowPrepareReadDomain,
+        MainThreadPerfScope.FlowPathFastValidation,
+        MainThreadPerfScope.FlowPathBuildCache,
+        MainThreadPerfScope.FlowPathBuildSharedGoal,
+        MainThreadPerfScope.FlowPathBuildCorridorPolicy,
+        MainThreadPerfScope.FlowPathBuildHierarchy,
+        MainThreadPerfScope.FlowPathBuildPortalGraph,
+        MainThreadPerfScope.FlowPathBuildCommittedPrefix,
+        MainThreadPerfScope.FlowCorridorPolicyLookup,
+        MainThreadPerfScope.FlowCorridorPolicyHierarchy,
+        MainThreadPerfScope.FlowCorridorPolicyAuthorityHash,
+        MainThreadPerfScope.FlowCorridorPolicyReconstruct,
+        MainThreadPerfScope.FlowPathHandleCreateCache,
+        MainThreadPerfScope.FlowCorridorPolicyGoalConnector,
+        MainThreadPerfScope.FlowCorridorPolicyStartConnector,
+        MainThreadPerfScope.FlowCorridorPolicyStartLeafAccess,
+        MainThreadPerfScope.FlowCorridorPolicyStartLeafSearch,
+        MainThreadPerfScope.FlowCorridorPolicyStartExtend,
+        MainThreadPerfScope.FlowCorridorPolicyDownwardCustomize,
+        MainThreadPerfScope.FlowCorridorPolicyReverseExpand,
+        MainThreadPerfScope.FlowTileQueueActiveDemand,
+        MainThreadPerfScope.FlowTileQueuePrune,
+        MainThreadPerfScope.FlowTileQueueReferenceTrim,
+        MainThreadPerfScope.FlowTileQueueCommit,
+        MainThreadPerfScope.FlowTileQueueSharedGoal,
+        MainThreadPerfScope.FlowTileCommitQueueScan,
+        MainThreadPerfScope.FlowTileCommitDirections,
+        MainThreadPerfScope.FlowTileCommitContinuation,
+        MainThreadPerfScope.FlowTileCommitDiagnosticShadow,
+        MainThreadPerfScope.FlowTileCommitCache,
+        MainThreadPerfScope.FlowTileCommitReferenceTrim,
         MainThreadPerfScope.FlowSteeringPath,
         MainThreadPerfScope.FlowSteeringPortalOwner,
         MainThreadPerfScope.FlowSteeringVelocity,
-        MainThreadPerfScope.FlowTileBuildQueue,
+        MainThreadPerfScope.FlowSteeringDirectStatic,
+        MainThreadPerfScope.FlowSteeringDirectLineOfSight,
         MainThreadPerfScope.CharacterTargetingEvaluate,
+        MainThreadPerfScope.CharacterTargetingCandidateScan,
+        MainThreadPerfScope.CharacterTargetingReachability,
         MainThreadPerfScope.FlowAttackAreaScan,
     };
     private static readonly double[] s_ChaseScopePeakMilliseconds = new double[s_ChaseScopes.Length];
     private static readonly int[] s_ChaseScopePeakRenderFrames = new int[s_ChaseScopes.Length];
     private static readonly int[] s_ChaseScopePeakCalls = new int[s_ChaseScopes.Length];
+    private static readonly List<double> s_ApproachFrameMilliseconds = new List<double>(1024);
+    private static readonly List<double> s_ApproachLogicMilliseconds = new List<double>(1024);
+    private static readonly List<double> s_RetreatFrameMilliseconds = new List<double>(1024);
+    private static readonly List<double> s_RetreatLogicMilliseconds = new List<double>(1024);
     private static long s_LastEditorUpdateTimestamp;
     private static int s_LastProfilerFrame = -1;
     private static int s_LastPeriodicSampleFrame = -1;
@@ -64,6 +113,9 @@ internal static class Lv2PullChasePerformanceRunner
     private static string s_NavigationAfterInvade = string.Empty;
     private static string s_LastRetreatDirection = string.Empty;
     private static bool s_CaptureActive;
+    private static int s_PeakRequiredFlowTileCommits;
+    private static int s_PeakFlowTileQueueMutations;
+    private static int s_PeakPathPortalExpansions;
 
     private enum RunnerState
     {
@@ -454,6 +506,13 @@ internal static class Lv2PullChasePerformanceRunner
         s_MaxFrame = -1;
         s_MaxLogicMilliseconds = 0.0;
         s_MaxLogicFrame = -1;
+        s_ApproachFrameMilliseconds.Clear();
+        s_ApproachLogicMilliseconds.Clear();
+        s_RetreatFrameMilliseconds.Clear();
+        s_RetreatLogicMilliseconds.Clear();
+        s_PeakRequiredFlowTileCommits = 0;
+        s_PeakFlowTileQueueMutations = 0;
+        s_PeakPathPortalExpansions = 0;
         s_CaptureActive = true;
     }
 
@@ -468,6 +527,26 @@ internal static class Lv2PullChasePerformanceRunner
 
         double frameMs = MainThreadFrameProfiler.LastCompletedFrameMilliseconds;
         double logicMs = MainThreadFrameProfiler.LastCompletedLogicFrameMilliseconds;
+        ScenarioMode mode = (ScenarioMode)SessionState.GetInt(ModeKey, (int)ScenarioMode.Approach);
+        if (mode == ScenarioMode.Approach)
+        {
+            s_ApproachFrameMilliseconds.Add(frameMs);
+            s_ApproachLogicMilliseconds.Add(logicMs);
+        }
+        else
+        {
+            s_RetreatFrameMilliseconds.Add(frameMs);
+            s_RetreatLogicMilliseconds.Add(logicMs);
+        }
+        s_PeakRequiredFlowTileCommits = Math.Max(
+            s_PeakRequiredFlowTileCommits,
+            FlowFieldCrowdMovementSystem.GetEditorTestRequiredFlowTileCommitCount());
+        s_PeakFlowTileQueueMutations = Math.Max(
+            s_PeakFlowTileQueueMutations,
+            FlowFieldCrowdMovementSystem.GetEditorTestFlowTileQueueMutationCount());
+        s_PeakPathPortalExpansions = Math.Max(
+            s_PeakPathPortalExpansions,
+            FlowFieldCrowdMovementSystem.GetEditorTestFramePathPortalGraphNodeExpansionCount());
         CaptureChaseScopePeaks(completedFrame);
         if (frameMs > s_MaxFrameMilliseconds)
         {
@@ -482,9 +561,10 @@ internal static class Lv2PullChasePerformanceRunner
 
         bool periodic = completedFrame - s_LastPeriodicSampleFrame >= SampleIntervalRenderFrames;
         double pathHandleMilliseconds = MainThreadFrameProfiler.GetLastCompletedScopeMilliseconds(MainThreadPerfScope.FlowPreparePathHandle);
+        double continuationMilliseconds = MainThreadFrameProfiler.GetLastCompletedScopeMilliseconds(MainThreadPerfScope.FlowTileCommitContinuation);
         bool pathSearchExpanded = EditorApplication.isPlaying
                                   && FlowFieldCrowdMovementSystem.GetEditorTestFramePathPortalGraphNodeExpansionCount() > 0;
-        if (!periodic && !pathSearchExpanded && pathHandleMilliseconds < 0.5)
+        if (!periodic && !pathSearchExpanded && pathHandleMilliseconds < 0.5 && continuationMilliseconds < 0.5)
             return;
         if (periodic)
             s_LastPeriodicSampleFrame = completedFrame;
@@ -509,6 +589,9 @@ internal static class Lv2PullChasePerformanceRunner
         string pathSearch = EditorApplication.isPlaying
             ? FlowFieldCrowdMovementSystem.GetEditorTestFramePathSearchDiagnostics()
             : string.Empty;
+        string startConnectors = EditorApplication.isPlaying
+            ? FlowFieldCrowdMovementSystem.GetEditorTestHierarchyStartConnectorDiagnostics(completedFrame)
+            : string.Empty;
         double updateGapMs = s_LastEditorUpdateTimestamp == 0
             ? 0.0
             : (Stopwatch.GetTimestamp() - s_LastEditorUpdateTimestamp) * 1000.0 / Stopwatch.Frequency;
@@ -516,7 +599,7 @@ internal static class Lv2PullChasePerformanceRunner
             $"sample render={completedFrame},logic={LogicFrameRuntime.CurrentFrame},state={(RunnerState)SessionState.GetInt(StateKey, 0)}," +
             $"mode={(ScenarioMode)SessionState.GetInt(ModeKey, 0)},frameMs={frameMs:F3},trackedMs={MainThreadFrameProfiler.LastCompletedTrackedMilliseconds:F3}," +
             $"untrackedMs={MainThreadFrameProfiler.LastCompletedUntrackedMilliseconds:F3},logicMs={logicMs:F3},editorGapMs={updateGapMs:F3}," +
-            $"scopes=[{BuildChaseScopeSample()}],pathSearch=[{pathSearch}],chase=[{chase}],navigation=[{navigation}]");
+            $"scopes=[{BuildChaseScopeSample()}],pathSearch=[{pathSearch}],startConnectors=[{startConnectors}],chase=[{chase}],navigation=[{navigation}]");
     }
 
     private static void CaptureChaseScopePeaks(int completedFrame)
@@ -563,6 +646,28 @@ internal static class Lv2PullChasePerformanceRunner
         return string.Join(Environment.NewLine, lines);
     }
 
+    private static string BuildDistributionReport(string name, List<double> samples)
+    {
+        if (samples.Count == 0)
+            return $"distribution name={name},count=0";
+
+        double[] ordered = samples.ToArray();
+        Array.Sort(ordered);
+        return $"distribution name={name},count={ordered.Length}," +
+               $"p50={Percentile(ordered, 0.50).ToString("F3", CultureInfo.InvariantCulture)}," +
+               $"p95={Percentile(ordered, 0.95).ToString("F3", CultureInfo.InvariantCulture)}," +
+               $"p99={Percentile(ordered, 0.99).ToString("F3", CultureInfo.InvariantCulture)}," +
+               $"max={ordered[ordered.Length - 1].ToString("F3", CultureInfo.InvariantCulture)}";
+    }
+
+    private static double Percentile(double[] ordered, double percentile)
+    {
+        if (ordered == null || ordered.Length == 0)
+            throw new ArgumentException("Percentile requires at least one ordered sample.", nameof(ordered));
+        int index = (int)Math.Ceiling(percentile * ordered.Length) - 1;
+        return ordered[Math.Max(0, Math.Min(ordered.Length - 1, index))];
+    }
+
     private static string DescribeChaseState(IEntityContext hero, IEntityContext target)
     {
         int enemyCount = 0;
@@ -599,6 +704,12 @@ internal static class Lv2PullChasePerformanceRunner
 
     private static void Pass(ulong frame, IEntityContext hero, IEntityContext target)
     {
+        if (s_PeakRequiredFlowTileCommits != 0)
+        {
+            throw new InvalidOperationException(
+                $"Lv2 pull-chase observed {s_PeakRequiredFlowTileCommits} required Flow tile commits inside steering.");
+        }
+
         string report =
             "RESULT=PASS" + Environment.NewLine +
             "startedUtc=" + SessionState.GetString(StartedUtcKey, string.Empty) + Environment.NewLine +
@@ -608,6 +719,13 @@ internal static class Lv2PullChasePerformanceRunner
             "maxFrame=" + s_MaxFrame + Environment.NewLine +
             "maxLogicMs=" + s_MaxLogicMilliseconds.ToString("F3", CultureInfo.InvariantCulture) + Environment.NewLine +
             "maxLogicRenderFrame=" + s_MaxLogicFrame + Environment.NewLine +
+            "peakRequiredFlowTileCommits=" + s_PeakRequiredFlowTileCommits + Environment.NewLine +
+            "peakFlowTileQueueMutations=" + s_PeakFlowTileQueueMutations + Environment.NewLine +
+            "peakPathPortalExpansions=" + s_PeakPathPortalExpansions + Environment.NewLine +
+            BuildDistributionReport("approach-frame", s_ApproachFrameMilliseconds) + Environment.NewLine +
+            BuildDistributionReport("approach-logic", s_ApproachLogicMilliseconds) + Environment.NewLine +
+            BuildDistributionReport("retreat-frame", s_RetreatFrameMilliseconds) + Environment.NewLine +
+            BuildDistributionReport("retreat-logic", s_RetreatLogicMilliseconds) + Environment.NewLine +
             "navigationBeforeInvade=" + s_NavigationBeforeInvade + Environment.NewLine +
             "navigationAfterInvade=" + s_NavigationAfterInvade + Environment.NewLine +
             "finalChase=" + DescribeChaseState(hero, target) + Environment.NewLine +
@@ -661,6 +779,13 @@ internal static class Lv2PullChasePerformanceRunner
         s_MaxFrame = -1;
         s_MaxLogicMilliseconds = 0.0;
         s_MaxLogicFrame = -1;
+        s_ApproachFrameMilliseconds.Clear();
+        s_ApproachLogicMilliseconds.Clear();
+        s_RetreatFrameMilliseconds.Clear();
+        s_RetreatLogicMilliseconds.Clear();
+        s_PeakRequiredFlowTileCommits = 0;
+        s_PeakFlowTileQueueMutations = 0;
+        s_PeakPathPortalExpansions = 0;
         s_NavigationBeforeInvade = string.Empty;
         s_NavigationAfterInvade = string.Empty;
         s_LastRetreatDirection = string.Empty;

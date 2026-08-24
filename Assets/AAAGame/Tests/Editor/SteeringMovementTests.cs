@@ -1720,6 +1720,41 @@ public class SteeringMovementTests
             $"allocatedBytes={allocatedBytes}, bytesPerUnitScan={allocatedBytes / scanCount:F3}");
     }
 
+    [Test]
+    public void TargetingSpatialIndex_远端无关单位不进入局部候选扫描()
+    {
+        SimEntityContext self = MakeSoldier(Vector3.zero, SideType.PlayerSide);
+        SimEntityContext target = MakeSoldier(Vector3.right, SideType.EnemySide);
+        var targeting = new CharacterTargetingComp();
+        targeting.Init(self);
+        self.TargetComp = targeting;
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(target);
+        for (int i = 0; i < 128; i++)
+        {
+            SimEntityContext remote = MakeSoldier(
+                new Vector3(1000f + i * 2f, 0f, 1000f),
+                (i & 1) == 0 ? SideType.PlayerSide : SideType.EnemySide);
+            EntityRegistry.Register(remote);
+        }
+
+        LogicFactionVisionService.BeginTargetingPhase();
+        try
+        {
+            targeting.UpdateTargeting((Fix64)0.2f);
+        }
+        finally
+        {
+            LogicFactionVisionService.EndTargetingPhase();
+        }
+
+        Assert.AreSame(target, targeting.CurrentTarget);
+        Assert.Less(
+            LogicTargetingSpatialIndexService.CandidateVisitCount,
+            EntityRegistry.AllEntities.Count / 4,
+            "局部索敌不能再次扫描远端无关 registry 实体。");
+    }
+
     private static void RunTargetingPhase(IReadOnlyList<CharacterTargetingComp> targetings)
     {
         LogicFactionVisionService.BeginTargetingPhase();

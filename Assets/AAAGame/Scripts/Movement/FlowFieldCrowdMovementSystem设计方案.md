@@ -349,3 +349,150 @@ Editor 测试配置写入点已全量复核：除 Flow fixture 外，`SteeringMo
 0.8m 方向对称补充（2026-08-23）：该问题属于连续静态碰撞的 Q12 格点化，不属于 Flow 拓扑。接触流形用 raw 乘加表达半空间，围绕精确有理切平面投影选择最近可行格点；sweep travel 向零量化，剩余位移以 `incoming - traveled` 守恒，长度保持缩放后重新进入同一可行域。连续命中时间只有在相邻空间格点不超过 `1 raw` 且完整世界仍清晰时才向后一个时间格推进。authored boundary 使用完整半径，与其表面距离恰少 `1 raw` 的运行时障碍侧使用半开 `radius - 1 raw`；少 `2 raw` 仍阻挡。四旋转、双向和三种尾差 24 组及静态碰撞/Flow 组合 `321/321` 通过，真实 LvTest 两种相机输入均穿过且同时记录 boundary/building 接触。权威位移版本为 `103 / Avenge-30Hz-v103 / v103`。
 
 完整 EditMode job `35520c836d97460e987dbe923edc59b9` 中 Flow、碰撞、Replay v103 及其他 `1358` 项通过；唯一失败是用户独立修改且与本链无调用关系的 stale-target snapshot 测试，故本轮全量结果明确记为 `1358/1359`。
+
+## 递归层次寻路与接敌热路径改造（2026-08-23，设计冻结、实施中）
+
+### 现场规模与根因边界
+
+Lv2 三套 `720 x 510`、`0.1m` 导航资产均使用 `12 x 12` 细格 sector。只读统计得到 Small/Medium/Large 分别有 `3806/3645/3317` 个物理 portal、`7612/7290/6634` 个带 sector 侧的定向图状态，以及 `48124/45936/41222` 条 sector 内 transition。开放 sector 的 12 格边界被 `PortalMaxWindowWidthCells=6` 机械拆成两个 window，典型开放 sector 因而有 8 个 portal；当前 transition 对 sector 内 portal 建完整有向图，8 个 portal 即 56 条边。接敌录制中一次查询扩展 `2300-4400` 个定向状态，已覆盖单兵种全图约 30%-60%，不是“流场查询本来就应当很慢”。
+
+当前 `51.808ms` 逻辑帧还包含彼此独立的峰：`FlowPreparePathHandle=10.430ms/8`、`FlowSteeringVelocity=14.718ms/8`、`FlowSteeringPortalOwner=5.120ms/7`、`CharacterTargetingEvaluate=11.293ms/39`。`FlowSteeringSetupPrepare` 是包含 path-handle 的父 scope，统计时不得重复相加。多层抽象只解决全局 corridor 查询，不能冒充 tile 同步提交、portal owner 全量扫描或 targeting 全实体扫描的完整修复。
+
+### 不变量与禁止方案
+
+1. `0.1m` L0 网格继续唯一表达单位圆心净空、neighbor traversal、窄通道和局部 integration；不能为了减少高层节点放大细格或破坏 0.8m 通道。
+2. 障碍不变时不重建网格、portal、transition 或任一抽象层。目标移动只改变目标侧局部连接与活跃 corridor，不改变静态拓扑。
+3. 不缓存普通细格到所有普通细格的全量流场。缓存对象是 cluster 内 gateway 精确距离/witness、活跃目标侧 policy、逐层 corridor 和已提交 flow tile。
+4. 不使用 portal center 的 Chebyshev/欧氏距离猜测抽象图代价。宽 portal 采用集合入口语义，几何点距离不能保证对预计算集合最短边一致；此前反向 A* 已出现“settled 节点后来得到更短路径”的实机反例，该候选必须删除。
+5. 不用限流、跳帧、增大阈值、方向平滑、缓存上限扩容或异步拖延掩盖同步峰。调度预算只用于本来允许跨 Tick 的派生构建，当前 Tick 必需的权威输入必须在其正式准备阶段完成或明确处于 `PendingNavigation` 状态，steering 不得暗中 force-complete。
+6. 所有层次拓扑、精确边权、witness、dirty 传播游标和会改变未来选择的活跃 policy 都属于 Navigation authority，使用 Fix64/raw 成本、稳定平局键并进入确定性摘要。float 仅保留 Unity/诊断 shadow。
+
+### L0 portal 规范化
+
+相邻 sector 边界上的 portal 定义为“连续、双侧可穿越且 traversal/cost 语义不突变的最大 run”。`PortalMaxWindowWidthCells` 不再把同一最大 run 切成多个图节点；窄路分类仍按整个 run 的瓶颈几何计算。只有不可穿越断点、local component 分离或成本差达到正式 split 规则时才分段。按当前 Lv2 资产离线模拟，最大 run 会把物理 portal 降为 `2009/1930/1772`，减少约 47%，sector 内 transition 降为 `10978/10520/9544`，减少约 77%；典型开放 sector 回到每边一个、总计 4 个 gateway。sector 内仍只为确实连通的 gateway 对保存精确最短距离和 witness，不能用 portal 数平方直接假定可达。
+
+### 递归 HPA* 抽象
+
+层级记为 L0、L1...Ln。L0 是现有 sector/portal 图；每个父 cluster 由配置固定的 `HierarchyFanout x HierarchyFanout` 个子 cluster 组成。对每一层：
+
+1. 父 cluster 边界把连续可达的子层 crossing 记录为 gateway group，但 group 只表达几何连续性，不把具有不同进入状态的子入口折叠成一个图节点。正式搜索状态是带 cluster 侧的有向 boundary vertex；否则集合入口间的最小边权会允许零成本换槽，无法保证精确性。
+2. 同一父 cluster 内每对 boundary vertex 的边权，由子层图上限制在该 cluster 内的确定性 Dijkstra 得到精确距离；同时保存稳定 child witness。L1 witness 是 L0 有向 portal-node 序列，Ln witness 是 L(n-1) overlay 边序列并可递归展开到 L0。
+3. 重复构建直到顶层覆盖全图。地图长宽增长时层数按对数增加，单次最高层搜索不再随 L0 portal 总数线性增长。
+4. 查询把 start/goal 递归连接到各自 leaf cluster 的 boundary vertex：L0 只计算起终点所在 leaf cluster 的精确接入，上一层只在其父 cluster 内使用下一层 overlay 扩展。随后选择 start/goal 所处分区不同的最高已构建层求 corridor，再按 witness 逐层细化；不得从 start/goal 直接扫描整个高层 cluster 的 L0 图。
+5. 静态 authored world 在 world build/bake 阶段构建全部层。动态障碍只重建 dirty L0 sector/boundary，再按父链自底向上更新实际受影响 cluster；新快照全部完成后原子提交，旧 committed hierarchy 在此之前保持只读。
+
+本实现按 exact multi-level overlay/CRP 语义构建，而不是把入口折叠成中心点的近似 HPA*。正式正确性基线是同一 committed world 上“层次查询展开后的 L0 路径成本与完整 L0 Dijkstra 相等”。若以后选择近似 HPA*，必须另立可量化误差契约；本轮不接受未声明近似。ALT/landmark 只能作为某层的可证明下界优化，不替代递归抽象，也不得引入不一致几何启发式。
+
+### 目标侧共享与缓存
+
+`SectorPathCacheKey(startCell, goalCell)` 只保留为单请求 memo，不能承担群体共享。正式共享键以 `world/version + agentType + goal leaf sector/cluster + touched cluster versions` 为主体：同一移动目标的追兵共享目标侧 reverse policy 和逐层 corridor；起点只读取 policy 并连接当前 cluster。目标在同一 L0 sector 内移动时只更新最终 goal tile/局部接入，不重搜高层；跨 L0 sector 但仍在同一上层 cluster 时，只重做受影响的低层 suffix；跨父 cluster 才逐级更新。缓存保存精确 cost-to-go、next gateway 和 witness，LRU 平局使用稳定 key；活跃目标引用的 policy 作为 working set pin，解绑后才可淘汰。
+
+### 逻辑帧调度与 steering 只读边界
+
+`NavigationSync` 是正式导航准备阶段：同步 agent committed 位置、更新目标/路径需求、推进已允许跨 Tick 的 hierarchy/policy/tile 派生，并提交本 Tick 可消费快照。`Brain/Targeting` 在其后产生的新目标从下一 Tick 生效，或提交明确的纯数据 navigation request；不得在 `MoveIntent -> TryGetSteeringVelocityFixed` 内新建全局 corridor 或调用 `CommitRequiredDeterministicFlowTilePayload`。steering 只能读取已提交 PathHandle、当前 tile、portal participation 和 fixed collision world；缺少必需 payload 是显式状态机错误或合法 `PendingNavigation`，不能静默 fallback 到直线、旧方向或同步构建。
+
+### Portal owner 增量索引
+
+每个 agent 在 committed cell、PathHandle、current portal 或 corridor membership 变化时，更新自身唯一 `PortalParticipation`。索引按 `(world, agentType, bottleneck kind/id)` 保存稳定有序参与者和正反方向最小 agent id；owner 只在该 key 的参与者/占用状态变化或最小/最大持有 Tick 到期时重算。删除 `EnsureFixedPortalOwnerFrame` 每 Tick遍历 `OrderedAgentIds`、重复解析所有 corridor 的行为。参与者索引、owner、持有起始帧和待更新 key 都进入 authority 摘要。
+
+### Targeting 空间索引与导航结果共享
+
+逻辑帧快照建立一次确定性空间索引，cell 尺寸由最大常规候选半径配置决定，bucket 与实体 ID 均稳定排序。`CharacterTargetingComp` 只枚举覆盖 aggro 范围的 bucket，不再让每名单位遍历 `EntityRegistry.AllEntities`。同一 Tick 对 `(requester navigation class/island, target entity, attack geometry, world/dirty versions)` 相同的攻击区域可达性与墙体绕行结果共享；目标死亡、移动跨缓存几何单元、障碍版本变化时明确失效。最终优先级、可见性、alert/propagation 和实体 ID 平局语义保持不变。
+
+### 分阶段门禁
+
+1. L0 规范化：真实 Lv2 三资产统计必须达到最大 run 语义，完整 L0 Dijkstra 成本、窄 portal 分类、0.8m 通道与 portal slot 行为不变。
+2. 层次图：随机复杂图、真实 Lv2 和合成数百米地图逐对与完整 L0 Dijkstra 对照；查询扩展量随层数/局部 corridor 增长，不随总 L0 portal 线性增长。
+3. 共享 policy：8 名同目标追兵的高层搜索次数不随单位数增长；同 sector 目标移动为 0 次高层搜索，跨层只更新对应 suffix。
+4. 热路径：`FlowSteeringVelocity` 中 required tile commit 必须为 0；`FlowSteeringPortalOwner` 不得扫描全 agent；targeting candidate visit 数以邻域实体数而非 Registry 总数计。
+5. 实机：Lv2 runner 必须从接敌前开始记录 approach/retreat，分别报告并列 scope、查询次数、层次扩展、同步提交、owner participant 更新和 targeting candidates。不得把录制开始前的峰排除。
+6. 最终执行 Flow、Replay、完整 EditMode、编译/正式 Player corpus、LvTest 窄路和 Lv2 拉怪后撤；统一 UTF-8 BOM/CRLF，`git diff --check` 和中文读回无异常。行为或 authority 摘要发生变化时按最终一次语义统一升级 Replay，不为每个中间步骤保留可写协议入口。
+
+## 13. 递归层次实施记录与 exact 成本边界（2026-08-24，实施完成，整体验收中）
+
+### 已完成的正式实现
+
+1. L0 portal 改为同一边界上 traversal/cost 语义连续的最大 run，不再按 `PortalMaxWindowWidthCells` 人工切碎开放边界。
+2. `FlowFieldCrowdMovementSystem.Hierarchy.cs` 实现 exact multi-level overlay/CRP。每层 cluster 保存有向 boundary node、严格 Dijkstra 成本和 child witness；查询从最高必要层求 corridor，再逐层展开到 L0。几何 Chebyshev 排序因不能构成该集合节点图的一致启发式，已删除。
+3. hierarchy 同时接入 bake、预烘导入、增量 world build、runtime dirty、确定性 world hash 和 authority progress。单 source Dijkstra 可按 operation quota 跨 Tick 恢复；steering 只读同 Tick 已提交 snapshot，不推进 working build。
+4. 同一移动目标的追兵共享目标侧 reverse hierarchy policy；远距目标的 active goal 至少跨一个完整 L0 sector 才刷新，同 sector 内只更新末端局部目标。Portal owner 改为参与者增量索引；Targeting 改为逻辑帧空间索引和同岛攻击区域可达性共享。
+5. 派生 schema v5 为每条 L0 `PortalTransitionDerivedData` 保存 `DeterministicCost`。float `Cost` 只保留为非权威镜像，导入不再从 float 恢复 raw。Replay/content/corpus 统一为 `107 / Avenge-30Hz-v107 / v107`，固定 corpus FullHash 仍为 `1464893562985008626`。
+
+### 根因和反证
+
+- 真实 Lv2 Medium 最初出现 `hierarchy=4,775,528`、完整 L0=`4,774,637`，差 `891 raw`。增加 settled connector 契约检查后数值不变，排除“未 settled goal connector 被当作 exact suffix”。
+- 只读 witness 诊断得到 hierarchy witness 与完整 L0 都为 `4,774,637`，证明路径选择正确、污染位于 overlay 存储成本。首个污染边为 level 1/cluster 65，stored `218,581`、witness `216,603`；最终定位到 L0 段 bake=`58,837`、runtime=`56,859`。
+- 编辑器 bake 临时 world 原为 `Version=0`，全局 portal access cache 会在连续烘不同资产时身份冲突。现每个 bake world 分配唯一正版本并在 finally 清理；连续 A→B 与 B 单独烘摘要严格相等，job `d5777bf251ff4782b483803fa64693f6` 2/2。该缺陷独立成立，但修复后旧资产字节未变，因此不是上述差值根因。
+- 真正根因是 bake 在 `SymmetrizeNeighborTraversalMask -> PruneIsolatedWalkableCells` 后仍保留 prune 前 `BaseWalkableMask`。静态孤立格于是满足 `base=true/walkable=false`，被成本层误认成动态障碍并扩散 soft cost；runtime import 则冻结 prune 后 mask，造成双重语义。无 runtime obstacle 的静态 build 现通过 `FreezeCanonicalStaticNavigationBase` 同时冻结 canonical walkable 和 neighbor mask，再进入 cost/portal/hierarchy。
+- 补齐 hierarchy 阶段后，既有初始动态障碍门禁先暴露 `ApplyRuntimeDirtyOverlayImmediate failed: unknown stage Hierarchy`，证明同步预烘 overlay 状态机漏接迁移新增阶段；复用同一 `ProcessRuntimeDirtyHierarchy` 后继续暴露 unchanged sector raw=`long.MaxValue`。这不是允许 fallback 的理由，而是 v4 只序列化 float L0 成本的 schema 缺口，因此升级 v5。
+
+### 资产与正确性实证
+
+- 重烘前快照：`E:\AvengeSnapshots\20260824_120538_flow_schema_v5_prebake`，包含 git status、约 239 MB working patch、index patch 和 12 asset + 12 meta。
+- 12 张 Lv1/Lv2/Lv3/LvTest Small/Medium/Large 已逐资产原子重烘。半径从当前 `GameConfig.txt` 读取并经 `FixedConfigReader.ParseFixedConfigText` 量化，raw 为 Small/Medium/Large=`820/1639/2458`，没有测试写死表值。
+- 核验结果：12/12 asset 变化，0 meta/GUID 变化，0 零字节，schema=5，共 139,474 条有效 L0 raw transition。移除新增 L0 raw 行并把 `Version 5` 归一为 4 后，12/12 与重烘前快照逐行 SHA-256 相等，证明无拓扑、portal、hierarchy 或其他字段漂移。
+- 聚焦 job `32fc4b46fa2c4ca8a7ef037a44e3de2b` 6/6：复杂 synthetic exact、真实 Lv2 exact、初始动态障碍、连续 bake cache、raw witness 和静态孤立格 bake→import 全通过。真实 Lv2 成本均为 `4,774,637 raw`，hierarchy/L0 扩展为 `545/3859`，导入预烘 hierarchy 的 runtime source build 为 0。
+- hierarchy/runtime dirty/world hash 聚焦 job `dc7fd2b542c04addbe7bf4f98b8808cf` 8/8；Replay v107 job `7ae52a0ca88d4d999baa307a6183a2ad` 14/14。
+- 真实 Lv3 Medium 三层 exact job `bcf43b6332e74b0a8c00f6b0e2a10d25`：成本均为 `4,743,465 raw`，扩展 `571/6228`。开阔长图 width `64/256/1024` 的层级为 `1/2/3`，hierarchy 扩展 `128/184/240`，完整 L0 为 `215/887/3575`，job `7104cc001207473c908c5afa0e25fbbe`。查询增长随层数缓慢增加，而非随 portal 总数线性增加。
+
+### 尚未完成的最终验收
+
+当前仅可判定架构、schema、资产和聚焦正确性门禁通过，不能据此收尾。仍需完整 Flow fixture、完整 EditMode、Player corpus、LvTest 0.8m 多方向/窄路摆头回归，以及严格从 Launch 经 procedure 进入 Lv2、从接敌前开始覆盖 approach→拉怪→后撤的性能录制。实机必须确认 steering 内无同步 hierarchy/required tile 构建，并复测此前 `51.808ms` 峰是否消失。
+
+## 14. Committed corridor 连续场与逻辑帧只读契约（2026-08-24，实施中）
+
+### 14.1 现象证据与已排除项
+
+完整 EditMode 已通过 `1394/1394`（job `f222d7b219084ddbb75af629ac8ef43d`），Replay v107 已通过 `14/14`（job `a979dd5470e0470fa929cc2afd33cc22`）。`Launch -> procedure -> LvTest` 的 0.8m 英雄缝隙门禁为 `RESULT=PASS`，右与右上两个输入方向均通过并同时接触建筑和边界。因此当前未闭合项不是静态碰撞、输入方向或 0.8m 离散几何回归。
+
+`LvTestSprinterNarrowPathDiagnostic` 仍得到 `RESULT=REPRODUCED`。短跑选手 entity 69 在 frame 132/133 的权威 forward raw 从 `(3856,-1379)` 变为 `(4093,-141)`，连续模型转向 cross raw 从 `-1012` 变为 `1246`；目标始终是英雄 67，pair/static/region correction 均为 0。frame 132 位于 `(419,407)`，当前 portal goal run 为 `(419,396)..(419,407)`。当前位置与 funnel 当前角点的亚格位移被 Q12 平方量化为 0，旧实现该 Tick 切到 integration；下一 Tick 路径推进到新 sector 后又切回 funnel，形成权威方向反转。消费一个 Tick 路程内 funnel 角点后，真实地图的大反转已消失，但现象级高速 portal 测试仍在跨 tile 的 frame 8/9 出现左右符号翻转，证明剩余根因不在角点消费本身。
+
+### 14.2 根因
+
+`ResolveSpatiallyInterpolatedDeterministicGradientFixed` 名义上做双线性空间采样，但 `AccumulateSpatialGradientSample` 会直接丢弃不在当前 sector tile 内的样本。单位接近 portal 时只使用当前侧梯度；实际位置进入下一 sector 后，四点采样基底瞬间切成下一 tile。两张局部 integration field 各自正确，但没有在 committed portal corridor 上组成连续的 steering field，所以横向分量可在相邻逻辑 Tick 跨零并反号。
+
+同时，`NavigationSync` 当前只声明当前 tile 与末端两 tile，空间积分跨入紧邻后继 sector 时却由 `ResolveSpatialIntegrationTileForPosition` 在 `MoveIntent` 内现场 `EnqueueActiveFlowTileBuilds`，必要时再调用 `CommitRequiredDeterministicFlowTilePayload`。这破坏了 30Hz 相序，也把 tile 构建尖峰放进追击 steering。摆头和拉怪卡顿在这里共享同一根因：准备阶段声明的读取工作集小于 steering 的真实读取域。
+
+### 14.3 正式方案
+
+1. 权威插值域从“单个 tile”提升为“本 Tick 已提交的 corridor tile snapshot”。四个双线性样本若仍在当前 tile，读取当前 tile；若落入路径紧邻的后继 sector，则读取该 sector 对应的 committed deterministic tile，并与当前侧 portal downstream trace 在同一次加权中组合。样本落入非 corridor sector 时仍按场域边界处理，不能借用无关 tile。
+2. `CharacterMoveComp` 在 `NavigationSync` 已能读取 BaseAndBuffs 后的 Fix64 `Speed` 与本 Tick `deltaTime`。准备请求必须携带本 Tick 最大行程，按“空间插值一格邻域 + 积分子步可达范围”声明当前及顺序后继 tile。声明只入队；统一的 NavigationSync commit 点推进并提交 payload。
+3. `MoveIntent -> TryGetSteeringVelocityFixed` 只读取同 Tick prepared path、corridor tile、portal owner 和 fixed collision world。禁止 enqueue、build、force commit。已声明 payload 尚未提交时返回明确 `PendingNavigation` 零速度；快照声称可读但键/版本不一致时明确抛错，不使用旧方向、直线或历史平滑兜底。
+4. 空间积分的每个子步不大于半格，tile 迁移只能沿 `PathHandle` 的下一个 sector 顺序发生。禁止用 `FindSectorIndex` 跳到任意后缀 sector；这既收紧读取域，也避免回环路径或错误 sector 命中掩盖拓扑问题。
+5. portal slot 仍由 committed tile 的 `DeterministicPortalTargetSlotIndices` 决定。跨 tile 连续采样修复后再用诊断确认 slot recommendation/selection 是否仍参与异常；没有现象证据前不引入 slot hysteresis 或方向补偿。
+
+### 14.4 实施与验收顺序
+
+1. 先扩充现象测试：锁定 portal 边界两侧同一插值 stencil、相邻 Tick 转向符号不得快速反转，并锁定 prepared MoveIntent 的 enqueue/required commit 均为 0。
+2. 实现带 Tick 行程的 corridor demand、只读 committed tile resolver 和跨 tile 梯度采样；删除 steering 内对应的 enqueue/force-commit 路径。
+3. 依次运行 portal/funnel/high-speed 聚焦测试、完整 `FlowFieldCrowdMovementSystemTests`、三个 csproj 串行编译。
+4. 严格从 Launch 经 procedure 重跑 `LvTestSprinterNarrowPathDiagnostic`，目标为 `RESULT=NOT_REPRODUCED`；随后从接敌前录制 Lv2 approach→拉怪→后撤，要求 steering 内 hierarchy build、required tile commit 为 0，并重新量化原 `51.808ms` 峰。
+5. 最后运行 Replay、完整 EditMode、Windows Player corpus，并检查编码/BOM、CRLF、GUID/meta、零字节文件和工作区 diff。只有整套门禁通过才把本节标记完成。
+
+### 14.5 四点采样实证与统一标量势修订（2026-08-24）
+
+跨 tile 读取落地后，现象红测仍在 frame 8/9 产生一次快速横向反号。完整四点采样证明这不是缺 tile 或 slot 抖动：frame 8 的当前侧 portal goal `(2,7)` 使用 `portal-access` downstream trace，方向 raw 为 `(1133,4096)`；它的配对下游格 `(2,8)` 已从 committed corridor tile 读取，方向 raw 为 `(-1821,4096)`。两者目标 portal 相同、碰撞修正为 0，却在同一 portal 槽位给出相反横向分量。当前侧 tile seed 来自预烘 portal-access 场，而下一 tile seed 又拼接了更后续的 continuation cost，因此两侧不是同一个 Bellman 势函数；直接混合两个归一化方向向量只能把不连续点移到亚格位置，不能修复根因。
+
+正式实现改为 corridor 后缀上的精确动态规划。设路径第 `i` 个 sector 的势为 `C_i`，portal 当前侧槽位为 `p`、配对下游槽位为 `q`，则边界严格为 `C_i(p)=crossingCost+C_(i+1)(q)`；最终 sector 以精确目标格为零势。每张 portal tile 必须依赖紧邻下游 tile，构建队列按最终 tile 到当前 tile 的反向拓扑顺序提交。任何依赖缺失都保持明确 pending，禁止改读 portal-access 近似场。portal-access 仍服务高层 transition、预烘成本和 pending 查询，但不再冒充 committed corridor tile 的最终边界权威。
+
+缓存键必须覆盖精确最终目标格，使同一目标/corridor 的追兵共享整条后缀，同时禁止不同最终目标复用只含两级 portal hint 的 tile。动态障碍提交会改变 world/version，旧后缀整体失效；不以历史方向、slot 状态或渲染帧补偿。单个新稳定目标的构建复杂度为 `O(k*s^2 log(s^2))`，其中 `k` 是实际 corridor sector 数、`s` 是 sector 边长；它与全图 portal 总数和追兵数量无关，并由 NavigationSync 的确定性 tile quota 分帧提交。MoveIntent 仍保持零 enqueue、零 build、零 force commit。
+
+steering 不再把 portal goal 替换成手工法向加下游切向。portal goal 求离散梯度时，直接把配对下游格的 committed `C_(i+1)` 作为跨边界外部标量样本；当前侧 goal cost 已是该值加 crossing cost，因此法向和切向都来自同一 cost-to-go。四点插值只组合这套势的梯度，积分子步继续不超过半格。专项门禁除快速反号为 0 外，还要断言每个已提交 portal goal 的 cost 精确等于配对下游 cost 加 crossing cost，并覆盖多 portal、最终相邻 portal、窄孔和高速单 Tick 跨 tile。
+
+### 14.6 Eikonal 界面条件修正（2026-08-24，实施中）
+
+14.5 的逐槽 `C_i(p)=C_(i+1)(q)+crossingCost` 在完成未归一化梯度重建后被现象门禁证伪：job `d3d4f1e27cf048e285a4c343ac03bf74` 将快速反号从 5 次降到 3 次，但剩余反号分别出现在后续 Sector 转折与最终 tile 权威切换，不再发生于最初实测的 portal 两侧采样基底。完整轨迹同时证明当前 tile 积分器不是图 Dijkstra，而是二维定点 Eikonal。固定加法等式是图边 Bellman 条件；把它强加到 Eikonal 的 portal 当前侧格，会阻止该格同时使用下游法向样本与同侧切向 upwind 邻格，因而在每个 Sector 接口制造人为势脊。
+
+正式界面条件改为 ghost-cell Eikonal 残差。紧邻下游配对格 `q` 的 committed cost 作为当前侧 portal 格 `p` 的跨界 cardinal ghost sample；`p` 仍参与当前 tile 的 Fast Marching 松弛，并与同侧另一坐标轴的最小 upwind 邻格共同执行同一个二维 Eikonal update。初始 `C(q)+stepCost(p)` 只负责把边界放入 open set，不再是不可修改的最终值。提交顺序仍严格从最终 tile 向上游推进，缓存键仍包含精确最终目标格，MoveIntent 仍只读，不恢复逐单位 A*、funnel、方向历史、平滑或迟滞。
+
+新关系门禁不再断言错误的逐槽加法等式，而是逐槽重算包含 ghost sample 的确定性 Eikonal update，并要求 committed current cost 与其残差精确相等；另锁定下游未提交时上游不得提交、不同最终目标不得复用上游 tile、portal 两侧梯度来自同一 committed corridor 势。末段 `direct-static-clear` 仍是独立速度权威，必须在本轮现象测试中单独证明其切换连续，不能把它混入界面修复结论。
+
+### 14.7 实机关卡精度闭环与 build 前置门禁（2026-08-24）
+
+Lv2 拉怪 runner 首次重跑并非焦点暂停，而是在 `Unit_CanMaker` 经过 portal 2215 时抛出 `target does not advance through committed portal`。完整 raw 现场为：位置到 portal 平面 `planeDelta=-53 raw`，funnel 目标位移 `normalDisplacement=-53 raw`，portal travel `-410 raw`；目标恰好落在门平面且方向与 portal 一致。旧判断用 Fix64 乘积 `planeDelta * normalDisplacement <= 0` 判符号，`53*53` 在 Q12 重缩放后下溢为 `0 raw`，把合法前进误判为反向。修复统一使用 raw 符号谓词；funnel 行列式和 portal lookahead 的纯几何乘加也改为 checked raw 运算，避免同类亚格量级下溢。没有加入 epsilon、方向补偿、历史平滑或异常 fallback。
+
+随后 LvTest 窄路首次重跑又明确暴露 `Portal segments are not axis-aligned`：第二条拓扑竖直 portal 的两个 authored anchor 端点 X 相差 `1 raw`。portal 的轴向来自格拓扑，但 `GridToWorldCenterFixed` 对可走格合法返回格内 `CellNavAnchorsFixedXZ`，因此世界几何端点不保证严格同 X/Y。该函数只用于估计本 Tick steering 预读域，正式语义改为点到 segment AABB、segment AABB 之间的距离下界；对任意 anchor segment 都成立，并且作为下界只会安全地多声明后继 tile，不修改 funnel、portal 拓扑或移动结果，也没有容差吞错。
+
+现象与性能闭环如下：严格 `Launch -> procedure -> Lv2` 的 approach→接敌→retreat runner 跑至逻辑帧 701 并 `RESULT=PASS`；历史逻辑峰 `51.808ms` 降为 `32.620ms`，retreat logic P50/P95/P99=`2.408/7.670/10.734ms`，`peakRequiredFlowTileCommits=0`。峰仍位于首次接敌后的 `NavigationSync`，其中 `FlowPreparePathHandle=11.346ms/6`，不再是 MoveIntent 内持续同步 A*/tile commit。严格 `Launch -> procedure -> LvTest` 为 `RESULT=NOT_REPRODUCED`，两名短跑兵的 authority/proposed/model rapid alternation 均为 0，pair/static/region correction 均为 0；本次 Editor.log 增量 53,974 字符内编译错误、常见运行时异常和上述两个精度异常均为 0。
+
+回归结果为精度聚焦 `2/2`、完整 Flow `283/283`（job `11d81487d3794d17b358c080d7a5d699`）、Replay v107 `14/14`（job `c8effa179be34d7c91c1da458f2c4cc6`）、完整 EditMode `1397/1397`（job `db171e8148c64cd2a48bff309ea3e475`），失败/跳过均为 0。正式 Player corpus 仍待最后执行；硬门禁固定为：关卡 Play 未完成、Editor.log 有异常、历史性能场景没有同口径数据时，禁止启动 Player build。build 不能替代 Play 现象验收。

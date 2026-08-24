@@ -8,6 +8,7 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
 
     private IEntityContext _ctx;
     private FixVector2? _targetPosFixed;
+    private FixVector2? _preparedTargetPosFixed;
     private FixVector2 _navDirectionFixed = FixVector2.Zero;
     private bool _isMoving;
 
@@ -17,6 +18,7 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
     {
         _ctx = ctx;
         _targetPosFixed = null;
+        _preparedTargetPosFixed = null;
         _navDirectionFixed = FixVector2.Zero;
         _isMoving = false;
     }
@@ -36,6 +38,7 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
         FixVector2? previousTarget = _targetPosFixed;
         bool wasMoving = _isMoving;
         _targetPosFixed = null;
+        _preparedTargetPosFixed = null;
         _navDirectionFixed = FixVector2.Zero;
         _isMoving = false;
         if ((previousTarget.HasValue || wasMoving)
@@ -76,7 +79,9 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
             _navDirectionFixed = manualMove.GetNormalized();
             finalVelocity = _navDirectionFixed * speed;
         }
-        else if (_targetPosFixed.HasValue)
+        else if (_targetPosFixed.HasValue
+                 && _preparedTargetPosFixed.HasValue
+                 && _preparedTargetPosFixed.Value == _targetPosFixed.Value)
         {
             FixVector2 frameStartPositionFixed = LogicFrameRuntime.IsTicking
                 ? LogicEntityFrameSnapshotService.GetRequiredPosition(_ctx)
@@ -92,7 +97,7 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
                 long steeringStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                 bool steeringHit = FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(
                     _ctx,
-                    _targetPosFixed.Value,
+                    _preparedTargetPosFixed.Value,
                     speed,
                     out FixVector2 steeringVelocity);
                 RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.CharacterMoveSteering, steeringStartTicks);
@@ -159,6 +164,44 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
         return _targetPosFixed.HasValue;
     }
 
+    public void PrepareNavigationLogicFrame()
+    {
+        PrepareNavigationLogicFrame(LogicFrameRuntime.FixedDeltaTime);
+    }
+
+    public void PrepareNavigationLogicFrame(Fix64 deltaTime)
+    {
+        _preparedTargetPosFixed = null;
+        if (_ctx == null)
+            return;
+        if (deltaTime <= Fix64.Zero)
+            throw new System.ArgumentOutOfRangeException(nameof(deltaTime), deltaTime, "NavigationSync delta time must be positive.");
+        if (!_targetPosFixed.HasValue)
+        {
+            FlowFieldCrowdMovementSystem.ClearNavigationSyncRequest(_ctx);
+            return;
+        }
+
+        Fix64 speed = _ctx.GetProperty(CreatureMainProperty.Speed);
+        if (speed < Fix64.Zero)
+            throw new System.InvalidOperationException($"[{_ctx.CharacterKey}] NavigationSync speed cannot be negative: {speed}.");
+        long prepareStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        bool prepared = FlowFieldCrowdMovementSystem.TryPrepareNavigationSyncRequestFixed(
+                _ctx,
+                _targetPosFixed.Value,
+                speed * deltaTime,
+                out string failureReason);
+        RecordPerf(
+            UnityGameFramework.Runtime.MainThreadPerfScope.CharacterMovePrepare,
+            prepareStartTicks);
+        if (!prepared)
+        {
+            throw new System.InvalidOperationException(
+                $"[{_ctx.CharacterKey}] NavigationSync prepare rejected target={_targetPosFixed.Value}: {failureReason}");
+        }
+        _preparedTargetPosFixed = _targetPosFixed;
+    }
+
     private static void RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope scope, long startTicks)
     {
         UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
@@ -196,6 +239,12 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
         {
             hasher.Add(_targetPosFixed.Value.x.RawValue);
             hasher.Add(_targetPosFixed.Value.y.RawValue);
+        }
+        hasher.Add(_preparedTargetPosFixed.HasValue);
+        if (_preparedTargetPosFixed.HasValue)
+        {
+            hasher.Add(_preparedTargetPosFixed.Value.x.RawValue);
+            hasher.Add(_preparedTargetPosFixed.Value.y.RawValue);
         }
         hasher.Add(_navDirectionFixed.x.RawValue);
         hasher.Add(_navDirectionFixed.y.RawValue);

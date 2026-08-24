@@ -65,7 +65,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
     [Serializable]
     public sealed class DerivedNavigationData
     {
-        public const int CurrentVersion = 3;
+        public const int CurrentVersion = 5;
 
         public int Version;
         public int AgentTypeId;
@@ -89,6 +89,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         public int[] IslandIds = Array.Empty<int>();
         public SectorDerivedData[] Sectors = Array.Empty<SectorDerivedData>();
         public PortalDerivedData[] Portals = Array.Empty<PortalDerivedData>();
+        public PortalHierarchyDerivedData Hierarchy;
 
         public bool IsValid => Version == CurrentVersion
                                && Width > 0
@@ -102,7 +103,27 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
                                && IslandIds.Length == Width * Height
                                && Sectors != null
                                && Sectors.Length == SectorCountX * SectorCountY
-                               && Portals != null;
+                               && AreSectorsValid(Sectors)
+                               && Portals != null
+                               && Hierarchy != null
+                               && Hierarchy.IsValid;
+
+        private static bool AreSectorsValid(SectorDerivedData[] sectors)
+        {
+            for (int sectorIndex = 0; sectorIndex < sectors.Length; sectorIndex++)
+            {
+                SectorDerivedData sector = sectors[sectorIndex];
+                if (sector == null || sector.PortalIds == null || sector.PortalTransitions == null)
+                    return false;
+                for (int transitionIndex = 0; transitionIndex < sector.PortalTransitions.Length; transitionIndex++)
+                {
+                    PortalTransitionDerivedData transition = sector.PortalTransitions[transitionIndex];
+                    if (transition == null || !transition.IsValid)
+                        return false;
+                }
+            }
+            return true;
+        }
     }
 
     public readonly struct FixedAuthorityMetadata
@@ -158,6 +179,117 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         public int FromPortalId;
         public int ToPortalId;
         public float Cost;
+        public long DeterministicCost;
+
+        public bool IsValid => DeterministicCost >= 0
+                               && DeterministicCost < long.MaxValue
+                               && !float.IsNaN(Cost)
+                               && !float.IsInfinity(Cost)
+                               && Cost >= 0f;
+    }
+
+    [Serializable]
+    public sealed class PortalHierarchyDerivedData
+    {
+        public int Fanout;
+        public PortalHierarchyLevelDerivedData[] Levels = Array.Empty<PortalHierarchyLevelDerivedData>();
+
+        public bool IsValid
+        {
+            get
+            {
+                if (Fanout < 2 || Levels == null)
+                    return false;
+                for (int i = 0; i < Levels.Length; i++)
+                {
+                    if (Levels[i] == null || !Levels[i].IsValid)
+                        return false;
+                }
+                return true;
+            }
+        }
+    }
+
+    [Serializable]
+    public sealed class PortalHierarchyLevelDerivedData
+    {
+        public int Level;
+        public int ClusterSpanSectors;
+        public int ClusterCountX;
+        public int ClusterCountY;
+        public PortalHierarchyClusterDerivedData[] Clusters = Array.Empty<PortalHierarchyClusterDerivedData>();
+
+        public bool IsValid
+        {
+            get
+            {
+                if (Level <= 0
+                    || ClusterSpanSectors <= 0
+                    || ClusterCountX <= 0
+                    || ClusterCountY <= 0
+                    || Clusters == null
+                    || (long)Clusters.Length != (long)ClusterCountX * ClusterCountY)
+                {
+                    return false;
+                }
+                for (int i = 0; i < Clusters.Length; i++)
+                {
+                    if (Clusters[i] == null || !Clusters[i].IsValid)
+                        return false;
+                }
+                return true;
+            }
+        }
+    }
+
+    [Serializable]
+    public sealed class PortalHierarchyClusterDerivedData
+    {
+        public int ClusterId;
+        public int StartSectorX;
+        public int StartSectorY;
+        public int WidthSectors;
+        public int HeightSectors;
+        public int[] BoundaryNodes = Array.Empty<int>();
+        public PortalHierarchyEdgeDerivedData[] Edges = Array.Empty<PortalHierarchyEdgeDerivedData>();
+
+        public bool IsValid
+        {
+            get
+            {
+                if (ClusterId < 0
+                    || StartSectorX < 0
+                    || StartSectorY < 0
+                    || WidthSectors <= 0
+                    || HeightSectors <= 0
+                    || BoundaryNodes == null
+                    || Edges == null)
+                {
+                    return false;
+                }
+                for (int i = 0; i < Edges.Length; i++)
+                {
+                    if (Edges[i] == null || !Edges[i].IsValid)
+                        return false;
+                }
+                return true;
+            }
+        }
+    }
+
+    [Serializable]
+    public sealed class PortalHierarchyEdgeDerivedData
+    {
+        public int FromNode;
+        public int ToNode;
+        public long DeterministicCost;
+        public int[] ChildWitnessNodes = Array.Empty<int>();
+
+        public bool IsValid => DeterministicCost >= 0
+                               && ChildWitnessNodes != null
+                               && ChildWitnessNodes.Length >= 2
+                               && ChildWitnessNodes[0] == FromNode
+                               && ChildWitnessNodes[ChildWitnessNodes.Length - 1] == ToNode;
     }
 
     public void SetAgentTypeId(int agentTypeId)
@@ -500,7 +632,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
             throw new InvalidOperationException("FlowNavigationGridAsset upgrade failed: derived navigation data is missing.");
 
         DerivedNavigationData data = _derivedNavigationData;
-        bool supportedVersion = data.Version == 2 || data.Version == DerivedNavigationData.CurrentVersion;
+        bool supportedVersion = data.Version == DerivedNavigationData.CurrentVersion;
         bool hasValidTopology = data.Width > 0
                                 && data.Height > 0
                                 && data.CellSize > 0.0001f
@@ -515,7 +647,8 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         if (!supportedVersion || !hasValidTopology)
         {
             throw new InvalidOperationException(
-                $"FlowNavigationGridAsset upgrade failed: derived navigation topology is invalid. version={data.Version}.");
+                $"FlowNavigationGridAsset upgrade failed: derived navigation schema version={data.Version} requires a full navigation rebake; " +
+                $"metadata upgrade cannot produce required v{DerivedNavigationData.CurrentVersion} hierarchy data.");
         }
         if (data.AgentTypeId != _agentTypeId
             || data.Width != _width
@@ -697,7 +830,8 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
             NextPortalId = source.NextPortalId,
             IslandIds = source.IslandIds != null ? (int[])source.IslandIds.Clone() : Array.Empty<int>(),
             Sectors = CloneSectorDerivedData(source.Sectors),
-            Portals = ClonePortalDerivedData(source.Portals)
+            Portals = ClonePortalDerivedData(source.Portals),
+            Hierarchy = ClonePortalHierarchyDerivedData(source.Hierarchy)
         };
         return clone;
     }
@@ -781,10 +915,65 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
             {
                 FromPortalId = transition.FromPortalId,
                 ToPortalId = transition.ToPortalId,
-                Cost = transition.Cost
+                Cost = transition.Cost,
+                DeterministicCost = transition.DeterministicCost
             };
         }
 
+        return clone;
+    }
+
+    private static PortalHierarchyDerivedData ClonePortalHierarchyDerivedData(PortalHierarchyDerivedData source)
+    {
+        if (source == null)
+            return null;
+        var clone = new PortalHierarchyDerivedData
+        {
+            Fanout = source.Fanout,
+            Levels = new PortalHierarchyLevelDerivedData[source.Levels?.Length ?? 0]
+        };
+        for (int levelIndex = 0; levelIndex < clone.Levels.Length; levelIndex++)
+        {
+            PortalHierarchyLevelDerivedData level = source.Levels[levelIndex]
+                ?? throw new InvalidOperationException($"FlowNavigationGridAsset.ClonePortalHierarchyDerivedData failed: level is null index={levelIndex}.");
+            var levelClone = new PortalHierarchyLevelDerivedData
+            {
+                Level = level.Level,
+                ClusterSpanSectors = level.ClusterSpanSectors,
+                ClusterCountX = level.ClusterCountX,
+                ClusterCountY = level.ClusterCountY,
+                Clusters = new PortalHierarchyClusterDerivedData[level.Clusters?.Length ?? 0]
+            };
+            for (int clusterIndex = 0; clusterIndex < levelClone.Clusters.Length; clusterIndex++)
+            {
+                PortalHierarchyClusterDerivedData cluster = level.Clusters[clusterIndex]
+                    ?? throw new InvalidOperationException($"FlowNavigationGridAsset.ClonePortalHierarchyDerivedData failed: cluster is null level={levelIndex} index={clusterIndex}.");
+                var clusterClone = new PortalHierarchyClusterDerivedData
+                {
+                    ClusterId = cluster.ClusterId,
+                    StartSectorX = cluster.StartSectorX,
+                    StartSectorY = cluster.StartSectorY,
+                    WidthSectors = cluster.WidthSectors,
+                    HeightSectors = cluster.HeightSectors,
+                    BoundaryNodes = cluster.BoundaryNodes != null ? (int[])cluster.BoundaryNodes.Clone() : Array.Empty<int>(),
+                    Edges = new PortalHierarchyEdgeDerivedData[cluster.Edges?.Length ?? 0]
+                };
+                for (int edgeIndex = 0; edgeIndex < clusterClone.Edges.Length; edgeIndex++)
+                {
+                    PortalHierarchyEdgeDerivedData edge = cluster.Edges[edgeIndex]
+                        ?? throw new InvalidOperationException($"FlowNavigationGridAsset.ClonePortalHierarchyDerivedData failed: edge is null level={levelIndex} cluster={clusterIndex} index={edgeIndex}.");
+                    clusterClone.Edges[edgeIndex] = new PortalHierarchyEdgeDerivedData
+                    {
+                        FromNode = edge.FromNode,
+                        ToNode = edge.ToNode,
+                        DeterministicCost = edge.DeterministicCost,
+                        ChildWitnessNodes = edge.ChildWitnessNodes != null ? (int[])edge.ChildWitnessNodes.Clone() : Array.Empty<int>()
+                    };
+                }
+                levelClone.Clusters[clusterIndex] = clusterClone;
+            }
+            clone.Levels[levelIndex] = levelClone;
+        }
         return clone;
     }
 

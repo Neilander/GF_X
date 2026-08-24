@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Stopwatch = System.Diagnostics.Stopwatch;
 using UnityEngine;
@@ -59,6 +59,7 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
     private IEntityContext _propagatedCandidate;
     private readonly List<NavigationRejectedTarget> _navigationRejectedTargets = new List<NavigationRejectedTarget>();
     private readonly List<AggroCandidate> _candidateBuffer = new List<AggroCandidate>();
+    private readonly List<IEntityContext> _spatialCandidateBuffer = new List<IEntityContext>();
     private IEntityContext _ctx;
     private IEntityContext _currentTarget;
     private IEntityContext _lostTarget;
@@ -225,11 +226,14 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
         long candidateScanStartTicks = Stopwatch.GetTimestamp();
         try
         {
-            IList<IEntityContext> all = EntityRegistry.AllEntities;
-            for (int i = 0; i < all.Count; i++)
+            LogicTargetingSpatialIndexService.CollectCandidates(
+                _ctx.LogicFramePositionFixed(),
+                outerRange,
+                _spatialCandidateBuffer);
+            for (int i = 0; i < _spatialCandidateBuffer.Count; i++)
             {
-                IEntityContext candidate = all[i]
-                    ?? throw new InvalidOperationException($"CharacterTargetingComp found a null registry entity at index {i}.");
+                IEntityContext candidate = _spatialCandidateBuffer[i]
+                    ?? throw new InvalidOperationException($"CharacterTargetingComp found a null spatial candidate at index {i}.");
                 if (ReferenceEquals(candidate, _ctx) || !IsHardValid(candidate, outerRange))
                     continue;
 
@@ -355,11 +359,10 @@ public class CharacterTargetingComp : TargetingCompBase, ITargetingComp, ITarget
         waitForNavigation = false;
         if (distance <= attackRange)
             return true;
-        if (FlowFieldCrowdMovementSystem.TryResolveReachableAttackAreaPointFixed(
+        if (FlowFieldCrowdMovementSystem.TryEvaluateTargetingAttackAreaReachabilityFixed(
                 _ctx,
                 target,
                 attackRange,
-                out _,
                 out string failureReason,
                 out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind failureKind))
         {

@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using UnityGameFramework.Runtime;
 using UnityEngine;
 
 public static partial class FlowFieldCrowdMovementSystem
@@ -245,6 +247,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 + GetArrayPayloadBytes(tile.DeterministicIntegrationCosts, sizeof(int))
                 + GetArrayPayloadBytes(tile.DeterministicFlowDirectionIndices, sizeof(byte))
                 + GetArrayPayloadBytes(tile.DeterministicPortalTargetSlotIndices, sizeof(ushort))
+                + GetPortalContinuationLocalPayloadBytes(tile.DeterministicPortalContinuations)
                 + GetArrayPayloadBytes(tile.GoalCells, sizeof(int) * 2)
                 + GetArrayPayloadBytes(tile.DebugIntegrationPayload?.Values, sizeof(float)));
         }
@@ -376,6 +379,33 @@ public static partial class FlowFieldCrowdMovementSystem
     private static long GetArrayPayloadBytes(Array array, int elementSize)
     {
         return array == null ? 0L : checked((long)array.Length * elementSize);
+    }
+
+    private static long GetJaggedArrayPayloadBytes<T>(T[][] arrays, int elementSize)
+    {
+        if (arrays == null)
+            return 0L;
+
+        long payloadBytes = checked((long)arrays.Length * IntPtr.Size);
+        for (int i = 0; i < arrays.Length; i++)
+            payloadBytes = checked(payloadBytes + GetArrayPayloadBytes(arrays[i], elementSize));
+        return payloadBytes;
+    }
+
+    private static long GetPortalContinuationLocalPayloadBytes(DeterministicPortalContinuation[] continuations)
+    {
+        if (continuations == null)
+            return 0L;
+
+        long payloadBytes = checked((long)continuations.Length * IntPtr.Size);
+        for (int i = 0; i < continuations.Length; i++)
+        {
+            DeterministicPortalContinuation continuation = continuations[i];
+            if (continuation == null)
+                throw new InvalidOperationException("Flow memory census encountered a null portal continuation.");
+            payloadBytes = checked(payloadBytes + GetArrayPayloadBytes(continuation.LocalCellIndices, sizeof(int)));
+        }
+        return payloadBytes;
     }
 
     private static void AddArrayPoolCensus<T>(
@@ -826,14 +856,70 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(policy.SettledPortalAuthorityContentHash);
         hasher.Add(policy.PortalOpenSet.Count);
         hasher.Add(policy.PortalOpenSet.AuthorityContentHash);
-        hasher.Add(policy.HeuristicStartCellIndex);
+        AddPortalHierarchyReversePolicies(hasher, policy);
         return hasher.Hash;
+    }
+
+    private static void AddPortalHierarchyReversePolicies(
+        LogicStateHasher hasher,
+        SectorCorridorPolicy policy)
+    {
+        var levelIndices = new List<int>(policy.HierarchyPolicies.Keys);
+        levelIndices.Sort();
+        hasher.Add(levelIndices.Count);
+        for (int i = 0; i < levelIndices.Count; i++)
+        {
+            int levelArrayIndex = levelIndices[i];
+            PortalHierarchyReversePolicy hierarchyPolicy = policy.HierarchyPolicies[levelArrayIndex]
+                ?? throw new InvalidOperationException(
+                    $"Navigation authority digest encountered a null portal hierarchy reverse policy level={levelArrayIndex + 1}.");
+            hasher.Add(levelArrayIndex);
+            hasher.Add(hierarchyPolicy.LevelArrayIndex);
+            hasher.Add(hierarchyPolicy.GoalSectorId);
+            hasher.Add(hierarchyPolicy.GoalX);
+            hasher.Add(hierarchyPolicy.GoalY);
+            AddPortalHierarchyConnectorState(hasher, hierarchyPolicy.GoalConnector);
+            AddSortedLongDictionary(hasher, hierarchyPolicy.NodeCosts);
+            AddSortedIntDictionary(hasher, hierarchyPolicy.NextNodeTowardGoal);
+            AddSortedInts(hasher, hierarchyPolicy.SettledNodes);
+            hierarchyPolicy.OpenSet.WriteDeterministicState(hasher);
+        }
+    }
+
+    private static void AddPortalHierarchyConnectorState(
+        LogicStateHasher hasher,
+        PortalHierarchyConnector connector)
+    {
+        if (connector == null)
+        {
+            hasher.Add(false);
+            return;
+        }
+        if (connector.Search == null)
+            throw new InvalidOperationException("Navigation authority digest encountered a hierarchy connector without search state.");
+
+        hasher.Add(true);
+        hasher.Add(connector.TargetLevelIndex);
+        AddSortedLongDictionary(hasher, connector.Search.Costs);
+        AddSortedIntDictionary(hasher, connector.Search.PreviousNode);
+        AddSortedInts(hasher, connector.Search.SettledNodes);
+        hasher.Add(connector.Search.ExpansionCount);
+        AddPortalHierarchyConnectorState(hasher, connector.Child);
     }
 
     private static void SetSectorCorridorPolicy(SectorCorridorPolicyKey key, SectorCorridorPolicy policy)
     {
         RemoveSectorCorridorPolicy(key);
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long hashStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         policy.AuthorityContentHash = ComputeSectorCorridorPolicyAuthorityContentHash(key, policy);
+        _perf.SectorCorridorPolicyAuthorityHashRefreshes++;
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCorridorPolicyAuthorityHash,
+                Stopwatch.GetTimestamp() - hashStartTicks);
+        }
         policy.HasAuthorityContentHash = true;
         SectorCorridorPolicies[key] = policy;
         _sectorCorridorPolicyAuthorityContentHash ^= policy.AuthorityContentHash;
@@ -862,6 +948,7 @@ public static partial class FlowFieldCrowdMovementSystem
         finally
         {
             policy.AuthorityContentHash = ComputeSectorCorridorPolicyAuthorityContentHash(key, policy);
+            _perf.SectorCorridorPolicyAuthorityHashRefreshes++;
             policy.HasAuthorityContentHash = true;
             _sectorCorridorPolicyAuthorityContentHash ^= policy.AuthorityContentHash;
         }
@@ -1062,6 +1149,7 @@ public static partial class FlowFieldCrowdMovementSystem
             AddAuthorityToken(ref token, pair.Key.GoalId);
             AddAuthorityToken(ref token, pair.Key.DownstreamGoalHint);
             AddAuthorityToken(ref token, pair.Key.FinalGoalIndex);
+            AddFlowCorridorSuffixAuthorityToken(ref token, pair.Key.CorridorSuffixIdentity);
             AddAuthorityToken(ref token, pair.Key.AgentTypeId);
             AddAuthorityToken(ref token, pair.Key.DirtyVersion);
             AddAuthorityToken(ref token, tile.LastUsedFrame);
@@ -1101,6 +1189,7 @@ public static partial class FlowFieldCrowdMovementSystem
             AddAuthorityToken(ref token, key.GoalId);
             AddAuthorityToken(ref token, key.DownstreamGoalHint);
             AddAuthorityToken(ref token, key.FinalGoalIndex);
+            AddFlowCorridorSuffixAuthorityToken(ref token, key.CorridorSuffixIdentity);
             AddAuthorityToken(ref token, key.AgentTypeId);
             AddAuthorityToken(ref token, key.DirtyVersion);
             pendingSetHash ^= token;
@@ -1145,6 +1234,21 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             hash ^= (byte)(raw >> (i * 8));
             hash *= 1099511628211UL;
+        }
+    }
+
+    private static void AddFlowCorridorSuffixAuthorityToken(
+        ref ulong hash,
+        FlowCorridorSuffixIdentity identity)
+    {
+        AddAuthorityToken(ref hash, identity?.Length ?? 0);
+        while (identity != null)
+        {
+            AddAuthorityToken(ref hash, identity.WorldVersion);
+            AddAuthorityToken(ref hash, identity.SectorId);
+            AddAuthorityToken(ref hash, identity.PortalId);
+            AddAuthorityToken(ref hash, identity.FinalGoalIndex);
+            identity = identity.Downstream;
         }
     }
 
@@ -1427,6 +1531,39 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(field.LastUsedFrame);
     }
 
+    private static DeterministicPortalContinuation CreateDeterministicPortalContinuation(
+        int[] localCellIndices,
+        ushort portalSlotIndex,
+        DeterministicPortalContinuation downstream)
+    {
+        if (localCellIndices == null || localCellIndices.Length == 0)
+            throw new InvalidOperationException("Deterministic portal continuation requires a non-empty local segment.");
+        if (portalSlotIndex == 0)
+            throw new InvalidOperationException("Deterministic portal continuation slot index must be one-based.");
+
+        var continuation = new DeterministicPortalContinuation
+        {
+            LocalCellIndices = localCellIndices,
+            PortalSlotIndex = portalSlotIndex,
+            Downstream = downstream,
+            TotalCellCount = checked(localCellIndices.Length + (downstream?.TotalCellCount ?? 0)),
+            TotalPortalCount = checked(1 + (downstream?.TotalPortalCount ?? 0)),
+            TerminalCellIndex = downstream?.TerminalCellIndex ?? localCellIndices[localCellIndices.Length - 1]
+        };
+        var hasher = new LogicStateHasher();
+        hasher.Add(0x4E415650434F4E54UL);
+        hasher.Add((uint)portalSlotIndex);
+        AddIntArray(hasher, localCellIndices);
+        hasher.Add(downstream != null);
+        if (downstream != null)
+            hasher.Add(downstream.AuthorityContentHash);
+        hasher.Add(continuation.TotalCellCount);
+        hasher.Add(continuation.TotalPortalCount);
+        hasher.Add(continuation.TerminalCellIndex);
+        continuation.AuthorityContentHash = hasher.Hash;
+        return continuation;
+    }
+
     private static ulong ComputeDeterministicFlowTileAuthorityContentHash(FlowTileCacheEntry tile)
     {
         if (tile == null)
@@ -1444,6 +1581,7 @@ public static partial class FlowFieldCrowdMovementSystem
         AddIntArray(hasher, tile.DeterministicIntegrationCosts);
         AddByteArray(hasher, tile.DeterministicFlowDirectionIndices);
         AddUShortArray(hasher, tile.DeterministicPortalTargetSlotIndices);
+        AddPortalContinuationArray(hasher, tile.DeterministicPortalContinuations);
         AddVector2IntArray(hasher, tile.GoalCells);
         hasher.Add(tile.UsesClearFlowDescriptor);
         return hasher.Hash;
@@ -1569,6 +1707,8 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(job.PortalTransitionFromCursor);
         AddAuthorityPortalBuildProgress(hasher, job.PortalRebuiltPortals);
         AddAuthorityPendingPortalAccessProgress(hasher, job.PendingPortalAccessEntries);
+        hasher.Add(job.HierarchyTransitionCostsPrepared);
+        AddAuthorityPortalHierarchyBuildProgress(hasher, job.HierarchyBuildJob);
         hasher.Add(job.HasAuthorityInputHash);
         if (job.HasAuthorityInputHash)
             hasher.Add(job.AuthorityInputHash);
@@ -1607,6 +1747,7 @@ public static partial class FlowFieldCrowdMovementSystem
         AddAuthorityLongSetProgress(hasher, job.PortalProcessedBoundaries);
         AddAuthorityPortalBuildProgress(hasher, job.PortalRebuiltPortals);
         AddAuthorityPendingPortalAccessProgress(hasher, job.PendingPortalAccessEntries);
+        AddAuthorityPortalHierarchyBuildProgress(hasher, job.HierarchyBuildJob);
         ValidateDerivedSortedIntSnapshot(job.DirtySectors, job.DirtySectorIds, "runtime-dirty sectors");
         ValidateDerivedSortedIntSnapshot(job.CostDirtySectors, job.CostDirtySectorIds, "runtime-dirty cost sectors");
         if (job.PortalTransitionSectorIds != null)
@@ -1639,6 +1780,60 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(portals.Count);
         for (int i = 0; i < portals.Count; i++)
             AddAuthorityPortalData(hasher, portals[i], $"pending index={i}");
+    }
+
+    private static void AddAuthorityPortalHierarchyBuildProgress(LogicStateHasher hasher, PortalHierarchyBuildJob job)
+    {
+        hasher.Add(job != null);
+        if (job == null)
+            return;
+        hasher.Add(job.Fanout);
+        hasher.Add(job.NextLevel);
+        hasher.Add(job.NextClusterSpanSectors);
+        hasher.Add(job.ClusterCursor);
+        hasher.Add(job.SourceCursor);
+        hasher.Add(job.Complete);
+        hasher.Add(job.CompletedLevels.Count);
+        for (int i = 0; i < job.CompletedLevels.Count; i++)
+            AddAuthorityPortalHierarchyLevel(hasher, job.CompletedLevels[i]);
+        hasher.Add(job.CurrentLevel != null);
+        if (job.CurrentLevel != null)
+            AddAuthorityPortalHierarchyLevel(hasher, job.CurrentLevel);
+        hasher.Add(job.CurrentCluster != null);
+        if (job.CurrentCluster != null)
+            AddAuthorityPortalHierarchyCluster(hasher, job.CurrentCluster);
+        hasher.Add(job.CurrentEdges != null);
+        if (job.CurrentEdges != null)
+        {
+            hasher.Add(job.CurrentEdges.Count);
+            for (int i = 0; i < job.CurrentEdges.Count; i++)
+                AddAuthorityPortalHierarchyEdge(hasher, job.CurrentEdges[i]);
+        }
+        AddAuthorityPortalHierarchySourceBuildProgress(hasher, job.CurrentSourceBuild);
+        hasher.Add(job.Result != null);
+        if (job.Result != null)
+            AddAuthorityPortalHierarchy(hasher, job.Result);
+    }
+
+    private static void AddAuthorityPortalHierarchySourceBuildProgress(
+        LogicStateHasher hasher,
+        PortalHierarchySourceBuildJob job)
+    {
+        hasher.Add(job != null);
+        if (job == null)
+            return;
+        if (job.Search == null || job.OpenSet == null || job.TargetNodes == null)
+            throw new InvalidOperationException("Navigation authority digest encountered incomplete hierarchy source build state.");
+
+        hasher.Add(job.SourceNode);
+        hasher.Add(job.RemainingTargets);
+        hasher.Add(job.Complete);
+        AddSortedInts(hasher, job.TargetNodes);
+        AddSortedLongDictionary(hasher, job.Search.Costs);
+        AddSortedIntDictionary(hasher, job.Search.PreviousNode);
+        AddSortedInts(hasher, job.Search.SettledNodes);
+        hasher.Add(job.Search.ExpansionCount);
+        job.OpenSet.WriteDeterministicState(hasher);
     }
 
     private static void ValidateDerivedSortedIntSnapshot(
@@ -1839,6 +2034,64 @@ public static partial class FlowFieldCrowdMovementSystem
 
         AddSortedPortalSignatures(hasher, world.PortalIdsBySignature);
         AddSortedInts(hasher, world.UsedPortalIds);
+        AddAuthorityPortalHierarchy(hasher, world.Hierarchy);
+    }
+
+    private static void AddAuthorityPortalHierarchy(LogicStateHasher hasher, PortalHierarchy hierarchy)
+    {
+        hasher.Add(hierarchy != null);
+        if (hierarchy == null)
+            return;
+        hasher.Add(hierarchy.Fanout);
+        hasher.Add(hierarchy.Levels?.Length ?? -1);
+        if (hierarchy.Levels == null)
+            return;
+        for (int i = 0; i < hierarchy.Levels.Length; i++)
+            AddAuthorityPortalHierarchyLevel(hasher, hierarchy.Levels[i]);
+    }
+
+    private static void AddAuthorityPortalHierarchyLevel(LogicStateHasher hasher, PortalHierarchyLevel level)
+    {
+        hasher.Add(level != null);
+        if (level == null)
+            return;
+        hasher.Add(level.Level);
+        hasher.Add(level.ClusterSpanSectors);
+        hasher.Add(level.ClusterCountX);
+        hasher.Add(level.ClusterCountY);
+        hasher.Add(level.Clusters?.Length ?? -1);
+        if (level.Clusters == null)
+            return;
+        for (int i = 0; i < level.Clusters.Length; i++)
+            AddAuthorityPortalHierarchyCluster(hasher, level.Clusters[i]);
+    }
+
+    private static void AddAuthorityPortalHierarchyCluster(LogicStateHasher hasher, PortalHierarchyCluster cluster)
+    {
+        hasher.Add(cluster != null);
+        if (cluster == null)
+            return;
+        hasher.Add(cluster.ClusterId);
+        hasher.Add(cluster.StartSectorX);
+        hasher.Add(cluster.StartSectorY);
+        hasher.Add(cluster.WidthSectors);
+        hasher.Add(cluster.HeightSectors);
+        AddAuthorityOptionalIntArray(hasher, cluster.BoundaryNodes);
+        hasher.Add(cluster.Edges?.Length ?? -1);
+        if (cluster.Edges == null)
+            return;
+        for (int i = 0; i < cluster.Edges.Length; i++)
+            AddAuthorityPortalHierarchyEdge(hasher, cluster.Edges[i]);
+    }
+
+    private static void AddAuthorityPortalHierarchyEdge(LogicStateHasher hasher, PortalHierarchyEdge edge)
+    {
+        if (edge == null)
+            throw new InvalidOperationException("Navigation authority digest encountered a null hierarchy edge.");
+        hasher.Add(edge.FromNode);
+        hasher.Add(edge.ToNode);
+        hasher.Add(edge.DeterministicCost);
+        AddAuthorityOptionalIntArray(hasher, edge.ChildWitnessNodes);
     }
 
     private static void AddAuthorityPortalData(LogicStateHasher hasher, PortalData portal, string location)
@@ -2188,6 +2441,13 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(nav.FailedPathGoalCellIndex);
             hasher.Add(nav.FailedPathStartSectorDirtyVersion);
             hasher.Add(nav.FailedPathGoalSectorDirtyVersion);
+            hasher.Add(nav.HasPreparedNavigationSnapshot);
+            hasher.Add(nav.PreparedNavigationFrame);
+            hasher.Add(nav.PreparedInputGoalFixed.x.RawValue);
+            hasher.Add(nav.PreparedInputGoalFixed.y.RawValue);
+            hasher.Add(nav.PreparedNavigationGoalFixed.x.RawValue);
+            hasher.Add(nav.PreparedNavigationGoalFixed.y.RawValue);
+            hasher.Add(nav.PreparedMaximumTravelDistanceFixed.RawValue);
             hasher.Add(nav.LastFixedFlowFrame);
             hasher.Add(nav.LastFixedFlowVelocity.x.RawValue);
             hasher.Add(nav.LastFixedFlowVelocity.y.RawValue);
@@ -2612,6 +2872,65 @@ public static partial class FlowFieldCrowdMovementSystem
             for (int i = 0; i < usedPortalIds.Count; i++)
                 yield return NavigationWorldHashToken.FromInt(usedPortalIds[i]);
         }
+
+        PortalHierarchy hierarchy = world.Hierarchy;
+        yield return NavigationWorldHashToken.FromBool(hierarchy != null);
+        if (hierarchy == null)
+            yield break;
+        yield return NavigationWorldHashToken.FromInt(hierarchy.Fanout);
+        yield return NavigationWorldHashToken.FromInt(hierarchy.Levels?.Length ?? -1);
+        if (hierarchy.Levels == null)
+            yield break;
+        for (int levelIndex = 0; levelIndex < hierarchy.Levels.Length; levelIndex++)
+        {
+            PortalHierarchyLevel level = hierarchy.Levels[levelIndex];
+            yield return NavigationWorldHashToken.FromBool(level != null);
+            if (level == null)
+                continue;
+            yield return NavigationWorldHashToken.FromInt(level.Level);
+            yield return NavigationWorldHashToken.FromInt(level.ClusterSpanSectors);
+            yield return NavigationWorldHashToken.FromInt(level.ClusterCountX);
+            yield return NavigationWorldHashToken.FromInt(level.ClusterCountY);
+            yield return NavigationWorldHashToken.FromInt(level.Clusters?.Length ?? -1);
+            if (level.Clusters == null)
+                continue;
+            for (int clusterIndex = 0; clusterIndex < level.Clusters.Length; clusterIndex++)
+            {
+                PortalHierarchyCluster cluster = level.Clusters[clusterIndex];
+                yield return NavigationWorldHashToken.FromBool(cluster != null);
+                if (cluster == null)
+                    continue;
+                yield return NavigationWorldHashToken.FromInt(cluster.ClusterId);
+                yield return NavigationWorldHashToken.FromInt(cluster.StartSectorX);
+                yield return NavigationWorldHashToken.FromInt(cluster.StartSectorY);
+                yield return NavigationWorldHashToken.FromInt(cluster.WidthSectors);
+                yield return NavigationWorldHashToken.FromInt(cluster.HeightSectors);
+                yield return NavigationWorldHashToken.FromBool(cluster.BoundaryNodes != null);
+                if (cluster.BoundaryNodes != null)
+                {
+                    foreach (NavigationWorldHashToken token in EnumerateIntArrayHashTokens(cluster.BoundaryNodes))
+                        yield return token;
+                }
+                yield return NavigationWorldHashToken.FromInt(cluster.Edges?.Length ?? -1);
+                if (cluster.Edges == null)
+                    continue;
+                for (int edgeIndex = 0; edgeIndex < cluster.Edges.Length; edgeIndex++)
+                {
+                    PortalHierarchyEdge edge = cluster.Edges[edgeIndex]
+                        ?? throw new InvalidOperationException(
+                            $"Navigation world hash encountered a null hierarchy edge. world={world.Version}, level={levelIndex}, cluster={clusterIndex}, index={edgeIndex}.");
+                    yield return NavigationWorldHashToken.FromInt(edge.FromNode);
+                    yield return NavigationWorldHashToken.FromInt(edge.ToNode);
+                    yield return NavigationWorldHashToken.FromLong(edge.DeterministicCost);
+                    yield return NavigationWorldHashToken.FromBool(edge.ChildWitnessNodes != null);
+                    if (edge.ChildWitnessNodes != null)
+                    {
+                        foreach (NavigationWorldHashToken token in EnumerateIntArrayHashTokens(edge.ChildWitnessNodes))
+                            yield return token;
+                    }
+                }
+            }
+        }
     }
 
     private static IEnumerable<NavigationWorldHashToken> EnumerateBoolArrayHashTokens(bool[] values)
@@ -2766,6 +3085,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         AddSortedPortalSignatures(hasher, world.PortalIdsBySignature);
         AddSortedInts(hasher, world.UsedPortalIds);
+        AddAuthorityPortalHierarchy(hasher, world.Hierarchy);
     }
 
     private static void AddWorldBuildJob(LogicStateHasher hasher, WorldBuildJob job)
@@ -2912,6 +3232,13 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(nav.StableGoalRawY);
             AddVector3(hasher, nav.StableGoalWorld);
             hasher.Add(nav.StableGoalTargetId);
+            hasher.Add(nav.HasPreparedNavigationSnapshot);
+            hasher.Add(nav.PreparedNavigationFrame);
+            hasher.Add(nav.PreparedInputGoalFixed.x.RawValue);
+            hasher.Add(nav.PreparedInputGoalFixed.y.RawValue);
+            hasher.Add(nav.PreparedNavigationGoalFixed.x.RawValue);
+            hasher.Add(nav.PreparedNavigationGoalFixed.y.RawValue);
+            hasher.Add(nav.PreparedMaximumTravelDistanceFixed.RawValue);
             hasher.Add(nav.PortalTraversalWorldVersion);
             hasher.Add(nav.PortalTraversalSectorId);
             hasher.Add(nav.PortalTraversalId);
@@ -2952,6 +3279,7 @@ public static partial class FlowFieldCrowdMovementSystem
             AddSortedIntDictionary(hasher, policy.NextNodeTowardGoal);
             AddSortedInts(hasher, policy.SettledPortalNodes);
             policy.PortalOpenSet.WriteDeterministicState(hasher);
+            AddPortalHierarchyReversePolicies(hasher, policy);
             hasher.Add(policy.LastUsedFrame);
         }
 
@@ -3091,6 +3419,8 @@ public static partial class FlowFieldCrowdMovementSystem
         AddByteArray(hasher, tile.FlowFieldValues);
         AddIntArray(hasher, tile.DeterministicIntegrationCosts);
         AddByteArray(hasher, tile.DeterministicFlowDirectionIndices);
+        AddUShortArray(hasher, tile.DeterministicPortalTargetSlotIndices);
+        AddPortalContinuationArray(hasher, tile.DeterministicPortalContinuations);
         AddVector2IntArray(hasher, tile.GoalCells);
         hasher.Add(tile.LastUsedFrame);
         hasher.Add(tile.LastReferencedFrame);
@@ -3157,8 +3487,24 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(key.GoalId);
         hasher.Add(key.DownstreamGoalHint);
         hasher.Add(key.FinalGoalIndex);
+        AddFlowCorridorSuffixIdentity(hasher, key.CorridorSuffixIdentity);
         hasher.Add(key.AgentTypeId);
         hasher.Add(key.DirtyVersion);
+    }
+
+    private static void AddFlowCorridorSuffixIdentity(
+        LogicStateHasher hasher,
+        FlowCorridorSuffixIdentity identity)
+    {
+        hasher.Add(identity?.Length ?? 0);
+        while (identity != null)
+        {
+            hasher.Add(identity.WorldVersion);
+            hasher.Add(identity.SectorId);
+            hasher.Add(identity.PortalId);
+            hasher.Add(identity.FinalGoalIndex);
+            identity = identity.Downstream;
+        }
     }
 
     private static void AddSharedGoalKey(LogicStateHasher hasher, SharedGoalFieldKey key)
@@ -3357,6 +3703,41 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(count);
         for (int i = 0; i < count; i++)
             hasher.Add(values[i]);
+    }
+
+    private static void AddIntArrayArray(LogicStateHasher hasher, int[][] values)
+    {
+        int count = values?.Length ?? 0;
+        hasher.Add(count);
+        for (int i = 0; i < count; i++)
+            AddIntArray(hasher, values[i]);
+    }
+
+    private static void AddPortalContinuationArray(
+        LogicStateHasher hasher,
+        DeterministicPortalContinuation[] continuations)
+    {
+        int count = continuations?.Length ?? 0;
+        hasher.Add(count);
+        for (int i = 0; i < count; i++)
+        {
+            DeterministicPortalContinuation continuation = continuations[i];
+            hasher.Add(continuation != null);
+            if (continuation == null)
+                continue;
+            hasher.Add(continuation.AuthorityContentHash);
+            hasher.Add(continuation.TotalCellCount);
+            hasher.Add(continuation.TotalPortalCount);
+            hasher.Add(continuation.TerminalCellIndex);
+        }
+    }
+
+    private static void AddUShortArrayArray(LogicStateHasher hasher, ushort[][] values)
+    {
+        int count = values?.Length ?? 0;
+        hasher.Add(count);
+        for (int i = 0; i < count; i++)
+            AddUShortArray(hasher, values[i]);
     }
 
     private static void AddLongArray(LogicStateHasher hasher, long[] values)

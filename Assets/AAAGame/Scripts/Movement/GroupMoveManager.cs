@@ -221,6 +221,12 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
         FlowFieldCrowdMovementSystem.UpdateAgent(entity);
     }
 
+    public void CommitNavigationSyncSnapshot()
+    {
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        FlowFieldCrowdMovementSystem.CommitFixedPortalOwnerSnapshots();
+    }
+
     // ── 障碍物注册 ──
 
     public void RegisterCircleObstacle(int id, Vector3 position, float radius)

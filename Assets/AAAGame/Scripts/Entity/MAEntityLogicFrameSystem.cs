@@ -147,6 +147,8 @@ public static class MAEntityLogicFrameSystem
                 if (targetingPhase)
                     LogicFactionVisionService.EndTargetingPhase();
             }
+            if (phase == MAEntityLogicFramePhase.NavigationSync && GroupMoveManager.HasInstance)
+                GroupMoveManager.Instance.CommitNavigationSyncSnapshot();
             if (phase == MAEntityLogicFramePhase.Projectile)
                 LogicProjectileService.AdvanceFrame(frame, deltaTime);
             if (phase == MAEntityLogicFramePhase.DamageResolve)

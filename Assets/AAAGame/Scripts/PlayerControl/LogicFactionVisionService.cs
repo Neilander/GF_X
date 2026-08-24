@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using AAAGame.MiniMap.FOG3;
 
@@ -58,6 +58,7 @@ public static class LogicFactionVisionService
     {
         if (s_TargetingPhaseCacheActive)
             throw new InvalidOperationException("Faction visibility targeting-phase cache is already active.");
+        LogicTargetingSpatialIndexService.BeginTargetingPhase();
         s_PlayerVisibilityCache.Clear();
         s_EnemyVisibilityCache.Clear();
         s_TargetingPhaseCacheActive = true;
@@ -67,6 +68,7 @@ public static class LogicFactionVisionService
     {
         if (!s_TargetingPhaseCacheActive)
             throw new InvalidOperationException("Faction visibility targeting-phase cache is not active.");
+        LogicTargetingSpatialIndexService.EndTargetingPhase();
         s_TargetingPhaseCacheActive = false;
     }
 
@@ -254,6 +256,7 @@ public static class LogicFactionVisionService
     private static void ClearTargetingPhaseCache()
     {
         s_TargetingPhaseCacheActive = false;
+        LogicTargetingSpatialIndexService.Reset();
         s_PlayerVisibilityCache.Clear();
         s_EnemyVisibilityCache.Clear();
     }

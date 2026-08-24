@@ -184,6 +184,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public Dictionary<PortalSignature, int> PortalIdsBySignature = new Dictionary<PortalSignature, int>();
         public HashSet<int> UsedPortalIds = new HashSet<int>();
         public int NextPortalId;
+        public PortalHierarchy Hierarchy;
 
         public bool IsWalkable(int x, int y)
         {
@@ -558,10 +559,79 @@ public static partial class FlowFieldCrowdMovementSystem
         public int CommittedCorridorGoalY;
         public int[] CommittedCorridorSectorIds;
         public int[] CommittedCorridorPortalIds;
+        public FlowCorridorSuffixIdentity[] CorridorSuffixIdentities;
+        public int CorridorSuffixFinalGoalIndex = -1;
+        public int[] CorridorSuffixSectorIdsSource;
+        public int[] CorridorSuffixPortalIdsSource;
+        public FlowCorridorSuffixIdentity[] CommittedCorridorSuffixIdentities;
+        public int CommittedCorridorSuffixFinalGoalIndex = -1;
+        public int[] CommittedCorridorSuffixSectorIdsSource;
+        public int[] CommittedCorridorSuffixPortalIdsSource;
 
         public bool MatchesGoal(int goalX, int goalY)
         {
             return GoalX == goalX && GoalY == goalY;
+        }
+    }
+
+    private sealed class FlowCorridorSuffixIdentity
+    {
+        public int WorldVersion;
+        public int SectorId;
+        public int PortalId;
+        public int FinalGoalIndex;
+        public FlowCorridorSuffixIdentity Downstream;
+        public int Length;
+        public int StableHashCode;
+    }
+
+    private readonly struct FlowCorridorSuffixNodeKey : IEquatable<FlowCorridorSuffixNodeKey>
+    {
+        public readonly int WorldVersion;
+        public readonly int SectorId;
+        public readonly int PortalId;
+        public readonly int FinalGoalIndex;
+        public readonly FlowCorridorSuffixIdentity Downstream;
+
+        public FlowCorridorSuffixNodeKey(
+            int worldVersion,
+            int sectorId,
+            int portalId,
+            int finalGoalIndex,
+            FlowCorridorSuffixIdentity downstream)
+        {
+            WorldVersion = worldVersion;
+            SectorId = sectorId;
+            PortalId = portalId;
+            FinalGoalIndex = finalGoalIndex;
+            Downstream = downstream;
+        }
+
+        public bool Equals(FlowCorridorSuffixNodeKey other)
+        {
+            return WorldVersion == other.WorldVersion
+                   && SectorId == other.SectorId
+                   && PortalId == other.PortalId
+                   && FinalGoalIndex == other.FinalGoalIndex
+                   && ReferenceEquals(Downstream, other.Downstream);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is FlowCorridorSuffixNodeKey other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = WorldVersion;
+                hash = (hash * 397) ^ SectorId;
+                hash = (hash * 397) ^ PortalId;
+                hash = (hash * 397) ^ FinalGoalIndex;
+                hash = (hash * 397) ^ (Downstream?.StableHashCode ?? 0);
+                return hash;
+            }
         }
     }
 
@@ -683,11 +753,11 @@ public static partial class FlowFieldCrowdMovementSystem
         public readonly Dictionary<int, int> NextNodeTowardGoal = new Dictionary<int, int>(256);
         public readonly HashSet<int> SettledPortalNodes = new HashSet<int>();
         public readonly DeterministicCostHeap PortalOpenSet = new DeterministicCostHeap();
-        public readonly List<int> FrontierNodeScratch = new List<int>(256);
+        public readonly Dictionary<int, PortalHierarchyReversePolicy> HierarchyPolicies =
+            new Dictionary<int, PortalHierarchyReversePolicy>(4);
         public ulong NodeCostsAuthorityContentHash;
         public ulong NextNodeTowardGoalAuthorityContentHash;
         public ulong SettledPortalAuthorityContentHash;
-        public int HeuristicStartCellIndex = -1;
         public int LastUsedFrame;
         public ulong AuthorityContentHash;
         public bool HasAuthorityContentHash;
@@ -949,6 +1019,13 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
+    private sealed class PendingNavigationTileException : InvalidOperationException
+    {
+        public PendingNavigationTileException(string message) : base(message)
+        {
+        }
+    }
+
     private sealed class AgentNavState
     {
         public int AgentId;
@@ -976,6 +1053,11 @@ public static partial class FlowFieldCrowdMovementSystem
         public int FailedPathGoalCellIndex;
         public int FailedPathStartSectorDirtyVersion;
         public int FailedPathGoalSectorDirtyVersion;
+        public bool HasPreparedNavigationSnapshot;
+        public int PreparedNavigationFrame = -1;
+        public FixVector2 PreparedInputGoalFixed;
+        public FixVector2 PreparedNavigationGoalFixed;
+        public Fix64 PreparedMaximumTravelDistanceFixed;
         public int LastSteeringFrame = -1;
         public Vector3 LastSteeringGoal;
         public Vector3 LastSteeringDesiredDirection;
@@ -1070,10 +1152,20 @@ public static partial class FlowFieldCrowdMovementSystem
         public readonly int GoalId;
         public readonly int DownstreamGoalHint;
         public readonly int FinalGoalIndex;
+        public readonly FlowCorridorSuffixIdentity CorridorSuffixIdentity;
         public readonly int AgentTypeId;
         public readonly int DirtyVersion;
 
-        public FlowTileCacheKey(int worldVersion, int sectorId, TileGoalKind goalKind, int goalId, int downstreamGoalHint, int finalGoalIndex, int agentTypeId, int dirtyVersion)
+        public FlowTileCacheKey(
+            int worldVersion,
+            int sectorId,
+            TileGoalKind goalKind,
+            int goalId,
+            int downstreamGoalHint,
+            int finalGoalIndex,
+            FlowCorridorSuffixIdentity corridorSuffixIdentity,
+            int agentTypeId,
+            int dirtyVersion)
         {
             WorldVersion = worldVersion;
             SectorId = sectorId;
@@ -1081,6 +1173,7 @@ public static partial class FlowFieldCrowdMovementSystem
             GoalId = goalId;
             DownstreamGoalHint = downstreamGoalHint;
             FinalGoalIndex = finalGoalIndex;
+            CorridorSuffixIdentity = corridorSuffixIdentity;
             AgentTypeId = agentTypeId;
             DirtyVersion = dirtyVersion;
         }
@@ -1093,6 +1186,7 @@ public static partial class FlowFieldCrowdMovementSystem
                    && GoalId == other.GoalId
                    && DownstreamGoalHint == other.DownstreamGoalHint
                    && FinalGoalIndex == other.FinalGoalIndex
+                   && AreFlowCorridorSuffixIdentitiesEqual(CorridorSuffixIdentity, other.CorridorSuffixIdentity)
                    && AgentTypeId == other.AgentTypeId
                    && DirtyVersion == other.DirtyVersion;
         }
@@ -1112,6 +1206,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 hash = (hash * 397) ^ GoalId;
                 hash = (hash * 397) ^ DownstreamGoalHint;
                 hash = (hash * 397) ^ FinalGoalIndex;
+                hash = (hash * 397) ^ (CorridorSuffixIdentity?.StableHashCode ?? 0);
                 hash = (hash * 397) ^ AgentTypeId;
                 hash = (hash * 397) ^ DirtyVersion;
                 return hash;
@@ -1134,7 +1229,58 @@ public static partial class FlowFieldCrowdMovementSystem
         order = left.DownstreamGoalHint.CompareTo(right.DownstreamGoalHint);
         if (order != 0) return order;
         order = left.FinalGoalIndex.CompareTo(right.FinalGoalIndex);
+        if (order != 0) return order;
+        order = CompareFlowCorridorSuffixIdentities(left.CorridorSuffixIdentity, right.CorridorSuffixIdentity);
         return order != 0 ? order : left.DirtyVersion.CompareTo(right.DirtyVersion);
+    }
+
+    private static bool AreFlowCorridorSuffixIdentitiesEqual(
+        FlowCorridorSuffixIdentity left,
+        FlowCorridorSuffixIdentity right)
+    {
+        if (ReferenceEquals(left, right))
+            return true;
+        while (left != null && right != null)
+        {
+            if (left.WorldVersion != right.WorldVersion
+                || left.SectorId != right.SectorId
+                || left.PortalId != right.PortalId
+                || left.FinalGoalIndex != right.FinalGoalIndex)
+            {
+                return false;
+            }
+            left = left.Downstream;
+            right = right.Downstream;
+        }
+        return left == null && right == null;
+    }
+
+    private static int CompareFlowCorridorSuffixIdentities(
+        FlowCorridorSuffixIdentity left,
+        FlowCorridorSuffixIdentity right)
+    {
+        if (ReferenceEquals(left, right))
+            return 0;
+        if (left == null)
+            return -1;
+        if (right == null)
+            return 1;
+        while (left != null && right != null)
+        {
+            int order = left.WorldVersion.CompareTo(right.WorldVersion);
+            if (order != 0) return order;
+            order = left.SectorId.CompareTo(right.SectorId);
+            if (order != 0) return order;
+            order = left.PortalId.CompareTo(right.PortalId);
+            if (order != 0) return order;
+            order = left.FinalGoalIndex.CompareTo(right.FinalGoalIndex);
+            if (order != 0) return order;
+            left = left.Downstream;
+            right = right.Downstream;
+        }
+        if (left == null && right == null)
+            return 0;
+        return left == null ? -1 : 1;
     }
 
     private sealed class FlowTileDebugIntegrationPayload
@@ -1160,6 +1306,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int[] DeterministicIntegrationCosts;
         public byte[] DeterministicFlowDirectionIndices;
         public ushort[] DeterministicPortalTargetSlotIndices;
+        public DeterministicPortalContinuation[] DeterministicPortalContinuations;
         public Vector2Int[] GoalCells;
         public int LastUsedFrame;
         public int LastReferencedFrame;
@@ -1170,6 +1317,17 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             return (worldX - StartX) + (worldY - StartY) * Width;
         }
+    }
+
+    private sealed class DeterministicPortalContinuation
+    {
+        public int[] LocalCellIndices;
+        public ushort PortalSlotIndex;
+        public DeterministicPortalContinuation Downstream;
+        public int TotalCellCount;
+        public int TotalPortalCount;
+        public int TerminalCellIndex;
+        public ulong AuthorityContentHash;
     }
 
     private readonly struct FlowTileBuildKey : IEquatable<FlowTileBuildKey>
@@ -1311,6 +1469,23 @@ public static partial class FlowFieldCrowdMovementSystem
         public int NegativeMinimumAgentId = int.MaxValue;
         public bool PositiveOnPortal;
         public bool NegativeOnPortal;
+    }
+
+    private sealed class FixedPortalParticipation
+    {
+        public FixedPortalOwnerKey Key;
+        public int Direction;
+        public bool OnPortal;
+    }
+
+    private sealed class FixedPortalParticipantIndex
+    {
+        public readonly SortedSet<int> PositiveAgentIds = new SortedSet<int>();
+        public readonly SortedSet<int> NegativeAgentIds = new SortedSet<int>();
+        public readonly SortedSet<int> PositiveOnPortalAgentIds = new SortedSet<int>();
+        public readonly SortedSet<int> NegativeOnPortalAgentIds = new SortedSet<int>();
+
+        public bool IsEmpty => PositiveAgentIds.Count == 0 && NegativeAgentIds.Count == 0;
     }
 
     private sealed class FixedCorridorDescriptor
@@ -1706,6 +1881,89 @@ public static partial class FlowFieldCrowdMovementSystem
             new Dictionary<int, AttackAreaIslandCandidates>();
     }
 
+    private readonly struct TargetingReachabilityCacheKey : IEquatable<TargetingReachabilityCacheKey>
+    {
+        public TargetingReachabilityCacheKey(
+            int worldVersion,
+            int topologyVersion,
+            int agentTypeId,
+            int startIslandId,
+            LogicCombatShape targetShape,
+            Fix64 attackRange)
+        {
+            WorldVersion = worldVersion;
+            TopologyVersion = topologyVersion;
+            AgentTypeId = agentTypeId;
+            StartIslandId = startIslandId;
+            ShapeKind = targetShape.Kind;
+            CenterXRaw = targetShape.Center.x.RawValue;
+            CenterYRaw = targetShape.Center.y.RawValue;
+            RadiusRaw = targetShape.Radius.RawValue;
+            HalfExtentXRaw = targetShape.HalfExtents.x.RawValue;
+            HalfExtentYRaw = targetShape.HalfExtents.y.RawValue;
+            AttackRangeRaw = attackRange.RawValue;
+        }
+
+        public int WorldVersion { get; }
+        public int TopologyVersion { get; }
+        public int AgentTypeId { get; }
+        public int StartIslandId { get; }
+        public LogicCombatShapeKind ShapeKind { get; }
+        public long CenterXRaw { get; }
+        public long CenterYRaw { get; }
+        public long RadiusRaw { get; }
+        public long HalfExtentXRaw { get; }
+        public long HalfExtentYRaw { get; }
+        public long AttackRangeRaw { get; }
+
+        public bool Equals(TargetingReachabilityCacheKey other) =>
+            WorldVersion == other.WorldVersion
+            && TopologyVersion == other.TopologyVersion
+            && AgentTypeId == other.AgentTypeId
+            && StartIslandId == other.StartIslandId
+            && ShapeKind == other.ShapeKind
+            && CenterXRaw == other.CenterXRaw
+            && CenterYRaw == other.CenterYRaw
+            && RadiusRaw == other.RadiusRaw
+            && HalfExtentXRaw == other.HalfExtentXRaw
+            && HalfExtentYRaw == other.HalfExtentYRaw
+            && AttackRangeRaw == other.AttackRangeRaw;
+
+        public override bool Equals(object obj) => obj is TargetingReachabilityCacheKey other && Equals(other);
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = WorldVersion;
+                hash = (hash * 397) ^ TopologyVersion;
+                hash = (hash * 397) ^ AgentTypeId;
+                hash = (hash * 397) ^ StartIslandId;
+                hash = (hash * 397) ^ (int)ShapeKind;
+                hash = (hash * 397) ^ CenterXRaw.GetHashCode();
+                hash = (hash * 397) ^ CenterYRaw.GetHashCode();
+                hash = (hash * 397) ^ RadiusRaw.GetHashCode();
+                hash = (hash * 397) ^ HalfExtentXRaw.GetHashCode();
+                hash = (hash * 397) ^ HalfExtentYRaw.GetHashCode();
+                return (hash * 397) ^ AttackRangeRaw.GetHashCode();
+            }
+        }
+    }
+
+    private readonly struct TargetingReachabilityCacheEntry
+    {
+        public TargetingReachabilityCacheEntry(
+            bool reachable,
+            NavigationQueryFailureKind failureKind)
+        {
+            Reachable = reachable;
+            FailureKind = failureKind;
+        }
+
+        public bool Reachable { get; }
+        public NavigationQueryFailureKind FailureKind { get; }
+    }
+
     private sealed class BoxObstacle
     {
         public int Id;
@@ -1757,6 +2015,57 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             int result = Cost.CompareTo(other.Cost);
             return result != 0 ? result : Index.CompareTo(other.Index);
+        }
+    }
+
+    private sealed class DeterministicFlowHeap
+    {
+        private readonly List<DeterministicFlowNode> _items = new List<DeterministicFlowNode>(256);
+
+        public int Count => _items.Count;
+
+        public void Clear()
+        {
+            _items.Clear();
+        }
+
+        public void Push(int cost, int index)
+        {
+            _items.Add(new DeterministicFlowNode(cost, index));
+            int child = _items.Count - 1;
+            while (child > 0)
+            {
+                int parent = (child - 1) / 2;
+                if (_items[parent].CompareTo(_items[child]) <= 0)
+                    break;
+                (_items[parent], _items[child]) = (_items[child], _items[parent]);
+                child = parent;
+            }
+        }
+
+        public DeterministicFlowNode Pop()
+        {
+            if (_items.Count == 0)
+                throw new InvalidOperationException("DeterministicFlowHeap.Pop failed: heap is empty.");
+
+            DeterministicFlowNode root = _items[0];
+            int last = _items.Count - 1;
+            _items[0] = _items[last];
+            _items.RemoveAt(last);
+            int parent = 0;
+            while (parent < _items.Count)
+            {
+                int left = parent * 2 + 1;
+                if (left >= _items.Count)
+                    break;
+                int right = left + 1;
+                int best = right < _items.Count && _items[right].CompareTo(_items[left]) < 0 ? right : left;
+                if (_items[parent].CompareTo(_items[best]) <= 0)
+                    break;
+                (_items[parent], _items[best]) = (_items[best], _items[parent]);
+                parent = best;
+            }
+            return root;
         }
     }
 
@@ -1971,6 +2280,9 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly List<int> OrderedAgentIds = new List<int>(128);
     private static readonly List<int> NavigationWorldAgentTypeIdsScratch = new List<int>(8);
     private static readonly HashSet<int> NavigationWorldAgentTypeIdsSeenScratch = new HashSet<int>();
+    private static readonly List<FixVector2> CommittedPotentialPathPointsScratch = new List<FixVector2>(64);
+    private static readonly List<int> CommittedPotentialPathPrefixCostsScratch = new List<int>(64);
+    private static readonly List<ushort> CommittedPotentialPortalSlotsScratch = new List<ushort>(32);
     private static readonly Dictionary<int, CircleObstacle> CircleObstacles = new Dictionary<int, CircleObstacle>();
     private static readonly Dictionary<int, BoxObstacle> BoxObstacles = new Dictionary<int, BoxObstacle>();
     private static readonly List<LogicStaticCollisionObstacle> StaticCollisionObstacleSnapshotBuilder =
@@ -1983,9 +2295,12 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly HashSet<MovingTargetAnchorKey> ReferencedMovingTargetAnchorKeysScratch = new HashSet<MovingTargetAnchorKey>();
     private static readonly Dictionary<FlowTileCacheKey, FlowTileCacheEntry> FlowTileCache = new Dictionary<FlowTileCacheKey, FlowTileCacheEntry>();
     private static readonly Dictionary<FlowTileCacheKey, FlowTileCacheEntry> DeterministicFlowTileCache = new Dictionary<FlowTileCacheKey, FlowTileCacheEntry>();
+    private static readonly Dictionary<FlowCorridorSuffixNodeKey, FlowCorridorSuffixIdentity> FlowCorridorSuffixIdentities =
+        new Dictionary<FlowCorridorSuffixNodeKey, FlowCorridorSuffixIdentity>();
     private static readonly LinkedList<FlowTileBuildJob> FlowTileBuildQueue = new LinkedList<FlowTileBuildJob>();
     private static readonly HashSet<FlowTileCacheKey> PendingFlowTileBuildJobs = new HashSet<FlowTileCacheKey>();
     private static readonly HashSet<FlowTileCacheKey> ActiveFlowTileBuildKeys = new HashSet<FlowTileCacheKey>();
+    private static readonly HashSet<FlowTileCacheKey> PendingFlowTileDependencyKeys = new HashSet<FlowTileCacheKey>();
     private static readonly Dictionary<int, Stack<float[]>> IntegrationArrayPool = new Dictionary<int, Stack<float[]>>();
     private static readonly Dictionary<int, Stack<long[]>> PortalAccessIntegrationArrayPool = new Dictionary<int, Stack<long[]>>();
     private static readonly Dictionary<SectorPathCacheKey, SectorPathCacheEntry> SectorPathCache = new Dictionary<SectorPathCacheKey, SectorPathCacheEntry>();
@@ -2009,9 +2324,17 @@ public static partial class FlowFieldCrowdMovementSystem
         new Dictionary<AttackAreaCandidateCacheKey, AttackAreaCandidateCacheEntry>();
     private static int _attackAreaCandidateCacheFrame = int.MinValue;
     private static int _attackAreaCandidateCacheBuildCount;
+    private static readonly Dictionary<TargetingReachabilityCacheKey, TargetingReachabilityCacheEntry> TargetingReachabilityCache =
+        new Dictionary<TargetingReachabilityCacheKey, TargetingReachabilityCacheEntry>();
+    private static int _targetingReachabilityCacheFrame = int.MinValue;
+    private static int _targetingReachabilityCacheMissCount;
     private static readonly Dictionary<FixedPortalOwnerKey, FixedPortalOwnerState> FixedPortalOwners = new Dictionary<FixedPortalOwnerKey, FixedPortalOwnerState>();
     private static readonly Dictionary<int, int> FixedPortalOwnerEvaluatedFrameByWorld = new Dictionary<int, int>();
     private static readonly Dictionary<FixedPortalOwnerKey, FixedPortalParticipantSnapshot> FixedPortalParticipantScratch = new Dictionary<FixedPortalOwnerKey, FixedPortalParticipantSnapshot>();
+    private static readonly Dictionary<int, FixedPortalParticipation> FixedPortalParticipationByAgent = new Dictionary<int, FixedPortalParticipation>();
+    private static readonly Dictionary<FixedPortalOwnerKey, FixedPortalParticipantIndex> FixedPortalParticipantIndexByKey = new Dictionary<FixedPortalOwnerKey, FixedPortalParticipantIndex>();
+    private static readonly Dictionary<int, SortedSet<int>> PendingFixedCorridorParticipantAgentIdsByWorld = new Dictionary<int, SortedSet<int>>();
+    private static readonly List<int> FixedPortalParticipationAgentIdScratch = new List<int>();
     private static readonly List<FixedPortalOwnerKey> FixedPortalOwnerKeyScratch = new List<FixedPortalOwnerKey>();
     private static readonly Comparison<FixedPortalOwnerKey> FixedPortalOwnerKeyComparison = CompareFixedPortalOwnerKeys;
     private static readonly Dictionary<int, FixedCorridorLookup> FixedCorridorLookupByWorldVersion = new Dictionary<int, FixedCorridorLookup>();
@@ -2029,6 +2352,7 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly MinHeap DistanceEstimateOpenSet = new MinHeap();
     private static readonly DeterministicCostHeap FixedDistanceEstimateOpenSet = new DeterministicCostHeap();
     private static readonly DeterministicCostHeap SectorDistanceEstimateOpenSet = new DeterministicCostHeap();
+    private static readonly DeterministicFlowHeap DeterministicFlowOpenSet = new DeterministicFlowHeap();
     private static long[] SectorDistanceEstimateCosts = Array.Empty<long>();
     private static int[] SectorDistanceEstimateVisitedMarks = Array.Empty<int>();
     private static int[] SectorDistanceEstimateClosedMarks = Array.Empty<int>();
@@ -2267,6 +2591,8 @@ public static partial class FlowFieldCrowdMovementSystem
     private static void ReleaseTilePayloads(FlowTileCacheEntry tile)
     {
         ReturnTileDebugIntegrationPayload(tile);
+        if (tile != null)
+            tile.DeterministicPortalContinuations = null;
     }
 
     private static void ClearFlowTileCache()
@@ -2276,15 +2602,17 @@ public static partial class FlowFieldCrowdMovementSystem
 
         FlowTileCache.Clear();
         ClearDeterministicFlowTileCache();
+        FlowCorridorSuffixIdentities.Clear();
     }
 
     private static void RemoveFlowTileCacheEntry(FlowTileCacheKey key)
     {
-        if (FlowTileCache.TryGetValue(key, out FlowTileCacheEntry tile))
-            ReleaseTilePayloads(tile);
-
-        FlowTileCache.Remove(key);
         RemoveDeterministicFlowTileCacheEntry(key);
+        if (!FlowTileCache.TryGetValue(key, out FlowTileCacheEntry tile))
+            return;
+        if (!FlowTileCache.Remove(key))
+            throw new InvalidOperationException($"Flow tile cache removal failed. key={FormatTileKey(key)}.");
+        ReleaseTilePayloads(tile);
     }
 
     private static void ReturnPendingFlowTileBuildIntegrations()
@@ -2469,8 +2797,9 @@ public static partial class FlowFieldCrowdMovementSystem
         CostField = 8,
         IslandField = 9,
         PortalGraph = 10,
-        Commit = 11,
-        Complete = 12
+        Hierarchy = 11,
+        Commit = 12,
+        Complete = 13
     }
 
     private sealed class WorldBuildJob
@@ -2521,6 +2850,8 @@ public static partial class FlowFieldCrowdMovementSystem
         public int PortalTransitionCursor;
         public int PortalTransitionFromCursor;
         public List<PendingSectorPortalAccess> PendingPortalAccessEntries;
+        public PortalHierarchyBuildJob HierarchyBuildJob;
+        public bool HierarchyTransitionCostsPrepared;
         public ulong AuthorityInputHash;
         public bool HasAuthorityInputHash;
         public string Reason;
@@ -2588,10 +2919,11 @@ public static partial class FlowFieldCrowdMovementSystem
         IslandField = 6,
         SectorComponents = 7,
         PortalGraph = 8,
-        PrepareCommit = 9,
-        WorldHash = 10,
-        Commit = 11,
-        Complete = 12
+        Hierarchy = 9,
+        PrepareCommit = 10,
+        WorldHash = 11,
+        Commit = 12,
+        Complete = 13
     }
 
     private enum RuntimeDirtyCloneShellStage
@@ -2656,6 +2988,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int PortalTransitionCursor;
         public int PortalTransitionFromCursor;
         public List<PendingSectorPortalAccess> PendingPortalAccessEntries;
+        public PortalHierarchyBuildJob HierarchyBuildJob;
         public NavigationWorldHashBuildJob WorldHashBuildJob;
         public ulong AuthorityInputHash;
         public bool HasAuthorityInputHash;
@@ -2677,9 +3010,6 @@ public static partial class FlowFieldCrowdMovementSystem
         public long CommitSwapTicks;
         public long CommitCacheInvalidationTicks;
         public long CommitPortalAccessTicks;
-        public long CommitCostStorageTicks;
-        public long CommitTransitionCostTicks;
-        public long CommitValidationTicks;
         public long CommitWorldHashTicks;
         public long CommitAgentInvalidationTicks;
     }
@@ -2710,12 +3040,13 @@ public static partial class FlowFieldCrowdMovementSystem
         public int StableGoalReuse;
         public int StableGoalRefreshInitial;
         public int StableGoalRefreshCellDelta;
+        public int SectorCorridorPolicyAuthorityHashRefreshes;
+        public int SectorCorridorGoalConnectorBuilds;
         public int TileCacheHits;
         public int TileCacheMisses;
         public int PathPendingSharedGoal;
         public int TilePendingBuild;
         public int FlowTileQueueEnqueued;
-        public int FlowTileQueuePromoted;
         public int FlowTileQueuePruned;
         public int RequiredFlowTileCommits;
         public int SharedGoalPortalGraphNodeExpansions;
@@ -2724,9 +3055,17 @@ public static partial class FlowFieldCrowdMovementSystem
         public int PathPortalGraphNodeExpansions;
         public int PathPortalGraphOutgoingTransitionScans;
         public int PathPortalGraphOutgoingTransitionHits;
-        public int SectorCorridorAStarFrontierRebuilds;
-        public int SectorCorridorAStarFrontierNodes;
-        public int SectorCorridorAStarQueries;
+        public int SectorCorridorPolicyQueries;
+        public int HierarchyStartConnectorCacheHits;
+        public int HierarchyStartConnectorCacheMisses;
+        public int HierarchyDownwardCustomizationCacheHits;
+        public int HierarchyDownwardCustomizationCacheMisses;
+        public int HierarchyDownwardCustomizationExpansions;
+        public int ContinuationPortalTiles;
+        public int ContinuationPortalSlots;
+        public int ContinuationLocalCells;
+        public int ContinuationMaximumSlots;
+        public int ContinuationMaximumLocalSegmentCells;
         public int RuntimeDirtyApplications;
         public int RuntimeDirtySectorCount;
         public int NavigationConstraintCalls;
@@ -2735,7 +3074,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public long FrameTicks;
         public long PathStartPortalCheckTicks;
         public long PathFirstCrossingTicks;
-        public long SectorCorridorAStarTicks;
+        public long SectorCorridorPolicyTicks;
         public long AgentUpdateTicks;
         public long ManagerConfigTicks;
         public long ManagerSourceGateTicks;
@@ -2783,7 +3122,14 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly Dictionary<int, TestTerrainOverride> AuthoredTerrainSources = new Dictionary<int, TestTerrainOverride>();
 #if UNITY_EDITOR
     private static readonly Dictionary<int, Fix64> TestAgentTypeRadii = new Dictionary<int, Fix64>();
+    private static int _nextEditorBakeWorldVersion = -1;
     private static int _testNavigationPrepareRequestCount;
+    private static bool _editorTestRequirePreparedNavigationSnapshot;
+    private static int _testFixedPortalParticipationUpdateCount;
+    private static int _editorPortalHierarchyMaximumSourceExpansions;
+    private static long _editorPortalHierarchyMaximumSourceTicks;
+    private static int _editorPortalHierarchyMaximumInvocationExpansions;
+    private static long _editorPortalHierarchyMaximumInvocationTicks;
 #endif
     private static bool _hasTestTimeOverride;
     private static int _testFrameCount;
@@ -2823,11 +3169,15 @@ public static partial class FlowFieldCrowdMovementSystem
         AttackAreaCandidateCache.Clear();
         _attackAreaCandidateCacheFrame = int.MinValue;
         _attackAreaCandidateCacheBuildCount = 0;
+        TargetingReachabilityCache.Clear();
+        _targetingReachabilityCacheFrame = int.MinValue;
+        _targetingReachabilityCacheMissCount = 0;
         ClearFlowTileCache();
         ReturnPendingFlowTileBuildIntegrations();
         FlowTileBuildQueue.Clear();
         PendingFlowTileBuildJobs.Clear();
         ActiveFlowTileBuildKeys.Clear();
+        PendingFlowTileDependencyKeys.Clear();
         ClearSectorPathCache();
         ClearSectorPortalAccessCache();
         StartPortalChoiceCache.Clear();
@@ -2844,6 +3194,10 @@ public static partial class FlowFieldCrowdMovementSystem
         FixedPortalOwners.Clear();
         FixedPortalOwnerEvaluatedFrameByWorld.Clear();
         FixedPortalParticipantScratch.Clear();
+        FixedPortalParticipationByAgent.Clear();
+        FixedPortalParticipantIndexByKey.Clear();
+        PendingFixedCorridorParticipantAgentIdsByWorld.Clear();
+        FixedPortalParticipationAgentIdScratch.Clear();
         FixedPortalOwnerKeyScratch.Clear();
         FixedCorridorLookupByWorldVersion.Clear();
         _fixedCorridorClassifiedCellCount = 0;
@@ -2883,9 +3237,17 @@ public static partial class FlowFieldCrowdMovementSystem
         LogicStaticCollisionShadowService.Clear();
 #if UNITY_EDITOR
         TestAgentTypeRadii.Clear();
+        _nextEditorBakeWorldVersion = -1;
+        _editorTestRequirePreparedNavigationSnapshot = false;
+        _testFixedPortalParticipationUpdateCount = 0;
+        _editorPortalHierarchyMaximumSourceExpansions = 0;
+        _editorPortalHierarchyMaximumSourceTicks = 0;
+        _editorPortalHierarchyMaximumInvocationExpansions = 0;
+        _editorPortalHierarchyMaximumInvocationTicks = 0;
 #endif
         _perf = default;
         _perfInitialized = false;
+        ClearHierarchyStartConnectorCache();
         _lastDiagnosticsEnabledFrame = -1;
         _diagnosticsEnabledForFrame = false;
         _lastMaintenanceFrame = -1;
@@ -2951,6 +3313,9 @@ public static partial class FlowFieldCrowdMovementSystem
         CombatTargetSlotCache.Clear();
         FixedPortalOwners.Clear();
         FixedPortalOwnerEvaluatedFrameByWorld.Clear();
+        FixedPortalParticipationByAgent.Clear();
+        FixedPortalParticipantIndexByKey.Clear();
+        PendingFixedCorridorParticipantAgentIdsByWorld.Clear();
         FixedCorridorLookupByWorldVersion.Clear();
         _lastAgentSpatialBucketFrame = -1;
         _lastAgentSpatialBucketWorldVersion = -1;
@@ -3189,6 +3554,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 key.GoalId,
                 key.DownstreamGoalHint,
                 key.FinalGoalIndex,
+                key.CorridorSuffixIdentity,
                 key.AgentTypeId,
                 checked(key.DirtyVersion + 1));
             FlowTileCache.Add(extraKey, new FlowTileCacheEntry { Key = extraKey });
@@ -3260,31 +3626,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
     public static string GetEditorRuntimeDirtyJobDiagnostics()
     {
-        var agentTypeIds = new List<int>(WorldStates.Keys);
-        agentTypeIds.Sort();
-        var entries = new List<string>();
-        for (int i = 0; i < agentTypeIds.Count; i++)
-        {
-            WorldRuntimeState state = WorldStates[agentTypeIds[i]];
-            RuntimeDirtyRebuildJob job = state?.RuntimeDirtyJob;
-            if (job == null)
-                continue;
-
-            NavigationWorld world = job.WorkingWorld ?? job.TargetWorld;
-            entries.Add(
-                $"agent={state.AgentTypeId},stage={job.Stage},portalStage={job.PortalStage}," +
-                $"sectorCursor={job.SectorCursor},cloneShellStage={job.CloneShellStage},cloneSectorCursor={job.CloneSectorCursor}," +
-                $"islandScanIndex={job.IslandScanIndex},islandBfs={job.IslandBfsActive}," +
-                $"islandQueue={job.IslandOpenQueue?.Count ?? 0},islandCurrentSize={job.IslandCurrentSize}," +
-                $"portalSectorCursor={job.PortalSectorCursor},portalTransitionCursor={job.PortalTransitionCursor}," +
-                $"dirty={job.DirtySectorIds?.Count ?? 0},costDirty={job.CostDirtySectorIds?.Count ?? 0}," +
-                $"world={(world != null ? world.Width : 0)}x{(world != null ? world.Height : 0)}," +
-                $"sectors={world?.Sectors?.Length ?? 0}," +
-                BuildRuntimeDirtyStageAccumulatedTiming(job));
-        }
-
-        string pending = entries.Count > 0 ? string.Join("|", entries) : "none";
-        return $"pending=[{pending}],slowestCall=[{_editorSlowestRuntimeDirtyCallDiagnostics}]";
+        return BuildRuntimeDirtyJobDiagnostics();
     }
 
     private static PortalData CreateEditorTestPortalProgressProbe()
@@ -3322,6 +3664,35 @@ public static partial class FlowFieldCrowdMovementSystem
         _testDeltaTime = 0.1f;
     }
 #endif
+
+    private static string BuildRuntimeDirtyJobDiagnostics()
+    {
+        var agentTypeIds = new List<int>(WorldStates.Keys);
+        agentTypeIds.Sort();
+        var entries = new List<string>();
+        for (int i = 0; i < agentTypeIds.Count; i++)
+        {
+            WorldRuntimeState state = WorldStates[agentTypeIds[i]];
+            RuntimeDirtyRebuildJob job = state?.RuntimeDirtyJob;
+            if (job == null)
+                continue;
+
+            NavigationWorld world = job.WorkingWorld ?? job.TargetWorld;
+            entries.Add(
+                $"agent={state.AgentTypeId},stage={job.Stage},portalStage={job.PortalStage}," +
+                $"sectorCursor={job.SectorCursor},cloneShellStage={job.CloneShellStage},cloneSectorCursor={job.CloneSectorCursor}," +
+                $"islandScanIndex={job.IslandScanIndex},islandBfs={job.IslandBfsActive}," +
+                $"islandQueue={job.IslandOpenQueue?.Count ?? 0},islandCurrentSize={job.IslandCurrentSize}," +
+                $"portalSectorCursor={job.PortalSectorCursor},portalTransitionCursor={job.PortalTransitionCursor}," +
+                $"dirty={job.DirtySectorIds?.Count ?? 0},costDirty={job.CostDirtySectorIds?.Count ?? 0}," +
+                $"world={(world != null ? world.Width : 0)}x{(world != null ? world.Height : 0)}," +
+                $"sectors={world?.Sectors?.Length ?? 0}," +
+                BuildRuntimeDirtyStageAccumulatedTiming(job));
+        }
+
+        string pending = entries.Count > 0 ? string.Join("|", entries) : "none";
+        return $"pending=[{pending}],slowestCall=[{_editorSlowestRuntimeDirtyCallDiagnostics}]";
+    }
 
     public static void SetAuthoredNavigationSource(int width, int height, float cellSize, Vector3 origin, bool[] walkableMask)
     {
@@ -3450,6 +3821,7 @@ public static partial class FlowFieldCrowdMovementSystem
         return _testTerrainOverride != null || AuthoredTerrainSources.Count > 0;
     }
 
+#if UNITY_EDITOR
     public static FlowNavigationGridAsset.DerivedNavigationData BuildDerivedNavigationDataForAsset(
         int agentTypeId,
         Fix64 agentRadiusFixed,
@@ -3507,9 +3879,27 @@ public static partial class FlowFieldCrowdMovementSystem
         ProcessWorldBuildPortalGraph(job, long.MaxValue, forceComplete: true);
         if (job.WorkingWorld == null)
             throw new InvalidOperationException("BuildDerivedNavigationDataForAsset failed: working world is null after build.");
+        job.WorkingWorld.Version = AllocateEditorBakeNavigationWorldVersion();
+        try
+        {
+            CommitPendingSectorPortalAccessEntries(
+                job.WorkingWorld,
+                job.PendingPortalAccessEntries,
+                entriesAreFinalized: false);
+            EnsureAllSectorPortalAccessCoverage(job.WorkingWorld, "editor-derived-navigation-bake");
+            FinalizeWorldCostStorage(job.WorkingWorld);
+            RebuildDeterministicPortalTransitionCosts(job.WorkingWorld);
+            ValidateAllSectorPortalAccessCoverage(job.WorkingWorld, "editor-derived-navigation-bake");
+            job.WorkingWorld.Hierarchy = BuildPortalHierarchy(job.WorkingWorld, DefaultHierarchyFanout);
 
-        return ExportDerivedNavigationData(job.WorkingWorld);
+            return ExportDerivedNavigationData(job.WorkingWorld);
+        }
+        finally
+        {
+            RemoveSectorPortalAccessCacheEntriesForWorldVersion(job.WorkingWorld.Version);
+        }
     }
+#endif
 
     private static TestTerrainOverride CreateTerrainOverride(
         int agentTypeId,
@@ -3744,7 +4134,8 @@ public static partial class FlowFieldCrowdMovementSystem
             NextPortalId = world.NextPortalId,
             IslandIds = (int[])world.IslandIds.Clone(),
             Sectors = ExportDerivedSectors(world.Sectors),
-            Portals = ExportDerivedPortals(world.Portals)
+            Portals = ExportDerivedPortals(world.Portals),
+            Hierarchy = ExportPortalHierarchy(world.Hierarchy)
         };
         if (!data.IsValid)
             throw new InvalidOperationException("ExportDerivedNavigationData failed: exported data is invalid.");
@@ -3769,7 +4160,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 {
                     FromPortalId = transition.FromPortalId,
                     ToPortalId = transition.ToPortalId,
-                    Cost = DequantizeDeterministicPortalCost(transition.DeterministicCost)
+                    Cost = DequantizeDeterministicPortalCost(transition.DeterministicCost),
+                    DeterministicCost = transition.DeterministicCost
                 };
             }
 
@@ -3909,6 +4301,8 @@ public static partial class FlowFieldCrowdMovementSystem
             world.PortalIdsBySignature.Add(BuildPortalSignature(portal.SectorAId, portal.SectorBId, portal.CellsA, portal.IsVerticalBoundary), portal.PortalId);
         }
 
+        world.Hierarchy = ImportPortalHierarchy(world, data.Hierarchy);
+
         ValidateImportedDerivedNavigationWorld(world);
         return world;
     }
@@ -4030,7 +4424,8 @@ public static partial class FlowFieldCrowdMovementSystem
                     imported.PortalTransitions.Add(new PortalTransition
                     {
                         FromPortalId = transition.FromPortalId,
-                        ToPortalId = transition.ToPortalId
+                        ToPortalId = transition.ToPortalId,
+                        DeterministicCost = transition.DeterministicCost
                     });
                 }
             }
@@ -4229,6 +4624,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 case RuntimeDirtyRebuildStage.PortalGraph:
                     ProcessRuntimeDirtyPortalGraph(job, long.MaxValue, forceComplete: true);
                     break;
+                case RuntimeDirtyRebuildStage.Hierarchy:
+                    ProcessRuntimeDirtyHierarchy(job, long.MaxValue, forceComplete: true);
+                    break;
                 case RuntimeDirtyRebuildStage.PrepareCommit:
                     job.Stage = RuntimeDirtyRebuildStage.Complete;
                     break;
@@ -4333,6 +4731,7 @@ public static partial class FlowFieldCrowdMovementSystem
         FlowTileBuildQueue.Clear();
         PendingFlowTileBuildJobs.Clear();
         ActiveFlowTileBuildKeys.Clear();
+        PendingFlowTileDependencyKeys.Clear();
         ClearSectorPathCache();
         ClearSectorPortalAccessCache();
         StartPortalChoiceCache.Clear();
@@ -4347,6 +4746,9 @@ public static partial class FlowFieldCrowdMovementSystem
         CombatTargetSlotCache.Clear();
         FixedPortalOwners.Clear();
         FixedPortalOwnerEvaluatedFrameByWorld.Clear();
+        FixedPortalParticipationByAgent.Clear();
+        FixedPortalParticipantIndexByKey.Clear();
+        PendingFixedCorridorParticipantAgentIdsByWorld.Clear();
         FixedCorridorLookupByWorldVersion.Clear();
         AgentSpatialBuckets.Clear();
         NearbyAgentScratch.Clear();
@@ -4434,7 +4836,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 throw new InvalidOperationException(
                     $"Navigation readiness failed for '{context}': runtime obstacle update is pending. " +
                     $"agentType={agentTypeId}, dirtySectors={state.DirtyRuntimeObstacleSectors.Count}, " +
-                    $"hasRuntimeJob={state.RuntimeDirtyJob != null}, diagnostics={GetEditorRuntimeDirtyJobDiagnostics()}.");
+                    $"hasRuntimeJob={state.RuntimeDirtyJob != null}, diagnostics={BuildRuntimeDirtyJobDiagnostics()}.");
             }
         }
 
@@ -4653,7 +5055,7 @@ public static partial class FlowFieldCrowdMovementSystem
             if (state.RuntimeDirtyJob != null || state.DirtyRuntimeObstacleSectors.Count != 0)
             {
                 throw new InvalidOperationException(
-                    $"CompleteRuntimeRebuildQueue failed: rebuild remains pending. agentType={state.AgentTypeId}, diagnostics={GetEditorRuntimeDirtyJobDiagnostics()}.");
+                    $"CompleteRuntimeRebuildQueue failed: rebuild remains pending. agentType={state.AgentTypeId}, diagnostics={BuildRuntimeDirtyJobDiagnostics()}.");
             }
 
             completedCount++;
@@ -4742,24 +5144,34 @@ public static partial class FlowFieldCrowdMovementSystem
 
                 long phaseTicks = Stopwatch.GetTimestamp();
                 EnqueueExplicitSharedGoalPrewarmRequests();
-                _perf.SharedGoalActiveEnqueueTicks += Stopwatch.GetTimestamp() - phaseTicks;
+                long phaseElapsedTicks = Stopwatch.GetTimestamp() - phaseTicks;
+                _perf.SharedGoalActiveEnqueueTicks += phaseElapsedTicks;
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileQueueActiveDemand, phaseElapsedTicks);
 
                 phaseTicks = Stopwatch.GetTimestamp();
                 PruneInactivePendingSharedGoalFieldBuildJobs();
-                _perf.SharedGoalPruneTicks += Stopwatch.GetTimestamp() - phaseTicks;
+                phaseElapsedTicks = Stopwatch.GetTimestamp() - phaseTicks;
+                _perf.SharedGoalPruneTicks += phaseElapsedTicks;
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileQueuePrune, phaseElapsedTicks);
 
                 phaseTicks = Stopwatch.GetTimestamp();
                 EnqueueFlowTileBuildsForActiveAgents(OrderedAgentIds);
-                _perf.FlowTileActiveEnqueueTicks += Stopwatch.GetTimestamp() - phaseTicks;
+                phaseElapsedTicks = Stopwatch.GetTimestamp() - phaseTicks;
+                _perf.FlowTileActiveEnqueueTicks += phaseElapsedTicks;
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileQueueActiveDemand, phaseElapsedTicks);
 
                 phaseTicks = Stopwatch.GetTimestamp();
                 PruneInactivePendingFlowTileBuildJobs(OrderedAgentIds);
-                _perf.FlowTilePruneTicks += Stopwatch.GetTimestamp() - phaseTicks;
+                phaseElapsedTicks = Stopwatch.GetTimestamp() - phaseTicks;
+                _perf.FlowTilePruneTicks += phaseElapsedTicks;
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileQueuePrune, phaseElapsedTicks);
 
                 phaseTicks = Stopwatch.GetTimestamp();
                 RefreshFlowTileReferenceCounts();
                 TrimTileCache();
-                _perf.FlowTileReferenceTicks += Stopwatch.GetTimestamp() - phaseTicks;
+                phaseElapsedTicks = Stopwatch.GetTimestamp() - phaseTicks;
+                _perf.FlowTileReferenceTicks += phaseElapsedTicks;
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileQueueReferenceTrim, phaseElapsedTicks);
             }
 
             int remainingDeterministicCommits = Config.DeterministicFlowTileCommitQuota;
@@ -4767,7 +5179,12 @@ public static partial class FlowFieldCrowdMovementSystem
             {
                 int worldIndex = (startIndex + offset) % worldCount;
                 ActivateFlowBuildQueueWorld(FlowBuildQueueWorldScratch[worldIndex]);
-                remainingDeterministicCommits -= CommitPendingDeterministicFlowTilePayloads(remainingDeterministicCommits);
+                long commitStartTicks = Stopwatch.GetTimestamp();
+                int committed = CommitPendingDeterministicFlowTilePayloads(remainingDeterministicCommits);
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowTileQueueCommit,
+                    Stopwatch.GetTimestamp() - commitStartTicks);
+                remainingDeterministicCommits -= committed;
             }
 
             BeginNavigationWorkBudget(Config.SharedGoalBuildOperationQuota);
@@ -4780,7 +5197,9 @@ public static partial class FlowFieldCrowdMovementSystem
 
                     long phaseTicks = Stopwatch.GetTimestamp();
                     ProcessSharedGoalFieldBuildQueue(deadlineTicks, forceComplete: false, requiredKey: null);
-                    _perf.SharedGoalProcessTicks += Stopwatch.GetTimestamp() - phaseTicks;
+                    long phaseElapsedTicks = Stopwatch.GetTimestamp() - phaseTicks;
+                    _perf.SharedGoalProcessTicks += phaseElapsedTicks;
+                    MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileQueueSharedGoal, phaseElapsedTicks);
                     if (IsNavigationWorkBudgetExhausted())
                         break;
                 }
@@ -4839,6 +5258,32 @@ public static partial class FlowFieldCrowdMovementSystem
         _world = state.World;
     }
 
+    private static NavigationWorld ResolveCommittedNavigationWorldByVersion(int worldVersion)
+    {
+        if (_world != null && _world.Version == worldVersion)
+            return _world;
+
+        NavigationWorld resolved = null;
+        foreach (WorldRuntimeState state in WorldStates.Values)
+        {
+            NavigationWorld candidate = state?.World;
+            if (candidate == null || candidate.Version != worldVersion)
+                continue;
+            if (resolved != null && !ReferenceEquals(resolved, candidate))
+            {
+                throw new InvalidOperationException(
+                    $"ResolveCommittedNavigationWorldByVersion failed: duplicate committed world version={worldVersion}.");
+            }
+            resolved = candidate;
+        }
+        if (resolved == null)
+        {
+            throw new InvalidOperationException(
+                $"ResolveCommittedNavigationWorldByVersion failed: committed world is absent version={worldVersion}.");
+        }
+        return resolved;
+    }
+
     private static bool IsAgentInActiveFlowBuildQueueWorld(AgentRuntimeData agent)
     {
         if (agent == null)
@@ -4885,8 +5330,9 @@ public static partial class FlowFieldCrowdMovementSystem
             if (PathReferencesMissingPortal(handle))
                 continue;
 
-            int sectorPathIndex = Mathf.Clamp(handle.CurrentSectorIndex, 0, handle.SectorIds.Length - 1);
-            EnqueueActiveFlowTileBuilds(handle, sectorPathIndex, handle.GoalX, handle.GoalY, agent.AgentTypeId);
+            EnqueueSteeringReadDomainFlowTileBuilds(
+                agent,
+                ResolvePreparedMaximumTravelDistanceFixed(agent));
         }
     }
 
@@ -4920,6 +5366,7 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new ArgumentNullException(nameof(orderedAgentIds));
 
         ActiveFlowTileBuildKeys.Clear();
+        PendingFlowTileDependencyKeys.Clear();
         if (_world == null)
             return;
 
@@ -4940,8 +5387,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 continue;
             }
 
-            int startIndex = Mathf.Clamp(handle.CurrentSectorIndex, 0, handle.SectorIds.Length - 1);
-            AddActiveFlowTileBuildKeys(handle, startIndex, handle.GoalX, handle.GoalY, agent.AgentTypeId);
+            AddSteeringReadDomainFlowTileBuildKeys(
+                agent,
+                ResolvePreparedMaximumTravelDistanceFixed(agent));
         }
     }
 
@@ -5259,39 +5707,86 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("CommitPendingDeterministicFlowTilePayloads failed: world is null.");
 
         int committedCount = 0;
-        LinkedListNode<FlowTileBuildJob> node = FlowTileBuildQueue.First;
-        while (node != null && committedCount < maxCount)
+        bool committedInPass;
+        do
         {
-            LinkedListNode<FlowTileBuildJob> next = node.Next;
-            FlowTileBuildJob job = node.Value;
-            if (job == null)
-                throw new InvalidOperationException("CommitPendingDeterministicFlowTilePayloads encountered a null job.");
-            if (job.BuildKey.CacheKey.WorldVersion != _world.Version)
+            committedInPass = false;
+            LinkedListNode<FlowTileBuildJob> node = FlowTileBuildQueue.First;
+            while (node != null && committedCount < maxCount)
             {
-                node = next;
-                continue;
-            }
-            if (IsFlowTileBuildJobStale(job))
-            {
-                node = next;
-                continue;
-            }
+                long scanStartTicks = Stopwatch.GetTimestamp();
+                LinkedListNode<FlowTileBuildJob> next = node.Next;
+                FlowTileBuildJob job = node.Value;
+                if (job == null)
+                    throw new InvalidOperationException("CommitPendingDeterministicFlowTilePayloads encountered a null job.");
+                if (job.BuildKey.CacheKey.WorldVersion != _world.Version)
+                {
+                    MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileCommitQueueScan, Stopwatch.GetTimestamp() - scanStartTicks);
+                    node = next;
+                    continue;
+                }
+                if (IsFlowTileBuildJobStale(job))
+                {
+                    MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileCommitQueueScan, Stopwatch.GetTimestamp() - scanStartTicks);
+                    node = next;
+                    continue;
+                }
+                if (!IsFlowTileBuildDependencyCommitted(job))
+                {
+                    MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileCommitQueueScan, Stopwatch.GetTimestamp() - scanStartTicks);
+                    node = next;
+                    continue;
+                }
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileCommitQueueScan, Stopwatch.GetTimestamp() - scanStartTicks);
 
-            CommitDeterministicFlowTilePayload(job);
-            FlowTileBuildQueue.Remove(node);
-            if (!PendingFlowTileBuildJobs.Remove(job.BuildKey.CacheKey))
-                throw new InvalidOperationException($"CommitPendingDeterministicFlowTilePayloads failed: committed job was absent from pending set key={FormatTileKey(job.BuildKey.CacheKey)}.");
-            committedCount++;
-            node = next;
+                CommitDeterministicFlowTilePayload(job);
+                FlowTileBuildQueue.Remove(node);
+                if (!PendingFlowTileBuildJobs.Remove(job.BuildKey.CacheKey))
+                    throw new InvalidOperationException($"CommitPendingDeterministicFlowTilePayloads failed: committed job was absent from pending set key={FormatTileKey(job.BuildKey.CacheKey)}.");
+                committedCount++;
+                committedInPass = true;
+                node = next;
+            }
         }
+        while (committedInPass && committedCount < maxCount);
 
         if (committedCount > 0)
         {
+            long referenceStartTicks = Stopwatch.GetTimestamp();
             RefreshFlowTileReferenceCounts();
             TrimTileCache();
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileCommitReferenceTrim, Stopwatch.GetTimestamp() - referenceStartTicks);
         }
 
         return committedCount;
+    }
+
+    private static bool IsFlowTileBuildDependencyCommitted(FlowTileBuildJob job)
+    {
+        if (job == null)
+            throw new InvalidOperationException("IsFlowTileBuildDependencyCommitted failed: job is null.");
+        if (job.BuildKey.CacheKey.GoalKind == TileGoalKind.FinalGoal)
+            return true;
+
+        PathHandle handle = job.HandleSnapshot;
+        int downstreamPathIndex = job.BuildKey.SectorPathIndex + 1;
+        if (handle?.SectorIds == null
+            || downstreamPathIndex < 0
+            || downstreamPathIndex >= handle.SectorIds.Length)
+        {
+            throw new InvalidOperationException(
+                $"IsFlowTileBuildDependencyCommitted failed: downstream path index is invalid index={downstreamPathIndex}, key={FormatTileKey(job.BuildKey.CacheKey)}.");
+        }
+
+        FlowTileCacheKey downstreamKey = CreateTileCacheKeyForPathSegment(
+            handle,
+            downstreamPathIndex,
+            job.BuildKey.GoalX,
+            job.BuildKey.GoalY,
+            job.BuildKey.AgentTypeId,
+            out _,
+            out _);
+        return DeterministicFlowTileCache.ContainsKey(downstreamKey);
     }
 
     private static int CommitRequiredDeterministicFlowTilePayload(FlowTileCacheKey requiredKey)
@@ -5323,24 +5818,17 @@ public static partial class FlowFieldCrowdMovementSystem
         int committedCount = 0;
         PathHandle handle = requiredJob.HandleSnapshot;
         int sectorPathIndex = requiredJob.BuildKey.SectorPathIndex;
-        if (requiredKey.GoalKind == TileGoalKind.Portal
-            && sectorPathIndex + 1 == handle.SectorIds.Length - 1)
+        if (requiredKey.GoalKind == TileGoalKind.Portal)
         {
-            FlowTileCacheKey downstreamFinalKey = CreateTileCacheKeyForPathSegment(
+            FlowTileCacheKey downstreamKey = CreateTileCacheKeyForPathSegment(
                 handle,
                 sectorPathIndex + 1,
                 requiredJob.BuildKey.GoalX,
                 requiredJob.BuildKey.GoalY,
                 requiredJob.BuildKey.AgentTypeId,
-                out TileGoalKind downstreamGoalKind,
+                out _,
                 out _);
-            if (downstreamGoalKind != TileGoalKind.FinalGoal)
-            {
-                throw new InvalidOperationException(
-                    $"CommitRequiredDeterministicFlowTilePayload failed: required downstream dependency is not final key={FormatTileKey(downstreamFinalKey)}.");
-            }
-
-            committedCount += CommitRequiredDeterministicFlowTilePayload(downstreamFinalKey);
+            committedCount += CommitRequiredDeterministicFlowTilePayload(downstreamKey);
             requiredNode = FindPendingFlowTileBuildJob(requiredKey);
             if (requiredNode == null)
             {
@@ -5395,11 +5883,20 @@ public static partial class FlowFieldCrowdMovementSystem
             GoalCells = goalCells,
             UsesClearFlowDescriptor = sector.IsClearFlowTile
         };
+        long phaseStartTicks = Stopwatch.GetTimestamp();
         BuildDeterministicFlowDirections(tile, job);
+        MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileCommitDirections, Stopwatch.GetTimestamp() - phaseStartTicks);
+        phaseStartTicks = Stopwatch.GetTimestamp();
+        BuildDeterministicPortalContinuationCellIndices(tile, job);
+        MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileCommitContinuation, Stopwatch.GetTimestamp() - phaseStartTicks);
+        phaseStartTicks = Stopwatch.GetTimestamp();
         BuildFlowTileDiagnosticShadow(tile);
+        MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileCommitDiagnosticShadow, Stopwatch.GetTimestamp() - phaseStartTicks);
         tile.LastUsedFrame = GetFrameCount();
+        phaseStartTicks = Stopwatch.GetTimestamp();
         SetDeterministicFlowTileCacheEntry(key, tile);
         FlowTileCache.Add(key, tile);
+        MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileCommitCache, Stopwatch.GetTimestamp() - phaseStartTicks);
     }
 
     private static void BuildFlowTileDiagnosticShadow(FlowTileCacheEntry tile)
@@ -5423,6 +5920,139 @@ public static partial class FlowFieldCrowdMovementSystem
                 tile.FlowFieldValues[localIndex] |= FlowReachableFlag;
             tile.FlowFieldValues[localIndex] |= (byte)(tile.DeterministicFlowDirectionIndices[localIndex] & FlowDirectionMask);
         }
+    }
+
+    private static void BuildDeterministicPortalContinuationCellIndices(
+        FlowTileCacheEntry tile,
+        FlowTileBuildJob job)
+    {
+        if (tile == null || job?.HandleSnapshot == null)
+            throw new InvalidOperationException("BuildDeterministicPortalContinuationCellIndices failed: tile, job, or path snapshot is null.");
+        if (tile.Key.GoalKind == TileGoalKind.FinalGoal)
+        {
+            tile.DeterministicPortalContinuations = null;
+            return;
+        }
+
+        PathHandle handle = job.HandleSnapshot;
+        int startPathIndex = job.BuildKey.SectorPathIndex;
+        if (startPathIndex < 0
+            || startPathIndex >= handle.PortalIds.Length
+            || handle.PortalIds[startPathIndex] != tile.Key.GoalId)
+        {
+            throw new InvalidOperationException(
+                $"BuildDeterministicPortalContinuationCellIndices failed: path does not own tile portal index={startPathIndex}, key={FormatTileKey(tile.Key)}, handle={FormatPathHandle(handle)}.");
+        }
+
+        PortalData startPortal = GetPortalById(_world, tile.Key.GoalId);
+        Vector2Int[] downstreamCells = GetPortalCellsForSector(
+            startPortal,
+            handle.SectorIds[startPathIndex + 1]);
+        if (downstreamCells.Length != tile.GoalCells.Length)
+            throw new InvalidOperationException($"BuildDeterministicPortalContinuationCellIndices failed: portal pair count mismatch key={FormatTileKey(tile.Key)}.");
+
+        var continuations = new DeterministicPortalContinuation[tile.GoalCells.Length];
+        _perf.ContinuationPortalTiles++;
+        _perf.ContinuationPortalSlots += continuations.Length;
+        _perf.ContinuationMaximumSlots = Math.Max(_perf.ContinuationMaximumSlots, continuations.Length);
+        int guardLimit = Math.Max(64, handle.SectorIds.Length * Config.SectorSizeInCells * Config.SectorSizeInCells + 1);
+        for (int slot = 0; slot < downstreamCells.Length; slot++)
+        {
+            int pathIndex = startPathIndex + 1;
+            FlowTileCacheKey downstreamKey = CreateTileCacheKeyForPathSegment(
+                handle,
+                pathIndex,
+                job.BuildKey.GoalX,
+                job.BuildKey.GoalY,
+                job.BuildKey.AgentTypeId,
+                out _,
+                out _);
+            if (!DeterministicFlowTileCache.TryGetValue(downstreamKey, out FlowTileCacheEntry traceTile))
+                throw new InvalidOperationException($"BuildDeterministicPortalContinuationCellIndices failed: downstream tile is not committed key={FormatTileKey(downstreamKey)}.");
+
+            int worldX = downstreamCells[slot].x;
+            int worldY = downstreamCells[slot].y;
+            var cells = new List<int>(Math.Max(8, Config.SectorSizeInCells));
+            DeterministicPortalContinuation downstreamContinuation = null;
+            int guard = 0;
+            while (true)
+            {
+                if (!IsInsideSector(traceTile, worldX, worldY))
+                    throw new InvalidOperationException($"BuildDeterministicPortalContinuationCellIndices failed: cell is outside trace tile cell=({worldX},{worldY}), key={FormatTileKey(traceTile.Key)}.");
+                int localIndex = traceTile.GetLocalIndex(worldX, worldY);
+                int currentCost = traceTile.DeterministicIntegrationCosts[localIndex];
+                if (currentCost == int.MaxValue)
+                    throw new InvalidOperationException($"BuildDeterministicPortalContinuationCellIndices failed: trace reached unreachable cell=({worldX},{worldY}), key={FormatTileKey(traceTile.Key)}.");
+                cells.Add(worldX + worldY * _world.Width);
+                if (traceTile.Key.GoalKind == TileGoalKind.FinalGoal
+                    && worldX + worldY * _world.Width == traceTile.Key.FinalGoalIndex)
+                {
+                    break;
+                }
+
+                int tracePortalGoalIndex = traceTile.Key.GoalKind == TileGoalKind.Portal
+                    ? IndexOfGoalCell(traceTile.GoalCells, worldX, worldY)
+                    : -1;
+                int nextX;
+                int nextY;
+                if (tracePortalGoalIndex >= 0)
+                {
+                    if (pathIndex >= handle.PortalIds.Length)
+                        throw new InvalidOperationException($"BuildDeterministicPortalContinuationCellIndices failed: portal trace exceeded path index={pathIndex}, key={FormatTileKey(traceTile.Key)}.");
+                    PortalData portal = GetPortalById(_world, traceTile.Key.GoalId);
+                    Vector2Int[] pairedCells = GetPortalCellsForSector(portal, handle.SectorIds[pathIndex + 1]);
+                    if (tracePortalGoalIndex >= pairedCells.Length)
+                        throw new InvalidOperationException($"BuildDeterministicPortalContinuationCellIndices failed: paired slot is missing slot={tracePortalGoalIndex}, key={FormatTileKey(traceTile.Key)}.");
+                    if (traceTile.DeterministicPortalContinuations == null
+                        || tracePortalGoalIndex >= traceTile.DeterministicPortalContinuations.Length
+                        || traceTile.DeterministicPortalContinuations[tracePortalGoalIndex] == null)
+                    {
+                        throw new InvalidOperationException(
+                            $"BuildDeterministicPortalContinuationCellIndices failed: downstream compact continuation is missing slot={tracePortalGoalIndex}, key={FormatTileKey(traceTile.Key)}.");
+                    }
+
+                    downstreamContinuation = traceTile.DeterministicPortalContinuations[tracePortalGoalIndex];
+                    int expectedFirstCellIndex = pairedCells[tracePortalGoalIndex].x
+                                                 + pairedCells[tracePortalGoalIndex].y * _world.Width;
+                    if (downstreamContinuation.LocalCellIndices == null
+                        || downstreamContinuation.LocalCellIndices.Length == 0
+                        || downstreamContinuation.LocalCellIndices[0] != expectedFirstCellIndex)
+                    {
+                        throw new InvalidOperationException(
+                            $"BuildDeterministicPortalContinuationCellIndices failed: downstream continuation does not begin at paired cell " +
+                            $"slot={tracePortalGoalIndex}, expected={expectedFirstCellIndex}, actual={(downstreamContinuation.LocalCellIndices != null && downstreamContinuation.LocalCellIndices.Length > 0 ? downstreamContinuation.LocalCellIndices[0] : -1)}, key={FormatTileKey(traceTile.Key)}.");
+                    }
+                    break;
+                }
+                else
+                {
+                    byte directionIndex = traceTile.DeterministicFlowDirectionIndices[localIndex];
+                    int offsetIndex = directionIndex - 1;
+                    if (offsetIndex < 0 || offsetIndex >= NeighborOffsetX.Length)
+                        throw new InvalidOperationException($"BuildDeterministicPortalContinuationCellIndices failed: trace has no descending direction cell=({worldX},{worldY}), key={FormatTileKey(traceTile.Key)}.");
+                    nextX = worldX + NeighborOffsetX[offsetIndex];
+                    nextY = worldY + NeighborOffsetY[offsetIndex];
+                }
+
+                if (!CanTraverseNeighborCells(_world, worldX, worldY, nextX, nextY))
+                    throw new InvalidOperationException($"BuildDeterministicPortalContinuationCellIndices failed: trace step is not traversable current=({worldX},{worldY}), next=({nextX},{nextY}).");
+                worldX = nextX;
+                worldY = nextY;
+                guard++;
+                if (guard > guardLimit)
+                    throw new InvalidOperationException($"BuildDeterministicPortalContinuationCellIndices failed: trace exceeded guard={guardLimit}, key={FormatTileKey(tile.Key)}.");
+            }
+            continuations[slot] = CreateDeterministicPortalContinuation(
+                cells.ToArray(),
+                checked((ushort)(slot + 1)),
+                downstreamContinuation);
+            _perf.ContinuationLocalCells += cells.Count;
+            _perf.ContinuationMaximumLocalSegmentCells = Math.Max(
+                _perf.ContinuationMaximumLocalSegmentCells,
+                cells.Count);
+        }
+
+        tile.DeterministicPortalContinuations = continuations;
     }
 
     private static bool IsFlowTileBuildJobStale(FlowTileBuildJob job)
@@ -5469,8 +6099,11 @@ public static partial class FlowFieldCrowdMovementSystem
         int[] goalSeedCosts = ResolveDeterministicFlowGoalSeedCosts(
             tile,
             job,
-            out byte[] portalHandoffDirectionIndices);
-        var open = new SortedSet<DeterministicFlowNode>();
+            out byte[] portalHandoffDirectionIndices,
+            out Vector2Int[] portalExternalCells,
+            out int[] portalExternalCosts);
+        DeterministicFlowHeap open = DeterministicFlowOpenSet;
+        open.Clear();
         for (int i = 0; i < tile.GoalCells.Length; i++)
         {
             Vector2Int goal = tile.GoalCells[i];
@@ -5481,15 +6114,14 @@ public static partial class FlowFieldCrowdMovementSystem
                 continue;
             int index = tile.GetLocalIndex(goal.x, goal.y);
             costs[index] = seedCost;
-            open.Add(new DeterministicFlowNode(seedCost, index));
+            open.Push(seedCost, index);
         }
         if (open.Count == 0)
             throw new InvalidOperationException($"BuildDeterministicFlowDirections failed: tile has no walkable goals key={FormatTileKey(tile.Key)}.");
 
         while (open.Count > 0)
         {
-            DeterministicFlowNode node = open.Min;
-            open.Remove(node);
+            DeterministicFlowNode node = open.Pop();
             if (node.Cost != costs[node.Index])
                 continue;
 
@@ -5505,13 +6137,19 @@ public static partial class FlowFieldCrowdMovementSystem
                     continue;
                 }
 
-                int candidateCost = ResolveDeterministicEikonalIntegrationCost(tile, costs, nextX, nextY);
+                int candidateCost = ResolveDeterministicEikonalIntegrationCost(
+                    tile,
+                    costs,
+                    nextX,
+                    nextY,
+                    portalExternalCells,
+                    portalExternalCosts);
                 int nextIndex = tile.GetLocalIndex(nextX, nextY);
                 if (candidateCost >= costs[nextIndex])
                     continue;
 
                 costs[nextIndex] = candidateCost;
-                open.Add(new DeterministicFlowNode(candidateCost, nextIndex));
+                open.Push(candidateCost, nextIndex);
             }
         }
 
@@ -5562,17 +6200,26 @@ public static partial class FlowFieldCrowdMovementSystem
     private static int[] ResolveDeterministicFlowGoalSeedCosts(
         FlowTileCacheEntry tile,
         FlowTileBuildJob job,
-        out byte[] portalHandoffDirectionIndices)
+        out byte[] portalHandoffDirectionIndices,
+        out Vector2Int[] portalExternalCells,
+        out int[] portalExternalCosts)
     {
         var seedCosts = new int[tile.GoalCells.Length];
         if (tile.Key.GoalKind == TileGoalKind.FinalGoal)
         {
             portalHandoffDirectionIndices = null;
+            portalExternalCells = null;
+            portalExternalCosts = null;
             return seedCosts;
         }
         portalHandoffDirectionIndices = new byte[tile.GoalCells.Length];
+        portalExternalCells = new Vector2Int[tile.GoalCells.Length];
+        portalExternalCosts = new int[tile.GoalCells.Length];
         for (int i = 0; i < seedCosts.Length; i++)
+        {
             seedCosts[i] = int.MaxValue;
+            portalExternalCosts[i] = int.MaxValue;
+        }
 
         PathHandle handle = job?.HandleSnapshot;
         int sectorPathIndex = job?.BuildKey.SectorPathIndex ?? -1;
@@ -5590,84 +6237,47 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"ResolveDeterministicFlowGoalSeedCosts failed: portal side count mismatch current={tile.GoalCells.Length}, downstream={downstreamCells.Length}, key={FormatTileKey(tile.Key)}.");
         }
 
-        bool downstreamIsFinalSector = sectorPathIndex + 1 == handle.SectorIds.Length - 1;
-        FlowTileCacheEntry downstreamFinalTile = null;
-        SectorPortalAccessEntry downstreamPortalAccess = null;
-        SectorData downstreamSector = _world.Sectors[downstreamSectorId];
-        if (downstreamIsFinalSector)
+        FlowTileCacheKey downstreamKey = CreateTileCacheKeyForPathSegment(
+            handle,
+            sectorPathIndex + 1,
+            job.BuildKey.GoalX,
+            job.BuildKey.GoalY,
+            job.BuildKey.AgentTypeId,
+            out _,
+            out _);
+        if (!DeterministicFlowTileCache.TryGetValue(downstreamKey, out FlowTileCacheEntry downstreamTile))
         {
-            FlowTileCacheKey downstreamKey = CreateTileCacheKeyForPathSegment(
-                handle,
-                sectorPathIndex + 1,
-                job.BuildKey.GoalX,
-                job.BuildKey.GoalY,
-                job.BuildKey.AgentTypeId,
-                out TileGoalKind downstreamGoalKind,
-                out _);
-            if (downstreamGoalKind != TileGoalKind.FinalGoal
-                || !DeterministicFlowTileCache.TryGetValue(downstreamKey, out downstreamFinalTile))
-            {
-                throw new InvalidOperationException(
-                    $"ResolveDeterministicFlowGoalSeedCosts failed: downstream final tile is not committed before adjacent portal tile downstream={FormatTileKey(downstreamKey)}, key={FormatTileKey(tile.Key)}.");
-            }
-            if (downstreamFinalTile.DeterministicIntegrationCosts == null
-                || downstreamFinalTile.DeterministicFlowDirectionIndices == null)
-            {
-                throw new InvalidOperationException(
-                    $"ResolveDeterministicFlowGoalSeedCosts failed: downstream final tile payload is invalid downstream={FormatTileKey(downstreamKey)}, key={FormatTileKey(tile.Key)}.");
-            }
+            throw new InvalidOperationException(
+                $"ResolveDeterministicFlowGoalSeedCosts failed: downstream tile is not committed downstream={FormatTileKey(downstreamKey)}, key={FormatTileKey(tile.Key)}.");
         }
-        else
+        if (downstreamTile.DeterministicIntegrationCosts == null
+            || downstreamTile.DeterministicFlowDirectionIndices == null)
         {
-            int nextPortalId = handle.PortalIds[sectorPathIndex + 1];
-            downstreamPortalAccess = GetPrebuiltSectorPortalAccess(
-                downstreamSector,
-                downstreamSectorId,
-                nextPortalId);
+            throw new InvalidOperationException(
+                $"ResolveDeterministicFlowGoalSeedCosts failed: downstream tile payload is invalid downstream={FormatTileKey(downstreamKey)}, key={FormatTileKey(tile.Key)}.");
         }
 
         for (int i = 0; i < downstreamCells.Length; i++)
         {
             Vector2Int downstreamCell = downstreamCells[i];
-            int downstreamCost;
-            byte downstreamDirectionIndex;
-            if (downstreamIsFinalSector)
-            {
-                if (!IsInsideSector(downstreamFinalTile, downstreamCell.x, downstreamCell.y))
-                    continue;
-                int downstreamLocalIndex = downstreamFinalTile.GetLocalIndex(downstreamCell.x, downstreamCell.y);
-                downstreamCost = downstreamFinalTile.DeterministicIntegrationCosts[downstreamLocalIndex];
-                downstreamDirectionIndex = downstreamFinalTile.DeterministicFlowDirectionIndices[downstreamLocalIndex];
-            }
-            else
-            {
-                long portalAccessCost = ResolveDeterministicPortalAccessIntegrationCost(
-                    _world,
-                    downstreamSector,
-                    downstreamPortalAccess,
-                    downstreamCell.x,
-                    downstreamCell.y);
-                downstreamCost = ConvertPortalAccessCostToFlowCost(portalAccessCost);
-                downstreamDirectionIndex = TryResolveLowestPortalAccessNeighbor(
-                    downstreamSector,
-                    downstreamPortalAccess,
-                    downstreamCell.x,
-                    downstreamCell.y,
-                    portalAccessCost,
-                    out int downstreamOffsetIndex,
-                    out _)
-                        ? checked((byte)(downstreamOffsetIndex + 1))
-                        : (byte)0;
-            }
+            if (!IsInsideSector(downstreamTile, downstreamCell.x, downstreamCell.y))
+                continue;
+            int downstreamLocalIndex = downstreamTile.GetLocalIndex(downstreamCell.x, downstreamCell.y);
+            int downstreamCost = downstreamTile.DeterministicIntegrationCosts[downstreamLocalIndex];
+            byte downstreamDirectionIndex = downstreamTile.DeterministicFlowDirectionIndices[downstreamLocalIndex];
             if (downstreamCost == int.MaxValue)
                 continue;
 
-            seedCosts[i] = downstreamCost > int.MaxValue - 1024
-                ? int.MaxValue
-                : downstreamCost + 1024;
+            Vector2Int currentCell = tile.GoalCells[i];
+            int boundaryStepCost = ResolveDeterministicEikonalStepCost(currentCell.x, currentCell.y);
+            seedCosts[i] = checked((int)ClampDeterministicIntegrationCost(
+                checked((long)downstreamCost + boundaryStepCost),
+                int.MaxValue));
+            portalExternalCells[i] = downstreamCell;
+            portalExternalCosts[i] = downstreamCost;
             portalHandoffDirectionIndices[i] = ResolveDeterministicPortalHandoffDirectionIndex(
                 portal,
-                tile.GoalCells[i],
+                currentCell,
                 downstreamCell,
                 downstreamDirectionIndex);
         }
@@ -5679,7 +6289,40 @@ public static partial class FlowFieldCrowdMovementSystem
         FlowTileCacheEntry tile,
         int[] integrationCosts,
         int worldX,
-        int worldY)
+        int worldY,
+        Vector2Int[] portalExternalCells,
+        int[] portalExternalCosts)
+    {
+        int portalGoalIndex = portalExternalCells != null && portalExternalCosts != null
+            ? IndexOfGoalCell(tile.GoalCells, worldX, worldY)
+            : -1;
+        bool hasExternalSample = portalGoalIndex >= 0
+                                 && portalGoalIndex < portalExternalCells.Length
+                                 && portalGoalIndex < portalExternalCosts.Length
+                                 && portalExternalCosts[portalGoalIndex] != int.MaxValue;
+        Vector2Int externalCell = hasExternalSample
+            ? portalExternalCells[portalGoalIndex]
+            : default;
+        return ResolveDeterministicEikonalIntegrationCost(
+            tile,
+            integrationCosts,
+            worldX,
+            worldY,
+            hasExternalSample,
+            externalCell.x,
+            externalCell.y,
+            hasExternalSample ? portalExternalCosts[portalGoalIndex] : int.MaxValue);
+    }
+
+    private static int ResolveDeterministicEikonalIntegrationCost(
+        FlowTileCacheEntry tile,
+        int[] integrationCosts,
+        int worldX,
+        int worldY,
+        bool hasExternalSample,
+        int externalSampleX,
+        int externalSampleY,
+        int externalSampleCost)
     {
         long horizontal = long.MaxValue;
         long vertical = long.MaxValue;
@@ -5702,18 +6345,39 @@ public static partial class FlowFieldCrowdMovementSystem
                 vertical = Math.Min(vertical, neighborCost);
         }
 
+        if (hasExternalSample)
+        {
+            int externalOffsetX = externalSampleX - worldX;
+            int externalOffsetY = externalSampleY - worldY;
+            if (Math.Abs(externalOffsetX) + Math.Abs(externalOffsetY) != 1)
+            {
+                throw new InvalidOperationException(
+                    $"ResolveDeterministicEikonalIntegrationCost failed: external portal sample is not cardinally adjacent " +
+                    $"current=({worldX},{worldY}), external=({externalSampleX},{externalSampleY}), key={FormatTileKey(tile.Key)}.");
+            }
+            if (externalOffsetX != 0)
+                horizontal = Math.Min(horizontal, externalSampleCost);
+            else
+                vertical = Math.Min(vertical, externalSampleCost);
+        }
+
+        long stepCost = ResolveDeterministicEikonalStepCost(worldX, worldY);
+        return checked((int)ResolveDeterministicEikonalUpdate(
+            horizontal,
+            vertical,
+            stepCost,
+            int.MaxValue));
+    }
+
+    private static int ResolveDeterministicEikonalStepCost(int worldX, int worldY)
+    {
         if (!TryGetCostFieldValue(_world, worldX, worldY, out byte cellCost)
             || cellCost == byte.MaxValue)
         {
             return int.MaxValue;
         }
 
-        long stepCost = checked(1024L * Math.Max(1, (int)cellCost));
-        return checked((int)ResolveDeterministicEikonalUpdate(
-            horizontal,
-            vertical,
-            stepCost,
-            int.MaxValue));
+        return checked(1024 * Math.Max(1, (int)cellCost));
     }
 
     private static long ResolveDeterministicEikonalUpdate(
@@ -6079,6 +6743,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
     public static void UnregisterAgent(int agentId)
     {
+        RemoveFixedPortalParticipation(agentId);
         bool removed = Agents.Remove(agentId);
         int orderedIndex = OrderedAgentIds.BinarySearch(agentId);
         if (removed)
@@ -6585,6 +7250,27 @@ public static partial class FlowFieldCrowdMovementSystem
         return FlowTileCache.Count;
     }
 
+    public static string GetEditorTestFlowTileRetentionDiagnostic()
+    {
+        RefreshPendingFlowTileDependencyKeys();
+        var entries = new List<FlowTileCacheKey>(FlowTileCache.Keys);
+        entries.Sort(CompareFlowTileCacheKeys);
+        var builder = new System.Text.StringBuilder(entries.Count * 96);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            FlowTileCacheKey key = entries[i];
+            FlowTileCacheEntry tile = FlowTileCache[key];
+            if (i > 0)
+                builder.AppendLine();
+            builder.Append(FormatTileKey(key))
+                .Append(" active=").Append(tile.ActiveReferenceCount)
+                .Append(" dependency=").Append(PendingFlowTileDependencyKeys.Contains(key))
+                .Append(" used=").Append(tile.LastUsedFrame)
+                .Append(" referenced=").Append(tile.LastReferencedFrame);
+        }
+        return builder.ToString();
+    }
+
     public static int GetEditorTestFlowTileCacheLimit()
     {
         return Config.FlowTileCacheLimit;
@@ -6598,6 +7284,119 @@ public static partial class FlowFieldCrowdMovementSystem
     public static ulong GetEditorTestDeterministicFlowTileAuthorityContentHash()
     {
         return _deterministicFlowTileAuthorityContentHash;
+    }
+
+    public static bool TryValidateEditorTestDeterministicPortalContinuations(
+        out int validatedContinuationCount,
+        out string failureReason)
+    {
+        validatedContinuationCount = 0;
+        failureReason = null;
+        if (_world == null)
+        {
+            failureReason = "Committed navigation world is unavailable.";
+            return false;
+        }
+
+        foreach (KeyValuePair<FlowTileCacheKey, FlowTileCacheEntry> pair in DeterministicFlowTileCache)
+        {
+            FlowTileCacheKey key = pair.Key;
+            FlowTileCacheEntry tile = pair.Value;
+            if (key.GoalKind != TileGoalKind.Portal)
+                continue;
+            if (tile?.GoalCells == null
+                || tile.DeterministicPortalContinuations == null
+                || tile.GoalCells.Length != tile.DeterministicPortalContinuations.Length)
+            {
+                failureReason = $"Portal continuation payload shape is invalid key={FormatTileKey(key)}.";
+                return false;
+            }
+
+            PortalData portal = GetPortalById(_world, key.GoalId);
+            int downstreamSectorId = GetOppositeSectorId(portal, key.SectorId);
+            Vector2Int[] downstreamCells = GetPortalCellsForSector(portal, downstreamSectorId);
+            if (downstreamCells.Length != tile.GoalCells.Length)
+            {
+                failureReason = $"Portal continuation paired-cell count is invalid key={FormatTileKey(key)}.";
+                return false;
+            }
+
+            for (int slot = 0; slot < downstreamCells.Length; slot++)
+            {
+                DeterministicPortalContinuation continuation = tile.DeterministicPortalContinuations[slot];
+                int expectedFirstCell = downstreamCells[slot].x + downstreamCells[slot].y * _world.Width;
+                if (continuation?.LocalCellIndices == null
+                    || continuation.LocalCellIndices.Length == 0
+                    || continuation.LocalCellIndices[0] != expectedFirstCell)
+                {
+                    failureReason =
+                        $"Portal continuation does not begin at its paired downstream cell slot={slot}, expected={expectedFirstCell}, " +
+                        $"actual={(continuation?.LocalCellIndices != null && continuation.LocalCellIndices.Length > 0 ? continuation.LocalCellIndices[0] : -1)}, key={FormatTileKey(key)}.";
+                    return false;
+                }
+                if (continuation.TerminalCellIndex != key.FinalGoalIndex)
+                {
+                    failureReason =
+                        $"Portal continuation does not terminate at the exact final goal slot={slot}, expected={key.FinalGoalIndex}, " +
+                        $"actual={continuation.TerminalCellIndex}, key={FormatTileKey(key)}.";
+                    return false;
+                }
+                if (continuation.PortalSlotIndex != slot + 1)
+                {
+                    failureReason = $"Portal continuation slot sequence is invalid slot={slot}, key={FormatTileKey(key)}.";
+                    return false;
+                }
+
+                int validatedCellCount = 0;
+                int previousCell = -1;
+                for (DeterministicPortalContinuation node = continuation; node != null; node = node.Downstream)
+                {
+                    if (node.LocalCellIndices == null || node.LocalCellIndices.Length == 0)
+                    {
+                        failureReason = $"Portal continuation contains an empty local segment slot={slot}, key={FormatTileKey(key)}.";
+                        return false;
+                    }
+                    for (int index = 0; index < node.LocalCellIndices.Length; index++)
+                    {
+                        int cellIndex = node.LocalCellIndices[index];
+                        int cellX = cellIndex % _world.Width;
+                        int cellY = cellIndex / _world.Width;
+                        if (cellIndex < 0
+                            || cellIndex >= _world.Width * _world.Height
+                            || !_world.IsWalkable(cellX, cellY))
+                        {
+                            failureReason =
+                                $"Portal continuation contains an invalid cell slot={slot}, index={validatedCellCount}, cell={cellIndex}, key={FormatTileKey(key)}.";
+                            return false;
+                        }
+                        if (previousCell >= 0)
+                        {
+                            int previousX = previousCell % _world.Width;
+                            int previousY = previousCell / _world.Width;
+                            if (!CanTraverseNeighborCells(_world, previousX, previousY, cellX, cellY))
+                            {
+                                failureReason =
+                                    $"Portal continuation contains a non-traversable step slot={slot}, index={validatedCellCount}, " +
+                                    $"from=({previousX},{previousY}), to=({cellX},{cellY}), key={FormatTileKey(key)}.";
+                                return false;
+                            }
+                        }
+                        previousCell = cellIndex;
+                        validatedCellCount++;
+                    }
+                }
+                if (validatedCellCount != continuation.TotalCellCount)
+                {
+                    failureReason =
+                        $"Portal continuation total cell count mismatch slot={slot}, expected={continuation.TotalCellCount}, actual={validatedCellCount}, key={FormatTileKey(key)}.";
+                    return false;
+                }
+
+                validatedContinuationCount++;
+            }
+        }
+
+        return true;
     }
 
     public static void SetEditorTestOnlyDeterministicTileRetentionFrames(int lastUsedFrame, int lastReferencedFrame)
@@ -6922,6 +7721,11 @@ public static partial class FlowFieldCrowdMovementSystem
         return _attackAreaCandidateCacheBuildCount;
     }
 
+    public static int GetEditorTestTargetingReachabilityCacheMissCount()
+    {
+        return _targetingReachabilityCacheMissCount;
+    }
+
     public static ulong GetEditorTestSharedGoalBuildQueueAuthorityHash()
     {
         var hasher = new LogicStateHasher();
@@ -7040,7 +7844,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         if (found == null)
             throw new InvalidOperationException("GetEditorTestPendingWorldBuildProgressSignature failed: no job is pending.");
-        return $"{found.AgentTypeId}:{found.Stage}:{found.ObstacleCursor}:{found.ApplyingCircleObstacles}:{found.SectorCursor}:{found.CellCursor}:{found.IslandScanIndex}:{found.IslandCurrentId}:{found.IslandCurrentSize}:{found.PortalStage}:{found.PortalAddCursor}:{found.PortalTransitionCursor}:{found.PortalTransitionFromCursor}";
+        return $"{found.AgentTypeId}:{found.Stage}:{found.ObstacleCursor}:{found.ApplyingCircleObstacles}:{found.SectorCursor}:{found.CellCursor}:{found.IslandScanIndex}:{found.IslandCurrentId}:{found.IslandCurrentSize}:{found.PortalStage}:{found.PortalAddCursor}:{found.PortalTransitionCursor}:{found.PortalTransitionFromCursor}:{FormatPortalHierarchyBuildProgress(found.HierarchyBuildJob)}";
     }
 
     public static int GetEditorTestPendingWorldBuildIslandQueueCount()
@@ -7058,6 +7862,36 @@ public static partial class FlowFieldCrowdMovementSystem
         if (found == null)
             throw new InvalidOperationException("GetEditorTestPendingWorldBuildIslandQueueCount failed: no job is pending.");
         return found.IslandOpenQueue?.Count ?? 0;
+    }
+
+    public static bool TryGetEditorTestPendingWorldBuildHierarchySourceProgress(
+        out int sourceNode,
+        out int expansionCount,
+        out int remainingTargets,
+        out int openCount)
+    {
+        sourceNode = 0;
+        expansionCount = 0;
+        remainingTargets = 0;
+        openCount = 0;
+        WorldBuildJob found = null;
+        foreach (WorldRuntimeState state in WorldStates.Values)
+        {
+            if (state?.BuildJob == null)
+                continue;
+            if (found != null)
+                throw new InvalidOperationException("Editor test requires at most one pending world-build job.");
+            found = state.BuildJob;
+        }
+
+        PortalHierarchySourceBuildJob source = found?.HierarchyBuildJob?.CurrentSourceBuild;
+        if (found?.Stage != WorldBuildStage.Hierarchy || source == null)
+            return false;
+        sourceNode = source.SourceNode;
+        expansionCount = source.Search.ExpansionCount;
+        remainingTargets = source.RemainingTargets;
+        openCount = source.OpenSet.Count;
+        return true;
     }
 
     public static void PerturbEditorTestPendingWorldBuildIslandQueueOrder()
@@ -7110,7 +7944,84 @@ public static partial class FlowFieldCrowdMovementSystem
 
         if (found == null)
             throw new InvalidOperationException("GetEditorTestPendingRuntimeDirtyProgressSignature failed: no job is pending.");
-        return $"{found.Stage}:{found.CloneShellStage}:{found.CloneCellCursor}:{found.CloneSectorCursor}:{found.CloneShellInitialized}:{found.SectorCursor}:{found.ObstacleCursor}:{found.ApplyingCircleObstacles}:{found.IslandScanIndex}:{found.IslandCurrentId}:{found.IslandCurrentSize}:{found.PortalStage}:{found.PortalSectorCursor}:{found.PortalAddCursor}:{found.PortalTransitionCursor}:{found.PortalTransitionFromCursor}";
+        return $"{found.Stage}:{found.CloneShellStage}:{found.CloneCellCursor}:{found.CloneSectorCursor}:{found.CloneShellInitialized}:{found.SectorCursor}:{found.ObstacleCursor}:{found.ApplyingCircleObstacles}:{found.IslandScanIndex}:{found.IslandCurrentId}:{found.IslandCurrentSize}:{found.PortalStage}:{found.PortalSectorCursor}:{found.PortalAddCursor}:{found.PortalTransitionCursor}:{found.PortalTransitionFromCursor}:{FormatPortalHierarchyBuildProgress(found.HierarchyBuildJob)}";
+    }
+
+    private static string FormatPortalHierarchyBuildProgress(PortalHierarchyBuildJob job)
+    {
+        if (job == null)
+            return "hierarchy=none";
+
+        PortalHierarchySourceBuildJob source = job.CurrentSourceBuild;
+        string sourceProgress = source == null
+            ? "source=none"
+            : $"source={source.SourceNode},{source.Search.ExpansionCount},{source.RemainingTargets}," +
+              $"{source.Search.Costs.Count},{source.Search.PreviousNode.Count},{source.Search.SettledNodes.Count}," +
+              $"{source.OpenSet.Count},{source.OpenSet.AuthorityContentHash},{source.Complete}";
+        return $"hierarchy={job.NextLevel},{job.NextClusterSpanSectors},{job.ClusterCursor},{job.SourceCursor}," +
+               $"{job.CompletedLevels.Count},{job.Complete};{sourceProgress}";
+    }
+
+    public static bool IsEditorTestPendingRuntimeDirtyHierarchyStage()
+    {
+        RuntimeDirtyRebuildJob found = null;
+        foreach (WorldRuntimeState state in WorldStates.Values)
+        {
+            if (state?.RuntimeDirtyJob == null)
+                continue;
+            if (found != null)
+                throw new InvalidOperationException("Editor test requires at most one pending runtime-dirty job.");
+            found = state.RuntimeDirtyJob;
+        }
+        return found?.Stage == RuntimeDirtyRebuildStage.Hierarchy;
+    }
+
+    public static void AdvanceEditorTestPendingRuntimeDirtyHierarchyProgressProbe()
+    {
+        RuntimeDirtyRebuildJob job = GetRequiredSingleEditorTestRuntimeDirtyJob();
+        if (job.Stage != RuntimeDirtyRebuildStage.Hierarchy || job.HierarchyBuildJob == null)
+            throw new InvalidOperationException($"Runtime-dirty hierarchy probe requires active hierarchy stage, actual={job.Stage}.");
+        job.HierarchyBuildJob.SourceCursor++;
+    }
+
+    public static bool TryGetEditorTestPendingRuntimeDirtyHierarchySourceProgress(
+        out int sourceNode,
+        out int expansionCount,
+        out int remainingTargets,
+        out int openCount)
+    {
+        sourceNode = 0;
+        expansionCount = 0;
+        remainingTargets = 0;
+        openCount = 0;
+        RuntimeDirtyRebuildJob job = GetRequiredSingleEditorTestRuntimeDirtyJob();
+        PortalHierarchySourceBuildJob source = job.HierarchyBuildJob?.CurrentSourceBuild;
+        if (job.Stage != RuntimeDirtyRebuildStage.Hierarchy || source == null)
+            return false;
+
+        sourceNode = source.SourceNode;
+        expansionCount = source.Search.ExpansionCount;
+        remainingTargets = source.RemainingTargets;
+        openCount = source.OpenSet.Count;
+        return true;
+    }
+
+    public static void PerturbEditorTestPendingRuntimeDirtyHierarchySourceAuthorityState()
+    {
+        RuntimeDirtyRebuildJob job = GetRequiredSingleEditorTestRuntimeDirtyJob();
+        PortalHierarchySourceBuildJob source = job.HierarchyBuildJob?.CurrentSourceBuild;
+        if (job.Stage != RuntimeDirtyRebuildStage.Hierarchy || source == null)
+        {
+            throw new InvalidOperationException(
+                $"Runtime-dirty hierarchy source authority probe requires an active source, actual={job.Stage}.");
+        }
+
+        int probeNode = int.MinValue + 101;
+        source.Search.Costs.Add(probeNode, 101L);
+        source.Search.PreviousNode.Add(probeNode, source.SourceNode);
+        source.Search.SettledNodes.Add(probeNode);
+        source.TargetNodes.Add(probeNode);
+        source.OpenSet.Push(probeNode + 1, 102L);
     }
 
     public static int GetEditorTestPendingRuntimeDirtyPortalGraphAccessCount()
@@ -7265,6 +8176,50 @@ public static partial class FlowFieldCrowdMovementSystem
         FixedCorridorLookup lookup = GetOrCreateFixedCorridorLookup(_world);
         return ResolveFixedCorridorDescriptor(_world, lookup, _world.GetIndex(cellX, cellY), out _)
                == FixedCorridorResolution.Pending;
+    }
+
+    public static string GetEditorTestFixedCorridorLookupDiagnostics(int cellX, int cellY, int radius)
+    {
+        if (_world == null)
+            return "fixedCorridor=world-null";
+        if (radius < 0)
+            throw new ArgumentOutOfRangeException(nameof(radius));
+        if (!FixedCorridorLookupByWorldVersion.TryGetValue(_world.Version, out FixedCorridorLookup lookup) || lookup == null)
+            return $"fixedCorridor=lookup-missing world={_world.Version}";
+
+        var builder = new System.Text.StringBuilder(512);
+        builder.Append("fixedCorridor={world=").Append(_world.Version)
+            .Append(",evaluatedFrame=")
+            .Append(FixedPortalOwnerEvaluatedFrameByWorld.TryGetValue(_world.Version, out int evaluatedFrame) ? evaluatedFrame : -1)
+            .Append(",pendingStarts=").Append(lookup.PendingStartIndices.Count)
+            .Append(",active=");
+        if (lookup.ActiveBuildJob == null)
+            builder.Append("none");
+        else
+            builder.Append(lookup.ActiveBuildJob.ComponentId).Append(':').Append(lookup.ActiveBuildJob.Head).Append('/').Append(lookup.ActiveBuildJob.Queue.Count);
+        builder.Append(",pendingAgents=")
+            .Append(PendingFixedCorridorParticipantAgentIdsByWorld.TryGetValue(_world.Version, out SortedSet<int> pendingAgents) ? pendingAgents.Count : 0)
+            .Append(",cells=[");
+        bool first = true;
+        for (int y = Math.Max(0, cellY - radius); y <= Math.Min(_world.Height - 1, cellY + radius); y++)
+        {
+            for (int x = Math.Max(0, cellX - radius); x <= Math.Min(_world.Width - 1, cellX + radius); x++)
+            {
+                if (!_world.IsWalkable(x, y))
+                    continue;
+                int index = _world.GetIndex(x, y);
+                if (!first)
+                    builder.Append('|');
+                first = false;
+                builder.Append('(').Append(x).Append(',').Append(y).Append("):")
+                    .Append(lookup.CandidateByCell.TryGetValue(index, out bool candidate) ? (candidate ? "candidate" : "noncandidate") : "unknown")
+                    .Append(lookup.ComponentIdByCell.TryGetValue(index, out int componentId)
+                        ? $":component={componentId}:completed={lookup.CompletedComponentIds.Contains(componentId)}"
+                        : lookup.PendingStartIndices.Contains(index) ? ":pending-start" : string.Empty);
+            }
+        }
+        builder.Append("]}");
+        return builder.ToString();
     }
 
     public static int ProcessEditorTestFixedCorridorBuildStep()
@@ -7496,6 +8451,7 @@ public static partial class FlowFieldCrowdMovementSystem
             portalId,
             -1,
             -1,
+            null,
             agent.AgentTypeId,
             0);
         return ResolveStablePortalTraversalSlotIndex(
@@ -7623,6 +8579,99 @@ public static partial class FlowFieldCrowdMovementSystem
         };
         downstreamGoalHint = ResolveDownstreamGoalHint(handle, sectorPathIndex, goalX, goalY);
         finalGoalCacheIndex = ResolveFinalGoalCacheIndex(handle, sectorPathIndex, goalX, goalY);
+    }
+
+    public static bool AreEditorTestOnlyFlowTileKeysEqual(
+        int[] firstSectorIds,
+        int[] firstPortalIds,
+        int[] secondSectorIds,
+        int[] secondPortalIds,
+        int sectorPathIndex,
+        int goalX,
+        int goalY)
+    {
+        if (!TryEnsureWorldBuilt(ResolvePreferredAgentTypeId(0)))
+            throw new InvalidOperationException("AreEditorTestOnlyFlowTileKeysEqual failed: navigation world is unavailable.");
+        var firstHandle = new PathHandle
+        {
+            WorldVersion = _world.Version,
+            GoalX = goalX,
+            GoalY = goalY,
+            SectorIds = firstSectorIds,
+            PortalIds = firstPortalIds,
+            CurrentSectorIndex = sectorPathIndex
+        };
+        var secondHandle = new PathHandle
+        {
+            WorldVersion = _world.Version,
+            GoalX = goalX,
+            GoalY = goalY,
+            SectorIds = secondSectorIds,
+            PortalIds = secondPortalIds,
+            CurrentSectorIndex = sectorPathIndex
+        };
+        int agentTypeId = ResolvePreferredAgentTypeId(0);
+        FlowTileCacheKey firstKey = CreateTileCacheKeyForPathSegment(
+            firstHandle,
+            sectorPathIndex,
+            goalX,
+            goalY,
+            agentTypeId,
+            out _,
+            out _);
+        FlowTileCacheKey secondKey = CreateTileCacheKeyForPathSegment(
+            secondHandle,
+            sectorPathIndex,
+            goalX,
+            goalY,
+            agentTypeId,
+            out _,
+            out _);
+        return firstKey.Equals(secondKey);
+    }
+
+    public static void ValidateEditorTestOnlyFlowTileKeySourceRebind(
+        int[] firstSectorIds,
+        int[] firstPortalIds,
+        int[] secondSectorIds,
+        int[] secondPortalIds,
+        int sectorPathIndex,
+        int goalX,
+        int goalY,
+        out bool changedFromFirst,
+        out bool matchesFreshSecond)
+    {
+        if (!TryEnsureWorldBuilt(ResolvePreferredAgentTypeId(0)))
+            throw new InvalidOperationException("ValidateEditorTestOnlyFlowTileKeySourceRebind failed: navigation world is unavailable.");
+        int agentTypeId = ResolvePreferredAgentTypeId(0);
+        var reboundHandle = new PathHandle
+        {
+            WorldVersion = _world.Version,
+            GoalX = goalX,
+            GoalY = goalY,
+            SectorIds = firstSectorIds,
+            PortalIds = firstPortalIds,
+            CurrentSectorIndex = sectorPathIndex
+        };
+        FlowTileCacheKey firstKey = CreateTileCacheKeyForPathSegment(
+            reboundHandle, sectorPathIndex, goalX, goalY, agentTypeId, out _, out _);
+        reboundHandle.SectorIds = secondSectorIds;
+        reboundHandle.PortalIds = secondPortalIds;
+        FlowTileCacheKey reboundKey = CreateTileCacheKeyForPathSegment(
+            reboundHandle, sectorPathIndex, goalX, goalY, agentTypeId, out _, out _);
+        var freshHandle = new PathHandle
+        {
+            WorldVersion = _world.Version,
+            GoalX = goalX,
+            GoalY = goalY,
+            SectorIds = (int[])secondSectorIds.Clone(),
+            PortalIds = (int[])secondPortalIds.Clone(),
+            CurrentSectorIndex = sectorPathIndex
+        };
+        FlowTileCacheKey freshKey = CreateTileCacheKeyForPathSegment(
+            freshHandle, sectorPathIndex, goalX, goalY, agentTypeId, out _, out _);
+        changedFromFirst = !firstKey.Equals(reboundKey);
+        matchesFreshSecond = reboundKey.Equals(freshKey);
     }
 
     public static void ClearEditorTestFixedPortalOwners()
@@ -7787,6 +8836,11 @@ public static partial class FlowFieldCrowdMovementSystem
         return _perf.RequiredFlowTileCommits;
     }
 
+    public static int GetEditorTestFlowTileQueueMutationCount()
+    {
+        return _perf.FlowTileQueueEnqueued + _perf.FlowTileQueuePruned;
+    }
+
     public static int GetEditorTestFlowTileReferenceRefreshCount()
     {
         return _perf.FlowTileReferenceRefreshCalls;
@@ -7822,9 +8876,14 @@ public static partial class FlowFieldCrowdMovementSystem
         return $"logicFrame={_perf.Frame},sectorSearches={_perf.SectorPathSearches}," +
                $"portalNodes={_perf.PathPortalGraphNodeExpansions},transitionScans={_perf.PathPortalGraphOutgoingTransitionScans}," +
                $"transitionHits={_perf.PathPortalGraphOutgoingTransitionHits},stableInitial={_perf.StableGoalRefreshInitial}," +
-               $"stableCell={_perf.StableGoalRefreshCellDelta},policyFrontierRebuilds={_perf.SectorCorridorAStarFrontierRebuilds}," +
-               $"policyFrontierNodes={_perf.SectorCorridorAStarFrontierNodes},policyQueries={_perf.SectorCorridorAStarQueries}," +
-               $"policyMs={TicksToMs(_perf.SectorCorridorAStarTicks):F3},policyCount={SectorCorridorPolicies.Count}";
+               $"stableCell={_perf.StableGoalRefreshCellDelta},policyQueries={_perf.SectorCorridorPolicyQueries}," +
+               $"policyMs={TicksToMs(_perf.SectorCorridorPolicyTicks):F3},policyCount={SectorCorridorPolicies.Count}," +
+               $"startConnectorHits={_perf.HierarchyStartConnectorCacheHits},startConnectorMisses={_perf.HierarchyStartConnectorCacheMisses}," +
+               $"downwardHits={_perf.HierarchyDownwardCustomizationCacheHits},downwardMisses={_perf.HierarchyDownwardCustomizationCacheMisses}," +
+               $"downwardExpansions={_perf.HierarchyDownwardCustomizationExpansions}," +
+               $"continuationTiles={_perf.ContinuationPortalTiles},continuationSlots={_perf.ContinuationPortalSlots}," +
+               $"continuationLocalCells={_perf.ContinuationLocalCells},continuationMaxSlots={_perf.ContinuationMaximumSlots}," +
+               $"continuationMaxLocalSegment={_perf.ContinuationMaximumLocalSegmentCells}";
     }
 
     public static int GetEditorTestFramePathPortalGraphNodeExpansionCount()
@@ -7832,14 +8891,19 @@ public static partial class FlowFieldCrowdMovementSystem
         return _perf.PathPortalGraphNodeExpansions;
     }
 
-    public static int GetEditorTestFrameSectorCorridorAStarFrontierRebuildCount()
+    public static int GetEditorTestFrameSectorCorridorPolicyQueryCount()
     {
-        return _perf.SectorCorridorAStarFrontierRebuilds;
+        return _perf.SectorCorridorPolicyQueries;
     }
 
-    public static int GetEditorTestFrameSectorCorridorAStarFrontierNodeCount()
+    public static int GetEditorTestFrameSectorCorridorPolicyAuthorityHashRefreshCount()
     {
-        return _perf.SectorCorridorAStarFrontierNodes;
+        return _perf.SectorCorridorPolicyAuthorityHashRefreshes;
+    }
+
+    public static int GetEditorTestFrameSectorCorridorGoalConnectorBuildCount()
+    {
+        return _perf.SectorCorridorGoalConnectorBuilds;
     }
 
     public static int GetEditorTestFrameNavigationPrepareRequestCount()
@@ -7855,6 +8919,44 @@ public static partial class FlowFieldCrowdMovementSystem
     public static int GetEditorTestNavigationPrepareRequestCount()
     {
         return _testNavigationPrepareRequestCount;
+    }
+
+    public static void ResetEditorTestFixedPortalParticipationUpdateCount()
+    {
+        _testFixedPortalParticipationUpdateCount = 0;
+    }
+
+    public static int GetEditorTestFixedPortalParticipationUpdateCount()
+    {
+        return _testFixedPortalParticipationUpdateCount;
+    }
+
+    public static int GetEditorTestPortalHierarchyMaximumSourceExpansions()
+    {
+        return _editorPortalHierarchyMaximumSourceExpansions;
+    }
+
+    public static double GetEditorTestPortalHierarchyMaximumSourceMilliseconds()
+    {
+        return _editorPortalHierarchyMaximumSourceTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    public static int GetEditorTestPortalHierarchyMaximumInvocationExpansions()
+    {
+        return _editorPortalHierarchyMaximumInvocationExpansions;
+    }
+
+    public static double GetEditorTestPortalHierarchyMaximumInvocationMilliseconds()
+    {
+        return _editorPortalHierarchyMaximumInvocationTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    public static void ResetEditorTestPortalHierarchyBuildMeasurements()
+    {
+        _editorPortalHierarchyMaximumSourceExpansions = 0;
+        _editorPortalHierarchyMaximumSourceTicks = 0;
+        _editorPortalHierarchyMaximumInvocationExpansions = 0;
+        _editorPortalHierarchyMaximumInvocationTicks = 0;
     }
 
     public static int GetEditorTestSectorCorridorPolicyCount()
@@ -8135,6 +9237,15 @@ public static partial class FlowFieldCrowdMovementSystem
     public static int GetEditorTestPendingSharedGoalFieldBuildCount()
     {
         return PendingSharedGoalFieldBuildJobs.Count;
+    }
+
+    public static void SetEditorTestRequirePreparedNavigationSnapshot(bool required)
+    {
+#if UNITY_EDITOR
+        _editorTestRequirePreparedNavigationSnapshot = required;
+#else
+        throw new InvalidOperationException("Editor test navigation snapshot mode is unavailable outside Unity Editor.");
+#endif
     }
 
     public static string GetEditorTestMovingTargetAnchorDiagnostics(int agentId)
@@ -10291,6 +11402,72 @@ public static partial class FlowFieldCrowdMovementSystem
             out failureKind);
     }
 
+    public static bool TryEvaluateTargetingAttackAreaReachabilityFixed(
+        IEntityContext self,
+        IEntityContext target,
+        Fix64 attackRange,
+        out string failureReason,
+        out NavigationQueryFailureKind failureKind)
+    {
+        if (self == null)
+            throw new ArgumentNullException(nameof(self));
+        if (target == null)
+            throw new ArgumentNullException(nameof(target));
+        if (attackRange < Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(attackRange));
+
+        int sourceId = ResolveAgentId(self);
+        if (!Agents.TryGetValue(sourceId, out AgentRuntimeData agent))
+        {
+            RegisterSyntheticAgent(self);
+            agent = Agents[sourceId];
+        }
+        if (!TryEnsureWorldBuilt(agent.AgentTypeId)
+            || !TryResolveStartCellForReachabilityFixed(self, out _, out _, out int startIslandId))
+        {
+            return TryResolveReachableAttackAreaPointFixed(
+                self,
+                target,
+                attackRange,
+                out _,
+                out failureReason,
+                out failureKind);
+        }
+
+        LogicCombatShape targetShape = LogicFrameRuntime.IsTicking
+            ? LogicEntityFrameSnapshotService.GetRequiredCurrent(target).CombatShape
+            : target.CombatShape;
+        PrepareTargetingReachabilityCacheForFrame();
+        var key = new TargetingReachabilityCacheKey(
+            _world.Version,
+            _navigationTopologyVersion,
+            ResolvePreferredAgentTypeId(agent.AgentTypeId),
+            startIslandId,
+            targetShape,
+            attackRange);
+        if (TargetingReachabilityCache.TryGetValue(key, out TargetingReachabilityCacheEntry cached))
+        {
+            failureKind = cached.FailureKind;
+            failureReason = cached.Reachable
+                ? string.Empty
+                : $"shared targeting reachability rejected world={key.WorldVersion} agentType={key.AgentTypeId} island={key.StartIslandId}";
+            return cached.Reachable;
+        }
+
+        bool reachable = TryResolveReachableAttackAreaPointFixed(
+            self,
+            target,
+            attackRange,
+            out _,
+            out failureReason,
+            out failureKind);
+        TargetingReachabilityCache.Add(
+            key,
+            new TargetingReachabilityCacheEntry(reachable, failureKind));
+        _targetingReachabilityCacheMissCount++;
+        return reachable;
+    }
+
     public static bool TryResolveReachablePointAreaFixed(
         IEntityContext self,
         FixVector2 point,
@@ -10533,6 +11710,17 @@ public static partial class FlowFieldCrowdMovementSystem
         AttackAreaCandidateCache.Clear();
         _attackAreaCandidateCacheFrame = frame;
         _attackAreaCandidateCacheBuildCount = 0;
+    }
+
+    private static void PrepareTargetingReachabilityCacheForFrame()
+    {
+        int frame = GetFrameCount();
+        if (_targetingReachabilityCacheFrame == frame)
+            return;
+
+        TargetingReachabilityCache.Clear();
+        _targetingReachabilityCacheFrame = frame;
+        _targetingReachabilityCacheMissCount = 0;
     }
 
     public static bool TryResolveNearestReachableGoal(
@@ -11189,6 +12377,117 @@ public static partial class FlowFieldCrowdMovementSystem
         return TryPrepareNavigationRequestFixedCore(source, goalPosition, rejectPendingRuntimeDirty: true, out failureReason);
     }
 
+    public static bool TryPrepareNavigationSyncRequestFixed(
+        IEntityContext source,
+        FixVector2 inputGoalPosition,
+        out string failureReason)
+    {
+        return TryPrepareNavigationSyncRequestFixed(
+            source,
+            inputGoalPosition,
+            Fix64.Zero,
+            out failureReason);
+    }
+
+    public static bool TryPrepareNavigationSyncRequestFixed(
+        IEntityContext source,
+        FixVector2 inputGoalPosition,
+        Fix64 maximumTravelDistance,
+        out string failureReason)
+    {
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        if (source == null)
+            throw new InvalidOperationException("TryPrepareNavigationSyncRequestFixed failed: source is null.");
+        if (maximumTravelDistance < Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(maximumTravelDistance), maximumTravelDistance, "Maximum travel distance cannot be negative.");
+
+        int sourceId = ResolveAgentId(source);
+        if (!Agents.TryGetValue(sourceId, out AgentRuntimeData agent))
+        {
+            RegisterSyntheticAgent(source);
+            agent = Agents[sourceId];
+        }
+        long phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        bool worldReady = TryEnsureWorldBuilt(agent.AgentTypeId);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowPrepareWorld,
+                Stopwatch.GetTimestamp() - phaseStartTicks);
+        }
+        if (!worldReady)
+        {
+            failureReason = $"world unavailable source={source.CharacterKey} agentType={agent.AgentTypeId}";
+            return false;
+        }
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        FixVector2 occupiedGoal = ResolveNavigationGoalOccupancyFixed(source, agent, inputGoalPosition);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowPrepareGoalOccupancy,
+                Stopwatch.GetTimestamp() - phaseStartTicks);
+        }
+        bool hasMovingTarget = source.TargetComp?.CurrentTarget != null
+                               && !ReferenceEquals(source.TargetComp.CurrentTarget, source)
+                               && IsNavigationMovingTarget(source.TargetComp.CurrentTarget);
+        FixVector2 navigationGoal = hasMovingTarget ? inputGoalPosition : occupiedGoal;
+        if (!TryPrepareNavigationRequestFixedCore(
+                source,
+                navigationGoal,
+                rejectPendingRuntimeDirty: false,
+                out failureReason))
+        {
+            agent.NavState.HasPreparedNavigationSnapshot = false;
+            agent.NavState.PreparedNavigationFrame = -1;
+            agent.NavState.PreparedMaximumTravelDistanceFixed = Fix64.Zero;
+            return false;
+        }
+
+        agent.NavState.HasPreparedNavigationSnapshot = true;
+        agent.NavState.PreparedNavigationFrame = GetFrameCount();
+        agent.NavState.PreparedInputGoalFixed = inputGoalPosition;
+        agent.NavState.PreparedNavigationGoalFixed = navigationGoal;
+        agent.NavState.PreparedMaximumTravelDistanceFixed = maximumTravelDistance;
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        EnqueueSteeringReadDomainFlowTileBuilds(agent, maximumTravelDistance);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowPrepareReadDomain,
+                Stopwatch.GetTimestamp() - phaseStartTicks);
+        }
+        return true;
+    }
+
+    public static void ClearNavigationSyncRequest(IEntityContext source)
+    {
+        if (source == null)
+            throw new InvalidOperationException("ClearNavigationSyncRequest failed: source is null.");
+
+        int sourceId = ResolveAgentId(source);
+        if (!Agents.TryGetValue(sourceId, out AgentRuntimeData agent))
+            return;
+
+        agent.NavState.HasPreparedNavigationSnapshot = false;
+        agent.NavState.PreparedNavigationFrame = -1;
+        agent.NavState.PreparedMaximumTravelDistanceFixed = Fix64.Zero;
+        agent.NavState.HasGoal = false;
+        agent.NavState.PathHandle = null;
+        RemoveFixedPortalParticipation(sourceId);
+    }
+
+    private static bool RequiresPreparedNavigationSnapshot()
+    {
+        if (LogicFrameRuntime.IsTimelineRunning)
+            return true;
+#if UNITY_EDITOR
+        return _editorTestRequirePreparedNavigationSnapshot;
+#else
+        return false;
+#endif
+    }
+
     private static bool TryPrepareNavigationRequestFixedCore(
         IEntityContext source,
         FixVector2 goalPosition,
@@ -11304,9 +12603,22 @@ public static partial class FlowFieldCrowdMovementSystem
             failureReason = $"path handle failed source={source.CharacterKey} startSector={startSectorId} goalSector={goalSectorId}";
             return false;
         }
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        bool pathAdvanced = TryAdvancePathToCurrentSector(agent, startSectorId);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowPreparePathAdvance,
+                Stopwatch.GetTimestamp() - phaseStartTicks);
+        }
+        if (!pathAdvanced)
+        {
+            failureReason = $"prepared path does not contain current sector source={source.CharacterKey} startSector={startSectorId} goalSector={goalSectorId}";
+            return false;
+        }
 
         phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
-        EnqueueActiveFlowTileBuilds(agent.NavState.PathHandle, agent.NavState.PathHandle.CurrentSectorIndex, goalX, goalY, agent.AgentTypeId);
+        UpdateFixedPortalParticipation(agent);
         if (profile)
         {
             MainThreadFrameProfiler.Record(
@@ -11595,12 +12907,32 @@ public static partial class FlowFieldCrowdMovementSystem
                 Stopwatch.GetTimestamp() - worldStartTicks);
         }
 
+        bool requirePreparedSnapshot = RequiresPreparedNavigationSnapshot();
         long occupancyStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
-        bool hasMovingTarget = self.TargetComp?.CurrentTarget != null
-                               && !ReferenceEquals(self.TargetComp.CurrentTarget, self)
-                               && IsNavigationMovingTarget(self.TargetComp.CurrentTarget);
-        FixVector2 occupiedGoalPosition = ResolveNavigationGoalOccupancyFixed(self, agent, goalPosition);
-        FixVector2 navigationGoalPosition = hasMovingTarget ? goalPosition : occupiedGoalPosition;
+        FixVector2 occupiedGoalPosition;
+        FixVector2 navigationGoalPosition;
+        if (requirePreparedSnapshot)
+        {
+            if (!agent.NavState.HasPreparedNavigationSnapshot
+                || agent.NavState.PreparedNavigationFrame != GetFrameCount()
+                || agent.NavState.PreparedInputGoalFixed != goalPosition)
+            {
+                throw new InvalidOperationException(
+                    $"[{self.CharacterKey}] Flow steering requires the current NavigationSync snapshot. " +
+                    $"frame={GetFrameCount()} prepared={agent.NavState.PreparedNavigationFrame} hasSnapshot={agent.NavState.HasPreparedNavigationSnapshot} " +
+                    $"requestedRaw=({goalPosition.x.RawValue},{goalPosition.y.RawValue}) preparedRaw=({agent.NavState.PreparedInputGoalFixed.x.RawValue},{agent.NavState.PreparedInputGoalFixed.y.RawValue}).");
+            }
+            occupiedGoalPosition = agent.NavState.PreparedNavigationGoalFixed;
+            navigationGoalPosition = agent.NavState.PreparedNavigationGoalFixed;
+        }
+        else
+        {
+            bool hasMovingTarget = self.TargetComp?.CurrentTarget != null
+                                   && !ReferenceEquals(self.TargetComp.CurrentTarget, self)
+                                   && IsNavigationMovingTarget(self.TargetComp.CurrentTarget);
+            occupiedGoalPosition = ResolveNavigationGoalOccupancyFixed(self, agent, goalPosition);
+            navigationGoalPosition = hasMovingTarget ? goalPosition : occupiedGoalPosition;
+        }
         if (profile)
         {
             MainThreadFrameProfiler.Record(
@@ -11609,7 +12941,7 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         long prepareStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
-        if (!TryPrepareNavigationRequestFixedCore(
+        if (!requirePreparedSnapshot && !TryPrepareNavigationRequestFixedCore(
                 self,
                 navigationGoalPosition,
                 rejectPendingRuntimeDirty: false,
@@ -11670,7 +13002,18 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         long pathStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
-        if (!TryAdvancePathToCurrentSector(agent, agent.NavState.CurrentSectorId))
+        bool preparedPathMatchesCurrentSector = agent.NavState.PathHandle != null
+                                                && agent.NavState.PathHandle.SectorIds != null
+                                                && agent.NavState.PathHandle.CurrentSectorIndex >= 0
+                                                && agent.NavState.PathHandle.CurrentSectorIndex < agent.NavState.PathHandle.SectorIds.Length
+                                                && agent.NavState.PathHandle.SectorIds[agent.NavState.PathHandle.CurrentSectorIndex] == agent.NavState.CurrentSectorId;
+        if (requirePreparedSnapshot && !preparedPathMatchesCurrentSector)
+        {
+            throw new InvalidOperationException(
+                $"[{self.CharacterKey}] Prepared navigation path does not match the current sector. " +
+                $"frame={GetFrameCount()} currentSector={agent.NavState.CurrentSectorId} handle={FormatPathHandle(agent.NavState.PathHandle)}.");
+        }
+        if (!requirePreparedSnapshot && !TryAdvancePathToCurrentSector(agent, agent.NavState.CurrentSectorId))
         {
             PathHandle invalidHandle = agent.NavState.PathHandle;
             int goalX = invalidHandle?.GoalX ?? -1;
@@ -11696,12 +13039,12 @@ public static partial class FlowFieldCrowdMovementSystem
                 return false;
             }
         }
-        EnqueueActiveFlowTileBuilds(
-            agent.NavState.PathHandle,
-            agent.NavState.PathHandle.CurrentSectorIndex,
-            agent.NavState.PathHandle.GoalX,
-            agent.NavState.PathHandle.GoalY,
-            agent.AgentTypeId);
+        if (!requirePreparedSnapshot)
+        {
+            EnqueueSteeringReadDomainFlowTileBuilds(
+                agent,
+                maxSpeed * LogicFrameRuntime.FixedDeltaTime);
+        }
         if (profile)
         {
             MainThreadFrameProfiler.Record(
@@ -11711,7 +13054,21 @@ public static partial class FlowFieldCrowdMovementSystem
 
         agent.NavState.HasGoal = true;
         long portalOwnerStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
-        EnsureFixedPortalOwnerFrame();
+        if (requirePreparedSnapshot)
+        {
+            int portalOwnerFrame = GetFrameCount();
+            if (!FixedPortalOwnerEvaluatedFrameByWorld.TryGetValue(_world.Version, out int evaluatedFrame)
+                || evaluatedFrame != portalOwnerFrame)
+            {
+                throw new InvalidOperationException(
+                    $"[{self.CharacterKey}] Flow steering requires the current NavigationSync portal-owner snapshot. " +
+                    $"frame={portalOwnerFrame} world={_world.Version} evaluated={evaluatedFrame}.");
+            }
+        }
+        else
+        {
+            EnsureFixedPortalOwnerFrame();
+        }
         if (profile)
         {
             MainThreadFrameProfiler.Record(
@@ -11786,15 +13143,40 @@ public static partial class FlowFieldCrowdMovementSystem
         return ClampFixedVelocity(velocity, speed);
     }
 
-    private static Fix64 ResolveFunnelTriangleArea2(
+    private static FixVector2 ResolveFixedVelocityToTargetWithinTick(
+        FixVector2 position,
+        FixVector2 target,
+        Fix64 maxSpeed)
+    {
+        FixVector2 displacement = target - position;
+        if (displacement == FixVector2.Zero || maxSpeed <= Fix64.Zero)
+            return FixVector2.Zero;
+        Fix64 deltaTime = LogicFrameRuntime.FixedDeltaTime;
+        if (deltaTime <= Fix64.Zero)
+            throw new InvalidOperationException($"ResolveFixedVelocityToTargetWithinTick failed: fixed delta time is invalid raw={deltaTime.RawValue}.");
+        Fix64 maximumTravelDistance = maxSpeed * deltaTime;
+        if (FixVector2.SqrMagnitude(displacement) <= maximumTravelDistance * maximumTravelDistance)
+            return displacement / deltaTime;
+        return ScaleFixedDirectionToSpeed(displacement, maxSpeed);
+    }
+
+    private static long ResolveFunnelTriangleArea2Raw(
         FixVector2 apex,
         FixVector2 first,
         FixVector2 second)
     {
         FixVector2 fromApexToFirst = first - apex;
         FixVector2 fromApexToSecond = second - apex;
-        return fromApexToFirst.x * fromApexToSecond.y
-               - fromApexToFirst.y * fromApexToSecond.x;
+        return checked(
+            checked(fromApexToFirst.x.RawValue * fromApexToSecond.y.RawValue)
+            - checked(fromApexToFirst.y.RawValue * fromApexToSecond.x.RawValue));
+    }
+
+    private static bool HaveSameNonZeroRawSign(Fix64 left, Fix64 right)
+    {
+        return left.RawValue != 0
+               && right.RawValue != 0
+               && (left.RawValue > 0) == (right.RawValue > 0);
     }
 
     private static void ResolvePortalFunnelSegmentFixed(
@@ -11813,9 +13195,34 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"ResolvePortalFunnelSegmentFixed failed: path index is invalid index={portalPathIndex}, handle={FormatPathHandle(handle)}.");
         }
 
-        int currentSectorId = handle.SectorIds[portalPathIndex];
-        int downstreamSectorId = handle.SectorIds[portalPathIndex + 1];
-        PortalData portal = GetPortalById(_world, handle.PortalIds[portalPathIndex]);
+        ResolvePortalFunnelSegmentFixed(
+            handle.SectorIds,
+            handle.PortalIds,
+            portalPathIndex,
+            out left,
+            out right);
+    }
+
+    private static void ResolvePortalFunnelSegmentFixed(
+        int[] sectorIds,
+        int[] portalIds,
+        int portalPathIndex,
+        out FixVector2 left,
+        out FixVector2 right)
+    {
+        if (sectorIds == null
+            || portalIds == null
+            || portalPathIndex < 0
+            || portalPathIndex >= portalIds.Length
+            || portalPathIndex + 1 >= sectorIds.Length)
+        {
+            throw new InvalidOperationException(
+                $"ResolvePortalFunnelSegmentFixed failed: corridor index is invalid index={portalPathIndex}, sectors={sectorIds?.Length ?? -1}, portals={portalIds?.Length ?? -1}.");
+        }
+
+        int currentSectorId = sectorIds[portalPathIndex];
+        int downstreamSectorId = sectorIds[portalPathIndex + 1];
+        PortalData portal = GetPortalById(_world, portalIds[portalPathIndex]);
         if (GetOppositeSectorId(portal, currentSectorId) != downstreamSectorId)
         {
             throw new InvalidOperationException(
@@ -11840,7 +13247,7 @@ public static partial class FlowFieldCrowdMovementSystem
         FixVector2 travel = _world.GridToWorldCenterFixed(downstreamCells[0].x, downstreamCells[0].y)
                             - _world.GridToWorldCenterFixed(currentCells[0].x, currentCells[0].y);
         FixVector2 center = (first + last) / (Fix64)2;
-        if (ResolveFunnelTriangleArea2(FixVector2.Zero, travel, first - center) >= Fix64.Zero)
+        if (ResolveFunnelTriangleArea2Raw(FixVector2.Zero, travel, first - center) >= 0L)
         {
             left = first;
             right = last;
@@ -11894,10 +13301,10 @@ public static partial class FlowFieldCrowdMovementSystem
                 ResolvePortalFunnelSegmentFixed(handle, portalIndex, out portalLeft, out portalRight);
             }
 
-            if (ResolveFunnelTriangleArea2(apex, funnelRight, portalRight) >= Fix64.Zero)
+            if (ResolveFunnelTriangleArea2Raw(apex, funnelRight, portalRight) >= 0L)
             {
                 if (funnelRight == apex
-                    || ResolveFunnelTriangleArea2(apex, funnelLeft, portalRight) < Fix64.Zero)
+                    || ResolveFunnelTriangleArea2Raw(apex, funnelLeft, portalRight) < 0L)
                 {
                     funnelRight = portalRight;
                     rightIndex = portalIndex;
@@ -11909,10 +13316,10 @@ public static partial class FlowFieldCrowdMovementSystem
                 }
             }
 
-            if (ResolveFunnelTriangleArea2(apex, funnelLeft, portalLeft) <= Fix64.Zero)
+            if (ResolveFunnelTriangleArea2Raw(apex, funnelLeft, portalLeft) <= 0L)
             {
                 if (funnelLeft == apex
-                    || ResolveFunnelTriangleArea2(apex, funnelRight, portalLeft) > Fix64.Zero)
+                    || ResolveFunnelTriangleArea2Raw(apex, funnelRight, portalLeft) > 0L)
                 {
                     funnelLeft = portalLeft;
                     leftIndex = portalIndex;
@@ -11950,6 +13357,10 @@ public static partial class FlowFieldCrowdMovementSystem
         handle.CommittedCorridorGoalY = handle.GoalY;
         handle.CommittedCorridorSectorIds = new int[sectorCount];
         handle.CommittedCorridorPortalIds = new int[portalCount];
+        handle.CommittedCorridorSuffixIdentities = null;
+        handle.CommittedCorridorSuffixFinalGoalIndex = -1;
+        handle.CommittedCorridorSuffixSectorIdsSource = null;
+        handle.CommittedCorridorSuffixPortalIdsSource = null;
         Array.Copy(handle.SectorIds, handle.CurrentSectorIndex, handle.CommittedCorridorSectorIds, 0, sectorCount);
         Array.Copy(handle.PortalIds, handle.CurrentSectorIndex, handle.CommittedCorridorPortalIds, 0, portalCount);
     }
@@ -12000,7 +13411,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         Fix64 normalDisplacement = portal.IsVerticalBoundary ? displacement.x : displacement.y;
         Fix64 normalTravel = portal.IsVerticalBoundary ? travel.x : travel.y;
-        if (normalDisplacement == Fix64.Zero || normalDisplacement * normalTravel <= Fix64.Zero)
+        if (!HaveSameNonZeroRawSign(normalDisplacement, normalTravel))
             return false;
 
         Fix64 plane = portal.IsVerticalBoundary ? left.x : left.y;
@@ -12020,11 +13431,13 @@ public static partial class FlowFieldCrowdMovementSystem
         Fix64 tangentDisplacement = portal.IsVerticalBoundary ? displacement.y : displacement.x;
         Fix64 leftTangent = portal.IsVerticalBoundary ? left.y : left.x;
         Fix64 rightTangent = portal.IsVerticalBoundary ? right.y : right.x;
-        Fix64 intersectionNumerator = (tangentPosition - leftTangent) * normalDisplacement
-                                     + tangentDisplacement * planeDelta;
-        Fix64 rightNumerator = (rightTangent - leftTangent) * normalDisplacement;
-        Fix64 minimumNumerator = Fix64.Min(Fix64.Zero, rightNumerator);
-        Fix64 maximumNumerator = Fix64.Max(Fix64.Zero, rightNumerator);
+        long intersectionNumerator = checked(
+            checked((tangentPosition.RawValue - leftTangent.RawValue) * normalDisplacement.RawValue)
+            + checked(tangentDisplacement.RawValue * planeDelta.RawValue));
+        long rightNumerator = checked(
+            (rightTangent.RawValue - leftTangent.RawValue) * normalDisplacement.RawValue);
+        long minimumNumerator = Math.Min(0L, rightNumerator);
+        long maximumNumerator = Math.Max(0L, rightNumerator);
         return intersectionNumerator >= minimumNumerator
                && intersectionNumerator <= maximumNumerator;
     }
@@ -12054,8 +13467,7 @@ public static partial class FlowFieldCrowdMovementSystem
             committedCorridor.GoalY);
 
         string portalLookahead = "not-requested";
-        FixVector2 target;
-        int cornerPortalPathIndex;
+        int portalStartPathIndex = committedCorridor.CurrentSectorIndex;
         if (currentPortalReached)
         {
             FixVector2 lookaheadTarget = ResolvePortalCorridorFunnelTargetFixed(
@@ -12067,45 +13479,163 @@ public static partial class FlowFieldCrowdMovementSystem
                 out int lookaheadCornerPortalPathIndex);
             if (DoesPortalLookaheadRayCrossCurrentApertureFixed(committedCorridor, position, lookaheadTarget))
             {
-                target = lookaheadTarget;
-                cornerPortalPathIndex = lookaheadCornerPortalPathIndex;
+                portalStartPathIndex = committedCorridor.CurrentSectorIndex + 1;
                 portalLookahead = "accepted";
             }
             else
             {
-                target = ResolvePortalCorridorFunnelTargetFixed(
-                    committedCorridor,
-                    position,
-                    committedCorridor.CurrentSectorIndex,
-                    portalEndPathIndex,
-                    terminal,
-                    out cornerPortalPathIndex);
                 portalLookahead = "rejected";
             }
         }
-        else
+
+        Fix64 deltaTime = LogicFrameRuntime.FixedDeltaTime;
+        Fix64 remainingDistance = maxSpeed * deltaTime;
+        if (remainingDistance <= Fix64.Zero)
         {
-            target = ResolvePortalCorridorFunnelTargetFixed(
-                committedCorridor,
-                position,
-                committedCorridor.CurrentSectorIndex,
-                portalEndPathIndex,
-                terminal,
-                out cornerPortalPathIndex);
-        }
-        FixVector2 displacement = target - position;
-        if (FixVector2.SqrMagnitude(displacement) == Fix64.Zero)
-        {
-            diagnostic =
-                $"corridor-funnel-rejected reason=subresolution-displacement portalLookahead={portalLookahead} cornerPathIndex={cornerPortalPathIndex} " +
-                $"targetRaw=({target.x.RawValue},{target.y.RawValue})";
+            diagnostic = "corridor-funnel-rejected reason=non-positive-travel-distance";
             return false;
         }
-        if (!HasFixedGridLineOfSight(_world, position, target, allowTargetSoftCost: true))
+
+        FixVector2 integratedPosition = position;
+        int consumedCornerCount = 0;
+        int finalCornerPortalPathIndex = portalStartPathIndex;
+        while (remainingDistance > Fix64.Zero)
+        {
+            FixVector2 target = ResolvePortalCorridorFunnelTargetFixed(
+                committedCorridor,
+                integratedPosition,
+                portalStartPathIndex,
+                portalEndPathIndex,
+                terminal,
+                out int cornerPortalPathIndex);
+            finalCornerPortalPathIndex = cornerPortalPathIndex;
+            FixVector2 segment = target - integratedPosition;
+            Fix64 segmentLengthSquared = FixVector2.SqrMagnitude(segment);
+            if (segmentLengthSquared == Fix64.Zero)
+            {
+                if (cornerPortalPathIndex >= portalEndPathIndex)
+                    break;
+                portalStartPathIndex = cornerPortalPathIndex + 1;
+                consumedCornerCount++;
+                continue;
+            }
+            if (!TryValidatePortalCorridorFunnelSegmentFixed(
+                    agent,
+                    integratedPosition,
+                    segment,
+                    out string segmentFailure))
+            {
+                diagnostic =
+                    $"corridor-funnel-rejected reason={segmentFailure} portalLookahead={portalLookahead} cornerPathIndex={cornerPortalPathIndex} " +
+                    $"targetRaw=({target.x.RawValue},{target.y.RawValue})";
+                return false;
+            }
+
+            Fix64 segmentLength = Fix64.Sqrt(segmentLengthSquared);
+            if (segmentLength >= remainingDistance)
+            {
+                integratedPosition += segment / segmentLength * remainingDistance;
+                remainingDistance = Fix64.Zero;
+                break;
+            }
+
+            integratedPosition = target;
+            remainingDistance -= segmentLength;
+            consumedCornerCount++;
+            if (cornerPortalPathIndex >= portalEndPathIndex)
+                break;
+            portalStartPathIndex = cornerPortalPathIndex + 1;
+        }
+
+        FixVector2 integratedDisplacement = integratedPosition - position;
+        if (FixVector2.SqrMagnitude(integratedDisplacement) == Fix64.Zero)
         {
             diagnostic =
-                $"corridor-funnel-rejected reason=grid-los-failed portalLookahead={portalLookahead} cornerPathIndex={cornerPortalPathIndex} " +
-                $"targetRaw=({target.x.RawValue},{target.y.RawValue})";
+                $"corridor-funnel-rejected reason=consumed-terminal portalLookahead={portalLookahead} cornerPathIndex={finalCornerPortalPathIndex}";
+            return false;
+        }
+        if (!_world.WorldToGridFixed(integratedPosition, out int prospectiveX, out int prospectiveY)
+            || !_world.TryGetSectorId(prospectiveX, prospectiveY, out int prospectiveSectorId))
+        {
+            diagnostic = "corridor-funnel-rejected reason=prospective-position-outside-world";
+            return false;
+        }
+        int prospectivePortalStartPathIndex = -1;
+        for (int i = 0; i < committedCorridor.SectorIds.Length; i++)
+        {
+            if (committedCorridor.SectorIds[i] != prospectiveSectorId)
+                continue;
+            prospectivePortalStartPathIndex = Math.Min(i, portalEndPathIndex);
+            break;
+        }
+        if (prospectivePortalStartPathIndex < 0)
+        {
+            diagnostic =
+                $"corridor-funnel-rejected reason=prospective-sector-outside-corridor sector={prospectiveSectorId} " +
+                $"cell=({prospectiveX},{prospectiveY})";
+            return false;
+        }
+        if (prospectiveSectorId == key.SectorId)
+        {
+            if (!DeterministicFlowTileCache.TryGetValue(key, out FlowTileCacheEntry prospectiveCurrentTile))
+                throw new InvalidOperationException($"TryResolvePortalCorridorFunnelVelocityFixed failed: prospective current tile is missing key={FormatTileKey(key)}.");
+            if (IndexOfGoalCell(prospectiveCurrentTile.GoalCells, prospectiveX, prospectiveY) >= 0)
+            {
+                diagnostic =
+                    $"corridor-funnel-rejected reason=prospective-current-portal-seed-not-crossed " +
+                    $"cell=({prospectiveX},{prospectiveY}) key={FormatTileKey(key)}";
+                return false;
+            }
+        }
+        FixVector2 prospectiveTarget = ResolvePortalCorridorFunnelTargetFixed(
+            committedCorridor,
+            integratedPosition,
+            prospectivePortalStartPathIndex,
+            portalEndPathIndex,
+            terminal,
+            out int prospectiveCornerPortalPathIndex);
+        FixVector2 prospectiveSegment = prospectiveTarget - integratedPosition;
+        if (FixVector2.SqrMagnitude(prospectiveSegment) > Fix64.Zero
+            && !TryValidatePortalCorridorFunnelSegmentFixed(
+                agent,
+                integratedPosition,
+                prospectiveSegment,
+                out string prospectiveFailure))
+        {
+            diagnostic =
+                $"corridor-funnel-rejected reason=prospective-{prospectiveFailure} portalLookahead={portalLookahead} " +
+                $"cornerPathIndex={prospectiveCornerPortalPathIndex} targetRaw=({prospectiveTarget.x.RawValue},{prospectiveTarget.y.RawValue})";
+            return false;
+        }
+        if (!TryValidatePortalCorridorFunnelSegmentFixed(
+                agent,
+                position,
+                integratedDisplacement,
+                out string integratedFailure))
+        {
+            diagnostic =
+                $"corridor-funnel-rejected reason=integrated-{integratedFailure} portalLookahead={portalLookahead} cornerPathIndex={finalCornerPortalPathIndex} " +
+                $"targetRaw=({integratedPosition.x.RawValue},{integratedPosition.y.RawValue})";
+            return false;
+        }
+
+        velocity = integratedDisplacement / deltaTime;
+        diagnostic =
+            $"corridor-funnel portalLookahead={portalLookahead} cornerPathIndex={finalCornerPortalPathIndex} consumedCorners={consumedCornerCount} " +
+            $"targetRaw=({integratedPosition.x.RawValue},{integratedPosition.y.RawValue}) corridor={FormatPathHandle(committedCorridor)}";
+        return true;
+    }
+
+    private static bool TryValidatePortalCorridorFunnelSegmentFixed(
+        AgentRuntimeData agent,
+        FixVector2 position,
+        FixVector2 displacement,
+        out string failure)
+    {
+        FixVector2 target = position + displacement;
+        if (!HasFixedGridLineOfSight(_world, position, target, allowTargetSoftCost: true))
+        {
+            failure = "grid-los-failed";
             return false;
         }
         if (!LogicStaticCollisionShadowService.TrySolveFixed(
@@ -12116,27 +13646,588 @@ public static partial class FlowFieldCrowdMovementSystem
                 out LogicStaticCollisionShadowResult solveResult))
         {
             throw new InvalidOperationException(
-                $"TryResolvePortalCorridorFunnelVelocityFixed failed: static collision world is unavailable for agentType={agent.AgentTypeId}.");
+                $"TryValidatePortalCorridorFunnelSegmentFixed failed: static collision world is unavailable for agentType={agent.AgentTypeId}.");
         }
         if (!solveResult.SolveResult.Success)
         {
             throw new InvalidOperationException(
-                $"TryResolvePortalCorridorFunnelVelocityFixed failed: direct corridor query failed for agent={agent.Id}, failure={solveResult.SolveResult.Failure}.");
+                $"TryValidatePortalCorridorFunnelSegmentFixed failed: direct corridor query failed for agent={agent.Id}, failure={solveResult.SolveResult.Failure}.");
         }
         if (solveResult.SolveResult.ResolvedDisplacement != displacement)
         {
-            diagnostic =
-                $"corridor-funnel-rejected reason=static-sweep-clipped portalLookahead={portalLookahead} cornerPathIndex={cornerPortalPathIndex} " +
-                $"targetRaw=({target.x.RawValue},{target.y.RawValue}) " +
-                $"desiredRaw=({displacement.x.RawValue},{displacement.y.RawValue}) " +
+            failure =
+                $"static-sweep-clipped desiredRaw=({displacement.x.RawValue},{displacement.y.RawValue}) " +
                 $"resolvedRaw=({solveResult.SolveResult.ResolvedDisplacement.x.RawValue},{solveResult.SolveResult.ResolvedDisplacement.y.RawValue})";
             return false;
         }
+        failure = null;
+        return true;
+    }
 
-        velocity = ScaleFixedDirectionToSpeed(displacement, maxSpeed);
+    private static void ResolveCommittedPotentialSlotApertureFixed(
+        int[] sectorIds,
+        int[] portalIds,
+        int pathIndex,
+        int slotIndex,
+        out FixVector2 left,
+        out FixVector2 right)
+    {
+        if (sectorIds == null
+            || portalIds == null
+            || pathIndex < 0
+            || pathIndex >= portalIds.Length
+            || pathIndex + 1 >= sectorIds.Length)
+        {
+            throw new InvalidOperationException(
+                $"ResolveCommittedPotentialSlotApertureFixed failed: corridor index is invalid index={pathIndex}.");
+        }
+
+        PortalData portal = GetPortalById(_world, portalIds[pathIndex]);
+        Vector2Int[] currentCells = GetPortalCellsForSector(portal, sectorIds[pathIndex]);
+        Vector2Int[] downstreamCells = GetPortalCellsForSector(portal, sectorIds[pathIndex + 1]);
+        if (slotIndex < 0 || slotIndex >= currentCells.Length || currentCells.Length != downstreamCells.Length)
+        {
+            throw new InvalidOperationException(
+                $"ResolveCommittedPotentialSlotApertureFixed failed: slot is invalid portal={portal.PortalId}, slot={slotIndex}, current={currentCells.Length}, downstream={downstreamCells.Length}.");
+        }
+
+        FixVector2 currentCenter = _world.GridToWorldCenterFixed(currentCells[slotIndex].x, currentCells[slotIndex].y);
+        FixVector2 downstreamCenter = _world.GridToWorldCenterFixed(downstreamCells[slotIndex].x, downstreamCells[slotIndex].y);
+        FixVector2 center = (currentCenter + downstreamCenter) / (Fix64)2;
+        Fix64 halfWidth = _world.CellSizeFixed / (Fix64)2;
+
+        FixVector2 first = portal.IsVerticalBoundary
+            ? new FixVector2(center.x, center.y - halfWidth)
+            : new FixVector2(center.x - halfWidth, center.y);
+        FixVector2 last = portal.IsVerticalBoundary
+            ? new FixVector2(center.x, center.y + halfWidth)
+            : new FixVector2(center.x + halfWidth, center.y);
+        FixVector2 travel = downstreamCenter - currentCenter;
+        if (ResolveFunnelTriangleArea2Raw(FixVector2.Zero, travel, first - center) >= 0L)
+        {
+            left = first;
+            right = last;
+        }
+        else
+        {
+            left = last;
+            right = first;
+        }
+    }
+
+    private static FixVector2 ResolveCommittedPotentialSlotFunnelTargetFixed(
+        int[] sectorIds,
+        int[] portalIds,
+        int currentPathIndex,
+        IList<ushort> committedSlotIndices,
+        FixVector2 position,
+        int portalStartOffset,
+        FixVector2 terminal,
+        out int cornerPortalOffset)
+    {
+        int portalEndOffset = committedSlotIndices?.Count ?? -1;
+        if (portalEndOffset <= 0
+            || currentPathIndex < 0
+            || currentPathIndex + portalEndOffset > portalIds.Length
+            || portalStartOffset < 0
+            || portalStartOffset > portalEndOffset)
+        {
+            throw new InvalidOperationException(
+                $"ResolveCommittedPotentialSlotFunnelTargetFixed failed: corridor range is invalid current={currentPathIndex}, start={portalStartOffset}, count={portalEndOffset}.");
+        }
+
+        FixVector2 apex = position;
+        FixVector2 funnelLeft = apex;
+        FixVector2 funnelRight = apex;
+        int leftOffset = portalStartOffset;
+        int rightOffset = portalStartOffset;
+        for (int portalOffset = portalStartOffset; portalOffset <= portalEndOffset; portalOffset++)
+        {
+            FixVector2 portalLeft;
+            FixVector2 portalRight;
+            if (portalOffset == portalEndOffset)
+            {
+                portalLeft = terminal;
+                portalRight = terminal;
+            }
+            else
+            {
+                int slotIndex = committedSlotIndices[portalOffset] - 1;
+                ResolveCommittedPotentialSlotApertureFixed(
+                    sectorIds,
+                    portalIds,
+                    currentPathIndex + portalOffset,
+                    slotIndex,
+                    out portalLeft,
+                    out portalRight);
+            }
+
+            if (ResolveFunnelTriangleArea2Raw(apex, funnelRight, portalRight) >= 0L)
+            {
+                if (funnelRight == apex
+                    || ResolveFunnelTriangleArea2Raw(apex, funnelLeft, portalRight) < 0L)
+                {
+                    funnelRight = portalRight;
+                    rightOffset = portalOffset;
+                }
+                else
+                {
+                    cornerPortalOffset = leftOffset;
+                    return funnelLeft;
+                }
+            }
+
+            if (ResolveFunnelTriangleArea2Raw(apex, funnelLeft, portalLeft) <= 0L)
+            {
+                if (funnelLeft == apex
+                    || ResolveFunnelTriangleArea2Raw(apex, funnelRight, portalLeft) > 0L)
+                {
+                    funnelLeft = portalLeft;
+                    leftOffset = portalOffset;
+                }
+                else
+                {
+                    cornerPortalOffset = rightOffset;
+                    return funnelRight;
+                }
+            }
+        }
+
+        cornerPortalOffset = portalEndOffset;
+        return terminal;
+    }
+
+    private static bool TryConstrainTargetToCommittedApertureFixed(
+        AgentRuntimeData agent,
+        PathHandle handle,
+        FlowTileCacheEntry tile,
+        int[] sectorIds,
+        int[] portalIds,
+        IList<ushort> committedSlots,
+        int currentPathIndex,
+        int portalStartOffset,
+        int cornerOffset,
+        int pathIndex,
+        int slotIndex,
+        FixVector2 position,
+        FixVector2 target,
+        FixVector2 terminal,
+        out FixVector2 constrainedTarget,
+        out string apertureDiagnostic)
+    {
+        constrainedTarget = target;
+        apertureDiagnostic = null;
+        PortalData portal = GetPortalById(_world, portalIds[pathIndex]);
+        Vector2Int[] currentCells = GetPortalCellsForSector(portal, sectorIds[pathIndex]);
+        Vector2Int[] downstreamCells = GetPortalCellsForSector(portal, sectorIds[pathIndex + 1]);
+        FixVector2 currentCenter = _world.GridToWorldCenterFixed(currentCells[slotIndex].x, currentCells[slotIndex].y);
+        FixVector2 downstreamCenter = _world.GridToWorldCenterFixed(downstreamCells[slotIndex].x, downstreamCells[slotIndex].y);
+        FixVector2 travel = downstreamCenter - currentCenter;
+        FixVector2 apertureCenter = (currentCenter + downstreamCenter) / (Fix64)2;
+        Fix64 normalPosition = portal.IsVerticalBoundary ? position.x : position.y;
+        Fix64 normalTarget = portal.IsVerticalBoundary ? target.x : target.y;
+        Fix64 normalPlane = portal.IsVerticalBoundary ? apertureCenter.x : apertureCenter.y;
+        Fix64 normalTravel = portal.IsVerticalBoundary ? travel.x : travel.y;
+        Fix64 positionPlaneDelta = normalPosition - normalPlane;
+        if (normalTravel.RawValue == 0)
+        {
+            throw new InvalidOperationException(
+                $"TryConstrainTargetToCommittedApertureFixed failed: portal travel has zero normal component portal={portal.PortalId}, slot={slotIndex}.");
+        }
+        if (positionPlaneDelta.RawValue == 0 || HaveSameNonZeroRawSign(positionPlaneDelta, normalTravel))
+        {
+            apertureDiagnostic =
+                $"already-crossed portal={portal.PortalId}/current=({currentCells[slotIndex].x},{currentCells[slotIndex].y})/downstream=({downstreamCells[slotIndex].x},{downstreamCells[slotIndex].y})/vertical={portal.IsVerticalBoundary}/normalRaw={normalPosition.RawValue}/planeRaw={normalPlane.RawValue}/travelRaw={normalTravel.RawValue}";
+            return false;
+        }
+
+        Fix64 normalDisplacement = normalTarget - normalPosition;
+        Fix64 planeDelta = normalPlane - normalPosition;
+        if (!HaveSameNonZeroRawSign(planeDelta, normalDisplacement))
+        {
+            string sectors = sectorIds == null ? "null" : string.Join("->", sectorIds);
+            string portals = portalIds == null ? "null" : string.Join("->", portalIds);
+            string slots = committedSlots == null ? "null" : string.Join("->", committedSlots);
+            throw new InvalidOperationException(
+                $"TryConstrainTargetToCommittedApertureFixed failed: target does not advance through committed portal. " +
+                $"entity={agent?.Id.ToString() ?? "null"}/characterKey={agent?.CharacterKey ?? "null"}/agentType={agent?.AgentTypeId.ToString() ?? "null"} " +
+                $"pathIndex={pathIndex}/currentPathIndex={currentPathIndex}/portalStartOffset={portalStartOffset}/cornerOffset={cornerOffset}/slotZeroBased={slotIndex} " +
+                $"portal={portal.PortalId}/vertical={portal.IsVerticalBoundary}/currentSector={sectorIds[pathIndex]}/downstreamSector={sectorIds[pathIndex + 1]} " +
+                $"currentCell=({currentCells[slotIndex].x},{currentCells[slotIndex].y})/downstreamCell=({downstreamCells[slotIndex].x},{downstreamCells[slotIndex].y}) " +
+                $"positionRaw=({position.x.RawValue},{position.y.RawValue})/targetRaw=({target.x.RawValue},{target.y.RawValue})/terminalRaw=({terminal.x.RawValue},{terminal.y.RawValue}) " +
+                $"currentCenterRaw=({currentCenter.x.RawValue},{currentCenter.y.RawValue})/downstreamCenterRaw=({downstreamCenter.x.RawValue},{downstreamCenter.y.RawValue})/travelRaw=({travel.x.RawValue},{travel.y.RawValue}) " +
+                $"normalPositionRaw={normalPosition.RawValue}/normalTargetRaw={normalTarget.RawValue}/normalPlaneRaw={normalPlane.RawValue}/normalTravelRaw={normalTravel.RawValue}/normalDisplacementRaw={normalDisplacement.RawValue}/planeDeltaRaw={planeDelta.RawValue} " +
+                $"sectors=[{sectors}]/portals=[{portals}]/committedSlotsOneBased=[{slots}] tile={FormatTileKey(tile.Key)} handle={FormatPathHandle(handle)}");
+        }
+
+        Fix64 tangentPosition = portal.IsVerticalBoundary ? position.y : position.x;
+        Fix64 tangentTarget = portal.IsVerticalBoundary ? target.y : target.x;
+        Fix64 tangentIntersection = tangentPosition
+                                    + (tangentTarget - tangentPosition) * planeDelta / normalDisplacement;
+        Fix64 halfWidth = _world.CellSizeFixed / (Fix64)2;
+        Fix64 tangentCenter = portal.IsVerticalBoundary ? apertureCenter.y : apertureCenter.x;
+        Fix64 minimumTangent = tangentCenter - halfWidth;
+        Fix64 maximumTangent = tangentCenter + halfWidth;
+        if (tangentIntersection >= minimumTangent && tangentIntersection <= maximumTangent)
+        {
+            apertureDiagnostic =
+                $"inside portal={portal.PortalId}/current=({currentCells[slotIndex].x},{currentCells[slotIndex].y})/downstream=({downstreamCells[slotIndex].x},{downstreamCells[slotIndex].y})/vertical={portal.IsVerticalBoundary}/intersectionRaw={tangentIntersection.RawValue}/minRaw={minimumTangent.RawValue}/maxRaw={maximumTangent.RawValue}";
+            return false;
+        }
+
+        Fix64 constrainedTangent = tangentIntersection < minimumTangent ? minimumTangent : maximumTangent;
+        constrainedTarget = portal.IsVerticalBoundary
+            ? new FixVector2(normalPlane, constrainedTangent)
+            : new FixVector2(constrainedTangent, normalPlane);
+        apertureDiagnostic =
+            $"constrained portal={portal.PortalId}/current=({currentCells[slotIndex].x},{currentCells[slotIndex].y})/downstream=({downstreamCells[slotIndex].x},{downstreamCells[slotIndex].y})/vertical={portal.IsVerticalBoundary}/intersectionRaw={tangentIntersection.RawValue}/minRaw={minimumTangent.RawValue}/maxRaw={maximumTangent.RawValue}";
+        return true;
+    }
+
+    private static bool TryResolveCommittedPotentialSlotFunnelVelocityFixed(
+        AgentRuntimeData agent,
+        PathHandle handle,
+        FlowTileCacheEntry tile,
+        int currentPortalSlotIndex,
+        FixVector2 position,
+        Fix64 maxSpeed,
+        out FixVector2 velocity,
+        out string diagnostic)
+    {
+        velocity = FixVector2.Zero;
+        diagnostic = null;
+        if (agent == null || handle == null || tile == null)
+            throw new InvalidOperationException("TryResolveCommittedPotentialSlotFunnelVelocityFixed failed: agent, handle, or tile is null.");
+        if (tile.DeterministicPortalContinuations == null
+            || currentPortalSlotIndex < 0
+            || currentPortalSlotIndex >= tile.DeterministicPortalContinuations.Length
+            || tile.DeterministicPortalContinuations[currentPortalSlotIndex] == null)
+        {
+            throw new InvalidOperationException(
+                $"TryResolveCommittedPotentialSlotFunnelVelocityFixed failed: committed slot corridor is missing slot={currentPortalSlotIndex}, key={FormatTileKey(tile.Key)}.");
+        }
+
+        List<ushort> committedSlots = CommittedPotentialPortalSlotsScratch;
+        committedSlots.Clear();
+        for (DeterministicPortalContinuation node = tile.DeterministicPortalContinuations[currentPortalSlotIndex];
+             node != null;
+             node = node.Downstream)
+        {
+            committedSlots.Add(node.PortalSlotIndex);
+        }
+        ResolveSteeringReadCorridor(
+            handle,
+            out int[] sectorIds,
+            out int[] portalIds,
+            out _,
+            out _,
+            out _,
+            out _);
+        int currentPathIndex = ResolveSteeringReadCorridorTileIndex(handle, agent, tile);
+        int expectedSlotCount = portalIds.Length - currentPathIndex;
+        if (committedSlots.Count != expectedSlotCount)
+        {
+            throw new InvalidOperationException(
+                $"TryResolveCommittedPotentialSlotFunnelVelocityFixed failed: slot corridor count mismatch slots={committedSlots.Count}, expected={expectedSlotCount}, key={FormatTileKey(tile.Key)}.");
+        }
+
+        Fix64 deltaTime = LogicFrameRuntime.FixedDeltaTime;
+        if (deltaTime <= Fix64.Zero)
+            throw new InvalidOperationException($"TryResolveCommittedPotentialSlotFunnelVelocityFixed failed: fixed delta time is invalid raw={deltaTime.RawValue}.");
+        Fix64 remainingDistance = maxSpeed * deltaTime;
+        FixVector2 integratedPosition = position;
+        FixVector2 terminal = agent.NavState.LastGoalWorldFixed;
+        int portalStartOffset = 0;
+        int consumedCorners = 0;
+        int finalCornerOffset = 0;
+        string apertureDiagnostic = "none";
+        while (remainingDistance > Fix64.Zero && portalStartOffset <= committedSlots.Count)
+        {
+            FixVector2 target = ResolveCommittedPotentialSlotFunnelTargetFixed(
+                sectorIds,
+                portalIds,
+                currentPathIndex,
+                committedSlots,
+                integratedPosition,
+                portalStartOffset,
+                terminal,
+                out int cornerOffset);
+            if (portalStartOffset < committedSlots.Count)
+            {
+                int currentSlotIndex = committedSlots[portalStartOffset] - 1;
+                if (TryConstrainTargetToCommittedApertureFixed(
+                    agent,
+                    handle,
+                    tile,
+                    sectorIds,
+                    portalIds,
+                    committedSlots,
+                    currentPathIndex,
+                    portalStartOffset,
+                    cornerOffset,
+                    currentPathIndex + portalStartOffset,
+                    currentSlotIndex,
+                    integratedPosition,
+                    target,
+                    terminal,
+                    out FixVector2 constrainedTarget,
+                    out apertureDiagnostic))
+                {
+                    target = constrainedTarget;
+                    cornerOffset = portalStartOffset;
+                }
+            }
+            finalCornerOffset = cornerOffset;
+            FixVector2 segment = target - integratedPosition;
+            if (segment == FixVector2.Zero)
+            {
+                if (cornerOffset >= committedSlots.Count)
+                    break;
+                portalStartOffset = cornerOffset + 1;
+                consumedCorners++;
+                continue;
+            }
+            if (!TryValidatePortalCorridorFunnelSegmentFixed(agent, integratedPosition, segment, out string failure))
+            {
+                diagnostic =
+                    $"corridor-potential-slot-funnel-unavailable reason={failure}/corner={cornerOffset}/slot={currentPortalSlotIndex}/aperture={apertureDiagnostic} " +
+                    $"targetRaw=({target.x.RawValue},{target.y.RawValue}) key={FormatTileKey(tile.Key)}";
+                return false;
+            }
+
+            Fix64 segmentLength = Fix64.Sqrt(FixVector2.SqrMagnitude(segment));
+            if (segmentLength >= remainingDistance)
+            {
+                integratedPosition += segment / segmentLength * remainingDistance;
+                remainingDistance = Fix64.Zero;
+                break;
+            }
+
+            integratedPosition = target;
+            remainingDistance -= segmentLength;
+            consumedCorners++;
+            if (cornerOffset >= committedSlots.Count)
+                break;
+            portalStartOffset = cornerOffset + 1;
+        }
+
+        FixVector2 displacement = integratedPosition - position;
+        if (displacement == FixVector2.Zero)
+            return false;
+        if (!TryValidatePortalCorridorFunnelSegmentFixed(agent, position, displacement, out string integratedFailure))
+        {
+            diagnostic =
+                $"corridor-potential-slot-funnel-unavailable reason=integrated-{integratedFailure}/corner={finalCornerOffset}/slot={currentPortalSlotIndex} " +
+                $"targetRaw=({integratedPosition.x.RawValue},{integratedPosition.y.RawValue}) key={FormatTileKey(tile.Key)}";
+            return false;
+        }
+
+        velocity = displacement / deltaTime;
         diagnostic =
-            $"corridor-funnel portalLookahead={portalLookahead} cornerPathIndex={cornerPortalPathIndex} " +
-            $"targetRaw=({target.x.RawValue},{target.y.RawValue}) corridor={FormatPathHandle(committedCorridor)}";
+            $"corridor-potential-slot-funnel slot={currentPortalSlotIndex}/corner={finalCornerOffset}/consumedCorners={consumedCorners}/aperture={apertureDiagnostic} " +
+            $"targetRaw=({integratedPosition.x.RawValue},{integratedPosition.y.RawValue}) key={FormatTileKey(tile.Key)}";
+        return true;
+    }
+
+    private static bool TryResolveCommittedPotentialStringPullVelocityFixed(
+        AgentRuntimeData agent,
+        PathHandle handle,
+        FlowTileCacheEntry startTile,
+        FixVector2 position,
+        Fix64 maxSpeed,
+        out FixVector2 velocity,
+        out string diagnostic)
+    {
+        velocity = FixVector2.Zero;
+        diagnostic = null;
+        if (agent == null || handle == null || startTile == null)
+            throw new InvalidOperationException("TryResolveCommittedPotentialStringPullVelocityFixed failed: agent, path, or tile is null.");
+        if (!_world.WorldToGridFixed(position, out int worldX, out int worldY))
+            throw new InvalidOperationException($"TryResolveCommittedPotentialStringPullVelocityFixed failed: position is outside world raw=({position.x.RawValue},{position.y.RawValue}).");
+
+        List<FixVector2> pathPoints = CommittedPotentialPathPointsScratch;
+        pathPoints.Clear();
+        pathPoints.Add(position);
+        FlowTileCacheEntry tile = startTile;
+        int guard = 0;
+        int guardLimit = Math.Max(64, handle.SectorIds.Length * Config.SectorSizeInCells * Config.SectorSizeInCells + 1);
+        while (true)
+        {
+            if (!IsInsideSector(tile, worldX, worldY))
+                throw new InvalidOperationException($"TryResolveCommittedPotentialStringPullVelocityFixed failed: trace cell is outside tile cell=({worldX},{worldY}), key={FormatTileKey(tile.Key)}.");
+            int localIndex = tile.GetLocalIndex(worldX, worldY);
+            int currentCost = tile.DeterministicIntegrationCosts[localIndex];
+            if (currentCost == int.MaxValue)
+                throw new InvalidOperationException($"TryResolveCommittedPotentialStringPullVelocityFixed failed: trace reached unreachable cell=({worldX},{worldY}), key={FormatTileKey(tile.Key)}.");
+            if (tile.Key.GoalKind == TileGoalKind.FinalGoal
+                && worldX + worldY * _world.Width == tile.Key.FinalGoalIndex)
+            {
+                FixVector2 terminal = agent.NavState.LastGoalWorldFixed;
+                if (pathPoints[pathPoints.Count - 1] != terminal)
+                    pathPoints.Add(terminal);
+                break;
+            }
+
+            int nextX;
+            int nextY;
+            int portalGoalIndex = tile.Key.GoalKind == TileGoalKind.Portal
+                ? IndexOfGoalCell(tile.GoalCells, worldX, worldY)
+                : -1;
+            if (portalGoalIndex >= 0)
+            {
+                if (tile.DeterministicPortalContinuations == null
+                    || portalGoalIndex >= tile.DeterministicPortalContinuations.Length
+                    || tile.DeterministicPortalContinuations[portalGoalIndex] == null)
+                {
+                    throw new InvalidOperationException(
+                        $"TryResolveCommittedPotentialStringPullVelocityFixed failed: committed continuation is missing slot={portalGoalIndex}, key={FormatTileKey(tile.Key)}.");
+                }
+                for (DeterministicPortalContinuation node = tile.DeterministicPortalContinuations[portalGoalIndex];
+                     node != null;
+                     node = node.Downstream)
+                {
+                    for (int i = 0; i < node.LocalCellIndices.Length; i++)
+                    {
+                        int cellIndex = node.LocalCellIndices[i];
+                        pathPoints.Add(_world.GridToWorldCenterFixed(
+                            cellIndex % _world.Width,
+                            cellIndex / _world.Width));
+                    }
+                }
+                FixVector2 terminal = agent.NavState.LastGoalWorldFixed;
+                if (pathPoints[pathPoints.Count - 1] != terminal)
+                    pathPoints.Add(terminal);
+                break;
+            }
+            else
+            {
+                byte directionIndex = tile.DeterministicFlowDirectionIndices[localIndex];
+                int offsetIndex = directionIndex - 1;
+                if (offsetIndex < 0 || offsetIndex >= NeighborOffsetX.Length)
+                    throw new InvalidOperationException($"TryResolveCommittedPotentialStringPullVelocityFixed failed: trace has no descending direction cell=({worldX},{worldY}), cost={currentCost}, key={FormatTileKey(tile.Key)}.");
+                nextX = worldX + NeighborOffsetX[offsetIndex];
+                nextY = worldY + NeighborOffsetY[offsetIndex];
+            }
+
+            if (!CanTraverseNeighborCells(_world, worldX, worldY, nextX, nextY))
+                throw new InvalidOperationException($"TryResolveCommittedPotentialStringPullVelocityFixed failed: trace direction is not traversable current=({worldX},{worldY}), next=({nextX},{nextY}), key={FormatTileKey(tile.Key)}.");
+            int nextLocalIndex = tile.GetLocalIndex(nextX, nextY);
+            int nextCost = tile.DeterministicIntegrationCosts[nextLocalIndex];
+            if (nextCost == int.MaxValue || nextCost >= currentCost)
+            {
+                throw new InvalidOperationException(
+                    $"TryResolveCommittedPotentialStringPullVelocityFixed failed: potential trace is not strictly descending " +
+                    $"current=({worldX},{worldY})/{currentCost}, next=({nextX},{nextY})/{nextCost}, key={FormatTileKey(tile.Key)}.");
+            }
+
+            worldX = nextX;
+            worldY = nextY;
+            pathPoints.Add(_world.GridToWorldCenterFixed(worldX, worldY));
+            guard++;
+            if (guard > guardLimit)
+                throw new InvalidOperationException($"TryResolveCommittedPotentialStringPullVelocityFixed failed: trace exceeded guard={guardLimit}, handle={FormatPathHandle(handle)}.");
+        }
+
+        List<int> maximumPathPrefixCellCosts = CommittedPotentialPathPrefixCostsScratch;
+        maximumPathPrefixCellCosts.Clear();
+        for (int i = 0; i < pathPoints.Count; i++)
+            maximumPathPrefixCellCosts.Add(0);
+        string rejectedSegment = "none";
+        for (int i = 1; i < pathPoints.Count; i++)
+        {
+            if (!_world.WorldToGridFixed(pathPoints[i], out int targetX, out int targetY))
+                throw new InvalidOperationException($"TryResolveCommittedPotentialStringPullVelocityFixed failed: path point is outside world index={i}.");
+            int pathCellCost = GetCostFieldValueStrict(_world, targetX, targetY);
+            if (pathCellCost == byte.MaxValue)
+                throw new InvalidOperationException($"TryResolveCommittedPotentialStringPullVelocityFixed failed: path point has blocked cost index={i}, cell=({targetX},{targetY}).");
+        }
+
+        Fix64 deltaTime = LogicFrameRuntime.FixedDeltaTime;
+        if (deltaTime <= Fix64.Zero)
+            throw new InvalidOperationException($"TryResolveCommittedPotentialStringPullVelocityFixed failed: fixed delta time is invalid raw={deltaTime.RawValue}.");
+        Fix64 remainingDistance = maxSpeed * deltaTime;
+        FixVector2 integratedPosition = position;
+        int anchorPathIndex = 0;
+        int consumedSegmentCount = 0;
+        int lastVisibleIndex = 0;
+        while (remainingDistance > Fix64.Zero && anchorPathIndex < pathPoints.Count - 1)
+        {
+            int maximumPathSegmentCellCost = 1;
+            for (int i = anchorPathIndex + 1; i < pathPoints.Count; i++)
+            {
+                _world.WorldToGridFixed(pathPoints[i], out int targetX, out int targetY);
+                maximumPathSegmentCellCost = Math.Max(
+                    maximumPathSegmentCellCost,
+                    GetCostFieldValueStrict(_world, targetX, targetY));
+                maximumPathPrefixCellCosts[i] = maximumPathSegmentCellCost;
+            }
+
+            int furthestVisibleIndex = 0;
+            for (int i = pathPoints.Count - 1; i > anchorPathIndex; i--)
+            {
+                FixVector2 candidateSegment = pathPoints[i] - integratedPosition;
+                if (!HasSoftCostTolerantGridLineOfSight(
+                        _world,
+                        integratedPosition,
+                        pathPoints[i],
+                        maximumPathPrefixCellCosts[i]))
+                {
+                    rejectedSegment = $"index={i}/reason=cost-band-supercover/maxPathCost={maximumPathPrefixCellCosts[i]}";
+                    continue;
+                }
+                if (!TryValidatePortalCorridorFunnelSegmentFixed(
+                        agent,
+                        integratedPosition,
+                        candidateSegment,
+                        out string failure))
+                {
+                    rejectedSegment = $"index={i}/reason={failure}";
+                    continue;
+                }
+                furthestVisibleIndex = i;
+                break;
+            }
+
+            if (furthestVisibleIndex <= anchorPathIndex)
+            {
+                diagnostic =
+                    $"corridor-potential-string-pull-unavailable pathPoints={pathPoints.Count}/anchor={anchorPathIndex}/rejected={rejectedSegment} " +
+                    $"key={FormatTileKey(startTile.Key)}";
+                return false;
+            }
+
+            FixVector2 segment = pathPoints[furthestVisibleIndex] - integratedPosition;
+            Fix64 segmentLength = Fix64.Sqrt(FixVector2.SqrMagnitude(segment));
+            if (segmentLength >= remainingDistance)
+            {
+                integratedPosition += segment / segmentLength * remainingDistance;
+                remainingDistance = Fix64.Zero;
+            }
+            else
+            {
+                integratedPosition = pathPoints[furthestVisibleIndex];
+                remainingDistance -= segmentLength;
+                anchorPathIndex = furthestVisibleIndex;
+                consumedSegmentCount++;
+            }
+            lastVisibleIndex = furthestVisibleIndex;
+        }
+
+        FixVector2 displacement = integratedPosition - position;
+        if (displacement == FixVector2.Zero)
+            return false;
+        if (!TryValidatePortalCorridorFunnelSegmentFixed(agent, position, displacement, out string integratedFailure))
+        {
+            diagnostic =
+                $"corridor-potential-string-pull-unavailable pathPoints={pathPoints.Count}/reason=integrated-{integratedFailure} " +
+                $"targetRaw=({integratedPosition.x.RawValue},{integratedPosition.y.RawValue}) key={FormatTileKey(startTile.Key)}";
+            return false;
+        }
+
+        velocity = displacement / deltaTime;
+        diagnostic =
+            $"corridor-potential-string-pull pathPoints={pathPoints.Count}/visibleIndex={lastVisibleIndex}/consumedSegments={consumedSegmentCount}/rejected={rejectedSegment} " +
+            $"targetRaw=({integratedPosition.x.RawValue},{integratedPosition.y.RawValue})";
         return true;
     }
 
@@ -12249,7 +14340,10 @@ public static partial class FlowFieldCrowdMovementSystem
             }
             if (directStaticClear && directCostClear)
             {
-                FixVector2 directVelocity = ScaleFixedDirectionToSpeed(toNavigationGoal, maxSpeed);
+                FixVector2 directVelocity = ResolveFixedVelocityToTargetWithinTick(
+                    position,
+                    resolvedNavigationGoal,
+                    maxSpeed);
                 nav.LastFixedFlowVelocity = directVelocity;
                 nav.LastFixedFlowResult =
                     $"direct-static-clear cell=({worldX},{worldY}) goalRaw=({resolvedNavigationGoal.x.RawValue},{resolvedNavigationGoal.y.RawValue}) key={FormatTileKey(key)}";
@@ -12258,10 +14352,21 @@ public static partial class FlowFieldCrowdMovementSystem
         }
         if (!hasCachedTile)
         {
+            if (RequiresPreparedNavigationSnapshot())
+            {
+                nav.LastFixedFlowVelocity = FixVector2.Zero;
+                nav.LastFixedFlowResult = $"pending-navigation-current-tile key={FormatTileKey(key)}";
+                return FixVector2.Zero;
+            }
             long requiredCommitStartTicks = Stopwatch.GetTimestamp();
             int requiredCommitCount = CommitRequiredDeterministicFlowTilePayload(key);
             _perf.RequiredFlowTileCommits += requiredCommitCount;
             _perf.FlowTileQueueTicks += Stopwatch.GetTimestamp() - requiredCommitStartTicks;
+            if (requiredCommitCount > 0)
+            {
+                RefreshFlowTileReferenceCounts();
+                TrimTileCache();
+            }
             if (requiredCommitCount <= 0
                 || !DeterministicFlowTileCache.TryGetValue(key, out tile))
             {
@@ -12324,26 +14429,47 @@ public static partial class FlowFieldCrowdMovementSystem
             recommendedPortalSlotIndexForDiagnostic = recommendedPortalSlotIndex;
             selectedPortalSlotIndexForDiagnostic = selectedPortalSlotIndex;
         }
-        string funnelDiagnostic = null;
-        bool currentPortalReached = goalKind == TileGoalKind.Portal
-                                    && IndexOfGoalCell(tile.GoalCells, worldX, worldY) >= 0;
-        if (goalKind == TileGoalKind.Portal
-            && !hasPendingRuntimeDirty)
+        string refinementDiagnostic = null;
+        try
         {
-            if (TryResolvePortalCorridorFunnelVelocityFixed(
+            if (goalKind == TileGoalKind.Portal && !hasPendingRuntimeDirty)
+            {
+                bool hasRefinedVelocity = TryResolveCommittedPotentialSlotFunnelVelocityFixed(
                     agent,
                     handle,
-                    key,
+                    tile,
+                    selectedPortalSlotIndexForDiagnostic,
                     position,
                     maxSpeed,
-                    currentPortalReached,
-                    out FixVector2 funnelVelocity,
-                    out funnelDiagnostic))
-            {
-                nav.LastFixedFlowVelocity = funnelVelocity;
-                nav.LastFixedFlowResult = funnelDiagnostic;
-                return funnelVelocity;
+                    out FixVector2 refinedVelocity,
+                    out refinementDiagnostic);
+                if (!hasRefinedVelocity)
+                {
+                    string slotFunnelDiagnostic = refinementDiagnostic;
+                    hasRefinedVelocity = TryResolveCommittedPotentialStringPullVelocityFixed(
+                        agent,
+                        handle,
+                        tile,
+                        position,
+                        maxSpeed,
+                        out refinedVelocity,
+                        out string fineGridDiagnostic);
+                    refinementDiagnostic =
+                        $"hierarchical-refinement slot=[{slotFunnelDiagnostic}] fine=[{fineGridDiagnostic}]";
+                }
+                if (hasRefinedVelocity)
+                {
+                    nav.LastFixedFlowVelocity = refinedVelocity;
+                    nav.LastFixedFlowResult = refinementDiagnostic;
+                    return refinedVelocity;
+                }
             }
+        }
+        catch (PendingNavigationTileException exception)
+        {
+            nav.LastFixedFlowVelocity = FixVector2.Zero;
+            nav.LastFixedFlowResult = $"pending-navigation-corridor-tile {exception.Message}";
+            return FixVector2.Zero;
         }
         byte directionIndex = tile.DeterministicFlowDirectionIndices[localIndex];
         if (directionIndex == 0)
@@ -12362,7 +14488,7 @@ public static partial class FlowFieldCrowdMovementSystem
             }
             FixVector2 toGoal = resolvedNavigationGoal - position;
             FixVector2 finalGoalVelocity = FixVector2.SqrMagnitude(toGoal) > Fix64.Zero
-                ? ScaleFixedDirectionToSpeed(toGoal, maxSpeed)
+                ? ResolveFixedVelocityToTargetWithinTick(position, resolvedNavigationGoal, maxSpeed)
                 : FixVector2.Zero;
             nav.LastFixedFlowVelocity = finalGoalVelocity;
             nav.LastFixedFlowResult = "final-goal";
@@ -12374,41 +14500,60 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException($"ResolveDeterministicFlowVelocityFixed failed: invalid direction {directionIndex}.");
         long gradientX;
         long gradientY;
-        FixVector2 direction = ResolveSpatiallyInterpolatedDeterministicGradientFixed(
-            handle,
-            agent,
-            tile,
-            position,
-            worldX,
-            worldY,
-            localIndex,
-            out gradientX,
-            out gradientY);
-        if (direction == FixVector2.Zero)
-            direction = new FixVector2(NeighborOffsetX[offsetIndex], NeighborOffsetY[offsetIndex]);
-        FixVector2 result = ResolveSpatiallyIntegratedFieldVelocityFixed(
-            handle,
-            agent,
-            tile,
-            null,
-            null,
-            position,
-            direction,
-            maxSpeed,
-            out int integrationSubsteps,
-            out int domainBoundarySubsteps,
-            out int sampledTileTransitions);
+        FixVector2 direction;
+        FixVector2 result;
+        int integrationSubsteps;
+        int domainBoundarySubsteps;
+        int sampledTileTransitions;
+        string integrationTrace;
+        try
+        {
+            direction = ResolveSpatiallyInterpolatedDeterministicGradientFixed(
+                handle,
+                agent,
+                tile,
+                ResolveSteeringReadCorridorTileIndex(handle, agent, tile),
+                position,
+                worldX,
+                worldY,
+                localIndex,
+                out gradientX,
+                out gradientY);
+            if (direction == FixVector2.Zero)
+                direction = new FixVector2(NeighborOffsetX[offsetIndex], NeighborOffsetY[offsetIndex]);
+            result = ResolveSpatiallyIntegratedFieldVelocityFixed(
+                handle,
+                agent,
+                tile,
+                null,
+                null,
+                position,
+                direction,
+                maxSpeed,
+                out integrationSubsteps,
+                out domainBoundarySubsteps,
+                out sampledTileTransitions,
+                out integrationTrace);
+        }
+        catch (PendingNavigationTileException exception)
+        {
+            nav.LastFixedFlowVelocity = FixVector2.Zero;
+            nav.LastFixedFlowResult = $"pending-navigation-corridor-tile {exception.Message}";
+            return FixVector2.Zero;
+        }
         nav.LastFixedFlowVelocity = result;
         nav.LastFixedFlowResult =
             $"direction={directionIndex}/gradient=({gradientX},{gradientY})/gradientFixedRaw=({direction.x.RawValue},{direction.y.RawValue})" +
             $"/integrationSubsteps={integrationSubsteps}" +
             $"/domainBoundarySubsteps={domainBoundarySubsteps}" +
             $"/sampledTileTransitions={sampledTileTransitions}" +
+            $"/integrationTrace={integrationTrace}" +
             $"/cell=({worldX},{worldY})/cost={tile.DeterministicIntegrationCosts[localIndex]}" +
             $"/portalSlot={recommendedPortalSlotIndexForDiagnostic}:{selectedPortalSlotIndexForDiagnostic}" +
             $"/portalGoals={(goalKind == TileGoalKind.Portal ? FormatGoalCells(tile.GoalCells) : "n/a")}" +
             $"/directStaticClear={directStaticClear}/directCostClear={directCostClear}" +
-            $"/funnel={(funnelDiagnostic ?? "not-evaluated")}";
+            $"/refinementAttempt={refinementDiagnostic ?? "not-requested"}" +
+            "/steeringAuthority=committed-corridor-potential";
         return result;
     }
 
@@ -12465,6 +14610,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     null,
                     null,
                     downstreamTile,
+                    -1,
                     downstreamPosition,
                     downstreamCell.x,
                     downstreamCell.y,
@@ -12515,6 +14661,7 @@ public static partial class FlowFieldCrowdMovementSystem
         FlowTileCacheKey portalTileKey,
         int downstreamSectorId)
     {
+        NavigationWorld pathWorld = ResolveCommittedNavigationWorldByVersion(portalTileKey.WorldVersion);
         if (portalTileKey.GoalKind != TileGoalKind.Portal || portalTileKey.DownstreamGoalHint >= 0)
         {
             throw new InvalidOperationException(
@@ -12525,6 +14672,15 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException(
                 $"CreatePortalContinuationFinalTileKey failed: final goal index is invalid key={FormatTileKey(portalTileKey)}.");
         }
+        FlowCorridorSuffixIdentity finalSuffixIdentity = portalTileKey.CorridorSuffixIdentity?.Downstream;
+        if (finalSuffixIdentity == null
+            || finalSuffixIdentity.SectorId != downstreamSectorId
+            || finalSuffixIdentity.PortalId != -1
+            || finalSuffixIdentity.Downstream != null)
+        {
+            throw new InvalidOperationException(
+                $"CreatePortalContinuationFinalTileKey failed: terminal corridor suffix is invalid key={FormatTileKey(portalTileKey)}.");
+        }
 
         return new FlowTileCacheKey(
             portalTileKey.WorldVersion,
@@ -12533,20 +14689,49 @@ public static partial class FlowFieldCrowdMovementSystem
             portalTileKey.FinalGoalIndex,
             0,
             portalTileKey.FinalGoalIndex,
+            finalSuffixIdentity,
             portalTileKey.AgentTypeId,
-            _world.Sectors[downstreamSectorId].DirtyVersion);
+            pathWorld.Sectors[downstreamSectorId].DirtyVersion);
     }
 
     private static FixVector2 ResolveSpatiallyInterpolatedDeterministicGradientFixed(
         PathHandle handle,
         AgentRuntimeData agent,
         FlowTileCacheEntry tile,
+        int sectorPathIndex,
         FixVector2 position,
         int worldX,
         int worldY,
         int localIndex,
         out long currentGradientX,
         out long currentGradientY)
+    {
+        return ResolveSpatiallyInterpolatedDeterministicGradientFixed(
+            handle,
+            agent,
+            tile,
+            sectorPathIndex,
+            position,
+            worldX,
+            worldY,
+            localIndex,
+            out currentGradientX,
+            out currentGradientY,
+            out _);
+    }
+
+    private static FixVector2 ResolveSpatiallyInterpolatedDeterministicGradientFixed(
+        PathHandle handle,
+        AgentRuntimeData agent,
+        FlowTileCacheEntry tile,
+        int sectorPathIndex,
+        FixVector2 position,
+        int worldX,
+        int worldY,
+        int localIndex,
+        out long currentGradientX,
+        out long currentGradientY,
+        out string sampleTrace)
     {
         FixVector2 currentDirection = ResolveDeterministicIntegrationGradientFixed(
             tile,
@@ -12572,16 +14757,24 @@ public static partial class FlowFieldCrowdMovementSystem
             out Fix64 ty);
         Fix64 oneMinusX = Fix64.One - tx;
         Fix64 oneMinusY = Fix64.One - ty;
-        FixVector2 weightedDirection = FixVector2.Zero;
+        FixVector2 weightedGradient = FixVector2.Zero;
         Fix64 totalWeight = Fix64.Zero;
-        AccumulateSpatialGradientSample(handle, agent, tile, worldX, worldY, x0, y0, oneMinusX * oneMinusY, ref weightedDirection, ref totalWeight);
-        AccumulateSpatialGradientSample(handle, agent, tile, worldX, worldY, x1, y0, tx * oneMinusY, ref weightedDirection, ref totalWeight);
-        AccumulateSpatialGradientSample(handle, agent, tile, worldX, worldY, x0, y1, oneMinusX * ty, ref weightedDirection, ref totalWeight);
-        AccumulateSpatialGradientSample(handle, agent, tile, worldX, worldY, x1, y1, tx * ty, ref weightedDirection, ref totalWeight);
+        System.Text.StringBuilder sampleTraceBuilder = IsMovementDiagnosticsEnabled()
+            ? new System.Text.StringBuilder(192)
+            : null;
+        AccumulateSpatialGradientSample(handle, agent, tile, sectorPathIndex, worldX, worldY, x0, y0, oneMinusX * oneMinusY, sampleTraceBuilder, ref weightedGradient, ref totalWeight);
+        AccumulateSpatialGradientSample(handle, agent, tile, sectorPathIndex, worldX, worldY, x1, y0, tx * oneMinusY, sampleTraceBuilder, ref weightedGradient, ref totalWeight);
+        AccumulateSpatialGradientSample(handle, agent, tile, sectorPathIndex, worldX, worldY, x0, y1, oneMinusX * ty, sampleTraceBuilder, ref weightedGradient, ref totalWeight);
+        AccumulateSpatialGradientSample(handle, agent, tile, sectorPathIndex, worldX, worldY, x1, y1, tx * ty, sampleTraceBuilder, ref weightedGradient, ref totalWeight);
+        sampleTrace = sampleTraceBuilder?.ToString() ?? "disabled";
+        if (totalWeight <= Fix64.Zero || weightedGradient == FixVector2.Zero)
+            return currentDirection;
 
-        return totalWeight > Fix64.Zero && weightedDirection != FixVector2.Zero
-            ? weightedDirection
-            : currentDirection;
+        currentGradientX = weightedGradient.x.RawValue;
+        currentGradientY = weightedGradient.y.RawValue;
+        long maximumMagnitude = Math.Max(Math.Abs(currentGradientX), Math.Abs(currentGradientY));
+        Fix64 scale = Fix64.FromRaw(maximumMagnitude);
+        return new FixVector2(weightedGradient.x / scale, weightedGradient.y / scale);
     }
 
     private static void ResolveSpatialGradientSampleGridFixed(
@@ -12636,16 +14829,38 @@ public static partial class FlowFieldCrowdMovementSystem
         PathHandle handle,
         AgentRuntimeData agent,
         FlowTileCacheEntry tile,
+        int sectorPathIndex,
         int currentX,
         int currentY,
         int sampleX,
         int sampleY,
         Fix64 weight,
+        System.Text.StringBuilder sampleTraceBuilder,
         ref FixVector2 weightedDirection,
         ref Fix64 totalWeight)
     {
-        if (weight <= Fix64.Zero || !IsInsideSector(tile, sampleX, sampleY))
+        if (weight <= Fix64.Zero)
             return;
+        FlowTileCacheEntry sampleTile = tile;
+        int samplePathIndex = sectorPathIndex;
+        if (!IsInsideSector(sampleTile, sampleX, sampleY))
+        {
+            if (handle == null
+                || agent == null
+                || !_world.TryGetSectorId(sampleX, sampleY, out int sampleSectorId)
+                || !TryResolveCommittedCorridorTileForSector(
+                    handle,
+                    agent,
+                    tile,
+                    sectorPathIndex,
+                    sampleSectorId,
+                    true,
+                    out sampleTile,
+                    out samplePathIndex))
+            {
+                return;
+            }
+        }
         if ((sampleX != currentX || sampleY != currentY)
             && !CanTraverseNeighborCells(_world, currentX, currentY, sampleX, sampleY))
         {
@@ -12657,14 +14872,15 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             return;
         }
-        int sampleLocalIndex = tile.GetLocalIndex(sampleX, sampleY);
-        if (tile.DeterministicIntegrationCosts[sampleLocalIndex] == int.MaxValue)
+        int sampleLocalIndex = sampleTile.GetLocalIndex(sampleX, sampleY);
+        if (sampleTile.DeterministicIntegrationCosts[sampleLocalIndex] == int.MaxValue)
             return;
 
-        int portalGoalIndex = tile.Key.GoalKind == TileGoalKind.Portal
-            ? IndexOfGoalCell(tile.GoalCells, sampleX, sampleY)
+        int portalGoalIndex = sampleTile.Key.GoalKind == TileGoalKind.Portal
+            ? IndexOfGoalCell(sampleTile.GoalCells, sampleX, sampleY)
             : -1;
-        FixVector2 sampleDirection;
+        FixVector2 sampleGradient;
+        string sampleSource;
         if (portalGoalIndex >= 0)
         {
             if (handle == null || agent == null)
@@ -12673,29 +14889,77 @@ public static partial class FlowFieldCrowdMovementSystem
                     $"AccumulateSpatialGradientSample failed: portal goal sampling requires path context key={FormatTileKey(tile.Key)}.");
             }
 
-            PortalData portal = GetPortalById(_world, tile.Key.GoalId);
+            PortalData portal = GetPortalById(_world, sampleTile.Key.GoalId);
             Vector2Int[] oppositeCells = GetPortalCellsForSector(
                 portal,
-                GetOppositeSectorId(portal, tile.Key.SectorId));
+                GetOppositeSectorId(portal, sampleTile.Key.SectorId));
             if (portalGoalIndex >= oppositeCells.Length)
             {
                 throw new InvalidOperationException(
-                    $"AccumulateSpatialGradientSample failed: portal goal pair is missing index={portalGoalIndex}, key={FormatTileKey(tile.Key)}.");
+                    $"AccumulateSpatialGradientSample failed: portal goal pair is missing index={portalGoalIndex}, key={FormatTileKey(sampleTile.Key)}.");
             }
 
-            Vector2Int currentCell = tile.GoalCells[portalGoalIndex];
-            sampleDirection = ResolvePortalGoalDownstreamTraceFixed(
-                tile.Key,
-                portal,
-                portalGoalIndex,
-                _world.GridToWorldCenterFixed(currentCell.x, currentCell.y),
-                currentCell,
-                oppositeCells[portalGoalIndex]);
+            Vector2Int currentCell = sampleTile.GoalCells[portalGoalIndex];
+            Vector2Int downstreamCell = oppositeCells[portalGoalIndex];
+            if (!_world.TryGetSectorId(downstreamCell.x, downstreamCell.y, out int downstreamSectorId)
+                || !TryResolveCommittedCorridorTileForSector(
+                    handle,
+                    agent,
+                    sampleTile,
+                    samplePathIndex,
+                    downstreamSectorId,
+                    true,
+                    out FlowTileCacheEntry downstreamTile,
+                    out int downstreamPathIndex))
+            {
+                throw new InvalidOperationException(
+                    $"AccumulateSpatialGradientSample failed: portal goal has no committed downstream tile cell=({currentCell.x},{currentCell.y}), paired=({downstreamCell.x},{downstreamCell.y}), key={FormatTileKey(sampleTile.Key)}.");
+            }
+
+            int downstreamLocalIndex = downstreamTile.GetLocalIndex(downstreamCell.x, downstreamCell.y);
+            int downstreamCost = downstreamTile.DeterministicIntegrationCosts[downstreamLocalIndex];
+            if (downstreamCost == int.MaxValue)
+            {
+                throw new InvalidOperationException(
+                    $"AccumulateSpatialGradientSample failed: paired downstream portal cell is unreachable cell=({downstreamCell.x},{downstreamCell.y}), key={FormatTileKey(downstreamTile.Key)}.");
+            }
+            int currentCost = sampleTile.DeterministicIntegrationCosts[sampleLocalIndex];
+            int resolvedCurrentCost = ResolveDeterministicEikonalIntegrationCost(
+                sampleTile,
+                sampleTile.DeterministicIntegrationCosts,
+                currentCell.x,
+                currentCell.y,
+                true,
+                downstreamCell.x,
+                downstreamCell.y,
+                downstreamCost);
+            if (currentCost != resolvedCurrentCost)
+            {
+                throw new InvalidOperationException(
+                    $"AccumulateSpatialGradientSample failed: portal Eikonal boundary residual mismatch current={currentCost}, downstream={downstreamCost}, resolved={resolvedCurrentCost}, " +
+                    $"currentCell=({currentCell.x},{currentCell.y}), downstreamCell=({downstreamCell.x},{downstreamCell.y}), currentKey={FormatTileKey(sampleTile.Key)}, downstreamKey={FormatTileKey(downstreamTile.Key)}.");
+            }
+
+            ResolveDeterministicIntegrationGradientFixed(
+                sampleTile,
+                currentCell.x,
+                currentCell.y,
+                sampleLocalIndex,
+                true,
+                downstreamCell.x,
+                downstreamCell.y,
+                downstreamCost,
+                out long sampleGradientX,
+                out long sampleGradientY);
+            sampleGradient = new FixVector2(
+                Fix64.FromRaw(sampleGradientX),
+                Fix64.FromRaw(sampleGradientY));
+            sampleSource = $"corridor-potential/downstreamTile={downstreamTile.Key.SectorId}/downstreamPath={downstreamPathIndex}/downstreamCost={downstreamCost}";
         }
         else
         {
-            sampleDirection = ResolveDeterministicIntegrationGradientFixed(
-                tile,
+            ResolveDeterministicIntegrationGradientFixed(
+                sampleTile,
                 sampleX,
                 sampleY,
                 sampleLocalIndex,
@@ -12703,20 +14967,167 @@ public static partial class FlowFieldCrowdMovementSystem
                 0,
                 0,
                 0,
-                out _,
-                out _);
+                out long sampleGradientX,
+                out long sampleGradientY);
+            sampleGradient = new FixVector2(
+                Fix64.FromRaw(sampleGradientX),
+                Fix64.FromRaw(sampleGradientY));
+            sampleSource = "tile-gradient";
         }
-        if (sampleDirection == FixVector2.Zero)
+        if (sampleGradient == FixVector2.Zero)
         {
-            byte storedDirection = tile.DeterministicFlowDirectionIndices[sampleLocalIndex];
+            byte storedDirection = sampleTile.DeterministicFlowDirectionIndices[sampleLocalIndex];
             int offsetIndex = storedDirection - 1;
             if (offsetIndex < 0 || offsetIndex >= NeighborOffsetX.Length)
                 return;
-            sampleDirection = new FixVector2(NeighborOffsetX[offsetIndex], NeighborOffsetY[offsetIndex]);
+            sampleGradient = new FixVector2(
+                Fix64.FromRaw(NeighborOffsetX[offsetIndex] * 1024L),
+                Fix64.FromRaw(NeighborOffsetY[offsetIndex] * 1024L));
+            sampleSource += "+stored";
         }
 
-        weightedDirection += sampleDirection * weight;
+        sampleTraceBuilder?.Append(sampleTraceBuilder.Length == 0 ? string.Empty : ";")
+            .Append("cell=(").Append(sampleX).Append(',').Append(sampleY).Append(')')
+            .Append("/tile=").Append(sampleTile.Key.SectorId)
+            .Append("/path=").Append(samplePathIndex)
+            .Append("/cost=").Append(sampleTile.DeterministicIntegrationCosts[sampleLocalIndex])
+            .Append("/source=").Append(sampleSource)
+            .Append("/gradientRaw=(").Append(sampleGradient.x.RawValue).Append(',').Append(sampleGradient.y.RawValue).Append(')')
+            .Append("/weightRaw=").Append(weight.RawValue);
+        weightedDirection += sampleGradient * weight;
         totalWeight += weight;
+    }
+
+    private static int ResolveSteeringReadCorridorTileIndex(
+        PathHandle handle,
+        AgentRuntimeData agent,
+        FlowTileCacheEntry tile)
+    {
+        if (handle == null || agent == null || tile == null)
+            return -1;
+        ResolveSteeringReadCorridor(
+            handle,
+            out int[] sectorIds,
+            out int[] portalIds,
+            out int startIndex,
+            out int goalX,
+            out int goalY,
+            out bool usesCommittedCorridor);
+        for (int index = startIndex; index < sectorIds.Length; index++)
+        {
+            FlowTileCacheKey key = CreateSteeringReadDomainTileKey(
+                handle,
+                sectorIds,
+                portalIds,
+                index,
+                goalX,
+                goalY,
+                agent.AgentTypeId,
+                usesCommittedCorridor);
+            if (key.Equals(tile.Key))
+                return index;
+        }
+
+        throw new InvalidOperationException(
+            $"ResolveSteeringReadCorridorTileIndex failed: tile is outside the committed steering corridor key={FormatTileKey(tile.Key)}, handle={FormatPathHandle(handle)}.");
+    }
+
+    private static bool TryResolveCommittedCorridorTileForSector(
+        PathHandle handle,
+        AgentRuntimeData agent,
+        FlowTileCacheEntry currentTile,
+        int currentPathIndex,
+        int sampleSectorId,
+        bool allowPreviousPathIndex,
+        out FlowTileCacheEntry sampleTile,
+        out int samplePathIndex)
+    {
+        if (handle == null || agent == null || currentTile == null)
+            throw new InvalidOperationException("TryResolveCommittedCorridorTileForSector failed: path, agent, or current tile is null.");
+        sampleTile = currentTile;
+        samplePathIndex = currentPathIndex;
+        if (sampleSectorId == currentTile.Key.SectorId)
+            return true;
+
+        ResolveSteeringReadCorridor(
+            handle,
+            out int[] sectorIds,
+            out int[] portalIds,
+            out int startIndex,
+            out int goalX,
+            out int goalY,
+            out bool usesCommittedCorridor);
+        if (currentPathIndex < startIndex || currentPathIndex >= sectorIds.Length)
+        {
+            throw new InvalidOperationException(
+                $"TryResolveCommittedCorridorTileForSector failed: current path index is invalid index={currentPathIndex}, start={startIndex}, count={sectorIds.Length}.");
+        }
+        FlowTileCacheKey expectedCurrentKey = CreateSteeringReadDomainTileKey(
+            handle,
+            sectorIds,
+            portalIds,
+            currentPathIndex,
+            goalX,
+            goalY,
+            agent.AgentTypeId,
+            usesCommittedCorridor);
+        if (!expectedCurrentKey.Equals(currentTile.Key))
+        {
+            throw new InvalidOperationException(
+                $"TryResolveCommittedCorridorTileForSector failed: current tile/key mismatch current={FormatTileKey(currentTile.Key)}, expected={FormatTileKey(expectedCurrentKey)}.");
+        }
+
+        int resolvedPathIndex = currentPathIndex + 1;
+        if (resolvedPathIndex >= sectorIds.Length || sectorIds[resolvedPathIndex] != sampleSectorId)
+        {
+            resolvedPathIndex = currentPathIndex - 1;
+            if (!allowPreviousPathIndex
+                || resolvedPathIndex < startIndex
+                || sectorIds[resolvedPathIndex] != sampleSectorId)
+            {
+                return false;
+            }
+        }
+        if (resolvedPathIndex < startIndex || resolvedPathIndex >= sectorIds.Length)
+            return false;
+        FlowTileCacheKey resolvedKey = CreateSteeringReadDomainTileKey(
+            handle,
+            sectorIds,
+            portalIds,
+            resolvedPathIndex,
+            goalX,
+            goalY,
+            agent.AgentTypeId,
+            usesCommittedCorridor);
+        if (!DeterministicFlowTileCache.TryGetValue(resolvedKey, out sampleTile))
+        {
+            throw new PendingNavigationTileException(
+                $"committed corridor tile is pending current={FormatTileKey(currentTile.Key)}, required={FormatTileKey(resolvedKey)}");
+        }
+
+        sampleTile.LastUsedFrame = GetFrameCount();
+        samplePathIndex = resolvedPathIndex;
+        return true;
+    }
+
+    private static bool TryResolveCommittedCorridorTileForSector(
+        PathHandle handle,
+        AgentRuntimeData agent,
+        FlowTileCacheEntry currentTile,
+        int currentPathIndex,
+        int sampleSectorId,
+        out FlowTileCacheEntry sampleTile,
+        out int samplePathIndex)
+    {
+        return TryResolveCommittedCorridorTileForSector(
+            handle,
+            agent,
+            currentTile,
+            currentPathIndex,
+            sampleSectorId,
+            false,
+            out sampleTile,
+            out samplePathIndex);
     }
 
     private static FixVector2 ResolveDeterministicIntegrationGradientFixed(
@@ -13034,10 +15445,11 @@ public static partial class FlowFieldCrowdMovementSystem
             maxSpeed,
             out int integrationSubsteps,
             out int domainBoundarySubsteps,
-            out int sampledTileTransitions);
+            out int sampledTileTransitions,
+            out string integrationTrace);
         portalTraversalDiagnostic +=
             $" integrationSubsteps={integrationSubsteps} domainBoundarySubsteps={domainBoundarySubsteps} " +
-            $"sampledTileTransitions={sampledTileTransitions}";
+            $"sampledTileTransitions={sampledTileTransitions} integrationTrace={integrationTrace}";
         return velocity;
     }
 
@@ -13052,8 +15464,10 @@ public static partial class FlowFieldCrowdMovementSystem
         Fix64 maxSpeed,
         out int substepCount,
         out int domainBoundarySubsteps,
-        out int sampledTileTransitions)
+        out int sampledTileTransitions,
+        out string directionTrace)
     {
+        directionTrace = "not-started";
         bool samplesTile = tile != null;
         bool samplesPortalAccess = portalAccessSector != null && portalAccess != null;
         if (samplesTile == samplesPortalAccess)
@@ -13081,10 +15495,18 @@ public static partial class FlowFieldCrowdMovementSystem
         Fix64 half = Fix64.FromRaw(2048);
         FixVector2 integratedPosition = position;
         FixVector2 direction = initialDirection.GetNormalized();
+        System.Text.StringBuilder directionTraceBuilder = IsMovementDiagnosticsEnabled()
+            ? new System.Text.StringBuilder(256)
+            : null;
+        directionTraceBuilder?.Append("initialRaw=(")
+            .Append(direction.x.RawValue).Append(',').Append(direction.y.RawValue).Append(')');
+        directionTrace = directionTraceBuilder?.ToString() ?? "disabled";
         domainBoundarySubsteps = 0;
         sampledTileTransitions = 0;
         FlowTileCacheEntry sampledTile = tile;
-        int sampledPathIndex = samplesTile ? handle.CurrentSectorIndex : -1;
+        int sampledPathIndex = samplesTile
+            ? ResolveSteeringReadCorridorTileIndex(handle, agent, tile)
+            : -1;
         for (int i = 0; i < substepCount; i++)
         {
             if (samplesTile)
@@ -13101,16 +15523,24 @@ public static partial class FlowFieldCrowdMovementSystem
             }
             bool hasStepStartDirection;
             FixVector2 stepStartDirection = FixVector2.Zero;
+            string stepStartSampleTrace = "initial-direction";
             try
             {
                 hasStepStartDirection = i > 0 && TryResolveSpatialFieldDirectionFixed(
                     handle,
                     agent,
                     sampledTile,
+                    sampledPathIndex,
                     portalAccessSector,
                     portalAccess,
                     integratedPosition,
-                    out stepStartDirection);
+                    out stepStartDirection,
+                    out stepStartSampleTrace);
+                directionTraceBuilder?.Append(" startSamples={").Append(stepStartSampleTrace).Append('}');
+            }
+            catch (PendingNavigationTileException)
+            {
+                throw;
             }
             catch (InvalidOperationException exception)
             {
@@ -13124,10 +15554,16 @@ public static partial class FlowFieldCrowdMovementSystem
             {
                 direction = stepStartDirection.GetNormalized();
             }
+            directionTraceBuilder?.Append("|step=").Append(i)
+                .Append(" startTile=").Append(sampledTile?.Key.SectorId ?? -1)
+                .Append(" path=").Append(sampledPathIndex)
+                .Append(" startRaw=(").Append(direction.x.RawValue).Append(',').Append(direction.y.RawValue).Append(')');
+            directionTrace = directionTraceBuilder?.ToString() ?? directionTrace;
 
             FixVector2 midpoint = integratedPosition + direction * substepDistance * half;
             bool midpointInFieldDomain = true;
             FlowTileCacheEntry midpointSampleTile = sampledTile;
+            int midpointPathIndex = sampledPathIndex;
             int midpointTileTransitions = 0;
             if (samplesTile)
             {
@@ -13138,7 +15574,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     midpoint,
                     sampledPathIndex,
                     out midpointSampleTile,
-                    out _,
+                    out midpointPathIndex,
                     out midpointTileTransitions)
                     && IsSpatialFieldCandidateReachable(midpointSampleTile, null, null, midpoint);
                 sampledTileTransitions += midpointTileTransitions;
@@ -13170,10 +15606,17 @@ public static partial class FlowFieldCrowdMovementSystem
                         handle,
                         agent,
                         midpointSampleTile,
+                        midpointPathIndex,
                         portalAccessSector,
                         portalAccess,
                         midpoint,
-                        out midpointDirection);
+                        out midpointDirection,
+                        out string midpointSampleTrace);
+                    directionTraceBuilder?.Append(" midpointSamples={").Append(midpointSampleTrace).Append('}');
+                }
+                catch (PendingNavigationTileException)
+                {
+                    throw;
                 }
                 catch (InvalidOperationException exception)
                 {
@@ -13189,6 +15632,11 @@ public static partial class FlowFieldCrowdMovementSystem
             {
                 direction = midpointDirection.GetNormalized();
             }
+            directionTraceBuilder?.Append(" midpointTile=").Append(midpointSampleTile?.Key.SectorId ?? -1)
+                .Append(" midpointPath=").Append(midpointPathIndex)
+                .Append(" midpointDomain=").Append(midpointInFieldDomain)
+                .Append(" midpointRaw=(").Append(direction.x.RawValue).Append(',').Append(direction.y.RawValue).Append(')');
+            directionTrace = directionTraceBuilder?.ToString() ?? directionTrace;
 
             FixVector2 candidatePosition = integratedPosition + direction * substepDistance;
             FlowTileCacheEntry candidateTile = sampledTile;
@@ -13257,6 +15705,10 @@ public static partial class FlowFieldCrowdMovementSystem
             sampledTile = candidateTile;
             sampledPathIndex = candidatePathIndex;
             sampledTileTransitions += candidateTileTransitions;
+            directionTraceBuilder?.Append(" candidateTile=").Append(sampledTile?.Key.SectorId ?? -1)
+                .Append(" candidatePath=").Append(sampledPathIndex)
+                .Append(" candidateRaw=(").Append(candidatePosition.x.RawValue).Append(',').Append(candidatePosition.y.RawValue).Append(')');
+            directionTrace = directionTraceBuilder?.ToString() ?? directionTrace;
         }
 
         return (integratedPosition - position) / deltaTime;
@@ -13310,19 +15762,22 @@ public static partial class FlowFieldCrowdMovementSystem
         candidatePathIndex = currentPathIndex;
         candidateTileTransitions = 0;
         if (!_world.WorldToGridFixed(candidatePosition, out int worldX, out int worldY)
-            || !_world.TryGetSectorId(worldX, worldY, out int sectorId)
-            || FindSectorIndex(handle, sectorId, handle.CurrentSectorIndex) < 0)
+            || !_world.TryGetSectorId(worldX, worldY, out int sectorId))
         {
             return false;
         }
-
-        candidateTile = ResolveSpatialIntegrationTileForPosition(
-            handle,
-            agent,
-            currentTile,
-            candidatePosition,
-            ref candidatePathIndex,
-            ref candidateTileTransitions);
+        if (!TryResolveCommittedCorridorTileForSector(
+                handle,
+                agent,
+                currentTile,
+                currentPathIndex,
+                sectorId,
+                out candidateTile,
+                out candidatePathIndex))
+        {
+            return false;
+        }
+        candidateTileTransitions = candidatePathIndex == currentPathIndex ? 0 : 1;
         return true;
     }
 
@@ -13344,44 +15799,20 @@ public static partial class FlowFieldCrowdMovementSystem
         }
         if (currentTile.Key.SectorId == sectorId)
             return currentTile;
-
-        int resolvedPathIndex = FindSectorIndex(handle, sectorId, handle.CurrentSectorIndex);
-        if (resolvedPathIndex < 0)
+        if (!TryResolveCommittedCorridorTileForSector(
+                handle,
+                agent,
+                currentTile,
+                sectorPathIndex,
+                sectorId,
+                out FlowTileCacheEntry resolvedTile,
+                out int resolvedPathIndex))
         {
             throw new InvalidOperationException(
-                $"ResolveSpatialIntegrationTileForPosition failed: sampled sector is not in the remaining path sector={sectorId}, " +
-                $"committedIndex={handle.CurrentSectorIndex}, sampledIndex={sectorPathIndex}, cell=({worldX},{worldY}), handle={FormatPathHandle(handle)}.");
+                $"ResolveSpatialIntegrationTileForPosition failed: sample left the committed corridor sector={sectorId}, " +
+                $"sampledIndex={sectorPathIndex}, cell=({worldX},{worldY}), handle={FormatPathHandle(handle)}.");
         }
 
-        EnqueueActiveFlowTileBuilds(
-            handle,
-            resolvedPathIndex,
-            handle.GoalX,
-            handle.GoalY,
-            agent.AgentTypeId);
-        FlowTileCacheKey key = CreateTileCacheKeyForPathSegment(
-            handle,
-            resolvedPathIndex,
-            handle.GoalX,
-            handle.GoalY,
-            agent.AgentTypeId,
-            out _,
-            out _);
-        if (!DeterministicFlowTileCache.TryGetValue(key, out FlowTileCacheEntry resolvedTile))
-        {
-            long requiredCommitStartTicks = Stopwatch.GetTimestamp();
-            int requiredCommitCount = CommitRequiredDeterministicFlowTilePayload(key);
-            _perf.RequiredFlowTileCommits += requiredCommitCount;
-            _perf.FlowTileQueueTicks += Stopwatch.GetTimestamp() - requiredCommitStartTicks;
-            if (requiredCommitCount <= 0
-                || !DeterministicFlowTileCache.TryGetValue(key, out resolvedTile))
-            {
-                throw new InvalidOperationException(
-                    $"ResolveSpatialIntegrationTileForPosition failed: sampled tile was not committed key={FormatTileKey(key)}.");
-            }
-        }
-
-        resolvedTile.LastUsedFrame = GetFrameCount();
         sectorPathIndex = resolvedPathIndex;
         sampledTileTransitions++;
         return resolvedTile;
@@ -13487,12 +15918,37 @@ public static partial class FlowFieldCrowdMovementSystem
         PathHandle handle,
         AgentRuntimeData agent,
         FlowTileCacheEntry tile,
+        int sectorPathIndex,
         SectorData portalAccessSector,
         SectorPortalAccessEntry portalAccess,
         FixVector2 position,
         out FixVector2 direction)
     {
+        return TryResolveSpatialFieldDirectionFixed(
+            handle,
+            agent,
+            tile,
+            sectorPathIndex,
+            portalAccessSector,
+            portalAccess,
+            position,
+            out direction,
+            out _);
+    }
+
+    private static bool TryResolveSpatialFieldDirectionFixed(
+        PathHandle handle,
+        AgentRuntimeData agent,
+        FlowTileCacheEntry tile,
+        int sectorPathIndex,
+        SectorData portalAccessSector,
+        SectorPortalAccessEntry portalAccess,
+        FixVector2 position,
+        out FixVector2 direction,
+        out string sampleTrace)
+    {
         direction = FixVector2.Zero;
+        sampleTrace = "not-sampled";
         if (!_world.WorldToGridFixed(position, out int worldX, out int worldY))
             return false;
 
@@ -13507,12 +15963,14 @@ public static partial class FlowFieldCrowdMovementSystem
                 handle,
                 agent,
                 tile,
+                sectorPathIndex,
                 position,
                 worldX,
                 worldY,
                 localIndex,
                 out _,
-                out _);
+                out _,
+                out sampleTrace);
             if (direction != FixVector2.Zero)
                 return true;
 
@@ -13521,6 +15979,7 @@ public static partial class FlowFieldCrowdMovementSystem
             if (offsetIndex < 0 || offsetIndex >= NeighborOffsetX.Length)
                 throw new InvalidOperationException($"TryResolveSpatialFieldDirectionFixed failed: tile sample has no direction cell=({worldX},{worldY}), key={FormatTileKey(tile.Key)}.");
             direction = new FixVector2(NeighborOffsetX[offsetIndex], NeighborOffsetY[offsetIndex]);
+            sampleTrace += ";fallback=stored-direction";
             return true;
         }
 
@@ -13548,6 +16007,7 @@ public static partial class FlowFieldCrowdMovementSystem
             currentCost,
             out _,
             out _);
+        sampleTrace = $"portal-access sector={portalAccessSector.SectorId}/portal={portalAccess.PortalId}/cell=({worldX},{worldY})/cost={currentCost}/dirRaw=({direction.x.RawValue},{direction.y.RawValue})";
         if (direction != FixVector2.Zero)
             return true;
         if (!TryResolveLowestPortalAccessNeighbor(
@@ -13565,6 +16025,7 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         direction = new FixVector2(NeighborOffsetX[bestDirectionIndex], NeighborOffsetY[bestDirectionIndex]);
+        sampleTrace += ";fallback=lowest-neighbor";
         return true;
     }
 
@@ -14124,17 +16585,70 @@ public static partial class FlowFieldCrowdMovementSystem
             return;
         }
 
-        FixedCorridorLookup corridorLookup = GetOrCreateFixedCorridorLookup(_world);
-        int corridorOperations = AdvanceFixedCorridorBuilds(_world, corridorLookup, FixedCorridorBuildOperationQuota);
-        CollectFixedPortalParticipants();
-        if (corridorOperations < FixedCorridorBuildOperationQuota)
+        CommitFixedPortalOwnerSnapshotForActiveWorld();
+    }
+
+    public static void CommitFixedPortalOwnerSnapshots()
+    {
+        NavigationWorld previousWorld = _world;
+        WorldRuntimeState previousActiveWorldState = _activeWorldState;
+        FlowBuildQueueWorldScratch.Clear();
+        foreach (WorldRuntimeState state in WorldStates.Values)
         {
-            int additionalOperations = AdvanceFixedCorridorBuilds(
-                _world,
-                corridorLookup,
-                FixedCorridorBuildOperationQuota - corridorOperations);
-            if (additionalOperations > 0)
-                CollectFixedPortalParticipants();
+            if (state != null && state.World != null && !state.IsDirty && state.BuildJob == null)
+                FlowBuildQueueWorldScratch.Add(state);
+        }
+        FlowBuildQueueWorldScratch.Sort((left, right) => left.AgentTypeId.CompareTo(right.AgentTypeId));
+
+        try
+        {
+            for (int i = 0; i < FlowBuildQueueWorldScratch.Count; i++)
+            {
+                ActivateFlowBuildQueueWorld(FlowBuildQueueWorldScratch[i]);
+                CommitFixedPortalOwnerSnapshotForActiveWorld();
+            }
+        }
+        finally
+        {
+            FlowBuildQueueWorldScratch.Clear();
+            _world = previousWorld;
+            _activeWorldState = previousActiveWorldState;
+        }
+    }
+
+    private static void CommitFixedPortalOwnerSnapshotForActiveWorld()
+    {
+        if (_world == null || _activeWorldState == null)
+            throw new InvalidOperationException("CommitFixedPortalOwnerSnapshotForActiveWorld failed: active world is null.");
+
+        int frame = GetFrameCount();
+        if (FixedPortalOwnerEvaluatedFrameByWorld.TryGetValue(_world.Version, out int evaluatedFrame)
+            && evaluatedFrame == frame)
+        {
+            return;
+        }
+
+        FixedCorridorLookup corridorLookup = GetOrCreateFixedCorridorLookup(_world);
+        AdvanceFixedCorridorBuilds(_world, corridorLookup, FixedCorridorBuildOperationQuota);
+        RefreshPendingFixedCorridorParticipants(_world.Version);
+
+        FixedPortalParticipantScratch.Clear();
+        foreach (KeyValuePair<FixedPortalOwnerKey, FixedPortalParticipantIndex> pair in FixedPortalParticipantIndexByKey)
+        {
+            if (pair.Key.WorldVersion != _world.Version || pair.Key.AgentTypeId != _world.AgentTypeId)
+                continue;
+
+            FixedPortalParticipantIndex index = pair.Value
+                ?? throw new InvalidOperationException("Fixed portal participant index contains a null entry.");
+            if (index.IsEmpty)
+                throw new InvalidOperationException("Fixed portal participant index contains an empty entry.");
+            FixedPortalParticipantScratch.Add(pair.Key, new FixedPortalParticipantSnapshot
+            {
+                PositiveMinimumAgentId = index.PositiveAgentIds.Count > 0 ? index.PositiveAgentIds.Min : int.MaxValue,
+                NegativeMinimumAgentId = index.NegativeAgentIds.Count > 0 ? index.NegativeAgentIds.Min : int.MaxValue,
+                PositiveOnPortal = index.PositiveOnPortalAgentIds.Count > 0,
+                NegativeOnPortal = index.NegativeOnPortalAgentIds.Count > 0,
+            });
         }
 
         FixedPortalOwnerKeyScratch.Clear();
@@ -14177,39 +16691,135 @@ public static partial class FlowFieldCrowdMovementSystem
         FixedPortalOwnerEvaluatedFrameByWorld[_world.Version] = frame;
     }
 
-    private static void CollectFixedPortalParticipants()
+    private static void RefreshPendingFixedCorridorParticipants(int worldVersion)
     {
-        FixedPortalParticipantScratch.Clear();
-
-        for (int i = 0; i < OrderedAgentIds.Count; i++)
+        if (!PendingFixedCorridorParticipantAgentIdsByWorld.TryGetValue(worldVersion, out SortedSet<int> pendingAgentIds)
+            || pendingAgentIds.Count == 0)
         {
-            AgentRuntimeData agent = Agents[OrderedAgentIds[i]];
-            if (agent == null || !IsAgentInActiveFlowBuildQueueWorld(agent))
-                continue;
-            if (ResolveFixedPortalTraversal(agent, out FixedPortalOwnerKey key, out int direction, out int distanceInCells)
-                != FixedCorridorResolution.Ready)
-                continue;
-            if (distanceInCells > FixedPortalInfluenceCells)
-                continue;
-
-            if (!FixedPortalParticipantScratch.TryGetValue(key, out FixedPortalParticipantSnapshot snapshot))
-            {
-                snapshot = new FixedPortalParticipantSnapshot();
-                FixedPortalParticipantScratch.Add(key, snapshot);
-            }
-
-            bool onPortal = distanceInCells == 0;
-            if (direction > 0)
-            {
-                snapshot.PositiveMinimumAgentId = Math.Min(snapshot.PositiveMinimumAgentId, agent.Id);
-                snapshot.PositiveOnPortal |= onPortal;
-            }
-            else
-            {
-                snapshot.NegativeMinimumAgentId = Math.Min(snapshot.NegativeMinimumAgentId, agent.Id);
-                snapshot.NegativeOnPortal |= onPortal;
-            }
+            return;
         }
+
+        FixedPortalParticipationAgentIdScratch.Clear();
+        foreach (int agentId in pendingAgentIds)
+            FixedPortalParticipationAgentIdScratch.Add(agentId);
+        for (int i = 0; i < FixedPortalParticipationAgentIdScratch.Count; i++)
+        {
+            int agentId = FixedPortalParticipationAgentIdScratch[i];
+            if (!Agents.TryGetValue(agentId, out AgentRuntimeData agent))
+                throw new InvalidOperationException($"Pending fixed corridor participant is missing agent={agentId}.");
+            UpdateFixedPortalParticipation(agent);
+        }
+        FixedPortalParticipationAgentIdScratch.Clear();
+    }
+
+    private static void UpdateFixedPortalParticipation(AgentRuntimeData agent)
+    {
+        if (agent == null)
+            throw new InvalidOperationException("UpdateFixedPortalParticipation failed: agent is null.");
+#if UNITY_EDITOR
+        _testFixedPortalParticipationUpdateCount++;
+#endif
+
+        FixedCorridorResolution resolution = ResolveFixedPortalTraversal(
+            agent,
+            out FixedPortalOwnerKey key,
+            out int direction,
+            out int distanceInCells);
+        if (resolution == FixedCorridorResolution.Pending)
+        {
+            RemoveFixedPortalParticipation(agent.Id);
+            AddPendingFixedCorridorParticipant(_world.Version, agent.Id);
+            return;
+        }
+
+        RemovePendingFixedCorridorParticipant(agent.Id);
+        if (resolution != FixedCorridorResolution.Ready || distanceInCells > FixedPortalInfluenceCells)
+        {
+            RemoveFixedPortalParticipation(agent.Id);
+            return;
+        }
+
+        bool onPortal = distanceInCells == 0;
+        if (FixedPortalParticipationByAgent.TryGetValue(agent.Id, out FixedPortalParticipation current)
+            && current.Key.Equals(key)
+            && current.Direction == direction
+            && current.OnPortal == onPortal)
+        {
+            return;
+        }
+
+        RemoveFixedPortalParticipation(agent.Id);
+        if (!FixedPortalParticipantIndexByKey.TryGetValue(key, out FixedPortalParticipantIndex index))
+        {
+            index = new FixedPortalParticipantIndex();
+            FixedPortalParticipantIndexByKey.Add(key, index);
+        }
+
+        SortedSet<int> directionIds = direction > 0 ? index.PositiveAgentIds : index.NegativeAgentIds;
+        if (!directionIds.Add(agent.Id))
+            throw new InvalidOperationException($"Fixed portal participant index already contains agent={agent.Id}.");
+        if (onPortal)
+        {
+            SortedSet<int> onPortalIds = direction > 0 ? index.PositiveOnPortalAgentIds : index.NegativeOnPortalAgentIds;
+            if (!onPortalIds.Add(agent.Id))
+                throw new InvalidOperationException($"Fixed portal on-portal index already contains agent={agent.Id}.");
+        }
+
+        FixedPortalParticipationByAgent.Add(agent.Id, new FixedPortalParticipation
+        {
+            Key = key,
+            Direction = direction,
+            OnPortal = onPortal,
+        });
+    }
+
+    private static void RemoveFixedPortalParticipation(int agentId)
+    {
+        RemovePendingFixedCorridorParticipant(agentId);
+        if (!FixedPortalParticipationByAgent.TryGetValue(agentId, out FixedPortalParticipation participation))
+            return;
+        if (!FixedPortalParticipantIndexByKey.TryGetValue(participation.Key, out FixedPortalParticipantIndex index))
+            throw new InvalidOperationException($"Fixed portal participant index is missing for agent={agentId}.");
+
+        SortedSet<int> directionIds = participation.Direction > 0 ? index.PositiveAgentIds : index.NegativeAgentIds;
+        if (!directionIds.Remove(agentId))
+            throw new InvalidOperationException($"Fixed portal participant direction index is missing agent={agentId}.");
+        if (participation.OnPortal)
+        {
+            SortedSet<int> onPortalIds = participation.Direction > 0 ? index.PositiveOnPortalAgentIds : index.NegativeOnPortalAgentIds;
+            if (!onPortalIds.Remove(agentId))
+                throw new InvalidOperationException($"Fixed portal on-portal index is missing agent={agentId}.");
+        }
+
+        FixedPortalParticipationByAgent.Remove(agentId);
+        if (index.IsEmpty)
+            FixedPortalParticipantIndexByKey.Remove(participation.Key);
+    }
+
+    private static void AddPendingFixedCorridorParticipant(int worldVersion, int agentId)
+    {
+        if (!PendingFixedCorridorParticipantAgentIdsByWorld.TryGetValue(worldVersion, out SortedSet<int> pendingAgentIds))
+        {
+            pendingAgentIds = new SortedSet<int>();
+            PendingFixedCorridorParticipantAgentIdsByWorld.Add(worldVersion, pendingAgentIds);
+        }
+        pendingAgentIds.Add(agentId);
+    }
+
+    private static void RemovePendingFixedCorridorParticipant(int agentId)
+    {
+        FixedPortalOwnerKeyScratch.Clear();
+        int emptyWorldVersion = -1;
+        foreach (KeyValuePair<int, SortedSet<int>> pair in PendingFixedCorridorParticipantAgentIdsByWorld)
+        {
+            if (!pair.Value.Remove(agentId))
+                continue;
+            if (pair.Value.Count == 0)
+                emptyWorldVersion = pair.Key;
+            break;
+        }
+        if (emptyWorldVersion >= 0)
+            PendingFixedCorridorParticipantAgentIdsByWorld.Remove(emptyWorldVersion);
     }
 
     private static FixVector2 ApplyFixedPortalOwner(AgentRuntimeData agent, FixVector2 velocity)
@@ -14972,6 +17582,17 @@ public static partial class FlowFieldCrowdMovementSystem
         for (int i = 0; i < FixedPortalOwnerKeyScratch.Count; i++)
             FixedPortalOwners.Remove(FixedPortalOwnerKeyScratch[i]);
         FixedPortalOwnerKeyScratch.Clear();
+
+        FixedPortalParticipationAgentIdScratch.Clear();
+        foreach (KeyValuePair<int, FixedPortalParticipation> pair in FixedPortalParticipationByAgent)
+        {
+            if (pair.Value.Key.WorldVersion == worldVersion)
+                FixedPortalParticipationAgentIdScratch.Add(pair.Key);
+        }
+        for (int i = 0; i < FixedPortalParticipationAgentIdScratch.Count; i++)
+            RemoveFixedPortalParticipation(FixedPortalParticipationAgentIdScratch[i]);
+        FixedPortalParticipationAgentIdScratch.Clear();
+        PendingFixedCorridorParticipantAgentIdsByWorld.Remove(worldVersion);
         FixedPortalOwnerEvaluatedFrameByWorld.Remove(worldVersion);
         FixedCorridorLookupByWorldVersion.Remove(worldVersion);
     }
@@ -15542,6 +18163,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 TrimMovingTargetAnchors();
                 TrimCombatTargetSlotCache();
                 _perf = new FlowPerfAccumulator { Frame = frame };
+#if UNITY_EDITOR
+                ResetEditorHierarchyStartConnectorDiagnostics();
+#endif
             }
             _perfInitialized = false;
             return;
@@ -15551,6 +18175,9 @@ public static partial class FlowFieldCrowdMovementSystem
         if (!_perfInitialized)
         {
             _perf = new FlowPerfAccumulator { Frame = frame, FrameStartTicks = nowTicks };
+#if UNITY_EDITOR
+            ResetEditorHierarchyStartConnectorDiagnostics();
+#endif
             _perfInitialized = true;
             return;
         }
@@ -15609,11 +18236,11 @@ public static partial class FlowFieldCrowdMovementSystem
             $"tileActive={TicksToMs(_perf.FlowTileActiveEnqueueTicks):F3}ms,tilePrune={TicksToMs(_perf.FlowTilePruneTicks):F3}ms,tileRefs={TicksToMs(_perf.FlowTileReferenceTicks):F3}ms," +
             $"sharedActive={TicksToMs(_perf.SharedGoalActiveEnqueueTicks):F3}ms,sharedPrune={TicksToMs(_perf.SharedGoalPruneTicks):F3}ms,sharedProcess={TicksToMs(_perf.SharedGoalProcessTicks):F3}ms,sharedPortalNodes={_perf.SharedGoalPortalGraphNodeExpansions},sharedPortalIncoming={_perf.SharedGoalPortalGraphIncomingTransitionScans},sharedPortalHits={_perf.SharedGoalPortalGraphIncomingTransitionHits},refCalls={_perf.FlowTileReferenceRefreshCalls},refKeys={_perf.FlowTileReferenceKeyScans}) " +
             $"pathPortal(nodes={_perf.PathPortalGraphNodeExpansions},outgoing={_perf.PathPortalGraphOutgoingTransitionScans},hits={_perf.PathPortalGraphOutgoingTransitionHits}) " +
-            $"corridorAStar(ms={TicksToMs(_perf.SectorCorridorAStarTicks):F3},queries={_perf.SectorCorridorAStarQueries},frontierRebuilds={_perf.SectorCorridorAStarFrontierRebuilds},frontierNodes={_perf.SectorCorridorAStarFrontierNodes}) " +
+            $"corridorPolicy(ms={TicksToMs(_perf.SectorCorridorPolicyTicks):F3},queries={_perf.SectorCorridorPolicyQueries}) " +
             $"agentUpdate={TicksToMs(_perf.AgentUpdateTicks):F3}ms " +
             $"sectorPath(searches={_perf.SectorPathSearches},cacheHits={_perf.SectorPathCacheHits}) " +
             $"portalGraphMergeHits={_perf.PortalGraphMergeHits} " +
-            $"tileQueueOps(enq={_perf.FlowTileQueueEnqueued},promote={_perf.FlowTileQueuePromoted},prune={_perf.FlowTileQueuePruned},requiredCommits={_perf.RequiredFlowTileCommits}) " +
+            $"tileQueueOps(enq={_perf.FlowTileQueueEnqueued},promote=0,prune={_perf.FlowTileQueuePruned},requiredCommits={_perf.RequiredFlowTileCommits}) " +
             $"tileCache(hits={_perf.TileCacheHits},misses={_perf.TileCacheMisses}) " +
             $"pending(sharedGoal={_perf.PathPendingSharedGoal},tile={_perf.TilePendingBuild}) " +
             $"stableGoal(raw={_perf.StableGoalRaw},reachabilityReuse={_perf.StableGoalReachabilityReuse},reuse={_perf.StableGoalReuse},initial={_perf.StableGoalRefreshInitial},cell={_perf.StableGoalRefreshCellDelta}) " +
@@ -15649,7 +18276,7 @@ public static partial class FlowFieldCrowdMovementSystem
             $"[FlowTileQueueTrace] frame={_perf.Frame} frames={_tilePendingWithoutBuildFrames} " +
             $"pendingTile={_perf.TilePendingBuild} tileBuilds=0 queue={FlowTileBuildQueue.Count} " +
             $"pendingSet={PendingFlowTileBuildJobs.Count} tileQueueTicks={TicksToMs(_perf.FlowTileQueueTicks):F3}ms " +
-            $"ops(enq={_perf.FlowTileQueueEnqueued},promote={_perf.FlowTileQueuePromoted},prune={_perf.FlowTileQueuePruned}) " +
+            $"ops(enq={_perf.FlowTileQueueEnqueued},promote=0,prune={_perf.FlowTileQueuePruned}) " +
             $"tileCache(hits={_perf.TileCacheHits},misses={_perf.TileCacheMisses},count={FlowTileCache.Count}) " +
             $"pathDetail(startPortal={TicksToMs(_perf.PathStartPortalCheckTicks):F3}ms,firstCross={TicksToMs(_perf.PathFirstCrossingTicks):F3}ms,checks={_perf.PathStartPortalChecks},candidates={_perf.PathStartPortalCandidates},startPortalHits={_perf.PathStartPortalCacheHits},startPortalMisses={_perf.PathStartPortalCacheMisses},firstCrossHits={_perf.PathFirstCrossingCacheHits},firstCrossMisses={_perf.PathFirstCrossingCacheMisses}) " +
             $"pathReasons(noHandle={_perf.PathBuildNoHandle},worldMismatch={_perf.PathBuildWorldMismatch},goalSectorMismatch={_perf.PathBuildGoalSectorMismatch},goalCellMismatch={_perf.PathBuildGoalCellMismatch},invalid={_perf.PathBuildInvalidHandle}) " +
@@ -16755,6 +19382,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 case WorldBuildStage.PortalGraph:
                     ProcessWorldBuildPortalGraph(job, deadlineTicks, forceComplete);
                     break;
+                case WorldBuildStage.Hierarchy:
+                    ProcessWorldBuildHierarchy(job, deadlineTicks, forceComplete);
+                    break;
                 case WorldBuildStage.Commit:
                     CommitWorldBuildJob(state, job);
                     job.Stage = WorldBuildStage.Complete;
@@ -17211,6 +19841,8 @@ public static partial class FlowFieldCrowdMovementSystem
                     job.AgentTypeId,
                     out job.PendingPortalAccessEntries);
                 RefreshWorldBuildAuthorityInputHash(job);
+                if (job.WorkingWorld.Hierarchy == null)
+                    throw new InvalidOperationException("InitializeWorldBuildJob failed: prebaked navigation has no hierarchy.");
                 job.Stage = WorldBuildStage.Commit;
                 return true;
             }
@@ -17507,9 +20139,25 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         PruneIsolatedWalkableCells(world, "world-build");
+        if (!job.IncludeRuntimeObstacles)
+            FreezeCanonicalStaticNavigationBase(world);
         job.SectorCursor = 0;
         job.CellCursor = 0;
         job.Stage = WorldBuildStage.CostField;
+    }
+
+    private static void FreezeCanonicalStaticNavigationBase(NavigationWorld world)
+    {
+        if (world == null)
+            throw new InvalidOperationException("FreezeCanonicalStaticNavigationBase failed: world is null.");
+        int cellCount = checked(world.Width * world.Height);
+        if (world.WalkableMask == null || world.WalkableMask.Length != cellCount)
+            throw new InvalidOperationException("FreezeCanonicalStaticNavigationBase failed: walkable mask is invalid.");
+        if (world.NeighborTraversalMask == null || world.NeighborTraversalMask.Length != cellCount)
+            throw new InvalidOperationException("FreezeCanonicalStaticNavigationBase failed: neighbor mask is invalid.");
+
+        world.BaseWalkableMask = (bool[])world.WalkableMask.Clone();
+        world.BaseNeighborTraversalMask = (byte[])world.NeighborTraversalMask.Clone();
     }
 
     private static void ProcessWorldBuildCostField(WorldBuildJob job, long deadlineTicks, bool forceComplete)
@@ -17653,6 +20301,31 @@ public static partial class FlowFieldCrowdMovementSystem
 
         LogWorldBuildPortalGraphTiming(job);
         RemoveStalePortalSignatures(world);
+        job.Stage = WorldBuildStage.Hierarchy;
+    }
+
+    private static void ProcessWorldBuildHierarchy(WorldBuildJob job, long deadlineTicks, bool forceComplete)
+    {
+        if (job.WorkingWorld == null)
+            throw new InvalidOperationException("ProcessWorldBuildHierarchy failed: working world is null.");
+        if (!job.HierarchyTransitionCostsPrepared)
+        {
+            if (job.PendingPortalAccessEntries == null)
+                throw new InvalidOperationException("ProcessWorldBuildHierarchy failed: pending portal access entries are missing.");
+            for (int i = 0; i < job.PendingPortalAccessEntries.Count; i++)
+            {
+                PendingSectorPortalAccess pending = job.PendingPortalAccessEntries[i];
+                SectorData sector = job.WorkingWorld.Sectors[pending.SectorId];
+                ApplyPendingPortalTransitionCosts(job.WorkingWorld, sector, pending);
+            }
+            job.HierarchyTransitionCostsPrepared = true;
+            job.HierarchyBuildJob = CreatePortalHierarchyBuildJob(job.WorkingWorld, DefaultHierarchyFanout);
+        }
+
+        ProcessPortalHierarchyBuildJob(job.HierarchyBuildJob, deadlineTicks, forceComplete);
+        if (!job.HierarchyBuildJob.Complete)
+            return;
+        job.WorkingWorld.Hierarchy = job.HierarchyBuildJob.Result;
         job.Stage = WorldBuildStage.Commit;
     }
 
@@ -17692,7 +20365,11 @@ public static partial class FlowFieldCrowdMovementSystem
                 if (analytic)
                     AddPendingAnalyticSectorPortalAccess(job.PendingPortalAccessEntries, sector, fromPortalId);
                 else
-                    AddPendingDeterministicSectorPortalAccess(job.PendingPortalAccessEntries, sector, fromPortalId);
+                    AddPendingPrebuiltDeterministicSectorPortalAccess(
+                        world,
+                        job.PendingPortalAccessEntries,
+                        sector,
+                        fromPortalId);
 
                 AddDeterministicPortalTransitionTopology(world, sector, fromPortalId);
                 job.PortalGraphAccessCount++;
@@ -17744,7 +20421,7 @@ public static partial class FlowFieldCrowdMovementSystem
         int previousWorldVersion = state.World != null ? state.World.Version : 0;
         _perf.WorldBuilds++;
         state.World = job.WorkingWorld;
-        state.World.Version = _nextWorldVersion++;
+        state.World.Version = AllocateNavigationWorldVersion();
         _navigationTopologyVersion++;
         LogIslandFieldDiagnostics(state.World, "world-build");
         state.IsDirty = false;
@@ -17755,6 +20432,7 @@ public static partial class FlowFieldCrowdMovementSystem
         FlowTileBuildQueue.Clear();
         PendingFlowTileBuildJobs.Clear();
         ActiveFlowTileBuildKeys.Clear();
+        PendingFlowTileDependencyKeys.Clear();
         ClearSectorPathCache();
         StartPortalChoiceCache.Clear();
         RemoveSectorPortalAccessCacheEntriesForWorldVersion(previousWorldVersion);
@@ -17773,6 +20451,9 @@ public static partial class FlowFieldCrowdMovementSystem
         FinalizeWorldCostStorage(state.World);
         RebuildDeterministicPortalTransitionCosts(state.World);
         ValidateAllSectorPortalAccessCoverage(state.World, "world-build-commit");
+        if (state.World.Hierarchy == null)
+            throw new InvalidOperationException("CommitWorldBuildJob failed: hierarchy was not prepared before commit.");
+        ValidatePortalHierarchyEdgeCosts(state.World, state.World.Hierarchy);
         RefreshNavigationWorldDeterministicHash(state.World);
         CombatTargetSlotCache.Clear();
         ClearFixedPortalOwnersForWorld(previousWorldVersion);
@@ -18210,6 +20891,9 @@ public static partial class FlowFieldCrowdMovementSystem
                     if (!ProcessRuntimeDirtyPortalGraph(job, deadlineTicks, forceComplete))
                         return;
                     break;
+                case RuntimeDirtyRebuildStage.Hierarchy:
+                    ProcessRuntimeDirtyHierarchy(job, deadlineTicks, forceComplete);
+                    break;
                 case RuntimeDirtyRebuildStage.PrepareCommit:
                     PrepareRuntimeDirtyCommit(job);
                     job.Stage = RuntimeDirtyRebuildStage.WorldHash;
@@ -18329,9 +21013,6 @@ public static partial class FlowFieldCrowdMovementSystem
             $"commitDetail(swap={TicksToMilliseconds(job.CommitSwapTicks):F3}ms," +
             $"cache={TicksToMilliseconds(job.CommitCacheInvalidationTicks):F3}ms," +
             $"portalAccess={TicksToMilliseconds(job.CommitPortalAccessTicks):F3}ms," +
-            $"costStorage={TicksToMilliseconds(job.CommitCostStorageTicks):F3}ms," +
-            $"transitionCost={TicksToMilliseconds(job.CommitTransitionCostTicks):F3}ms," +
-            $"validation={TicksToMilliseconds(job.CommitValidationTicks):F3}ms," +
             $"worldHash={TicksToMilliseconds(job.CommitWorldHashTicks):F3}ms," +
             $"agents={TicksToMilliseconds(job.CommitAgentInvalidationTicks):F3}ms)";
     }
@@ -18973,8 +21654,20 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         LogRuntimeDirtyPortalGraphTiming(job);
-        job.Stage = RuntimeDirtyRebuildStage.PrepareCommit;
+        job.Stage = RuntimeDirtyRebuildStage.Hierarchy;
         return true;
+    }
+
+    private static void ProcessRuntimeDirtyHierarchy(RuntimeDirtyRebuildJob job, long deadlineTicks, bool forceComplete)
+    {
+        if (job.WorkingWorld == null)
+            throw new InvalidOperationException("ProcessRuntimeDirtyHierarchy failed: working world is null.");
+        job.HierarchyBuildJob ??= CreatePortalHierarchyBuildJob(job.WorkingWorld, DefaultHierarchyFanout);
+        ProcessPortalHierarchyBuildJob(job.HierarchyBuildJob, deadlineTicks, forceComplete);
+        if (!job.HierarchyBuildJob.Complete)
+            return;
+        job.WorkingWorld.Hierarchy = job.HierarchyBuildJob.Result;
+        job.Stage = RuntimeDirtyRebuildStage.PrepareCommit;
     }
 
     private static bool ProcessRuntimeDirtyPortalTransitions(RuntimeDirtyRebuildJob job, long deadlineTicks, bool forceComplete)
@@ -19064,6 +21757,8 @@ public static partial class FlowFieldCrowdMovementSystem
 
         ValidatePendingSectorPortalAccessCoverage(job.WorkingWorld, job.PendingPortalAccessEntries, "runtime-dirty-prepare");
         FinalizeWorldCostStorage(job.WorkingWorld);
+        if (job.WorkingWorld.Hierarchy == null)
+            throw new InvalidOperationException("PrepareRuntimeDirtyCommit failed: hierarchy was not prepared.");
         job.WorldHashBuildJob = CreateNavigationWorldHashBuildJob(job.WorkingWorld);
     }
 
@@ -19129,6 +21824,7 @@ public static partial class FlowFieldCrowdMovementSystem
         target.HasDeterministicContentHash = true;
         target.PortalIdsBySignature = working.PortalIdsBySignature;
         target.UsedPortalIds = working.UsedPortalIds;
+        target.Hierarchy = working.Hierarchy;
 
         ReturnWorldArrayIfOwned(oldWalkableMask, target.BaseWalkableMask, target.WalkableMask);
         ReturnWorldArrayIfOwned(oldNeighborTraversalMask, target.BaseNeighborTraversalMask, target.NeighborTraversalMask);
@@ -19212,7 +21908,8 @@ public static partial class FlowFieldCrowdMovementSystem
             Sectors = CloneSectors(source.Sectors, dirtySectors),
             Portals = (PortalData[])source.Portals.Clone(),
             PortalsById = new Dictionary<int, PortalData>(source.PortalsById),
-            NextPortalId = source.NextPortalId
+            NextPortalId = source.NextPortalId,
+            Hierarchy = source.Hierarchy
         };
         clone.CopyAuthorityGridMetadataFrom(source);
 
@@ -19998,24 +22695,17 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException($"FlushPortalRun failed: side cell count mismatch A={cellsA.Count} B={cellsB.Count}.");
 
         bool runIsNarrow = IsPortalBottleneck(world, sectorAId, sectorBId, cellsA, cellsB, isVerticalBoundary);
-        int maxSegmentWidth = ResolvePortalMaxWindowWidthCells(world);
         int segmentStart = 0;
         for (int i = 1; i <= cellsA.Count; i++)
         {
             bool reachedEnd = i == cellsA.Count;
-            bool reachedMaxWidth = i - segmentStart >= maxSegmentWidth;
             bool costSplit = !reachedEnd && ShouldSplitPortalRunBeforeIndex(world, cellsA, cellsB, i);
-            if (!reachedEnd && !reachedMaxWidth && !costSplit)
+            if (!reachedEnd && !costSplit)
                 continue;
 
             AddPortalSegment(world, portals, sectorAId, sectorBId, cellsA, cellsB, segmentStart, i - segmentStart, isVerticalBoundary, runIsNarrow);
             segmentStart = i;
         }
-    }
-
-    private static int ResolvePortalMaxWindowWidthCells(NavigationWorld world)
-    {
-        return Mathf.Max(ResolvePortalNarrowWidthCells(world), ResolveScaledCellCount(world, Config.PortalMaxWindowWidthCells));
     }
 
     private static bool ShouldSplitPortalRunBeforeIndex(NavigationWorld world, List<Vector2Int> cellsA, List<Vector2Int> cellsB, int index)
@@ -20924,25 +23614,6 @@ public static partial class FlowFieldCrowdMovementSystem
         return pending;
     }
 
-    private static PendingSectorPortalAccess AddPendingDeterministicSectorPortalAccess(
-        List<PendingSectorPortalAccess> pendingEntries,
-        SectorData sector,
-        int portalId)
-    {
-        if (pendingEntries == null)
-            throw new InvalidOperationException("AddPendingDeterministicSectorPortalAccess failed: pendingEntries is null.");
-        if (sector == null)
-            throw new InvalidOperationException("AddPendingDeterministicSectorPortalAccess failed: sector is null.");
-
-        var pending = new PendingSectorPortalAccess(
-            sector.SectorId,
-            portalId,
-            sector.DirtyVersion,
-            false);
-        pendingEntries.Add(pending);
-        return pending;
-    }
-
     private static PendingSectorPortalAccess AddPendingPrebuiltDeterministicSectorPortalAccess(
         NavigationWorld world,
         List<PendingSectorPortalAccess> pendingEntries,
@@ -21224,7 +23895,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void RemoveSectorPortalAccessCacheEntriesForWorldVersion(int worldVersion)
     {
-        if (worldVersion <= 0 || SectorPortalAccessCache.Count == 0)
+        if (worldVersion == 0 || SectorPortalAccessCache.Count == 0)
             return;
 
         List<SectorPortalAccessKey> keysToRemove = null;
@@ -21243,6 +23914,22 @@ public static partial class FlowFieldCrowdMovementSystem
         for (int i = 0; i < keysToRemove.Count; i++)
             RemoveSectorPortalAccessCacheEntry(keysToRemove[i]);
     }
+
+    private static int AllocateNavigationWorldVersion()
+    {
+        if (_nextWorldVersion <= 0 || _nextWorldVersion == int.MaxValue)
+            throw new InvalidOperationException($"Navigation world version space is exhausted. next={_nextWorldVersion}.");
+        return _nextWorldVersion++;
+    }
+
+#if UNITY_EDITOR
+    private static int AllocateEditorBakeNavigationWorldVersion()
+    {
+        if (_nextEditorBakeWorldVersion >= 0 || _nextEditorBakeWorldVersion == int.MinValue)
+            throw new InvalidOperationException($"Editor bake navigation world version space is exhausted. next={_nextEditorBakeWorldVersion}.");
+        return _nextEditorBakeWorldVersion--;
+    }
+#endif
 
     private static string BuildMissingPortalAccessDiagnostics(NavigationWorld world, int sectorId, int portalId, int dirtyVersion)
     {
@@ -21454,14 +24141,23 @@ public static partial class FlowFieldCrowdMovementSystem
         int goalY,
         bool useSectorCorridorPolicy)
     {
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
         PathHandle handle = agent.NavState.PathHandle;
-        if (handle != null
-            && handle.WorldVersion == _world.Version
-            && handle.SectorIds != null
-            && handle.SectorIds.Length > 0
-            && !PathReferencesMissingPortal(handle)
-            && FindSectorIndex(handle, startSectorId, 0) >= 0
-            && handle.SectorIds[handle.SectorIds.Length - 1] == goalSectorId)
+        long stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        bool canReuseHandle = handle != null
+                              && handle.WorldVersion == _world.Version
+                              && handle.SectorIds != null
+                              && handle.SectorIds.Length > 0
+                              && !PathReferencesMissingPortal(handle)
+                              && FindSectorIndex(handle, startSectorId, 0) >= 0
+                              && handle.SectorIds[handle.SectorIds.Length - 1] == goalSectorId;
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowPathFastValidation,
+                Stopwatch.GetTimestamp() - stageStartTicks);
+        }
+        if (canReuseHandle)
         {
             if (!handle.MatchesGoal(goalX, goalY))
             {
@@ -21501,16 +24197,28 @@ public static partial class FlowFieldCrowdMovementSystem
         PathHandle oldHandle = handle;
         string rebuildReason = ResolvePathHandleRebuildReason(oldHandle, startSectorId, goalSectorId, goalX, goalY);
         IncrementPathHandleRebuildReason(rebuildReason);
-        handle = rebuildReason == "goalSectorMismatch"
-                 && TryBuildPathHandleWithCommittedPortalPrefix(
-                     agent,
-                     oldHandle,
-                     startSectorId,
-                     goalSectorId,
-                     goalX,
-                     goalY,
-                     useSectorCorridorPolicy,
-                     out PathHandle committedPrefixHandle)
+        PathHandle committedPrefixHandle = null;
+        bool committedPrefixBuilt = false;
+        if (rebuildReason == "goalSectorMismatch")
+        {
+            stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+            committedPrefixBuilt = TryBuildPathHandleWithCommittedPortalPrefix(
+                agent,
+                oldHandle,
+                startSectorId,
+                goalSectorId,
+                goalX,
+                goalY,
+                useSectorCorridorPolicy,
+                out committedPrefixHandle);
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowPathBuildCommittedPrefix,
+                    Stopwatch.GetTimestamp() - stageStartTicks);
+            }
+        }
+        handle = committedPrefixBuilt
             ? committedPrefixHandle
             : BuildPathHandle(startSectorId, goalSectorId, startX, startY, goalX, goalY, useSectorCorridorPolicy);
         agent.NavState.PathHandle = handle;
@@ -22994,6 +25702,7 @@ public static partial class FlowFieldCrowdMovementSystem
         int goalY,
         bool useSectorCorridorPolicy)
     {
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
         _perf.PathBuilds++;
         SectorData startSector = _world.Sectors[startSectorId];
         SectorData goalSector = _world.Sectors[goalSectorId];
@@ -23033,12 +25742,31 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         SectorPathCacheKey sectorPathKey = CreateSectorPathCacheKey(startSectorId, startX, startY, goalSectorId, goalX, goalY);
-        if (TryCreatePathHandleFromSectorPathCache(sectorPathKey, startSector, startSectorId, goalSectorId, startX, startY, goalX, goalY, out PathHandle cachedHandle))
+        long stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        bool cacheHit = TryCreatePathHandleFromSectorPathCache(
+            sectorPathKey,
+            startSector,
+            startSectorId,
+            goalSectorId,
+            startX,
+            startY,
+            goalX,
+            goalY,
+            out PathHandle cachedHandle);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowPathBuildCache,
+                Stopwatch.GetTimestamp() - stageStartTicks);
+        }
+        if (cacheHit)
             return cachedHandle;
 
         int sharedAgentTypeId = ResolvePreferredAgentTypeId(_world.AgentTypeId);
-        if (TryGetCachedSharedGoalField(goalSectorId, goalX, goalY, sharedAgentTypeId, out SharedGoalField sharedField)
-            && TryBuildPathHandleFromSharedGoalField(
+        stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        PathHandle sharedHandle = null;
+        bool sharedGoalBuilt = TryGetCachedSharedGoalField(goalSectorId, goalX, goalY, sharedAgentTypeId, out SharedGoalField sharedField)
+                               && TryBuildPathHandleFromSharedGoalField(
                 sectorPathKey,
                 sharedField,
                 startSector,
@@ -23048,14 +25776,23 @@ public static partial class FlowFieldCrowdMovementSystem
                 startY,
                 goalX,
                 goalY,
-                out PathHandle sharedHandle))
+                out sharedHandle);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowPathBuildSharedGoal,
+                Stopwatch.GetTimestamp() - stageStartTicks);
+        }
+        if (sharedGoalBuilt)
         {
             return sharedHandle;
         }
 
-        if (useSectorCorridorPolicy
-            && startSectorId != goalSectorId
-            && TryBuildPathHandleFromSectorCorridorPolicy(
+        stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        PathHandle policyHandle = null;
+        bool corridorPolicyBuilt = useSectorCorridorPolicy
+                                   && startSectorId != goalSectorId
+                                   && TryBuildPathHandleFromSectorCorridorPolicy(
                 sectorPathKey,
                 startSector,
                 startSectorId,
@@ -23065,13 +25802,42 @@ public static partial class FlowFieldCrowdMovementSystem
                 goalX,
                 goalY,
                 sharedAgentTypeId,
-                out PathHandle policyHandle))
+                out policyHandle);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowPathBuildCorridorPolicy,
+                Stopwatch.GetTimestamp() - stageStartTicks);
+        }
+        if (corridorPolicyBuilt)
         {
             return policyHandle;
         }
 
         _perf.SectorPathSearches++;
-        if (TryBuildPathHandleWithPortalGraphAStar(
+        if (IsPortalHierarchyQueryRequired(_world, startSectorId, goalSectorId))
+        {
+            stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+            bool hierarchyBuilt = TryBuildPathHandleWithPortalHierarchy(
+                sectorPathKey,
+                startSectorId,
+                goalSectorId,
+                startX,
+                startY,
+                goalX,
+                goalY,
+                out PathHandle hierarchyHandle);
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowPathBuildHierarchy,
+                    Stopwatch.GetTimestamp() - stageStartTicks);
+            }
+            return hierarchyBuilt ? hierarchyHandle : null;
+        }
+
+        stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        bool graphBuilt = TryBuildPathHandleWithPortalGraphAStar(
             sectorPathKey,
             startSector,
             goalSector,
@@ -23081,7 +25847,14 @@ public static partial class FlowFieldCrowdMovementSystem
             startY,
             goalX,
             goalY,
-            out PathHandle graphHandle))
+            out PathHandle graphHandle);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowPathBuildPortalGraph,
+                Stopwatch.GetTimestamp() - stageStartTicks);
+        }
+        if (graphBuilt)
         {
             return graphHandle;
         }
@@ -23574,7 +26347,20 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static long ResolveDeterministicPortalTransitionCost(int sectorId, int fromPortalId, int toPortalId)
     {
-        SectorData sector = _world.Sectors[sectorId];
+        return ResolveDeterministicPortalTransitionCost(_world, sectorId, fromPortalId, toPortalId);
+    }
+
+    private static long ResolveDeterministicPortalTransitionCost(
+        NavigationWorld world,
+        int sectorId,
+        int fromPortalId,
+        int toPortalId)
+    {
+        if (world == null)
+            throw new InvalidOperationException("ResolveDeterministicPortalTransitionCost failed: world is null.");
+        if (sectorId < 0 || sectorId >= world.Sectors.Length)
+            throw new ArgumentOutOfRangeException(nameof(sectorId));
+        SectorData sector = world.Sectors[sectorId];
         List<PortalTransition> outgoingTransitions = GetOutgoingPortalTransitions(sector, fromPortalId);
         if (outgoingTransitions == null)
             return long.MaxValue;
@@ -23745,6 +26531,8 @@ public static partial class FlowFieldCrowdMovementSystem
         if (sectorIds == null || sectorIds.Count == 0 || portalIds == null)
             throw new InvalidOperationException("CreateAndCachePathHandle failed: invalid path lists.");
 
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long createStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         PathHandle handle = new PathHandle
         {
             HandleId = _nextPathHandleId++,
@@ -23763,6 +26551,12 @@ public static partial class FlowFieldCrowdMovementSystem
             LastUsedFrame = GetFrameCount()
         });
         TrimSectorPathCache();
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowPathHandleCreateCache,
+                Stopwatch.GetTimestamp() - createStartTicks);
+        }
         return handle;
     }
 
@@ -23902,27 +26696,82 @@ public static partial class FlowFieldCrowdMovementSystem
         out PathHandle handle)
     {
         handle = null;
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long lookupStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         var policyKey = new SectorCorridorPolicyKey(
             _world.Version,
             agentTypeId,
             goalSectorId,
             _world.GetIndex(goalX, goalY),
             _world.Sectors[goalSectorId].DirtyVersion);
-        if (!SectorCorridorPolicies.TryGetValue(policyKey, out SectorCorridorPolicy policy))
+        bool policyFound = SectorCorridorPolicies.TryGetValue(policyKey, out SectorCorridorPolicy policy);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCorridorPolicyLookup,
+                Stopwatch.GetTimestamp() - lookupStartTicks);
+        }
+        if (!policyFound)
         {
             _perf.SectorPathSearches++;
-            policy = CreateSectorCorridorPolicy(goalSectorId, goalX, goalY);
-            if (policy == null || !ExpandSectorCorridorPolicyToStartCell(policy, startSectorId, startX, startY))
+            policy = new SectorCorridorPolicy { LastUsedFrame = GetFrameCount() };
+            bool policyAuthorityMutationStarted = false;
+            bool pathBuilt = IsPortalHierarchyQueryRequired(_world, startSectorId, goalSectorId)
+                ? TryBuildPathHandleFromPortalHierarchyReversePolicy(
+                    policy,
+                    sectorPathKey,
+                    startSectorId,
+                    goalSectorId,
+                    startX,
+                    startY,
+                    goalX,
+                    goalY,
+                    ref policyAuthorityMutationStarted,
+                    out handle)
+                : InitializeAndExpandL0SectorCorridorPolicy(
+                    policy,
+                    goalSectorId,
+                    goalX,
+                    goalY,
+                    startSectorId,
+                    startX,
+                    startY);
+            if (!pathBuilt)
                 return false;
             SetSectorCorridorPolicy(policyKey, policy);
             TrimSectorCorridorPolicies();
         }
-        else if (!IsSectorCorridorPolicyStartCellCovered(policy, startSectorId, startX, startY)
-                 && !ExpandHashedSectorCorridorPolicyToStartCell(policyKey, policy, startSectorId, startX, startY))
+        else if (IsPortalHierarchyQueryRequired(_world, startSectorId, goalSectorId))
         {
-            return false;
+            if (!ExpandHashedPortalHierarchyReversePolicyToStartCell(
+                    policyKey,
+                    policy,
+                    sectorPathKey,
+                    startSectorId,
+                    goalSectorId,
+                    startX,
+                    startY,
+                    goalX,
+                    goalY,
+                    out handle))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            if (policy.PortalOpenSet.Count == 0 && policy.NodeCosts.Count == 0)
+                InitializeL0SectorCorridorPolicy(policy, goalSectorId, goalX, goalY);
+            if (!IsSectorCorridorPolicyStartCellCovered(policy, startSectorId, startX, startY)
+                && !ExpandHashedSectorCorridorPolicyToStartCell(policyKey, policy, startSectorId, startX, startY))
+            {
+                return false;
+            }
         }
         policy.LastUsedFrame = GetFrameCount();
+
+        if (handle != null)
+            return true;
 
         int bestStartNode = int.MinValue;
         long bestStartCost = long.MaxValue;
@@ -23943,6 +26792,7 @@ public static partial class FlowFieldCrowdMovementSystem
         if (bestStartNode == int.MinValue)
             return false;
 
+        long reconstructStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         var nodes = new List<int>(16) { bestStartNode };
         int cursor = bestStartNode;
         int guard = 0;
@@ -23957,16 +26807,46 @@ public static partial class FlowFieldCrowdMovementSystem
         if (!TryConvertPortalNodesToPath(nodes, startSectorId, goalSectorId, out List<int> sectorIds, out List<int> portalIds))
             throw new InvalidOperationException(
                 $"TryBuildPathHandleFromSectorCorridorPolicy failed: settled policy did not reach goal startSector={startSectorId} goalSector={goalSectorId} startNode={bestStartNode}.");
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCorridorPolicyReconstruct,
+                Stopwatch.GetTimestamp() - reconstructStartTicks);
+        }
 
         handle = CreateAndCachePathHandle(sectorPathKey, sectorIds, portalIds, goalX, goalY);
         handle.BuildSource = "sectorCorridorPolicy";
         return true;
     }
 
-    private static SectorCorridorPolicy CreateSectorCorridorPolicy(int goalSectorId, int goalX, int goalY)
+    private static bool InitializeAndExpandL0SectorCorridorPolicy(
+        SectorCorridorPolicy policy,
+        int goalSectorId,
+        int goalX,
+        int goalY,
+        int startSectorId,
+        int startX,
+        int startY)
     {
+        InitializeL0SectorCorridorPolicy(policy, goalSectorId, goalX, goalY);
+        return ExpandSectorCorridorPolicyToStartCell(policy, startSectorId, startX, startY);
+    }
+
+    private static void InitializeL0SectorCorridorPolicy(
+        SectorCorridorPolicy policy,
+        int goalSectorId,
+        int goalX,
+        int goalY)
+    {
+        if (policy == null)
+            throw new ArgumentNullException(nameof(policy));
+        if (policy.NodeCosts.Count != 0 || policy.NextNodeTowardGoal.Count != 0
+            || policy.SettledPortalNodes.Count != 0 || policy.PortalOpenSet.Count != 0)
+        {
+            throw new InvalidOperationException("InitializeL0SectorCorridorPolicy failed: L0 policy is already initialized.");
+        }
+
         SectorData goalSector = _world.Sectors[goalSectorId];
-        var policy = new SectorCorridorPolicy { LastUsedFrame = GetFrameCount() };
         for (int i = 0; i < goalSector.PortalIds.Count; i++)
         {
             int portalId = goalSector.PortalIds[i];
@@ -23977,6 +26857,15 @@ public static partial class FlowFieldCrowdMovementSystem
             SetSectorCorridorPolicyNodeCost(policy, goalNode, goalCost);
             policy.PortalOpenSet.Push(goalNode, goalCost);
         }
+        if (policy.PortalOpenSet.Count == 0)
+            throw new InvalidOperationException(
+                $"InitializeL0SectorCorridorPolicy failed: goal sector has no reachable portal goalSector={goalSectorId} goal=({goalX},{goalY}).");
+    }
+
+    private static SectorCorridorPolicy CreateSectorCorridorPolicy(int goalSectorId, int goalX, int goalY)
+    {
+        var policy = new SectorCorridorPolicy { LastUsedFrame = GetFrameCount() };
+        InitializeL0SectorCorridorPolicy(policy, goalSectorId, goalX, goalY);
         return policy.PortalOpenSet.Count > 0 ? policy : null;
     }
 
@@ -23991,10 +26880,9 @@ public static partial class FlowFieldCrowdMovementSystem
         if (IsSectorCorridorPolicyStartCellCovered(policy, startSectorId, startX, startY))
             return true;
 
-        RebuildSectorCorridorPolicyAStarFrontier(policy, startX, startY);
         bool profile = MainThreadFrameProfiler.LoggingEnabled;
         long queryStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
-        _perf.SectorCorridorAStarQueries++;
+        _perf.SectorCorridorPolicyQueries++;
         try
         {
             while (policy.PortalOpenSet.Count > 0)
@@ -24002,9 +26890,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 DeterministicCostQueueNode node = policy.PortalOpenSet.Pop();
                 int currentNode = node.Index;
                 if (!policy.NodeCosts.TryGetValue(currentNode, out long currentCost)
-                    || node.Cost != AddDeterministicPortalCosts(
-                        currentCost,
-                        ResolveDeterministicPortalGraphHeuristic(currentNode, startX, startY))
+                    || node.Cost != currentCost
                     || policy.SettledPortalNodes.Contains(currentNode))
                 {
                     continue;
@@ -24015,9 +26901,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 PortalData currentPortal = GetPortalById(_world, currentPortalId);
                 int oppositeNode = EncodePortalNode(GetOppositeSectorId(currentPortal, currentSectorId), currentPortalId);
                 AddSectorCorridorPolicyReverseEdge(policy, policy.PortalOpenSet, oppositeNode, currentNode,
-                    AddDeterministicPortalCosts(currentCost, DeterministicPortalCrossingCost),
-                    startX,
-                    startY);
+                    AddDeterministicPortalCosts(currentCost, DeterministicPortalCrossingCost));
 
                 List<PortalTransition> incomingTransitions = GetIncomingPortalTransitions(_world.Sectors[currentSectorId], currentPortalId);
                 _perf.PathPortalGraphNodeExpansions++;
@@ -24036,9 +26920,7 @@ public static partial class FlowFieldCrowdMovementSystem
                             policy.PortalOpenSet,
                             EncodePortalNode(currentSectorId, transition.FromPortalId),
                             currentNode,
-                            AddDeterministicPortalCosts(currentCost, transition.DeterministicCost),
-                            startX,
-                            startY);
+                            AddDeterministicPortalCosts(currentCost, transition.DeterministicCost));
                     }
                 }
 
@@ -24051,46 +26933,8 @@ public static partial class FlowFieldCrowdMovementSystem
         finally
         {
             if (profile)
-                _perf.SectorCorridorAStarTicks += Stopwatch.GetTimestamp() - queryStartTicks;
+                _perf.SectorCorridorPolicyTicks += Stopwatch.GetTimestamp() - queryStartTicks;
         }
-    }
-
-    private static void RebuildSectorCorridorPolicyAStarFrontier(
-        SectorCorridorPolicy policy,
-        int startX,
-        int startY)
-    {
-        if (policy == null)
-            throw new ArgumentNullException(nameof(policy));
-
-        int startCellIndex = _world.GetIndex(startX, startY);
-        if (policy.HeuristicStartCellIndex == startCellIndex)
-            return;
-
-        policy.PortalOpenSet.Clear();
-        List<int> frontierNodes = policy.FrontierNodeScratch;
-        frontierNodes.Clear();
-        foreach (KeyValuePair<int, long> pair in policy.NodeCosts)
-        {
-            if (!policy.SettledPortalNodes.Contains(pair.Key))
-                frontierNodes.Add(pair.Key);
-        }
-        frontierNodes.Sort();
-        for (int i = 0; i < frontierNodes.Count; i++)
-        {
-            int node = frontierNodes[i];
-            long cost = policy.NodeCosts[node];
-            policy.PortalOpenSet.Push(
-                node,
-                AddDeterministicPortalCosts(
-                    cost,
-                    ResolveDeterministicPortalGraphHeuristic(node, startX, startY)));
-        }
-
-        _perf.SectorCorridorAStarFrontierRebuilds++;
-        _perf.SectorCorridorAStarFrontierNodes += frontierNodes.Count;
-        frontierNodes.Clear();
-        policy.HeuristicStartCellIndex = startCellIndex;
     }
 
     private static bool IsSectorCorridorPolicyStartCellCovered(
@@ -24133,9 +26977,7 @@ public static partial class FlowFieldCrowdMovementSystem
         DeterministicCostHeap openSet,
         int predecessorNode,
         int nextNodeTowardGoal,
-        long cost,
-        int startX,
-        int startY)
+        long cost)
     {
         if (cost == long.MaxValue)
             return;
@@ -24146,16 +26988,12 @@ public static partial class FlowFieldCrowdMovementSystem
             if (policy.SettledPortalNodes.Contains(predecessorNode))
             {
                 throw new InvalidOperationException(
-                    $"AddSectorCorridorPolicyReverseEdge failed: A* found a cheaper path to settled node={predecessorNode}, previous={existingCost}, next={cost}.");
+                    $"AddSectorCorridorPolicyReverseEdge failed: Dijkstra found a cheaper path to settled node={predecessorNode}, previous={existingCost}, next={cost}.");
             }
         }
         SetSectorCorridorPolicyNodeCost(policy, predecessorNode, cost);
         SetSectorCorridorPolicyNextNode(policy, predecessorNode, nextNodeTowardGoal);
-        openSet.Push(
-            predecessorNode,
-            AddDeterministicPortalCosts(
-                cost,
-                ResolveDeterministicPortalGraphHeuristic(predecessorNode, startX, startY)));
+        openSet.Push(predecessorNode, cost);
     }
 
     private static void SetSectorCorridorPolicyNodeCost(SectorCorridorPolicy policy, int node, long cost)
@@ -24580,33 +27418,27 @@ public static partial class FlowFieldCrowdMovementSystem
         if (handle == null)
             throw new InvalidOperationException("CreateTileCacheKeyForPathSegment failed: handle is null.");
 
-        int sectorId = handle.SectorIds[sectorPathIndex];
-        int goalId;
-        int downstreamGoalHint;
-        if (sectorPathIndex >= handle.SectorIds.Length - 1)
-        {
-            goalKind = TileGoalKind.FinalGoal;
-            downstreamPortalId = -1;
-            goalId = _world.GetIndex(goalX, goalY);
-            downstreamGoalHint = 0;
-        }
-        else
-        {
-            goalKind = TileGoalKind.Portal;
-            downstreamPortalId = handle.PortalIds[sectorPathIndex];
-            goalId = downstreamPortalId;
-            downstreamGoalHint = ResolveDownstreamGoalHint(handle, sectorPathIndex, goalX, goalY);
-        }
-
-        var resolvedKey = new FlowTileCacheKey(
-            _world.Version,
-            sectorId,
-            goalKind,
-            goalId,
-            downstreamGoalHint,
-            ResolveFinalGoalCacheIndex(handle, sectorPathIndex, goalX, goalY),
+        NavigationWorld pathWorld = ResolveCommittedNavigationWorldByVersion(handle.WorldVersion);
+        FlowCorridorSuffixIdentity suffixIdentity = ResolvePathHandleCorridorSuffixIdentity(
+            handle,
+            sectorPathIndex,
+            goalX,
+            goalY,
+            false,
+            pathWorld);
+        FlowTileCacheKey resolvedKey = CreateTileCacheKeyForCorridorSegment(
+            pathWorld,
+            handle.SectorIds,
+            handle.PortalIds,
+            sectorPathIndex,
+            goalX,
+            goalY,
+            suffixIdentity,
             agentTypeId,
-            _world.Sectors[sectorId].DirtyVersion);
+            out goalKind,
+            out downstreamPortalId);
+        int sectorId = resolvedKey.SectorId;
+        int goalId = resolvedKey.GoalId;
         if (!handle.HasCommittedCurrentTileKey
             || sectorPathIndex != handle.CurrentSectorIndex
             || handle.CommittedCurrentTileKey.SectorId != sectorId)
@@ -24628,25 +27460,480 @@ public static partial class FlowFieldCrowdMovementSystem
         return committedKey;
     }
 
+    private static FlowTileCacheKey CreateTileCacheKeyForCorridorSegment(
+        NavigationWorld pathWorld,
+        int[] sectorIds,
+        int[] portalIds,
+        int sectorPathIndex,
+        int goalX,
+        int goalY,
+        FlowCorridorSuffixIdentity suffixIdentity,
+        int agentTypeId,
+        out TileGoalKind goalKind,
+        out int downstreamPortalId)
+    {
+        if (pathWorld == null)
+            throw new InvalidOperationException("CreateTileCacheKeyForCorridorSegment failed: path world is null.");
+        if (sectorIds == null || sectorIds.Length == 0)
+            throw new InvalidOperationException("CreateTileCacheKeyForCorridorSegment failed: sector path is invalid.");
+        if (portalIds == null || portalIds.Length != sectorIds.Length - 1)
+            throw new InvalidOperationException("CreateTileCacheKeyForCorridorSegment failed: portal path is invalid.");
+        if (sectorPathIndex < 0 || sectorPathIndex >= sectorIds.Length)
+            throw new ArgumentOutOfRangeException(nameof(sectorPathIndex), sectorPathIndex, "Corridor segment index is invalid.");
+        if (suffixIdentity == null
+            || suffixIdentity.WorldVersion != pathWorld.Version
+            || suffixIdentity.SectorId != sectorIds[sectorPathIndex]
+            || suffixIdentity.PortalId != (sectorPathIndex < portalIds.Length ? portalIds[sectorPathIndex] : -1)
+            || suffixIdentity.FinalGoalIndex != pathWorld.GetIndex(goalX, goalY))
+        {
+            int expectedPortalId = sectorPathIndex < portalIds.Length ? portalIds[sectorPathIndex] : -1;
+            throw new InvalidOperationException(
+                $"CreateTileCacheKeyForCorridorSegment failed: corridor suffix identity is invalid " +
+                $"pathIndex={sectorPathIndex}, expectedWorld={pathWorld.Version}, actualWorld={suffixIdentity?.WorldVersion.ToString() ?? "null"}, " +
+                $"expectedSector={sectorIds[sectorPathIndex]}, actualSector={suffixIdentity?.SectorId.ToString() ?? "null"}, " +
+                $"expectedPortal={expectedPortalId}, actualPortal={suffixIdentity?.PortalId.ToString() ?? "null"}, " +
+                $"expectedFinal={pathWorld.GetIndex(goalX, goalY)}, actualFinal={suffixIdentity?.FinalGoalIndex.ToString() ?? "null"}, " +
+                $"sectors=[{string.Join("->", sectorIds)}], portals=[{string.Join("->", portalIds)}].");
+        }
+
+        int sectorId = sectorIds[sectorPathIndex];
+        int goalId;
+        int downstreamGoalHint;
+        if (sectorPathIndex >= sectorIds.Length - 1)
+        {
+            goalKind = TileGoalKind.FinalGoal;
+            downstreamPortalId = -1;
+            goalId = pathWorld.GetIndex(goalX, goalY);
+            downstreamGoalHint = 0;
+        }
+        else
+        {
+            goalKind = TileGoalKind.Portal;
+            downstreamPortalId = portalIds[sectorPathIndex];
+            goalId = downstreamPortalId;
+            downstreamGoalHint = sectorPathIndex + 1 >= sectorIds.Length - 1
+                ? ~pathWorld.GetIndex(goalX, goalY)
+                : portalIds[sectorPathIndex + 1];
+        }
+
+        int finalGoalIndex = pathWorld.GetIndex(goalX, goalY);
+        return new FlowTileCacheKey(
+            pathWorld.Version,
+            sectorId,
+            goalKind,
+            goalId,
+            downstreamGoalHint,
+            finalGoalIndex,
+            suffixIdentity,
+            agentTypeId,
+            pathWorld.Sectors[sectorId].DirtyVersion);
+    }
+
+    private static FlowCorridorSuffixIdentity ResolvePathHandleCorridorSuffixIdentity(
+        PathHandle handle,
+        int sectorPathIndex,
+        int goalX,
+        int goalY,
+        bool useCommittedCorridor,
+        NavigationWorld pathWorld)
+    {
+        if (handle == null)
+            throw new InvalidOperationException("ResolvePathHandleCorridorSuffixIdentity failed: handle is null.");
+        int[] sectorIds = useCommittedCorridor ? handle.CommittedCorridorSectorIds : handle.SectorIds;
+        int[] portalIds = useCommittedCorridor ? handle.CommittedCorridorPortalIds : handle.PortalIds;
+        if (sectorIds == null || portalIds == null || portalIds.Length != sectorIds.Length - 1)
+            throw new InvalidOperationException("ResolvePathHandleCorridorSuffixIdentity failed: corridor is invalid.");
+        if (sectorPathIndex < 0 || sectorPathIndex >= sectorIds.Length)
+            throw new ArgumentOutOfRangeException(nameof(sectorPathIndex));
+
+        if (pathWorld == null || pathWorld.Version != handle.WorldVersion)
+            throw new InvalidOperationException("ResolvePathHandleCorridorSuffixIdentity failed: path world is invalid.");
+        int finalGoalIndex = pathWorld.GetIndex(goalX, goalY);
+        FlowCorridorSuffixIdentity[] identities = useCommittedCorridor
+            ? handle.CommittedCorridorSuffixIdentities
+            : handle.CorridorSuffixIdentities;
+        int cachedFinalGoalIndex = useCommittedCorridor
+            ? handle.CommittedCorridorSuffixFinalGoalIndex
+            : handle.CorridorSuffixFinalGoalIndex;
+        int[] cachedSectorIdsSource = useCommittedCorridor
+            ? handle.CommittedCorridorSuffixSectorIdsSource
+            : handle.CorridorSuffixSectorIdsSource;
+        int[] cachedPortalIdsSource = useCommittedCorridor
+            ? handle.CommittedCorridorSuffixPortalIdsSource
+            : handle.CorridorSuffixPortalIdsSource;
+        if (identities == null
+            || identities.Length != sectorIds.Length
+            || cachedFinalGoalIndex != finalGoalIndex
+            || !ReferenceEquals(cachedSectorIdsSource, sectorIds)
+            || !ReferenceEquals(cachedPortalIdsSource, portalIds))
+        {
+            identities = BuildFlowCorridorSuffixIdentities(pathWorld, sectorIds, portalIds, finalGoalIndex);
+            if (useCommittedCorridor)
+            {
+                handle.CommittedCorridorSuffixIdentities = identities;
+                handle.CommittedCorridorSuffixFinalGoalIndex = finalGoalIndex;
+                handle.CommittedCorridorSuffixSectorIdsSource = sectorIds;
+                handle.CommittedCorridorSuffixPortalIdsSource = portalIds;
+            }
+            else
+            {
+                handle.CorridorSuffixIdentities = identities;
+                handle.CorridorSuffixFinalGoalIndex = finalGoalIndex;
+                handle.CorridorSuffixSectorIdsSource = sectorIds;
+                handle.CorridorSuffixPortalIdsSource = portalIds;
+            }
+        }
+        return identities[sectorPathIndex];
+    }
+
+    private static FlowCorridorSuffixIdentity[] BuildFlowCorridorSuffixIdentities(
+        NavigationWorld pathWorld,
+        int[] sectorIds,
+        int[] portalIds,
+        int finalGoalIndex)
+    {
+        var identities = new FlowCorridorSuffixIdentity[sectorIds.Length];
+        FlowCorridorSuffixIdentity downstream = null;
+        for (int index = sectorIds.Length - 1; index >= 0; index--)
+        {
+            int portalId = index < portalIds.Length ? portalIds[index] : -1;
+            var nodeKey = new FlowCorridorSuffixNodeKey(
+                pathWorld.Version,
+                sectorIds[index],
+                portalId,
+                finalGoalIndex,
+                downstream);
+            if (!FlowCorridorSuffixIdentities.TryGetValue(nodeKey, out FlowCorridorSuffixIdentity identity))
+            {
+                identity = new FlowCorridorSuffixIdentity
+                {
+                    WorldVersion = pathWorld.Version,
+                    SectorId = sectorIds[index],
+                    PortalId = portalId,
+                    FinalGoalIndex = finalGoalIndex,
+                    Downstream = downstream,
+                    Length = (downstream?.Length ?? 0) + 1,
+                    StableHashCode = nodeKey.GetHashCode()
+                };
+                FlowCorridorSuffixIdentities.Add(nodeKey, identity);
+            }
+            identities[index] = identity;
+            downstream = identity;
+        }
+        return identities;
+    }
+
     private static int ResolveFinalGoalCacheIndex(PathHandle handle, int sectorPathIndex, int goalX, int goalY)
     {
         if (handle == null || handle.SectorIds == null || handle.SectorIds.Length == 0)
             throw new InvalidOperationException("ResolveFinalGoalCacheIndex failed: handle is invalid.");
 
-        int exactGoalIndex = _world.GetIndex(goalX, goalY);
-        if (sectorPathIndex >= handle.SectorIds.Length - 2)
-            return exactGoalIndex;
-
-        return 0;
+        return ResolveCommittedNavigationWorldByVersion(handle.WorldVersion).GetIndex(goalX, goalY);
     }
 
     private static int ResolveDownstreamGoalHint(PathHandle handle, int sectorPathIndex, int goalX, int goalY)
     {
         int nextSectorIndex = sectorPathIndex + 1;
         if (nextSectorIndex >= handle.SectorIds.Length - 1)
-            return ~_world.GetIndex(goalX, goalY);
+            return ~ResolveCommittedNavigationWorldByVersion(handle.WorldVersion).GetIndex(goalX, goalY);
 
         return handle.PortalIds[nextSectorIndex];
+    }
+
+    private static Fix64 ResolvePreparedMaximumTravelDistanceFixed(AgentRuntimeData agent)
+    {
+        if (agent == null)
+            throw new InvalidOperationException("ResolvePreparedMaximumTravelDistanceFixed failed: agent is null.");
+        AgentNavState nav = agent.NavState;
+        return nav.HasPreparedNavigationSnapshot && nav.PreparedNavigationFrame == GetFrameCount()
+            ? nav.PreparedMaximumTravelDistanceFixed
+            : Fix64.Zero;
+    }
+
+    private static void ResolveSteeringReadCorridor(
+        PathHandle handle,
+        out int[] sectorIds,
+        out int[] portalIds,
+        out int startIndex,
+        out int goalX,
+        out int goalY,
+        out bool usesCommittedCorridor)
+    {
+        if (handle == null || handle.SectorIds == null || handle.PortalIds == null)
+            throw new InvalidOperationException("ResolveSteeringReadCorridor failed: path handle is invalid.");
+
+        usesCommittedCorridor = handle.HasCommittedCurrentTileKey
+                                && handle.CurrentSectorIndex >= 0
+                                && handle.CurrentSectorIndex < handle.SectorIds.Length
+                                && handle.SectorIds[handle.CurrentSectorIndex] == handle.CommittedCurrentTileKey.SectorId;
+        if (usesCommittedCorridor)
+        {
+            sectorIds = handle.CommittedCorridorSectorIds;
+            portalIds = handle.CommittedCorridorPortalIds;
+            startIndex = 0;
+            goalX = handle.CommittedCorridorGoalX;
+            goalY = handle.CommittedCorridorGoalY;
+            if (sectorIds == null
+                || portalIds == null
+                || sectorIds.Length != portalIds.Length + 1
+                || sectorIds.Length == 0
+                || sectorIds[0] != handle.CommittedCurrentTileKey.SectorId)
+            {
+                throw new InvalidOperationException(
+                    $"ResolveSteeringReadCorridor failed: committed corridor is inconsistent handle={FormatPathHandle(handle)}.");
+            }
+            return;
+        }
+
+        sectorIds = handle.SectorIds;
+        portalIds = handle.PortalIds;
+        startIndex = handle.CurrentSectorIndex;
+        goalX = handle.GoalX;
+        goalY = handle.GoalY;
+        if (startIndex < 0
+            || startIndex >= sectorIds.Length
+            || portalIds.Length != sectorIds.Length - 1)
+        {
+            throw new InvalidOperationException(
+                $"ResolveSteeringReadCorridor failed: active corridor is inconsistent handle={FormatPathHandle(handle)}.");
+        }
+    }
+
+    private static int ResolveSteeringReadDomainEndIndex(
+        AgentRuntimeData agent,
+        int[] sectorIds,
+        int[] portalIds,
+        int startIndex,
+        Fix64 maximumTravelDistance)
+    {
+        if (agent == null)
+            throw new InvalidOperationException("ResolveSteeringReadDomainEndIndex failed: agent is null.");
+        if (maximumTravelDistance < Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(maximumTravelDistance), maximumTravelDistance, "Maximum travel distance cannot be negative.");
+        if (startIndex >= sectorIds.Length - 1)
+            return startIndex;
+
+        Fix64 readEnvelope = maximumTravelDistance + _world.CellSizeFixed;
+        Fix64 lowerBoundDistance = Fix64.Zero;
+        FixVector2 previousLeft = FixVector2.Zero;
+        FixVector2 previousRight = FixVector2.Zero;
+        bool hasPreviousPortal = false;
+        int endIndex = startIndex;
+        for (int portalIndex = startIndex; portalIndex < portalIds.Length; portalIndex++)
+        {
+            ResolvePortalFunnelSegmentFixed(
+                sectorIds,
+                portalIds,
+                portalIndex,
+                out FixVector2 left,
+                out FixVector2 right);
+            Fix64 legDistance = hasPreviousPortal
+                ? MeasureSegmentAabbDistanceLowerBoundFixed(previousLeft, previousRight, left, right)
+                : MeasurePointToSegmentAabbDistanceLowerBoundFixed(agent.PositionFixed, left, right);
+            lowerBoundDistance += legDistance;
+            if (lowerBoundDistance > readEnvelope)
+                break;
+
+            endIndex = portalIndex + 1;
+            previousLeft = left;
+            previousRight = right;
+            hasPreviousPortal = true;
+        }
+
+        return endIndex;
+    }
+
+    private static Fix64 MeasurePointToSegmentAabbDistanceLowerBoundFixed(
+        FixVector2 point,
+        FixVector2 first,
+        FixVector2 second)
+    {
+        Fix64 nearestX = Fix64.Clamp(point.x, Fix64.Min(first.x, second.x), Fix64.Max(first.x, second.x));
+        Fix64 nearestY = Fix64.Clamp(point.y, Fix64.Min(first.y, second.y), Fix64.Max(first.y, second.y));
+        return FixVector2.Magnitude(new FixVector2(nearestX - point.x, nearestY - point.y));
+    }
+
+    private static Fix64 MeasureSegmentAabbDistanceLowerBoundFixed(
+        FixVector2 firstStart,
+        FixVector2 firstEnd,
+        FixVector2 secondStart,
+        FixVector2 secondEnd)
+    {
+        Fix64 firstMinX = Fix64.Min(firstStart.x, firstEnd.x);
+        Fix64 firstMaxX = Fix64.Max(firstStart.x, firstEnd.x);
+        Fix64 firstMinY = Fix64.Min(firstStart.y, firstEnd.y);
+        Fix64 firstMaxY = Fix64.Max(firstStart.y, firstEnd.y);
+        Fix64 secondMinX = Fix64.Min(secondStart.x, secondEnd.x);
+        Fix64 secondMaxX = Fix64.Max(secondStart.x, secondEnd.x);
+        Fix64 secondMinY = Fix64.Min(secondStart.y, secondEnd.y);
+        Fix64 secondMaxY = Fix64.Max(secondStart.y, secondEnd.y);
+        Fix64 dx = Fix64.Max(Fix64.Zero, Fix64.Max(firstMinX, secondMinX) - Fix64.Min(firstMaxX, secondMaxX));
+        Fix64 dy = Fix64.Max(Fix64.Zero, Fix64.Max(firstMinY, secondMinY) - Fix64.Min(firstMaxY, secondMaxY));
+        return FixVector2.Magnitude(new FixVector2(dx, dy));
+    }
+
+    private static FlowTileCacheKey CreateSteeringReadDomainTileKey(
+        PathHandle handle,
+        int[] sectorIds,
+        int[] portalIds,
+        int sectorPathIndex,
+        int goalX,
+        int goalY,
+        int agentTypeId,
+        bool usesCommittedCorridor)
+    {
+        if (usesCommittedCorridor && sectorPathIndex == 0)
+            return handle.CommittedCurrentTileKey;
+        NavigationWorld pathWorld = ResolveCommittedNavigationWorldByVersion(handle.WorldVersion);
+        FlowCorridorSuffixIdentity suffixIdentity = ResolvePathHandleCorridorSuffixIdentity(
+            handle,
+            sectorPathIndex,
+            goalX,
+            goalY,
+            usesCommittedCorridor,
+            pathWorld);
+        return CreateTileCacheKeyForCorridorSegment(
+            pathWorld,
+            sectorIds,
+            portalIds,
+            sectorPathIndex,
+            goalX,
+            goalY,
+            suffixIdentity,
+            agentTypeId,
+            out _,
+            out _);
+    }
+
+    private static PathHandle CreateSteeringReadDomainBuildSnapshot(
+        PathHandle handle,
+        int[] sectorIds,
+        int[] portalIds,
+        int startIndex,
+        int goalX,
+        int goalY,
+        bool usesCommittedCorridor)
+    {
+        if (!usesCommittedCorridor)
+            return ClonePathHandle(handle);
+        return new PathHandle
+        {
+            HandleId = handle.HandleId,
+            WorldVersion = handle.WorldVersion,
+            GoalX = goalX,
+            GoalY = goalY,
+            SectorIds = (int[])sectorIds.Clone(),
+            PortalIds = (int[])portalIds.Clone(),
+            CurrentSectorIndex = startIndex,
+            BuildSource = "committedSteeringReadDomain"
+        };
+    }
+
+    private static void EnqueueSteeringReadDomainFlowTileBuilds(
+        AgentRuntimeData agent,
+        Fix64 maximumTravelDistance)
+    {
+        if (agent?.NavState.PathHandle == null)
+            throw new InvalidOperationException("EnqueueSteeringReadDomainFlowTileBuilds failed: agent path is missing.");
+        PathHandle handle = agent.NavState.PathHandle;
+        ResolveSteeringReadCorridor(
+            handle,
+            out int[] sectorIds,
+            out int[] portalIds,
+            out int startIndex,
+            out int goalX,
+            out int goalY,
+            out bool usesCommittedCorridor);
+        if (!usesCommittedCorridor)
+        {
+            EnqueueActiveFlowTileBuilds(
+                handle,
+                handle.CurrentSectorIndex,
+                handle.GoalX,
+                handle.GoalY,
+                agent.AgentTypeId);
+            return;
+        }
+        int endIndex = ResolveSteeringReadDomainEndIndex(
+            agent,
+            sectorIds,
+            portalIds,
+            startIndex,
+            maximumTravelDistance);
+
+        PathHandle snapshot = null;
+        for (int index = endIndex; index >= startIndex; index--)
+        {
+            FlowTileCacheKey key = CreateSteeringReadDomainTileKey(
+                handle,
+                sectorIds,
+                portalIds,
+                index,
+                goalX,
+                goalY,
+                agent.AgentTypeId,
+                usesCommittedCorridor);
+            if (FlowTileCache.ContainsKey(key) || PendingFlowTileBuildJobs.Contains(key))
+                continue;
+            snapshot ??= CreateSteeringReadDomainBuildSnapshot(
+                handle,
+                sectorIds,
+                portalIds,
+                startIndex,
+                goalX,
+                goalY,
+                usesCommittedCorridor);
+            EnqueueFlowTileBuildJob(snapshot, index, goalX, goalY, agent.AgentTypeId, prependToFront: true);
+        }
+
+        EnqueueActiveFlowTileBuilds(handle, handle.CurrentSectorIndex, handle.GoalX, handle.GoalY, agent.AgentTypeId);
+    }
+
+    private static void AddSteeringReadDomainFlowTileBuildKeys(
+        AgentRuntimeData agent,
+        Fix64 maximumTravelDistance)
+    {
+        if (agent?.NavState.PathHandle == null)
+            throw new InvalidOperationException("AddSteeringReadDomainFlowTileBuildKeys failed: agent path is missing.");
+        PathHandle handle = agent.NavState.PathHandle;
+        ResolveSteeringReadCorridor(
+            handle,
+            out int[] sectorIds,
+            out int[] portalIds,
+            out int startIndex,
+            out int goalX,
+            out int goalY,
+            out bool usesCommittedCorridor);
+        if (!usesCommittedCorridor)
+        {
+            AddActiveFlowTileBuildKeys(
+                handle,
+                handle.CurrentSectorIndex,
+                handle.GoalX,
+                handle.GoalY,
+                agent.AgentTypeId);
+            return;
+        }
+        int endIndex = ResolveSteeringReadDomainEndIndex(
+            agent,
+            sectorIds,
+            portalIds,
+            startIndex,
+            maximumTravelDistance);
+        for (int index = startIndex; index <= endIndex; index++)
+        {
+            ActiveFlowTileBuildKeys.Add(CreateSteeringReadDomainTileKey(
+                handle,
+                sectorIds,
+                portalIds,
+                index,
+                goalX,
+                goalY,
+                agent.AgentTypeId,
+                usesCommittedCorridor));
+        }
+
+        AddActiveFlowTileBuildKeys(handle, handle.CurrentSectorIndex, handle.GoalX, handle.GoalY, agent.AgentTypeId);
     }
 
     private static void EnqueueActiveFlowTileBuilds(PathHandle handle, int sectorPathIndex, int goalX, int goalY, int agentTypeId)
@@ -24659,19 +27946,12 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException($"EnqueueActiveFlowTileBuilds failed: sectorPathIndex out of range {sectorPathIndex}.");
 
         int finalIndex = handle.SectorIds.Length - 1;
-        int finalAdjacentIndex = finalIndex - 1;
-        bool requiresSnapshot = RequiresNewFlowTileBuildJob(handle, finalIndex, goalX, goalY, agentTypeId)
-                                || (finalAdjacentIndex >= sectorPathIndex
-                                    && RequiresNewFlowTileBuildJob(handle, finalAdjacentIndex, goalX, goalY, agentTypeId))
-                                || (sectorPathIndex != finalIndex
-                                    && sectorPathIndex != finalAdjacentIndex
-                                     && RequiresNewFlowTileBuildJob(handle, sectorPathIndex, goalX, goalY, agentTypeId));
+        bool requiresSnapshot = false;
+        for (int index = sectorPathIndex; index <= finalIndex; index++)
+            requiresSnapshot |= RequiresNewFlowTileBuildJob(handle, index, goalX, goalY, agentTypeId);
         PathHandle snapshot = requiresSnapshot ? ClonePathHandle(handle) : handle;
-        if (finalAdjacentIndex >= sectorPathIndex)
-            EnqueueFlowTileBuildJob(snapshot, finalAdjacentIndex, goalX, goalY, agentTypeId, prependToFront: true);
-        EnqueueFlowTileBuildJob(snapshot, finalIndex, goalX, goalY, agentTypeId, prependToFront: true);
-        if (sectorPathIndex != finalIndex && sectorPathIndex != finalAdjacentIndex)
-            EnqueueFlowTileBuildJob(snapshot, sectorPathIndex, goalX, goalY, agentTypeId, prependToFront: true);
+        for (int index = sectorPathIndex; index <= finalIndex; index++)
+            EnqueueFlowTileBuildJob(snapshot, index, goalX, goalY, agentTypeId, prependToFront: true);
     }
 
     private static void AddActiveFlowTileBuildKeys(PathHandle handle, int sectorPathIndex, int goalX, int goalY, int agentTypeId)
@@ -24684,12 +27964,8 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException($"AddActiveFlowTileBuildKeys failed: sectorPathIndex out of range {sectorPathIndex}.");
 
         int finalIndex = handle.SectorIds.Length - 1;
-        int finalAdjacentIndex = finalIndex - 1;
-        AddActiveFlowTileBuildKey(handle, finalIndex, goalX, goalY, agentTypeId);
-        if (finalAdjacentIndex >= sectorPathIndex)
-            AddActiveFlowTileBuildKey(handle, finalAdjacentIndex, goalX, goalY, agentTypeId);
-        if (sectorPathIndex != finalIndex && sectorPathIndex != finalAdjacentIndex)
-            AddActiveFlowTileBuildKey(handle, sectorPathIndex, goalX, goalY, agentTypeId);
+        for (int index = sectorPathIndex; index <= finalIndex; index++)
+            AddActiveFlowTileBuildKey(handle, index, goalX, goalY, agentTypeId);
     }
 
     private static bool RequiresNewFlowTileBuildJob(
@@ -24730,11 +28006,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         FlowTileBuildKey buildKey = new FlowTileBuildKey(key, sectorPathIndex, goalX, goalY, agentTypeId);
         if (!PendingFlowTileBuildJobs.Add(key))
-        {
-            if (prependToFront)
-                PromotePendingFlowTileBuildJobToFront(key);
             return;
-        }
 
         FlowTileBuildJob job = new FlowTileBuildJob
         {
@@ -24746,23 +28018,6 @@ public static partial class FlowFieldCrowdMovementSystem
         else
             FlowTileBuildQueue.AddLast(job);
         _perf.FlowTileQueueEnqueued++;
-    }
-
-    private static void PromotePendingFlowTileBuildJobToFront(FlowTileCacheKey key)
-    {
-        for (LinkedListNode<FlowTileBuildJob> node = FlowTileBuildQueue.First; node != null; node = node.Next)
-        {
-            FlowTileBuildJob job = node.Value;
-            if (!job.BuildKey.CacheKey.Equals(key))
-                continue;
-
-            FlowTileBuildQueue.Remove(node);
-            FlowTileBuildQueue.AddFirst(job);
-            _perf.FlowTileQueuePromoted++;
-            return;
-        }
-
-        PendingFlowTileBuildJobs.Remove(key);
     }
 
     private static void ReleasePendingFlowTileBuildJobPayloads(FlowTileBuildJob job)
@@ -24795,7 +28050,11 @@ public static partial class FlowFieldCrowdMovementSystem
                 : null,
             CommittedCorridorPortalIds = handle.CommittedCorridorPortalIds != null
                 ? (int[])handle.CommittedCorridorPortalIds.Clone()
-                : null
+                : null,
+            CorridorSuffixIdentities = handle.CorridorSuffixIdentities,
+            CorridorSuffixFinalGoalIndex = handle.CorridorSuffixFinalGoalIndex,
+            CommittedCorridorSuffixIdentities = handle.CommittedCorridorSuffixIdentities,
+            CommittedCorridorSuffixFinalGoalIndex = handle.CommittedCorridorSuffixFinalGoalIndex
         };
     }
 
@@ -24820,11 +28079,12 @@ public static partial class FlowFieldCrowdMovementSystem
         if (FlowTileCache.Count <= Config.FlowTileCacheLimit)
             return;
 
+        RefreshPendingFlowTileDependencyKeys();
         int threshold = GetFrameCount() - 120;
         List<FlowTileCacheKey> expiredKeys = new List<FlowTileCacheKey>();
         foreach (KeyValuePair<FlowTileCacheKey, FlowTileCacheEntry> pair in FlowTileCache)
         {
-            if (pair.Value.ActiveReferenceCount > 0)
+            if (pair.Value.ActiveReferenceCount > 0 || PendingFlowTileDependencyKeys.Contains(pair.Key))
                 continue;
             if (pair.Value.LastUsedFrame < threshold && pair.Value.LastReferencedFrame < threshold)
                 expiredKeys.Add(pair.Key);
@@ -24845,11 +28105,34 @@ public static partial class FlowFieldCrowdMovementSystem
         int removeCount = FlowTileCache.Count - Config.FlowTileCacheLimit;
         for (int i = 0; i < keys.Count && removeCount > 0; i++)
         {
-            if (FlowTileCache[keys[i]].ActiveReferenceCount > 0)
+            if (FlowTileCache[keys[i]].ActiveReferenceCount > 0
+                || PendingFlowTileDependencyKeys.Contains(keys[i]))
                 continue;
 
             RemoveFlowTileCacheEntry(keys[i]);
             removeCount--;
+        }
+    }
+
+    private static void RefreshPendingFlowTileDependencyKeys()
+    {
+        PendingFlowTileDependencyKeys.Clear();
+        for (LinkedListNode<FlowTileBuildJob> node = FlowTileBuildQueue.First; node != null; node = node.Next)
+        {
+            FlowTileBuildJob job = node.Value;
+            if (job?.HandleSnapshot?.SectorIds == null)
+                throw new InvalidOperationException("RefreshPendingFlowTileDependencyKeys failed: pending job or path snapshot is invalid.");
+            int downstreamPathIndex = job.BuildKey.SectorPathIndex + 1;
+            if (downstreamPathIndex >= job.HandleSnapshot.SectorIds.Length)
+                continue;
+            PendingFlowTileDependencyKeys.Add(CreateTileCacheKeyForPathSegment(
+                job.HandleSnapshot,
+                downstreamPathIndex,
+                job.BuildKey.GoalX,
+                job.BuildKey.GoalY,
+                job.BuildKey.AgentTypeId,
+                out _,
+                out _));
         }
     }
 
@@ -24878,36 +28161,32 @@ public static partial class FlowFieldCrowdMovementSystem
                 continue;
             }
 
-            int startIndex = Mathf.Clamp(handle.CurrentSectorIndex, 0, handle.SectorIds.Length - 1);
-            if (handle.HasCommittedCurrentTileKey
-                && handle.CommittedCurrentTileKey.GoalKind == TileGoalKind.Portal
-                && handle.CommittedCurrentTileKey.DownstreamGoalHint < 0)
-            {
-                PortalData committedPortal = GetPortalById(_world, handle.CommittedCurrentTileKey.GoalId);
-                int continuationSectorId = GetOppositeSectorId(
-                    committedPortal,
-                    handle.CommittedCurrentTileKey.SectorId);
-                FlowTileCacheKey continuationKey = CreatePortalContinuationFinalTileKey(
-                    handle.CommittedCurrentTileKey,
-                    continuationSectorId);
-                if (FlowTileCache.TryGetValue(continuationKey, out FlowTileCacheEntry continuationTile))
-                {
-                    continuationTile.ActiveReferenceCount++;
-                    continuationTile.LastReferencedFrame = frame;
-                }
-            }
-
-            for (int i = startIndex; i < handle.SectorIds.Length; i++)
+            ResolveSteeringReadCorridor(
+                handle,
+                out int[] sectorIds,
+                out int[] portalIds,
+                out int startIndex,
+                out int goalX,
+                out int goalY,
+                out bool usesCommittedCorridor);
+            int endIndex = ResolveSteeringReadDomainEndIndex(
+                agent,
+                sectorIds,
+                portalIds,
+                startIndex,
+                ResolvePreparedMaximumTravelDistanceFixed(agent));
+            for (int i = startIndex; i <= endIndex; i++)
             {
                 _perf.FlowTileReferenceKeyScans++;
-                FlowTileCacheKey key = CreateTileCacheKeyForPathSegment(
+                FlowTileCacheKey key = CreateSteeringReadDomainTileKey(
                     handle,
+                    sectorIds,
+                    portalIds,
                     i,
-                    handle.GoalX,
-                    handle.GoalY,
+                    goalX,
+                    goalY,
                     agent.AgentTypeId,
-                    out _,
-                    out _);
+                    usesCommittedCorridor);
                 if (!FlowTileCache.TryGetValue(key, out FlowTileCacheEntry tile))
                     continue;
 
@@ -24956,7 +28235,10 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static string FormatTileKey(FlowTileCacheKey key)
     {
-        return $"(world={key.WorldVersion},sector={key.SectorId},goalKind={key.GoalKind},goalId={key.GoalId},downstreamHint={key.DownstreamGoalHint},finalGoal={key.FinalGoalIndex},agentType={key.AgentTypeId},dirty={key.DirtyVersion})";
+        string suffix = key.CorridorSuffixIdentity == null
+            ? "none"
+            : $"{key.CorridorSuffixIdentity.Length}:{key.CorridorSuffixIdentity.StableHashCode}";
+        return $"(world={key.WorldVersion},sector={key.SectorId},goalKind={key.GoalKind},goalId={key.GoalId},downstreamHint={key.DownstreamGoalHint},finalGoal={key.FinalGoalIndex},suffix={suffix},agentType={key.AgentTypeId},dirty={key.DirtyVersion})";
     }
 
     private static string FormatSharedGoalFieldKey(SharedGoalFieldKey key)
@@ -28615,6 +31897,28 @@ public static partial class FlowFieldCrowdMovementSystem
             y1,
             GridLineOfSightCostMode.SoftCostLimit,
             allowTargetSoftCost: false,
+            maxAllowedCost);
+    }
+
+    private static bool HasSoftCostTolerantGridLineOfSight(
+        NavigationWorld world,
+        FixVector2 from,
+        FixVector2 to,
+        int maxAllowedCost)
+    {
+        if (world == null)
+            throw new InvalidOperationException("HasSoftCostTolerantGridLineOfSight failed: world is null.");
+        if (!world.WorldToGridFixed(from, out int startX, out int startY)
+            || !world.WorldToGridFixed(to, out int goalX, out int goalY))
+        {
+            return false;
+        }
+        return HasSoftCostTolerantGridLineOfSight(
+            world,
+            startX,
+            startY,
+            goalX,
+            goalY,
             maxAllowedCost);
     }
 

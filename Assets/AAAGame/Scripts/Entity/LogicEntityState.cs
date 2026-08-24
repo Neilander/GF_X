@@ -905,7 +905,11 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, ISkill
                 break;
             case MAEntityLogicFramePhase.NavigationSync:
                 if (UsesFlowNavigationAgent && GroupMoveManager.HasInstance)
+                {
                     GroupMoveManager.Instance.UpdateAgentPosition(this);
+                    if (m_MoveComp is CharacterMoveComp characterMove)
+                        characterMove.PrepareNavigationLogicFrame(deltaTime);
+                }
                 break;
             case MAEntityLogicFramePhase.Brain:
                 if (m_Brain is ITickBrain tickBrain)
