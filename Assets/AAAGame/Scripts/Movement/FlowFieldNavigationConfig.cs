@@ -1,4 +1,4 @@
-﻿﻿﻿using UnityEngine;
+﻿using UnityEngine;
 
 [CreateAssetMenu(fileName = "FlowFieldNavigationConfig", menuName = "Movement/Flow Field Navigation Config")]
 public class FlowFieldNavigationConfig : ScriptableObject
@@ -6,9 +6,13 @@ public class FlowFieldNavigationConfig : ScriptableObject
     [Header("Flow Field")]
     [Tooltip("Must be provided by FlowNavigationGridSource; missing authored grids are errors.")]
     public bool RequireAuthoredNavigationSource = true;
-    [Tooltip("Cell count per sector edge.")]
-    [Min(4)]
-    public int SectorSizeInCells = 12;
+    [Tooltip("Sector edge length in world-space millimeters. Runtime cell count is derived from each authored grid's fixed cell size.")]
+    [Min(1)]
+    public int SectorWorldSizeMillimeters = 3600;
+#if UNITY_EDITOR
+    [System.NonSerialized]
+    public int EditorTestSectorSizeInCells;
+#endif
     [Tooltip("Portal width at or below this cell count is treated as a bottleneck.")]
     [Min(1)]
     public int PortalNarrowWidthCells = 2;
@@ -33,6 +37,9 @@ public class FlowFieldNavigationConfig : ScriptableObject
     [Tooltip("Maximum deterministic shared-goal graph operations processed per logic Tick.")]
     [Min(1)]
     public int SharedGoalBuildOperationQuota = 2048;
+    [Tooltip("Maximum deterministic multi-source portal path operations processed per logic Tick.")]
+    [Min(1)]
+    public int PathRequestOperationQuota = 2048;
     [Header("Debug")]
     [Tooltip("Run the fixed-point static collision solver in shadow mode without changing authoritative movement.")]
     public bool EnableDeterministicStaticCollisionShadow = true;

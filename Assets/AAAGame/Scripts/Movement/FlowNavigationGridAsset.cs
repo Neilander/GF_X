@@ -65,7 +65,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
     [Serializable]
     public sealed class DerivedNavigationData
     {
-        public const int CurrentVersion = 5;
+        public const int CurrentVersion = 6;
 
         public int Version;
         public int AgentTypeId;
@@ -76,7 +76,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         public long CellSizeGridRaw;
         public long OriginXGridRaw;
         public long OriginZGridRaw;
-        public int ConfigSectorSizeInCells;
+        public int ConfigSectorWorldSizeMillimeters;
         public int ConfigPortalNarrowWidthCells;
         public int ConfigPortalMaxWindowWidthCells;
         public int SectorSizeInCells;
@@ -818,7 +818,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
             CellSizeGridRaw = source.CellSizeGridRaw,
             OriginXGridRaw = source.OriginXGridRaw,
             OriginZGridRaw = source.OriginZGridRaw,
-            ConfigSectorSizeInCells = source.ConfigSectorSizeInCells,
+            ConfigSectorWorldSizeMillimeters = source.ConfigSectorWorldSizeMillimeters,
             ConfigPortalNarrowWidthCells = source.ConfigPortalNarrowWidthCells,
             ConfigPortalMaxWindowWidthCells = source.ConfigPortalMaxWindowWidthCells,
             SectorSizeInCells = source.SectorSizeInCells,

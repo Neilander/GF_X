@@ -101,6 +101,49 @@ public class MAEntityLogicFrameSystemTests
     }
 
     [Test]
+    public void Tick执行途中_最近完整实体帧快照保持上一Tick并可通过实体链门禁()
+    {
+        var entity = new PureLogicFrameEntity
+        {
+            LogicEntityId = new LogicEntityId(17),
+            Alive = false,
+        };
+        EntityRegistry.Register(entity);
+        LogicFrameRuntime.Tick(1);
+
+        ulong observedCurrentFrame = 0;
+        ulong observedCompletedFrame = 0;
+        MAEntityLogicFramePhase observedCompletedPhase = default;
+        int observedEntityCount = -1;
+        int observedPhaseExecutionCount = -1;
+        bool observedExecutingFrame = false;
+        ulong validatedCompletedFrame = 0;
+        entity.PhaseObserver = phase =>
+        {
+            if (phase != MAEntityLogicFramePhase.BaseAndBuffs)
+                return;
+            observedCurrentFrame = LogicFrameRuntime.CurrentFrame;
+            observedCompletedFrame = MAEntityLogicFrameSystem.LastCompletedFrame;
+            observedCompletedPhase = MAEntityLogicFrameSystem.LastCompletedPhase;
+            observedEntityCount = MAEntityLogicFrameSystem.LastFrameEntityCount;
+            observedPhaseExecutionCount = MAEntityLogicFrameSystem.LastFramePhaseExecutionCount;
+            observedExecutingFrame = LogicFrameRuntime.IsExecutingFrame;
+            validatedCompletedFrame = MAEntityLogicFrameSystem.ValidateAndGetLatestCompletedFrame();
+        };
+
+        LogicFrameRuntime.Tick(2);
+
+        Assert.AreEqual(2UL, observedCurrentFrame);
+        Assert.AreEqual(1UL, observedCompletedFrame);
+        Assert.AreEqual(MAEntityLogicFramePhase.PostUpdate, observedCompletedPhase);
+        Assert.AreEqual(1, observedEntityCount);
+        Assert.AreEqual((int)MAEntityLogicFramePhase.Count, observedPhaseExecutionCount);
+        Assert.IsTrue(observedExecutingFrame);
+        Assert.AreEqual(1UL, validatedCompletedFrame);
+        Assert.AreEqual(2UL, MAEntityLogicFrameSystem.ValidateAndGetLatestCompletedFrame());
+    }
+
+    [Test]
     public void GhostHero_ContinuesCooldownWithoutRunningSkillInteractions()
     {
         BeginDefendEntityTimeline();
@@ -2354,6 +2397,7 @@ public class MAEntityLogicFrameSystemTests
         public uint AgentCollisionMask => 1u;
         public FixVector2 PreparedResolvedHorizontalDisplacement => FixVector2.Zero;
         public int ExecutedPhaseCount { get; private set; }
+        public System.Action<MAEntityLogicFramePhase> PhaseObserver { get; set; }
 
         public void BeginLogicFrame(Fix64 deltaTime)
         {
@@ -2367,6 +2411,7 @@ public class MAEntityLogicFrameSystemTests
         {
             Assert.IsTrue(m_FrameActive);
             Assert.AreEqual(m_NextPhase, phase);
+            PhaseObserver?.Invoke(phase);
             if (phase == MAEntityLogicFramePhase.MoveResolve)
                 PreparedLogicFrame = LogicFrameRuntime.CurrentFrame;
             ExecutedPhaseCount++;

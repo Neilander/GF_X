@@ -116,6 +116,12 @@ internal static class Lv2PullChasePerformanceRunner
     private static int s_PeakRequiredFlowTileCommits;
     private static int s_PeakFlowTileQueueMutations;
     private static int s_PeakPathPortalExpansions;
+    private static int s_PeakPathRequestGroups;
+    private static int s_PeakPathRequestOperations;
+    private static int s_PeakPathRequestCommits;
+    private static int s_PeakPathRequestSourceCommits;
+    private static int s_PeakPendingPathRequestGroups;
+    private static int s_PeakPendingPathRequestSources;
 
     private enum RunnerState
     {
@@ -173,6 +179,7 @@ internal static class Lv2PullChasePerformanceRunner
         {
             ValidateTimeout();
             CaptureCompletedFrame();
+            ValidateLogicEntityChain();
             RunnerState state = (RunnerState)SessionState.GetInt(StateKey, (int)RunnerState.WaitingForPlay);
             if (!EditorApplication.isPlaying)
             {
@@ -513,6 +520,12 @@ internal static class Lv2PullChasePerformanceRunner
         s_PeakRequiredFlowTileCommits = 0;
         s_PeakFlowTileQueueMutations = 0;
         s_PeakPathPortalExpansions = 0;
+        s_PeakPathRequestGroups = 0;
+        s_PeakPathRequestOperations = 0;
+        s_PeakPathRequestCommits = 0;
+        s_PeakPathRequestSourceCommits = 0;
+        s_PeakPendingPathRequestGroups = 0;
+        s_PeakPendingPathRequestSources = 0;
         s_CaptureActive = true;
     }
 
@@ -547,6 +560,24 @@ internal static class Lv2PullChasePerformanceRunner
         s_PeakPathPortalExpansions = Math.Max(
             s_PeakPathPortalExpansions,
             FlowFieldCrowdMovementSystem.GetEditorTestFramePathPortalGraphNodeExpansionCount());
+        int pathRequestGroups = FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathRequestGroupCount();
+        int pathRequestOperations = FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathRequestOperationCount();
+        int pathRequestCommits = FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathRequestCommitCount();
+        int pathRequestSourceCommits = FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathSourceCommitCount();
+        int pendingPathRequestGroups = FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathRequestCount();
+        int pendingPathRequestSources = FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathSourceCount();
+        int pathRequestOperationQuota = FlowFieldCrowdMovementSystem.GetEditorTestNavigationPathRequestOperationQuota();
+        if (pathRequestOperations > pathRequestOperationQuota)
+        {
+            throw new InvalidOperationException(
+                $"Lv2 pull-chase path request exceeded operation quota. operations={pathRequestOperations}, quota={pathRequestOperationQuota}.");
+        }
+        s_PeakPathRequestGroups = Math.Max(s_PeakPathRequestGroups, pathRequestGroups);
+        s_PeakPathRequestOperations = Math.Max(s_PeakPathRequestOperations, pathRequestOperations);
+        s_PeakPathRequestCommits = Math.Max(s_PeakPathRequestCommits, pathRequestCommits);
+        s_PeakPathRequestSourceCommits = Math.Max(s_PeakPathRequestSourceCommits, pathRequestSourceCommits);
+        s_PeakPendingPathRequestGroups = Math.Max(s_PeakPendingPathRequestGroups, pendingPathRequestGroups);
+        s_PeakPendingPathRequestSources = Math.Max(s_PeakPendingPathRequestSources, pendingPathRequestSources);
         CaptureChaseScopePeaks(completedFrame);
         if (frameMs > s_MaxFrameMilliseconds)
         {
@@ -564,7 +595,8 @@ internal static class Lv2PullChasePerformanceRunner
         double continuationMilliseconds = MainThreadFrameProfiler.GetLastCompletedScopeMilliseconds(MainThreadPerfScope.FlowTileCommitContinuation);
         bool pathSearchExpanded = EditorApplication.isPlaying
                                   && FlowFieldCrowdMovementSystem.GetEditorTestFramePathPortalGraphNodeExpansionCount() > 0;
-        if (!periodic && !pathSearchExpanded && pathHandleMilliseconds < 0.5 && continuationMilliseconds < 0.5)
+        bool pathRequestAdvanced = pathRequestOperations > 0 || pathRequestCommits > 0;
+        if (!periodic && !pathSearchExpanded && !pathRequestAdvanced && pathHandleMilliseconds < 0.5 && continuationMilliseconds < 0.5)
             return;
         if (periodic)
             s_LastPeriodicSampleFrame = completedFrame;
@@ -599,7 +631,27 @@ internal static class Lv2PullChasePerformanceRunner
             $"sample render={completedFrame},logic={LogicFrameRuntime.CurrentFrame},state={(RunnerState)SessionState.GetInt(StateKey, 0)}," +
             $"mode={(ScenarioMode)SessionState.GetInt(ModeKey, 0)},frameMs={frameMs:F3},trackedMs={MainThreadFrameProfiler.LastCompletedTrackedMilliseconds:F3}," +
             $"untrackedMs={MainThreadFrameProfiler.LastCompletedUntrackedMilliseconds:F3},logicMs={logicMs:F3},editorGapMs={updateGapMs:F3}," +
-            $"scopes=[{BuildChaseScopeSample()}],pathSearch=[{pathSearch}],startConnectors=[{startConnectors}],chase=[{chase}],navigation=[{navigation}]");
+            $"scopes=[{BuildChaseScopeSample()}],pathRequests=[groups={pathRequestGroups},operations={pathRequestOperations},quota={pathRequestOperationQuota}," +
+            $"commits={pathRequestCommits},sourceCommits={pathRequestSourceCommits},pendingGroups={pendingPathRequestGroups},pendingSources={pendingPathRequestSources}]," +
+            $"pathSearch=[{pathSearch}],startConnectors=[{startConnectors}],chase=[{chase}],navigation=[{navigation}]");
+    }
+
+    private static void ValidateLogicEntityChain()
+    {
+        if (!EditorApplication.isPlaying
+            || !LogicFrameRuntime.IsTimelineRunning
+            || LogicFrameRuntime.CurrentFrame == 0)
+        {
+            return;
+        }
+
+        if (!MAEntityLogicFrameSystem.IsActive)
+        {
+            throw new InvalidOperationException(
+                $"Lv2 pull-chase entity chain is inactive. logicFrame={LogicFrameRuntime.CurrentFrame}.");
+        }
+
+        MAEntityLogicFrameSystem.ValidateAndGetLatestCompletedFrame();
     }
 
     private static void CaptureChaseScopePeaks(int completedFrame)
@@ -722,6 +774,13 @@ internal static class Lv2PullChasePerformanceRunner
             "peakRequiredFlowTileCommits=" + s_PeakRequiredFlowTileCommits + Environment.NewLine +
             "peakFlowTileQueueMutations=" + s_PeakFlowTileQueueMutations + Environment.NewLine +
             "peakPathPortalExpansions=" + s_PeakPathPortalExpansions + Environment.NewLine +
+            "pathRequestOperationQuota=" + FlowFieldCrowdMovementSystem.GetEditorTestNavigationPathRequestOperationQuota() + Environment.NewLine +
+            "peakPathRequestGroups=" + s_PeakPathRequestGroups + Environment.NewLine +
+            "peakPathRequestOperations=" + s_PeakPathRequestOperations + Environment.NewLine +
+            "peakPathRequestCommits=" + s_PeakPathRequestCommits + Environment.NewLine +
+            "peakPathRequestSourceCommits=" + s_PeakPathRequestSourceCommits + Environment.NewLine +
+            "peakPendingPathRequestGroups=" + s_PeakPendingPathRequestGroups + Environment.NewLine +
+            "peakPendingPathRequestSources=" + s_PeakPendingPathRequestSources + Environment.NewLine +
             BuildDistributionReport("approach-frame", s_ApproachFrameMilliseconds) + Environment.NewLine +
             BuildDistributionReport("approach-logic", s_ApproachLogicMilliseconds) + Environment.NewLine +
             BuildDistributionReport("retreat-frame", s_RetreatFrameMilliseconds) + Environment.NewLine +
@@ -786,6 +845,12 @@ internal static class Lv2PullChasePerformanceRunner
         s_PeakRequiredFlowTileCommits = 0;
         s_PeakFlowTileQueueMutations = 0;
         s_PeakPathPortalExpansions = 0;
+        s_PeakPathRequestGroups = 0;
+        s_PeakPathRequestOperations = 0;
+        s_PeakPathRequestCommits = 0;
+        s_PeakPathRequestSourceCommits = 0;
+        s_PeakPendingPathRequestGroups = 0;
+        s_PeakPendingPathRequestSources = 0;
         s_NavigationBeforeInvade = string.Empty;
         s_NavigationAfterInvade = string.Empty;
         s_LastRetreatDirection = string.Empty;

@@ -29,7 +29,7 @@ public class SteeringMovementTests
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(64, 64, 1f, new Vector3(-32f, 0f, -32f), walkable);
         FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
         FlowFieldNavigationConfig config = ScriptableObject.CreateInstance<FlowFieldNavigationConfig>();
-        config.SectorSizeInCells = 4;
+        config.EditorTestSectorSizeInCells = 4;
         config.PortalNarrowWidthCells = 1;
         config.FlowTileCacheLimit = 32;
         config.WorldBuildOperationQuota = 1_000_000;

@@ -594,7 +594,7 @@ namespace AAAGame.Tools.Editor
             FlowFieldCrowdMovementSystem.SetConfig(config);
             Debug.Log(
                 $"[FlowNavigationGridBake] stage=flow-config-applied elapsedMs={stopwatch.ElapsedMilliseconds} " +
-                $"config={FlowFieldNavigationConfigPath} sector={config.SectorSizeInCells} narrow={config.PortalNarrowWidthCells} maxWindow={config.PortalMaxWindowWidthCells}");
+                $"config={FlowFieldNavigationConfigPath} sectorMm={config.SectorWorldSizeMillimeters} narrow={config.PortalNarrowWidthCells} maxWindow={config.PortalMaxWindowWidthCells}");
         }
 
         private static void BuildStaticCollisionGeometry(

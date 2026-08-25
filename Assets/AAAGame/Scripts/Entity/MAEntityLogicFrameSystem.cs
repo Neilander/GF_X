@@ -57,6 +57,43 @@ public static class MAEntityLogicFrameSystem
     public static MAEntityLogicFramePhase LastCompletedPhase { get; private set; }
     public static int LastFramePhaseExecutionCount { get; private set; }
 
+    public static ulong ValidateAndGetLatestCompletedFrame()
+    {
+        EnsureActive();
+        ulong currentFrame = LogicFrameRuntime.CurrentFrame;
+        ulong completedFrame = LastCompletedFrame;
+        if (completedFrame > currentFrame)
+        {
+            throw new InvalidOperationException(
+                $"MAEntityLogicFrameSystem completed frame is ahead of the runtime. current={currentFrame}, " +
+                $"executing={LogicFrameRuntime.IsExecutingFrame}, ticking={LogicFrameRuntime.IsTicking}, completed={completedFrame}.");
+        }
+
+        if (completedFrame == 0)
+            return 0;
+        if (LastCompletedPhase != MAEntityLogicFramePhase.PostUpdate)
+        {
+            throw new InvalidOperationException(
+                $"MAEntityLogicFrameSystem completed phase mismatch. frame={LastCompletedFrame}, phase={LastCompletedPhase}.");
+        }
+
+        int expectedPhaseExecutions = checked(LastFrameEntityCount * (int)MAEntityLogicFramePhase.Count);
+        if (LastFramePhaseExecutionCount != expectedPhaseExecutions)
+        {
+            throw new InvalidOperationException(
+                $"MAEntityLogicFrameSystem completed phase count mismatch. frame={LastCompletedFrame}, " +
+                $"entities={LastFrameEntityCount}, actual={LastFramePhaseExecutionCount}, expected={expectedPhaseExecutions}.");
+        }
+
+        if (LastCompletedFrame != completedFrame)
+        {
+            throw new InvalidOperationException(
+                $"MAEntityLogicFrameSystem completion snapshot changed while being validated. before={completedFrame}, after={LastCompletedFrame}.");
+        }
+
+        return completedFrame;
+    }
+
     public static void BeginTimeline()
     {
         if (IsActive)
@@ -126,6 +163,7 @@ public static class MAEntityLogicFrameSystem
         }
 
         int phaseExecutionCount = 0;
+        MAEntityLogicFramePhase completedPhase = default;
         LogicDamageEventService.BeginFrame(frame);
         for (int phaseValue = 0; phaseValue < (int)MAEntityLogicFramePhase.Count; phaseValue++)
         {
@@ -161,7 +199,7 @@ public static class MAEntityLogicFrameSystem
                     ResolvePhasePerfScope(phase),
                     System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks);
             }
-            LastCompletedPhase = phase;
+            completedPhase = phase;
         }
 
         long completeStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
@@ -174,8 +212,19 @@ public static class MAEntityLogicFrameSystem
                 System.Diagnostics.Stopwatch.GetTimestamp() - completeStartTicks);
         }
 
-        LastFrameEntityCount = s_FrameEntities.Count;
+        int entityCount = s_FrameEntities.Count;
+        int expectedPhaseExecutionCount = checked(entityCount * (int)MAEntityLogicFramePhase.Count);
+        if (completedPhase != MAEntityLogicFramePhase.PostUpdate
+            || phaseExecutionCount != expectedPhaseExecutionCount)
+        {
+            throw new InvalidOperationException(
+                $"MAEntityLogicFrameSystem.ExecuteFrame failed: entity phase chain is incomplete. frame={frame}, " +
+                $"phase={completedPhase}, entities={entityCount}, actual={phaseExecutionCount}, expected={expectedPhaseExecutionCount}.");
+        }
+
+        LastFrameEntityCount = entityCount;
         LastFramePhaseExecutionCount = phaseExecutionCount;
+        LastCompletedPhase = completedPhase;
         LastCompletedFrame = frame;
     }
 

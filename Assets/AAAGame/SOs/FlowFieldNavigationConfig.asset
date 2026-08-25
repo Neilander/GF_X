@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: FlowFieldNavigationConfig
   m_EditorClassIdentifier: 
   RequireAuthoredNavigationSource: 1
-  SectorSizeInCells: 12
+  SectorWorldSizeMillimeters: 3600
   PortalNarrowWidthCells: 2
   PortalMaxWindowWidthCells: 6
   FlowTileCacheLimit: 256
@@ -22,6 +22,7 @@ MonoBehaviour:
   DeterministicFlowTileCommitQuota: 8
   FlowTileBuildOperationQuota: 2048
   SharedGoalBuildOperationQuota: 2048
+  PathRequestOperationQuota: 2048
   EnableDeterministicStaticCollisionShadow: 1
   StaticCollisionShadowMismatchTolerance: 0.03
   StaticCollisionShadowLogIntervalTicks: 300

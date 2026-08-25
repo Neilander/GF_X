@@ -122,7 +122,10 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private sealed class RuntimeConfig
     {
-        public int SectorSizeInCells = 12;
+        public int SectorWorldSizeMillimeters = 3600;
+#if UNITY_EDITOR
+        public int EditorTestSectorSizeInCells;
+#endif
         public int PortalNarrowWidthCells = 2;
         public int PortalMaxWindowWidthCells = 6;
         public int FlowTileCacheLimit = 256;
@@ -131,6 +134,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int DeterministicFlowTileCommitQuota = 8;
         public int FlowTileBuildOperationQuota = 2048;
         public int SharedGoalBuildOperationQuota = 2048;
+        public int PathRequestOperationQuota = 2048;
         public bool RequireAuthoredNavigationSource = true;
         public bool EnableDeterministicStaticCollisionShadow = true;
         public float StaticCollisionShadowMismatchTolerance = 0.03f;
@@ -999,6 +1003,9 @@ public static partial class FlowFieldCrowdMovementSystem
         public int FailedPathStartSectorDirtyVersion;
         public int FailedPathGoalSectorDirtyVersion;
         public bool HasPreparedNavigationSnapshot;
+        public bool HasPendingNavigation;
+        public bool HasPendingNavigationReplacement;
+        public int CommittedMovingTargetId = int.MinValue;
         public int PreparedNavigationFrame = -1;
         public FixVector2 PreparedInputGoalFixed;
         public FixVector2 PreparedNavigationGoalFixed;
@@ -3180,6 +3187,10 @@ public static partial class FlowFieldCrowdMovementSystem
         public int WorldBuilds;
         public int PathBuilds;
         public int NavigationPrepareRequests;
+        public int NavigationPathRequestGroups;
+        public int NavigationPathRequestOperations;
+        public int NavigationPathRequestCommits;
+        public int NavigationPathSourceCommits;
         public int SectorPathSearches;
         public int SectorPathCacheHits;
         public int PortalGraphMergeHits;
@@ -3322,6 +3333,7 @@ public static partial class FlowFieldCrowdMovementSystem
         OrderedAgentIds.Clear();
         CollectedNavigationSyncRequests.Clear();
         CollectedNavigationSyncSourceIds.Clear();
+        ClearNavigationPathRequests();
         _collectedNavigationSyncFrame = -1;
         AgentSpatialBuckets.Clear();
         NearbyAgentScratch.Clear();
@@ -3346,6 +3358,7 @@ public static partial class FlowFieldCrowdMovementSystem
         ActiveFlowTileBuildKeys.Clear();
         PendingFlowTileDependencyKeys.Clear();
         ClearSectorPathCache();
+        ClearNavigationPathRequests();
         DeferredSectorCorridorPolicyAuthorityKeys.Clear();
         _navigationSyncBatchResolveActive = false;
         ClearSectorPortalAccessCache();
@@ -3474,6 +3487,10 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void ClearRuntimeNavigationRegistrations()
     {
+        CollectedNavigationSyncRequests.Clear();
+        CollectedNavigationSyncSourceIds.Clear();
+        ClearNavigationPathRequests();
+        _collectedNavigationSyncFrame = -1;
         Agents.Clear();
         OrderedAgentIds.Clear();
         AgentSpatialBuckets.Clear();
@@ -3491,6 +3508,11 @@ public static partial class FlowFieldCrowdMovementSystem
     }
 
 #if UNITY_EDITOR
+    public static int GetEditorTestResolvedSectorSizeInCells(float cellSize)
+    {
+        return ResolveRuntimeSectorSizeInCells(NavigationGridFixedMath.FloatToGridRaw(cellSize));
+    }
+
     public static int[] GetEditorTestMinHeapPopOrder(int[] indices, float[] costs)
     {
         if (indices == null)
@@ -4252,18 +4274,18 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void ValidateDerivedNavigationDataAgainstRuntimeConfig(FlowNavigationGridAsset.DerivedNavigationData data, string caller)
     {
-        if (data.ConfigSectorSizeInCells != Config.SectorSizeInCells
+        if (data.ConfigSectorWorldSizeMillimeters != Config.SectorWorldSizeMillimeters
             || data.ConfigPortalNarrowWidthCells != Config.PortalNarrowWidthCells
             || data.ConfigPortalMaxWindowWidthCells != Config.PortalMaxWindowWidthCells)
         {
             throw new InvalidOperationException(
                 $"{caller} failed: derived navigation data was baked with different flow graph config. " +
-                $"baked=(sector={data.ConfigSectorSizeInCells},narrow={data.ConfigPortalNarrowWidthCells},maxWindow={data.ConfigPortalMaxWindowWidthCells}) " +
-                $"runtime=(sector={Config.SectorSizeInCells},narrow={Config.PortalNarrowWidthCells},maxWindow={Config.PortalMaxWindowWidthCells}). " +
+                $"baked=(sectorMm={data.ConfigSectorWorldSizeMillimeters},narrow={data.ConfigPortalNarrowWidthCells},maxWindow={data.ConfigPortalMaxWindowWidthCells}) " +
+                $"runtime=(sectorMm={Config.SectorWorldSizeMillimeters},narrow={Config.PortalNarrowWidthCells},maxWindow={Config.PortalMaxWindowWidthCells}). " +
                 "Regenerate the FlowNavigationGridAsset with the current FlowFieldNavigationConfig.");
         }
 
-        int expectedSectorSize = ResolveRuntimeSectorSizeInCells(data.CellSize);
+        int expectedSectorSize = ResolveRuntimeSectorSizeInCells(data.CellSizeGridRaw);
         if (data.SectorSizeInCells != expectedSectorSize)
         {
             throw new InvalidOperationException(
@@ -4289,7 +4311,7 @@ public static partial class FlowFieldCrowdMovementSystem
             CellSizeGridRaw = world.CellSizeGridRaw,
             OriginXGridRaw = world.OriginXGridRaw,
             OriginZGridRaw = world.OriginZGridRaw,
-            ConfigSectorSizeInCells = Config.SectorSizeInCells,
+            ConfigSectorWorldSizeMillimeters = Config.SectorWorldSizeMillimeters,
             ConfigPortalNarrowWidthCells = Config.PortalNarrowWidthCells,
             ConfigPortalMaxWindowWidthCells = Config.PortalMaxWindowWidthCells,
             SectorSizeInCells = world.SectorSizeInCells,
@@ -4837,11 +4859,19 @@ public static partial class FlowFieldCrowdMovementSystem
         if (config == null)
             throw new InvalidOperationException("FlowFieldCrowdMovementSystem.SetConfig failed: config is null.");
 
-        bool requiresRebuild = Config.SectorSizeInCells != config.SectorSizeInCells
+        bool requiresRebuild = Config.SectorWorldSizeMillimeters != config.SectorWorldSizeMillimeters
                                || Config.PortalNarrowWidthCells != config.PortalNarrowWidthCells
                                || Config.PortalMaxWindowWidthCells != config.PortalMaxWindowWidthCells;
+#if UNITY_EDITOR
+        requiresRebuild |= Config.EditorTestSectorSizeInCells != config.EditorTestSectorSizeInCells;
+#endif
 
-        Config.SectorSizeInCells = Mathf.Max(4, config.SectorSizeInCells);
+        if (config.SectorWorldSizeMillimeters <= 0)
+            throw new InvalidOperationException("Flow navigation sector world size must be positive.");
+        Config.SectorWorldSizeMillimeters = config.SectorWorldSizeMillimeters;
+#if UNITY_EDITOR
+        Config.EditorTestSectorSizeInCells = config.EditorTestSectorSizeInCells;
+#endif
         Config.PortalNarrowWidthCells = Mathf.Max(1, config.PortalNarrowWidthCells);
         Config.PortalMaxWindowWidthCells = Mathf.Max(2, config.PortalMaxWindowWidthCells);
         Config.FlowTileCacheLimit = Mathf.Max(16, config.FlowTileCacheLimit);
@@ -4850,6 +4880,7 @@ public static partial class FlowFieldCrowdMovementSystem
         Config.DeterministicFlowTileCommitQuota = Mathf.Max(1, config.DeterministicFlowTileCommitQuota);
         Config.FlowTileBuildOperationQuota = Mathf.Max(1, config.FlowTileBuildOperationQuota);
         Config.SharedGoalBuildOperationQuota = Mathf.Max(1, config.SharedGoalBuildOperationQuota);
+        Config.PathRequestOperationQuota = Mathf.Max(1, config.PathRequestOperationQuota);
         Config.RequireAuthoredNavigationSource = config.RequireAuthoredNavigationSource;
         Config.EnableDeterministicStaticCollisionShadow = config.EnableDeterministicStaticCollisionShadow;
         Config.StaticCollisionShadowMismatchTolerance = Mathf.Max(0f, config.StaticCollisionShadowMismatchTolerance);
@@ -4901,6 +4932,7 @@ public static partial class FlowFieldCrowdMovementSystem
         ActiveFlowTileBuildKeys.Clear();
         PendingFlowTileDependencyKeys.Clear();
         ClearSectorPathCache();
+        ClearNavigationPathRequests();
         ClearSectorPortalAccessCache();
         StartPortalChoiceCache.Clear();
         ClearSharedGoalFieldCache();
@@ -4924,7 +4956,7 @@ public static partial class FlowFieldCrowdMovementSystem
         _lastAgentSpatialBucketWorldVersion = -1;
         foreach (KeyValuePair<int, AgentRuntimeData> pair in Agents)
         {
-            pair.Value.NavState.PathHandle = null;
+            ClearCommittedNavigationPath(pair.Value);
             ClearStableGoal(pair.Value);
         }
 
@@ -4938,7 +4970,7 @@ public static partial class FlowFieldCrowdMovementSystem
         Stopwatch stopwatch = Stopwatch.StartNew();
         LogNoStacktrace(
             $"[FlowWorld] Initial preparation begin agentTypes=[{string.Join(",", agentTypeIds)}] agents={Agents.Count} " +
-            $"config(sector={Config.SectorSizeInCells}, tileCacheLimit={Config.FlowTileCacheLimit})");
+            $"config(sectorMm={Config.SectorWorldSizeMillimeters}, tileCacheLimit={Config.FlowTileCacheLimit})");
         int builtCount = 0;
         foreach (int agentTypeId in agentTypeIds)
         {
@@ -7539,6 +7571,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
     public static void UnregisterAgent(int agentId)
     {
+        CancelNavigationPathRequestsForSource(agentId);
         RemoveFixedPortalParticipation(agentId);
         bool removed = Agents.Remove(agentId);
         int orderedIndex = OrderedAgentIds.BinarySearch(agentId);
@@ -9990,7 +10023,9 @@ public static partial class FlowFieldCrowdMovementSystem
         builder.Append("], flowCount=").Append(PendingFlowTileBuildJobs.Count)
             .Append(", flowJobs=").Append(BuildPendingFlowTileJobDiagnostics())
             .Append(", sharedCount=").Append(PendingSharedGoalFieldBuildJobs.Count)
-            .Append(", sharedJobs=").Append(BuildPendingSharedGoalFieldJobDiagnostics());
+            .Append(", sharedJobs=").Append(BuildPendingSharedGoalFieldJobDiagnostics())
+            .Append(", pathRequestCount=").Append(PendingNavigationPathRequests.Count)
+            .Append(", pathRequests=").Append(GetEditorTestPendingNavigationPathRequestDiagnostics());
         return builder.ToString();
     }
 
@@ -13402,6 +13437,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
     public static void ResolveCollectedNavigationSyncRequests()
     {
+        BeginPerfCall();
         int frame = GetFrameCount();
         if (CollectedNavigationSyncRequests.Count == 0)
         {
@@ -13417,34 +13453,28 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         CollectedNavigationSyncRequests.Sort(CompareNavigationSyncRequests);
-        BeginNavigationSyncBatchResolve();
+        for (int i = 0; i < CollectedNavigationSyncRequests.Count; i++)
+        {
+            NavigationSyncRequest request = CollectedNavigationSyncRequests[i]
+                                            ?? throw new InvalidOperationException($"NavigationSync request is null at sorted index={i}.");
+            if (!TryResolveNavigationPathDemand(request, out NavigationPathDemand demand, out string failureReason))
+            {
+                throw new InvalidOperationException(
+                    $"[{request.Source.CharacterKey}] NavigationSync batch resolve rejected target={request.InputGoalPosition}: {failureReason}");
+            }
+            if (!TryReuseNavigationPathDemand(demand))
+                EnqueueNavigationPathDemand(demand);
+        }
+
+        PruneInactiveNavigationPathRequestSources(frame);
+        BeginNavigationWorkBudget(Config.PathRequestOperationQuota);
         try
         {
-            for (int i = 0; i < CollectedNavigationSyncRequests.Count; i++)
-            {
-                NavigationSyncRequest request = CollectedNavigationSyncRequests[i]
-                                                ?? throw new InvalidOperationException($"NavigationSync request is null at sorted index={i}.");
-                if (i > 0
-                    && !AreNavigationSyncRequestsInSameGoalPolicyGroup(
-                        CollectedNavigationSyncRequests[i - 1],
-                        request))
-                {
-                    CommitDeferredNavigationSyncPolicyAuthorities();
-                }
-                if (!TryPrepareNavigationSyncRequestFixed(
-                        request.Source,
-                        request.InputGoalPosition,
-                        request.MaximumTravelDistance,
-                        out string failureReason))
-                {
-                    throw new InvalidOperationException(
-                        $"[{request.Source.CharacterKey}] NavigationSync batch resolve rejected target={request.InputGoalPosition}: {failureReason}");
-                }
-            }
+            ProcessNavigationPathRequestsAcrossWorlds();
         }
         finally
         {
-            EndNavigationSyncBatchResolve();
+            EndNavigationWorkBudget();
         }
 
         CollectedNavigationSyncRequests.Clear();
@@ -13504,8 +13534,19 @@ public static partial class FlowFieldCrowdMovementSystem
         agent.NavState.PreparedNavigationFrame = -1;
         agent.NavState.PreparedMaximumTravelDistanceFixed = Fix64.Zero;
         agent.NavState.HasGoal = false;
-        agent.NavState.PathHandle = null;
+        ClearCommittedNavigationPath(agent);
+        agent.NavState.HasPendingNavigation = false;
+        CancelNavigationPathRequestsForSource(sourceId);
         RemoveFixedPortalParticipation(sourceId);
+    }
+
+    private static void ClearCommittedNavigationPath(AgentRuntimeData agent)
+    {
+        if (agent == null)
+            throw new ArgumentNullException(nameof(agent));
+        agent.NavState.PathHandle = null;
+        agent.NavState.HasPendingNavigationReplacement = false;
+        agent.NavState.CommittedMovingTargetId = int.MinValue;
     }
 
     private static bool RequiresPreparedNavigationSnapshot()
@@ -13971,6 +14012,31 @@ public static partial class FlowFieldCrowdMovementSystem
                 Stopwatch.GetTimestamp() - occupancyStartTicks);
         }
 
+        if (agent.NavState.HasPendingNavigation)
+        {
+            int pendingFrame = GetFrameCount();
+            velocity = FixVector2.Zero;
+            agent.NavState.DesiredVelocity = Vector3.zero;
+            agent.NavState.ResolvedVelocity = Vector3.zero;
+            agent.NavState.ResolvedVelocityFrame = pendingFrame;
+            agent.NavState.CurrentFlowDirection = Vector3.zero;
+            agent.NavState.LastSteeringFrame = pendingFrame;
+            agent.NavState.LastSteeringGoal = ToWorldVector3(occupiedGoalPosition);
+            agent.NavState.LastSteeringDesiredDirection = Vector3.zero;
+            agent.NavState.LastSteeringDesiredVelocity = Vector3.zero;
+            agent.NavState.LastSteeringBaseVelocity = Vector3.zero;
+            agent.NavState.LastSteeringResultPreClamp = Vector3.zero;
+            agent.NavState.LastSteeringResult = Vector3.zero;
+            agent.NavState.LastSteeringMaxSpeed = (float)maxSpeed;
+            agent.NavState.LastSteeringDesiredSource = DesiredDirectionSource.PendingBuild;
+            agent.NavState.LastSteeringHasLineOfSight = false;
+            agent.NavState.LastFixedFlowFrame = pendingFrame;
+            agent.NavState.LastFixedFlowResult = "pending-navigation-path-request";
+            agent.NavState.LastFixedFlowVelocity = FixVector2.Zero;
+            agent.HasNavigationIntent = false;
+            return true;
+        }
+
         long prepareStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (!requirePreparedSnapshot && !TryPrepareNavigationRequestFixedCore(
                 self,
@@ -14049,7 +14115,7 @@ public static partial class FlowFieldCrowdMovementSystem
             PathHandle invalidHandle = agent.NavState.PathHandle;
             int goalX = invalidHandle?.GoalX ?? -1;
             int goalY = invalidHandle?.GoalY ?? -1;
-            agent.NavState.PathHandle = null;
+            ClearCommittedNavigationPath(agent);
             if (goalX < 0
                 || goalY < 0
                 || !_world.TryGetSectorId(goalX, goalY, out int goalSectorId)
@@ -18482,6 +18548,7 @@ public static partial class FlowFieldCrowdMovementSystem
             $"queues(world={TicksToMs(_perf.WorldBuildQueueTicks):F3}ms,runtime={TicksToMs(_perf.RuntimeRebuildQueueTicks):F3}ms,tile={TicksToMs(_perf.FlowTileQueueTicks):F3}ms," +
             $"tileActive={TicksToMs(_perf.FlowTileActiveEnqueueTicks):F3}ms,tilePrune={TicksToMs(_perf.FlowTilePruneTicks):F3}ms,tileRefs={TicksToMs(_perf.FlowTileReferenceTicks):F3}ms," +
             $"sharedActive={TicksToMs(_perf.SharedGoalActiveEnqueueTicks):F3}ms,sharedPrune={TicksToMs(_perf.SharedGoalPruneTicks):F3}ms,sharedProcess={TicksToMs(_perf.SharedGoalProcessTicks):F3}ms,sharedPortalNodes={_perf.SharedGoalPortalGraphNodeExpansions},sharedPortalIncoming={_perf.SharedGoalPortalGraphIncomingTransitionScans},sharedPortalHits={_perf.SharedGoalPortalGraphIncomingTransitionHits},refCalls={_perf.FlowTileReferenceRefreshCalls},refKeys={_perf.FlowTileReferenceKeyScans}) " +
+            $"pathRequests(groups={_perf.NavigationPathRequestGroups},operations={_perf.NavigationPathRequestOperations},commits={_perf.NavigationPathRequestCommits},sourceCommits={_perf.NavigationPathSourceCommits},pendingGroups={PendingNavigationPathRequests.Count}) " +
             $"pathPortal(nodes={_perf.PathPortalGraphNodeExpansions},outgoing={_perf.PathPortalGraphOutgoingTransitionScans},hits={_perf.PathPortalGraphOutgoingTransitionHits}) " +
             $"corridorPolicy(ms={TicksToMs(_perf.SectorCorridorPolicyTicks):F3},queries={_perf.SectorCorridorPolicyQueries}) " +
             $"agentUpdate={TicksToMs(_perf.AgentUpdateTicks):F3}ms " +
@@ -19694,7 +19761,7 @@ public static partial class FlowFieldCrowdMovementSystem
         int circleCount = job.CircleObstacles != null ? job.CircleObstacles.Count : 0;
         int boxCount = job.BoxObstacles != null ? job.BoxObstacles.Count : 0;
         int costStampCount = job.CostStamps != null ? job.CostStamps.Count : 0;
-        int sectorSize = world != null ? world.SectorSizeInCells : Config.SectorSizeInCells;
+        int sectorSize = world != null ? world.SectorSizeInCells : 0;
         int sectorCountX = world != null ? world.SectorCountX : 0;
         int sectorCountY = world != null ? world.SectorCountY : 0;
         int islandCount = world != null ? world.IslandCount : 0;
@@ -20178,7 +20245,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 ? (byte[])job.BaseNeighborTraversalMask.Clone()
                 : new byte[job.Width * job.Height],
             IslandIds = new int[job.Width * job.Height],
-            SectorSizeInCells = ResolveRuntimeSectorSizeInCells(job.CellSize)
+            SectorSizeInCells = ResolveRuntimeSectorSizeInCells(job.CellSizeGridRaw)
         };
         job.WorkingWorld.SetAuthorityGridMetadata(
             job.CellSizeGridRaw,
@@ -20289,9 +20356,27 @@ public static partial class FlowFieldCrowdMovementSystem
         job.Stage = WorldBuildStage.BuildCellNavAnchors;
     }
 
-    private static int ResolveRuntimeSectorSizeInCells(float cellSize)
+    private static int ResolveRuntimeSectorSizeInCells(long cellSizeGridRaw)
     {
-        return Mathf.Max(4, Config.SectorSizeInCells);
+#if UNITY_EDITOR
+        if (Config.EditorTestSectorSizeInCells > 0)
+            return Mathf.Max(4, Config.EditorTestSectorSizeInCells);
+#endif
+        if (cellSizeGridRaw <= 0)
+            throw new InvalidOperationException($"Cannot derive sector cell count from invalid cellSizeGridRaw={cellSizeGridRaw}.");
+        if (Config.SectorWorldSizeMillimeters <= 0)
+        {
+            throw new InvalidOperationException(
+                $"Cannot derive sector cell count from invalid sectorWorldSizeMillimeters={Config.SectorWorldSizeMillimeters}.");
+        }
+
+        const long gridOne = 1L << 32;
+        long sectorWorldSizeGridRaw = checked(
+            (checked((long)Config.SectorWorldSizeMillimeters * gridOne) + 500L) / 1000L);
+        long cellCount = checked((sectorWorldSizeGridRaw + cellSizeGridRaw / 2L) / cellSizeGridRaw);
+        if (cellCount > int.MaxValue)
+            throw new InvalidOperationException($"Derived sector cell count exceeds Int32: {cellCount}.");
+        return Mathf.Max(4, (int)cellCount);
     }
 
     private static int ResolvePortalNarrowWidthCells(NavigationWorld world)
@@ -21221,7 +21306,7 @@ public static partial class FlowFieldCrowdMovementSystem
         int boxCount = job.BoxObstacles != null ? job.BoxObstacles.Count : 0;
         int costStampCount = job.CostStamps != null ? job.CostStamps.Count : 0;
         int pendingPortalAccessCount = job.PendingPortalAccessEntries != null ? job.PendingPortalAccessEntries.Count : 0;
-        int sectorSize = world != null ? world.SectorSizeInCells : Config.SectorSizeInCells;
+        int sectorSize = world != null ? world.SectorSizeInCells : 0;
         int sectorCountX = world != null ? world.SectorCountX : 0;
         int sectorCountY = world != null ? world.SectorCountY : 0;
         int islandCount = world != null ? world.IslandCount : 0;
@@ -22103,7 +22188,7 @@ public static partial class FlowFieldCrowdMovementSystem
             if (PathTouchesAnySector(pair.Value.NavState.PathHandle, job.CostDirtySectors)
                 || PathReferencesMissingPortal(target, pair.Value.NavState.PathHandle))
             {
-                pair.Value.NavState.PathHandle = null;
+                ClearCommittedNavigationPath(pair.Value);
             }
 
             ClearStableGoal(pair.Value);
@@ -22613,6 +22698,7 @@ public static partial class FlowFieldCrowdMovementSystem
         if (dirtySectors == null || dirtySectors.Count == 0)
             return;
 
+        InvalidatePendingNavigationPathRequestsForDirtySectors(world, dirtySectors);
         InvalidatePendingFlowTileBuildJobsForDirtySectors(world, dirtySectors);
         InvalidatePendingSharedGoalFieldBuildJobsForDirtySectors(world, dirtySectors);
     }
@@ -27777,7 +27863,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     $"reason={firstException.Message}");
             }
 
-            agent.NavState.PathHandle = null;
+            ClearCommittedNavigationPath(agent);
             if (!EnsurePathHandle(
                     agent,
                     startSectorId,

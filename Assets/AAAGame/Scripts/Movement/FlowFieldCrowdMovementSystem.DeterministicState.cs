@@ -549,6 +549,7 @@ public static partial class FlowFieldCrowdMovementSystem
         AddAuthorityFlowTileBuildQueue(hasher);
         ulong flowTileBuildQueueHash = hasher.Hash;
         AddAuthoritySharedGoalFieldBuildQueue(hasher);
+        AddAuthorityNavigationPathRequestQueue(hasher);
         ulong sharedGoalBuildQueueHash = hasher.Hash;
         AddAuthorityMovingTargetAnchors(hasher);
         ulong movingTargetAnchorsHash = hasher.Hash;
@@ -577,7 +578,7 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         hasher.Add(0x4E41564155544846UL);
         hasher.Add(Config.RequireAuthoredNavigationSource);
-        hasher.Add(Config.SectorSizeInCells);
+        hasher.Add(Config.SectorWorldSizeMillimeters);
         hasher.Add(Config.PortalNarrowWidthCells);
         hasher.Add(Config.PortalMaxWindowWidthCells);
         hasher.Add(Config.FlowTileCacheLimit);
@@ -586,6 +587,7 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(Config.DeterministicFlowTileCommitQuota);
         hasher.Add(Config.FlowTileBuildOperationQuota);
         hasher.Add(Config.SharedGoalBuildOperationQuota);
+        hasher.Add(Config.PathRequestOperationQuota);
     }
 
     private static void ResetDeterministicHashCheckpoint()
@@ -823,11 +825,21 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void SetSectorPathCacheEntry(SectorPathCacheKey key, SectorPathCacheEntry entry)
     {
+        SetSectorPathCacheEntryWithAuthorityHash(key, entry, ComputeSectorPathAuthorityContentHash(key, entry));
+    }
+
+    private static void SetSectorPathCacheEntryWithAuthorityHash(
+        SectorPathCacheKey key,
+        SectorPathCacheEntry entry,
+        ulong authorityContentHash)
+    {
+        if (entry == null || entry.SectorIds == null || entry.PortalIds == null)
+            throw new InvalidOperationException("Cannot cache an invalid sector path entry.");
         RemoveSectorPathCacheEntry(key);
-        entry.AuthorityContentHash = ComputeSectorPathAuthorityContentHash(key, entry);
+        entry.AuthorityContentHash = authorityContentHash;
         entry.HasAuthorityContentHash = true;
         SectorPathCache[key] = entry;
-        _sectorPathAuthorityContentHash ^= entry.AuthorityContentHash;
+        _sectorPathAuthorityContentHash ^= authorityContentHash;
     }
 
     private static ulong ComputeSectorCorridorPolicyAuthorityContentHash(SectorCorridorPolicyKey key, SectorCorridorPolicy policy)
@@ -1812,6 +1824,274 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
+    private static void AddAuthorityNavigationPathRequestQueue(LogicStateHasher hasher)
+    {
+        hasher.Add(0x4E4156504154484AUL);
+        hasher.Add(NavigationPathRequestQueue.Count);
+        int indexedCount = 0;
+        for (LinkedListNode<NavigationPathRequestJob> node = NavigationPathRequestQueue.First;
+             node != null;
+             node = node.Next)
+        {
+            NavigationPathRequestJob job = node.Value
+                ?? throw new InvalidOperationException("Navigation authority digest encountered a null path request job.");
+            if (!PendingNavigationPathRequests.TryGetValue(job.IdentityKey, out NavigationPathRequestJob indexed)
+                || !ReferenceEquals(indexed, job))
+            {
+                throw new InvalidOperationException("Navigation path request queue and pending index disagree.");
+            }
+            indexedCount++;
+            AddNavigationPathRequestIdentityKey(hasher, job.IdentityKey);
+            AddNavigationPathRequestKey(hasher, job.Key);
+            AddSectorCorridorPolicyKey(hasher, job.PolicyKey);
+            hasher.Add(job.SourceCursor);
+            hasher.Add(job.GoalX);
+            hasher.Add(job.GoalY);
+            hasher.Add(job.StableGoal.x.RawValue);
+            hasher.Add(job.StableGoal.y.RawValue);
+            hasher.Add(job.Complete);
+            hasher.Add(job.Sources.Count);
+            for (int i = 0; i < job.Sources.Count; i++)
+                AddNavigationPathSourceJob(hasher, job.Sources[i]);
+        }
+        if (indexedCount != PendingNavigationPathRequests.Count)
+        {
+            throw new InvalidOperationException(
+                $"Navigation path request pending index count mismatch. queue={indexedCount}, index={PendingNavigationPathRequests.Count}.");
+        }
+    }
+
+    private static void AddNavigationPathRequestIdentityKey(
+        LogicStateHasher hasher,
+        NavigationPathRequestIdentityKey key)
+    {
+        hasher.Add(key.WorldVersion);
+        hasher.Add(key.AgentTypeId);
+        hasher.Add(key.MovingTargetId);
+        hasher.Add(key.SourceIslandId);
+        hasher.Add(key.StaticGoalCellIndex);
+    }
+
+    private static void AddNavigationPathRequestKey(LogicStateHasher hasher, NavigationPathRequestKey key)
+    {
+        hasher.Add(key.WorldVersion);
+        hasher.Add(key.AgentTypeId);
+        hasher.Add(key.MovingTargetId);
+        hasher.Add(key.SourceIslandId);
+        hasher.Add(key.GoalSectorId);
+        hasher.Add(key.StaticGoalCellIndex);
+        hasher.Add(key.GoalSectorDirtyVersion);
+    }
+
+    private static void AddNavigationPathSourceJob(LogicStateHasher hasher, NavigationPathSourceJob source)
+    {
+        if (source?.Demand == null)
+            throw new InvalidOperationException("Navigation path request contains an invalid source job.");
+        NavigationPathDemand demand = source.Demand;
+        NavigationPathDemand latestDemand = source.LatestDemand
+                                              ?? throw new InvalidOperationException(
+                                                  "Navigation path request source has no latest demand snapshot.");
+        hasher.Add(demand.SourceId);
+        hasher.Add(demand.AgentTypeId);
+        hasher.Add(demand.MovingTargetId);
+        hasher.Add(demand.SourceIslandId);
+        hasher.Add(demand.StartSectorId);
+        hasher.Add(demand.StartX);
+        hasher.Add(demand.StartY);
+        hasher.Add(demand.GoalSectorId);
+        hasher.Add(demand.GoalX);
+        hasher.Add(demand.GoalY);
+        hasher.Add(demand.InputGoal.x.RawValue);
+        hasher.Add(demand.InputGoal.y.RawValue);
+        hasher.Add(demand.StableGoal.x.RawValue);
+        hasher.Add(demand.StableGoal.y.RawValue);
+        hasher.Add(demand.MaximumTravelDistance.RawValue);
+        hasher.Add(latestDemand.SourceId);
+        hasher.Add(latestDemand.AgentTypeId);
+        hasher.Add(latestDemand.MovingTargetId);
+        hasher.Add(latestDemand.SourceIslandId);
+        hasher.Add(latestDemand.StartSectorId);
+        hasher.Add(latestDemand.StartX);
+        hasher.Add(latestDemand.StartY);
+        hasher.Add(latestDemand.GoalSectorId);
+        hasher.Add(latestDemand.GoalX);
+        hasher.Add(latestDemand.GoalY);
+        hasher.Add(latestDemand.InputGoal.x.RawValue);
+        hasher.Add(latestDemand.InputGoal.y.RawValue);
+        hasher.Add(latestDemand.StableGoal.x.RawValue);
+        hasher.Add(latestDemand.StableGoal.y.RawValue);
+        hasher.Add(latestDemand.MaximumTravelDistance.RawValue);
+        hasher.Add(source.LastRequestedFrame);
+        hasher.Add((int)source.Stage);
+        hasher.Add(source.HierarchyLevelArrayIndex);
+        hasher.Add(source.HierarchyPolicyBoundaryCursor);
+        hasher.Add(source.NextGoalConnectorLevel);
+        hasher.Add(source.NextDownwardLevel);
+        hasher.Add(source.DownwardCustomizations.Count);
+        for (int i = 0; i < source.DownwardCustomizations.Count; i++)
+        {
+            PortalHierarchyDownwardCustomization customization = source.DownwardCustomizations[i];
+            hasher.Add(customization?.AuthorityContentHash ?? 0UL);
+        }
+        AddNavigationPartialHierarchyPolicy(hasher, source.HierarchyPolicy);
+        AddPortalHierarchyConnectorState(hasher, source.GoalConnector);
+        hasher.Add(source.RestrictedInputCollectionActive);
+        hasher.Add(source.RestrictedSourceCollectionCursor);
+        hasher.Add(source.RestrictedTargetCollectionCursor);
+        AddIntList(hasher, source.RestrictedSourceNodes);
+        AddLongList(hasher, source.RestrictedSourceCosts);
+        AddIntList(hasher, source.RestrictedTargetNodes);
+        AddIncrementalRestrictedPortalSearch(hasher, source.RestrictedSearch);
+        AddIncrementalReversePolicyExpansion(hasher, source.ReversePolicyExpansion);
+        AddIncrementalRouteMaterialization(hasher, source.Materialization);
+        AddPathHandle(hasher, source.Handle);
+    }
+
+    private static void AddNavigationPartialHierarchyPolicy(
+        LogicStateHasher hasher,
+        PortalHierarchyReversePolicy policy)
+    {
+        hasher.Add(policy != null);
+        if (policy == null)
+            return;
+        hasher.Add(policy.LevelArrayIndex);
+        hasher.Add(policy.GoalSectorId);
+        hasher.Add(policy.GoalX);
+        hasher.Add(policy.GoalY);
+        AddSortedLongDictionary(hasher, policy.NodeCosts);
+        AddSortedIntDictionary(hasher, policy.NextNodeTowardGoal);
+        AddSortedInts(hasher, policy.SettledNodes);
+        policy.OpenSet.WriteDeterministicState(hasher);
+        AddPortalHierarchyDownwardCustomizations(hasher, policy);
+        AddPortalHierarchyL0Witnesses(hasher, policy);
+    }
+
+    private static void AddIncrementalRestrictedPortalSearch(
+        LogicStateHasher hasher,
+        IncrementalRestrictedPortalSearch search)
+    {
+        hasher.Add(search != null);
+        if (search == null)
+            return;
+        hasher.Add(search.World?.Version ?? -1);
+        hasher.Add(search.ContainingCluster?.ClusterId ?? -1);
+        hasher.Add(search.LowerLevel?.Level ?? 0);
+        hasher.Add(search.Reverse);
+        hasher.Add(search.RemainingTargets);
+        hasher.Add((int)search.Stage);
+        hasher.Add(search.TargetInitializationCursor);
+        hasher.Add(search.SourceInitializationCursor);
+        hasher.Add(search.CurrentNode);
+        hasher.Add(search.CurrentCost);
+        hasher.Add(search.CurrentSectorId);
+        hasher.Add(search.CurrentPortalId);
+        hasher.Add(search.EdgeCursor);
+        AddSortedLongDictionary(hasher, search.Result.Costs);
+        AddSortedIntDictionary(hasher, search.Result.PreviousNode);
+        AddSortedInts(hasher, search.Result.SettledNodes);
+        hasher.Add(search.Result.ExpansionCount);
+        search.OpenSet.WriteDeterministicState(hasher);
+        AddSortedInts(hasher, search.TargetNodes);
+        AddIntList(hasher, search.TargetNodeSequence);
+        AddIntList(hasher, search.SourceNodes);
+        AddLongList(hasher, search.SourceCosts);
+    }
+
+    private static void AddIncrementalReversePolicyExpansion(
+        LogicStateHasher hasher,
+        IncrementalReversePolicyExpansion expansion)
+    {
+        hasher.Add(expansion != null);
+        if (expansion == null)
+            return;
+        hasher.Add(expansion.Hierarchy);
+        hasher.Add(expansion.HierarchyLevel?.Level ?? 0);
+        hasher.Add(expansion.HierarchyTargetCluster?.ClusterId ?? -1);
+        hasher.Add(expansion.L0TargetSector?.SectorId ?? -1);
+        hasher.Add(expansion.GoalPortalCursor);
+        hasher.Add(expansion.TargetCursor);
+        hasher.Add(expansion.HasAccessibleTarget);
+        hasher.Add((int)expansion.Stage);
+        hasher.Add(expansion.CurrentNode);
+        hasher.Add(expansion.CurrentCost);
+        hasher.Add(expansion.CurrentSectorId);
+        hasher.Add(expansion.CurrentPortalId);
+        hasher.Add(expansion.EdgeCursor);
+        hasher.Add(expansion.CompleteAfterCurrentExpansion);
+        AddSortedInts(hasher, expansion.PendingTargetNodes);
+    }
+
+    private static void AddIncrementalRouteMaterialization(
+        LogicStateHasher hasher,
+        IncrementalRouteMaterialization state)
+    {
+        hasher.Add(state != null);
+        if (state == null)
+            return;
+        hasher.Add((int)state.Stage);
+        AddSectorPathKey(hasher, state.PathKey);
+        hasher.Add(state.StartPortalCursor);
+        hasher.Add(state.BestStartNode);
+        hasher.Add(state.BestStartCost);
+        hasher.Add(state.DownwardCustomizationIndex);
+        hasher.Add(state.PolicyExpansionScheduled);
+        hasher.Add(state.GoalConnectorScheduled);
+        hasher.Add(state.LastLogicalNode);
+        hasher.Add(state.ConvertCursor);
+        hasher.Add(state.ImmutableCopyCursor);
+        hasher.Add(state.AuthorityHashCursor);
+        hasher.Add(state.HashingPortalIds);
+        hasher.Add(state.PathAuthorityHash);
+        hasher.Add(state.WitnessAuthorityHash);
+        AddIntList(hasher, state.L0Nodes);
+        AddIntList(hasher, state.SectorIds);
+        AddIntList(hasher, state.PortalIds);
+        AddIntArray(hasher, state.ImmutableSectorIds);
+        AddIntArray(hasher, state.ImmutablePortalIds);
+        hasher.Add(state.PathAuthorityHasher?.Hash ?? 0UL);
+        hasher.Add(state.WitnessAuthorityHasher?.Hash ?? 0UL);
+        hasher.Add(state.Tasks.Count);
+        foreach (RouteExpansionTask task in state.Tasks)
+        {
+            if (task == null)
+                throw new InvalidOperationException("Navigation route materialization contains a null task.");
+            hasher.Add((int)task.Type);
+            hasher.Add(task.Cursor);
+            hasher.Add(task.CurrentNode);
+            hasher.Add(task.FromNode);
+            hasher.Add(task.ToNode);
+            hasher.Add(task.LevelIndex);
+            hasher.Add(task.Guard);
+            hasher.Add(task.Started);
+            AddIntArray(hasher, task.Nodes);
+            hasher.Add(task.Connector?.TargetLevelIndex ?? -1);
+        }
+    }
+
+    private static void AddIntList(LogicStateHasher hasher, IReadOnlyList<int> values)
+    {
+        if (values == null)
+        {
+            hasher.Add(-1);
+            return;
+        }
+        hasher.Add(values.Count);
+        for (int i = 0; i < values.Count; i++)
+            hasher.Add(values[i]);
+    }
+
+    private static void AddLongList(LogicStateHasher hasher, IReadOnlyList<long> values)
+    {
+        if (values == null)
+        {
+            hasher.Add(-1);
+            return;
+        }
+        hasher.Add(values.Count);
+        for (int i = 0; i < values.Count; i++)
+            hasher.Add(values[i]);
+    }
+
     private static void EnsureSharedGoalBuildJobAuthorityProgressHash(SharedGoalFieldBuildJob job)
     {
         if (job == null)
@@ -2486,7 +2766,7 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             throw new InvalidOperationException("Cannot hash a world-build job with incomplete fixed navigation anchors.");
         }
-        hasher.Add(Config.SectorSizeInCells);
+        hasher.Add(ResolveRuntimeSectorSizeInCells(job.CellSizeGridRaw));
         hasher.Add(Config.PortalNarrowWidthCells);
         hasher.Add(Config.PortalMaxWindowWidthCells);
         hasher.Add(job.AgentRadiusFixedRaw);
@@ -2747,6 +3027,9 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(nav.FailedPathStartSectorDirtyVersion);
             hasher.Add(nav.FailedPathGoalSectorDirtyVersion);
             hasher.Add(nav.HasPreparedNavigationSnapshot);
+            hasher.Add(nav.HasPendingNavigation);
+            hasher.Add(nav.HasPendingNavigationReplacement);
+            hasher.Add(nav.CommittedMovingTargetId);
             hasher.Add(nav.PreparedNavigationFrame);
             hasher.Add(nav.PreparedInputGoalFixed.x.RawValue);
             hasher.Add(nav.PreparedInputGoalFixed.y.RawValue);
@@ -3541,6 +3824,9 @@ public static partial class FlowFieldCrowdMovementSystem
             AddVector3(hasher, nav.StableGoalWorld);
             hasher.Add(nav.StableGoalTargetId);
             hasher.Add(nav.HasPreparedNavigationSnapshot);
+            hasher.Add(nav.HasPendingNavigation);
+            hasher.Add(nav.HasPendingNavigationReplacement);
+            hasher.Add(nav.CommittedMovingTargetId);
             hasher.Add(nav.PreparedNavigationFrame);
             hasher.Add(nav.PreparedInputGoalFixed.x.RawValue);
             hasher.Add(nav.PreparedInputGoalFixed.y.RawValue);
@@ -3686,6 +3972,7 @@ public static partial class FlowFieldCrowdMovementSystem
             AddSortedInts(hasher, job.SettledPortalNodes);
             AddSharedGoalField(hasher, job.Field);
         }
+        AddAuthorityNavigationPathRequestQueue(hasher);
     }
 
     private static void AddMovingTargetAnchors(LogicStateHasher hasher)
