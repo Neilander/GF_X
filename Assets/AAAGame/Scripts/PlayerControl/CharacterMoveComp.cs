@@ -186,11 +186,24 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
         if (speed < Fix64.Zero)
             throw new System.InvalidOperationException($"[{_ctx.CharacterKey}] NavigationSync speed cannot be negative: {speed}.");
         long prepareStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        bool prepared = FlowFieldCrowdMovementSystem.TryPrepareNavigationSyncRequestFixed(
+        if (LogicFrameRuntime.IsTimelineRunning)
+        {
+            FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(
                 _ctx,
                 _targetPosFixed.Value,
-                speed * deltaTime,
-                out string failureReason);
+                speed * deltaTime);
+            _preparedTargetPosFixed = _targetPosFixed;
+            RecordPerf(
+                UnityGameFramework.Runtime.MainThreadPerfScope.CharacterMovePrepare,
+                prepareStartTicks);
+            return;
+        }
+
+        bool prepared = FlowFieldCrowdMovementSystem.TryPrepareNavigationSyncRequestFixed(
+            _ctx,
+            _targetPosFixed.Value,
+            speed * deltaTime,
+            out string failureReason);
         RecordPerf(
             UnityGameFramework.Runtime.MainThreadPerfScope.CharacterMovePrepare,
             prepareStartTicks);

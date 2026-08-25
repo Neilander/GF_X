@@ -1,5 +1,21 @@
 ﻿# Flow Field Crowd Movement System 当前方案
 
+## 0. 当前主线恢复门禁（上下文压缩后第一读）
+
+本节是当前任务的最高优先级恢复点，覆盖本文后部任何历史性的“等待确认”“可以收尾”或“准备 Build”记录。上下文压缩、会话恢复或工具中断后，必须先读本节，再继续工作。
+
+当前唯一主线是解决 Lv2 拉怪追逐的 Flow 高层寻路架构性能问题。递归 hierarchy、portal-window tile 单一权威、旧 suffix/continuation 删除和完整功能门禁已经完成；最新同入口 `Launch -> procedure -> Lv2` 实测从 v109 的 `57.299ms` 降到 `44.055ms`，但峰值仍有 `LogicEntityNavigationSync=39.265ms`、`FlowPreparePathHandle=20.746ms/8`，因此主线尚未完成，不能以数字下降宣称收尾。
+
+固定处理顺序如下，禁止跳步：
+
+1. 先回看 `GameAIPro Chapter 23` 原文，并把项目调用链逐项映射到 path request、merging A*、integrator、cache、moving goal 与 time-sliced rebuild；先解释文献为什么不会形成当前同步峰，再确定方案。
+2. 方案必须消除架构差异，而不是围绕某个毫秒样本做局部减法。当前已确认的剩余差异是：原文一次 path request 接受 one or more sources，而项目仍在同一 NavigationSync Tick 内逐 source 同步完成 hierarchy/downward customization/PathHandle；原文的 integrator 和动态重建是有状态、可跨 Tick 的预算作业，项目的高层 path request 仍是同步函数。
+3. 先用关系型现象红测锁定正式契约，再实现完整主线：一个多 source portal path request、一次目标侧初始化、逐 source merging/start connector、按确定性 operation quota 恢复、完整结果原子提交。项目禁止旧目标成为当前 authority，因此请求未完成时必须是显式 `PendingNavigation`，MoveIntent 只读并零速；不得同步 force-complete、读取旧方向或加 fallback。
+4. 主线实现完成后先跑聚焦关系门禁、Flow、Replay/Checkpoint、完整 EditMode、编译与文件规范；然后用同一个 Lv2 runner 完整覆盖 approach、首次接敌、持续后撤与返航，验收关系、现象和延迟分布。
+5. 若延迟验收仍暴露同类主峰，必须重新回看文献与项目架构差异，修订方案后继续下一轮主线；不得猜一个局部热点就补偿。
+
+主线未完成时不得停下来做总结式汇报、不得等待用户再次批准、不得转去 Build。过程中的汇报只能是继续执行时的进度更新，不能成为停点。补充请求也不能替代本主线收尾。只有上述结构实现、全套门禁和同口径 Lv2 验收全部闭环后，才允许报告主线完成；本轮明确禁止 Build Player。
+
 ## 0. 原则
 
 权威来源是 `GameAIPro_Chapter23_Crowd_Pathfinding_and_Steerin.pdf`。本文档只保留后续实现、排查、性能优化真正需要的事实，不记录历史流水账。
@@ -248,7 +264,7 @@ v59 验证：Navigation checkpoint 精确红测先因类型不存在编译失败
 
 v60 增加 10 万 Tick 移动目标压力门禁。4 个注册单位持续发起 fixed steering，目标每 8 Tick 改变逻辑格，每 Tick 推进 SharedGoal/FlowTile job 并读取 Navigation authority digest。测试同时限制 flow/shared cache、pending queue、重复 key、managed retained memory 和 Unity 进程 reserved memory；Profiler.GetTotalReservedMemoryLong() 非正数会明确失败，不接受 Mono Process 内存字段返回 0 的伪验证。job 877092763a2d41f0a059e2dec2c0f1d5 1/1 通过：digest=14388299565206105743，peak flow/shared cache=16/16，peak pending flow/shared=61/1，managed growth=0，reserved memory=1134579712 -> 1134579712、增长 0。
 
-v60 同步完成 Tech/Skill/Selector/LevelTag 的位置权威审计。无调用者的 ISelector<T>.Validate(GameObject) 与 TargetableSelector.Validate(GameObject) 已删除，结构测试禁止 GameObject/HurtBox 校验入口回流；Skill 初始选点、科技升级出生点、建筑距离、据点光环、溅射和 StationaryAttack Buff 统一读取 LogicFramePositionFixed()，保证 Tick 内使用帧首位置而不受系统执行顺序影响。行为契约升级为 Avenge-30Hz-v53 / protocol 53。
+v60 同步完成 Tech/Skill/Selector/LevelTag 的位置权威审计。无调用者的 ISelector<T></t>.Validate(GameObject) 与 TargetableSelector.Validate(GameObject) 已删除，结构测试禁止 GameObject/HurtBox 校验入口回流；Skill 初始选点、科技升级出生点、建筑距离、据点光环、溅射和 StationaryAttack Buff 统一读取 LogicFramePositionFixed()，保证 Tick 内使用帧首位置而不受系统执行顺序影响。行为契约升级为 Avenge-30Hz-v53 / protocol 53。
 
 v60 验证：Replay 11/11 通过，job 15d2b05757aa4a37b4c76be8de22a55f；Tech/Skill/Selector 85/85 通过，job e24fea954a5348998b2beffeee31243a；完整 EditMode 478/478 通过，job 4c75173166444a0887966dd2ff113824，失败/跳过 0、耗时 89.11 秒。严格 Launch -> Lv_2 在 frame 2856 时 Gameplay Hash=17351445408932249929、Navigation final=9816986326383356026、Agents=15256115479583369966，22 个实体生命周期计数闭合、replay=false、输入保留 1 帧、八类异常为 0；Stop 后只剩 Launch。v53 Windows IL2CPP dedicated corpus 已构建成功到 Build/LogicDeterminismCorpus/StandaloneWindows64/20260725-042438，runner callback、构建 define 和 EvaluateV53/ValidateV53 均已在产物中确认；未启动外部 Player，宿主 PASS marker 仍为环境未验证。
 
@@ -496,3 +512,69 @@ Lv2 拉怪 runner 首次重跑并非焦点暂停，而是在 `Unit_CanMaker` 经
 现象与性能闭环如下：严格 `Launch -> procedure -> Lv2` 的 approach→接敌→retreat runner 跑至逻辑帧 701 并 `RESULT=PASS`；历史逻辑峰 `51.808ms` 降为 `32.620ms`，retreat logic P50/P95/P99=`2.408/7.670/10.734ms`，`peakRequiredFlowTileCommits=0`。峰仍位于首次接敌后的 `NavigationSync`，其中 `FlowPreparePathHandle=11.346ms/6`，不再是 MoveIntent 内持续同步 A*/tile commit。严格 `Launch -> procedure -> LvTest` 为 `RESULT=NOT_REPRODUCED`，两名短跑兵的 authority/proposed/model rapid alternation 均为 0，pair/static/region correction 均为 0；本次 Editor.log 增量 53,974 字符内编译错误、常见运行时异常和上述两个精度异常均为 0。
 
 回归结果为精度聚焦 `2/2`、完整 Flow `283/283`（job `11d81487d3794d17b358c080d7a5d699`）、Replay v107 `14/14`（job `c8effa179be34d7c91c1da458f2c4cc6`）、完整 EditMode `1397/1397`（job `db171e8148c64cd2a48bff309ea3e475`），失败/跳过均为 0。正式 Player corpus 仍待最后执行；硬门禁固定为：关卡 Play 未完成、Editor.log 有异常、历史性能场景没有同口径数据时，禁止启动 Player build。build 不能替代 Play 现象验收。
+
+### 14.8 原文缓存语义与 exact moving-goal working set（2026-08-24，实施中）
+
+重新核对 `GameAIPro Chapter 23` 后，必须撤销“精确最终目标进入整条 tile suffix key 后仍符合原文缓存收益”的旧判断。原文 23.7 的 tile ID 以目标 portal window 为主，使不同最终目标可以共享 hallway tile；只向前积分一张 tile 是可选质量增强，并明确牺牲复用。当前为保证 portal ghost-cell Eikonal 连续，把 `FinalGoalIndex` 和完整 `CorridorSuffixIdentity` 放进每级 key，语义是正确的 exact field 隔离，但代价是移动目标每跨 `0.1m` cell 都让整条 corridor tile chain 冷失效。原文用后台新 path 完成前继续旧 path 来隐藏 moving-goal 延迟，本项目禁止旧目标/旧方向，因此不能直接照搬其切换策略，也不能退回 portal-only key 破坏连续势。
+
+Lv2 同口径稀疏样本已记录 `514` 次 direction build、`502` 次 continuation build 和 `147` 次 corridor-policy 调用，policy cache 增长到 `36`；这证明主成本是持续重建 working set，不是某一次字典或 hash。`FlowTileBuildJob` 当前仅保存 key/path，`PendingFixedCommit` 名称掩盖了 commit 内仍完整执行 Eikonal、direction、slot、continuation 和 hash；quota=8 约束 tile 数而非实际 integration operations，也不符合原文“Integrator over one or more ticks”的职责边界。
+
+正式结构采用 pinned exact moving-goal working set：key 为 world、agent type、moving target id 和 island，内部保存 committed exact goal、reverse hierarchy policy、corridor witness 和从 final tile 到上游的势场依赖。相同目标的 source 在 NavigationSync 收集结束后合并处理；目标同 sector 换格先精确更新 final tile，再比较 portal ghost boundary payload，只有边界变化才向上游传播；corridor witness 变化时从首个分叉处替换必要 suffix。静态 topology、cluster customization 和未受影响 tile 不能重建。动态结果必须逐格等于同输入冷构建；算法最坏可退化为完整 exact 更新，但不可使用历史 field 作为当前 Tick authority。
+
+完成 working-set 去重后再恢复真实 integrator job：job 持有 stage、cursor、deterministic heap、cost/direction/slot/continuation progress 及增量 authority 摘要；NavigationSync 以 operation quota 推进，commit 只发布完整 payload。关系门禁以搜索次数、变化 tile 数、逐格 exactness 和最终 hash 为准，不锁配置表数值或机器毫秒。粗层 sector 的物理尺度需独立做复杂度试验；`0.1m` 小格负责净空与局部势，不得仅因原文使用 `1m` grid 就拍脑袋放大 cell，也不得继续默认 12 cells 一定是正确粗层尺度。
+
+### 14.9 批量解析、共享 policy 提交与 normalized potential binding（2026-08-24，功能门禁通过、性能待测）
+
+正式 NavigationSync 采用 collect/resolve/commit 三相：单位只提交 Fix64 source、exact goal、agent type 和 moving-target identity；批末按 agent type、target id、goal raw X/Y、source id 稳定排序并解析 path/policy；随后以 operation quota 推进 tile job，最后提交 portal owner snapshot。MoveIntent 只读该 Tick 的 committed snapshot。重复 source、跨 Tick 残留、未注册 source 或解析失败均是协议错误，不能静默跳过或退回逐单位同步准备。
+
+同批 source 对同一 reverse corridor policy 的 downward customization 共享容器，authority mutation 形成单个事务：批内记录受影响 policy key，批末稳定排序并各刷新一次 hash，digest 不允许在事务结束前观察未哈希 policy。非 batch 的 Editor 测试边界仍保持同步事务语义，但生产不存在第二提交路径。四 source 逆序关系门禁要求目标侧 connector 只构建一次、hash refresh 不与 source 数线性增长，同时逐 source 验证 exact goal。
+
+Portal tile 的运行时表示拆为 immutable normalized shape 与 lightweight exact binding。Shape 拥有 normalized integration、direction、portal slot、诊断 flags 和自身 authority hash；binding 只拥有 exact corridor/tile identity、offset 与 continuation。绝对 cost 按读取时以 checked `shapeCost + offset` 得到，不再为每个 moving-goal binding 分配、复制和哈希 `sectorCellCount` 个整数。Final-goal tile 保留独立 absolute integration，因为其局部边界随 exact goal 变化。热 shape reuse 必须与完整冷构建逐格相等，非统一 boundary 必须 miss，不能为了命中率归一化掉真实边界差异。
+
+Integrator 的原子发布条件是所有 stage/cursor 完成且 authority hash 已生成。`DiagnosticShadow` 曾把“数组已分配”误当成“逐格填充完成”，导致第 0 格之外 flags/direction 为 0 仍被提交；现只允许 cursor 等于 cell count 后进入 hash，长度和 cursor 越界均明确报错。该问题由开阔格、隔离可走格和障碍邻格三个现象门禁捕获，不以测试期望或运行时 fallback 补偿。当前完整 Flow 为 `290/290`；Replay 协议因 authority 时序与表示变化升至 v108。完整功能门禁完成后才运行 `Launch -> procedure -> Lv2` 同口径性能 runner，重点验证同 Tick 多 source 不再重复目标侧工作、shape hit 不再按 corridor cells 复制/hash、`requiredCommits=0`，并与历史 `51.808ms` 和上一轮 `56.600ms` 峰比较。
+
+### 14.9 Pinned policy、downstream continuation 与共享 pending demand（2026-08-25）
+
+v108 后同入口 Lv2 仍测得 `57.299ms`，并同时看到 `policyCount=106`、pending `flowCount=72`。根因分为两个独立 working-set 失控：moving target 每换 exact cell 都保留历史 corridor policy；按 tile key 共享的 pending job 却由第一个 `HandleSnapshot.HandleId` 决定取消，既可能误删其他消费者仍需的 job，也可能让 owner 不匹配的旧 goal job继续排队。
+
+当前每个 `(world, agent type, moving target, source island)` 由 anchor pin 一个 exact policy。exact goal 改变时，只有新旧 goal connector 对所用每层 cluster boundary 的 cost vector 严格统一平移，才保留 reverse topology 并整体 shift cost/open heap/customization；否则冷替换。普通 LRU 只淘汰非 moving-target policy，active pin 数可提高有效容量，anchor/policy 双向关系不闭合直接报错。
+
+Continuation 局部段属于 immediate downstream tile，不属于上游当前 tile。缓存键使用 downstream immutable potential authority 与 entry cell；downstream final tile 永不复用，因为该段依赖 exact goal。局部段 hash 不包含上游 slot，slot 和 downstream continuation authority 在 exact binding hash 中组合。热构建必须与冷构建 authority 逐槽相等，且只有 final-sector connector 允许做受 sector 尺寸约束的逐格 copy/hash。
+
+Pending tile 的唯一生产权威是批末全部 active handle 计算出的 exact demand set。单 handle 更新不再取消共享 job；resolve 全批结束后先 enqueue active demand，再 prune 非 active key，最后按 operation quota推进。关系门禁覆盖部分消费者换目标仍保留共享 job、全部消费者换目标同批 prune、连续移动目标 queue 不随历史 goal增长。
+
+本轮 authority 表示升至 replay protocol/content/corpus v109，旧 v108 拒绝，固定 corpus FullHash 保持 `1464893562985008626`。当前聚焦实现/协议门禁 `8/8`，完整 Flow、Replay/Checkpoint、完整 EditMode和严格 Lv2 性能尚未执行；不得引用旧 `32.620ms` 或聚焦绿灯宣称当前性能完成，也不得 build。
+
+### 14.10 Portal-window tile 与多 source path request（2026-08-25，替代 14.8/14.9 的 exact full-corridor 性能方向）
+
+`51.808ms -> 56.600ms -> 57.299ms` 证明 normalized exact binding 和 pinned exact policy 没有改变主复杂度。只要 `FinalGoalIndex`、`CorridorSuffixIdentity` 或 downstream continuation 参与 hallway tile 的 key、payload或构建依赖，移动目标每跨一个 `0.1m` 格仍会使整条 corridor换身份；减少复制、hash和历史容器只是在优化错误工作量。
+
+正式 tile identity 固定为两类。Final-goal tile 使用 `(world, agent type, sector, exact goal cell, dirty version)`；portal-window tile 使用 `(world, agent type, sector, exit portal, dirty version)`。Portal-window tile直接表达当前 sector 内到 exit portal window 的局部 integration/direction/slot，不包含 downstream portal、最终目标、suffix、potential offset或 continuation chain。Path handle持有 portal route；funnel按 route和选定 aperture slot产生连续几何目标。禁止把 route binding重新塞回 tile cache形成第二权威。
+
+NavigationSync按 `(world, agent type, moving target, resolved exact goal)` 聚合为一个多 source request。目标侧 connector和 reverse portal policy只初始化一次，后续 source只做 merging/start connector扩展。目标同 sector换格只更新 final tile；目标跨 sector才更新 route policy。两种情况下既有 hallway portal-window tile都必须保持同一 key和authority，除非 topology/cost 的 dirty version改变。
+
+实施顺序是硬门禁：先用关系红测锁定 hallway identity、多 source初始化次数和同 sector目标更新范围；再替换 key/payload/steering所有权并删除 suffix、exact portal binding与 tile-owned continuation；随后更新确定性摘要、Replay、诊断和文档，完成 Flow、Replay、Checkpoint、完整 EditMode、编译及文件规范。以上全部完成前不跑 Lv2性能、不 build，不新增限流、平滑、fallback或兼容旧 exact corridor的第二路径。
+
+### 14.11 Portal-window 实施记录（2026-08-25）
+
+本轮已将生产构建链切换到 portal-window 局部场：
+
+- `FlowTileCacheKey` 的 Portal 身份只由 `world、sector、exit portal、agent type、dirty version` 组成；`FinalGoalIndex`、`DownstreamGoalHint`、`CorridorSuffixIdentity` 不参与 Portal equality/hash。
+- Portal seed 只读取当前 sector 的预烘 portal-access field 与 portal 对侧格，不读取 path handle 的下游 tile、exact goal 或 suffix。
+- Portal potential shape 命中与冷构建都直接进入 diagnostic/authority commit；tile-owned continuation stage 被禁止，跨 portal 连续几何只由 PathHandle route/funnel 负责。
+- authority digest 不再写入 continuation payload；Portal 关系验证改为断言 continuation 为空且局部 direction/slot payload 完整。
+- 新增 editor 关系探针 `AreEditorTestOnlyPortalWindowTileKeysEqualForGoals`，用于锁定同一 hallway portal 在 exact goal 换格时 key 不变；旧的“Portal key 必须绑定完整 suffix”测试已改为相反契约。
+
+14.11 当时门禁：三项 csproj 可编译，但 Unity MCP 尚未恢复，因此当时未宣称 EditMode/真实关卡通过；该状态已由 14.12 的最终门禁结果替代。
+
+### 14.12 Portal-window 首帧与 portal handoff 收口（2026-08-25）
+
+本轮补齐了 14.11 实施中暴露的两个根因，并保持单一权威路径：
+
+- Portal seed 的连续梯度不能从 seed 排列索引计算。相邻 seed 的等成本排列会产生局部离散切向，窄路中可得到相反横向分量；正确的界面连续方向是静态 aperture 配对单元的 portal normal。实现不加入平滑、滞回、dead zone、旧方向保持或速度补偿。
+- 非 prepared steering 在同一 Tick enqueue 后立即读取时，current tile 虽可同步提交，但当前 Tick 最大行程可能跨入的 corridor tile 仍处于 pending，空间积分器会把跨 sector 的未提交读取转成零速。现按 `maximumTravelDistance` 计算 bounded current-tick read-domain，并在非 prepared steering 中同步提交该域；prepared MoveIntent 仍不 enqueue、不 build、不 force commit。
+- 到达 current-side portal seed 不等于穿过 portal plane。跨入下一个 sector 前禁止 downstream funnel lookahead；完成 sector transition 后才由 PathHandle route/funnel 接管连续几何目标，portal-window tile 仍只负责当前 sector 局部势。
+
+结构复核进一步发现，早期 exact-corridor 实现虽已被入口抛错禁用，但 `DeterministicPortalContinuation`、suffix identity、downstream hint、旧 portal-boundary stages、局部 continuation cache 和 string-pull/downstream-trace 方法仍完整留在生产程序集。这些不可达实现仍表达第二套权威语义，不能以“当前不会调用”视为迁移完成。现已按调用图物理删除，并增加源码结构门禁，禁止上述类型、字段和 stage 回流；合法的 shared-goal frontier 不属于 tile continuation，继续保留。
+
+最终门禁：完整 Flow fixture `294/294` 通过，减少的一项是只调用已删除旧 helper 的假测试；Replay/Checkpoint `38/38` 通过；完整 EditMode `1408/1408` 通过，失败/跳过均为 0。Replay 因导航调度状态表示变化升级为 `Avenge-30Hz-v111` / protocol 111，固定 corpus FullHash 仍为 `1464893562985008626`。Unity Console 为 0 error；`Hotfix.csproj`、`AAAGame.Movement.Editor.csproj`、`AAAGame.Tests.Editor.csproj` 均为 0 error，其中 Movement Editor 为 0 warning，另两项只报告未改动文件中的既有 warning。以上是功能门禁完成，不代表最初 `51ms -> 56ms -> 57ms` 性能问题已经复测；必须先运行 Lv2 性能门禁，再用户汇报方案进度与成效并得到确认，才能 Build。

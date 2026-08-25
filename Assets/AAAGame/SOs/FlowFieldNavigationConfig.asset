@@ -20,6 +20,7 @@ MonoBehaviour:
   WorldBuildOperationQuota: 32768
   RuntimeRebuildOperationQuota: 512
   DeterministicFlowTileCommitQuota: 8
+  FlowTileBuildOperationQuota: 2048
   SharedGoalBuildOperationQuota: 2048
   EnableDeterministicStaticCollisionShadow: 1
   StaticCollisionShadowMismatchTolerance: 0.03

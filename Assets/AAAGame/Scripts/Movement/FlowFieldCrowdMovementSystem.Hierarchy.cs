@@ -180,6 +180,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int GoalX;
         public int GoalY;
         public PortalHierarchyConnector GoalConnector;
+        public ulong GoalConnectorAuthorityContentHash;
         public readonly Dictionary<int, long> NodeCosts = new Dictionary<int, long>(256);
         public readonly Dictionary<int, int> NextNodeTowardGoal = new Dictionary<int, int>(256);
         public readonly HashSet<int> SettledNodes = new HashSet<int>();
@@ -187,6 +188,21 @@ public static partial class FlowFieldCrowdMovementSystem
         public readonly Dictionary<PortalHierarchyCustomizationKey, PortalHierarchyDownwardCustomization>
             DownwardCustomizations =
                 new Dictionary<PortalHierarchyCustomizationKey, PortalHierarchyDownwardCustomization>(16);
+        public readonly Dictionary<int, PortalHierarchyL0Witness> L0WitnessesByStartNode =
+            new Dictionary<int, PortalHierarchyL0Witness>(32);
+        public ulong NodeCostsAuthorityContentHash;
+        public ulong NextNodeTowardGoalAuthorityContentHash;
+        public ulong SettledNodesAuthorityContentHash;
+        public ulong DownwardCustomizationsAuthorityContentHash;
+        public ulong L0WitnessesAuthorityContentHash;
+    }
+
+    private sealed class PortalHierarchyL0Witness
+    {
+        public int StartNode;
+        public int[] SectorIds;
+        public int[] PortalIds;
+        public ulong AuthorityContentHash;
     }
 
     private readonly struct PortalHierarchyCustomizationKey : IEquatable<PortalHierarchyCustomizationKey>
@@ -235,6 +251,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int ClusterId;
         public int TargetRegionId;
         public PortalGraphSearchResult Search;
+        public ulong AuthorityContentHash;
     }
 
     private sealed class PortalHierarchyBuildJob
@@ -1230,6 +1247,7 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         return TryCreatePathHandleFromPortalHierarchyDownwardCustomizations(
+            policy,
             hierarchyPolicy,
             customizations,
             sectorPathKey,
@@ -1237,6 +1255,7 @@ public static partial class FlowFieldCrowdMovementSystem
             goalSectorId,
             goalX,
             goalY,
+            ref policyAuthorityMutationStarted,
             out handle);
     }
 
@@ -1252,9 +1271,11 @@ public static partial class FlowFieldCrowdMovementSystem
         int goalY,
         out PathHandle handle)
     {
+        bool deferred = _navigationSyncBatchResolveActive
+                        && DeferredSectorCorridorPolicyAuthorityKeys.Contains(key);
         if (!SectorCorridorPolicies.TryGetValue(key, out SectorCorridorPolicy cached)
             || !ReferenceEquals(cached, policy)
-            || !policy.HasAuthorityContentHash)
+            || (!policy.HasAuthorityContentHash && !deferred))
         {
             throw new InvalidOperationException("Cannot expand an uncommitted portal hierarchy reverse policy.");
         }
@@ -1278,18 +1299,14 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             if (policyAuthorityMutationStarted)
             {
-                bool profile = MainThreadFrameProfiler.LoggingEnabled;
-                long hashStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
-                policy.AuthorityContentHash = ComputeSectorCorridorPolicyAuthorityContentHash(key, policy);
-                _perf.SectorCorridorPolicyAuthorityHashRefreshes++;
-                if (profile)
+                if (_navigationSyncBatchResolveActive)
                 {
-                    MainThreadFrameProfiler.Record(
-                        MainThreadPerfScope.FlowCorridorPolicyAuthorityHash,
-                        Stopwatch.GetTimestamp() - hashStartTicks);
+                    DeferredSectorCorridorPolicyAuthorityKeys.Add(key);
                 }
-                policy.HasAuthorityContentHash = true;
-                _sectorCorridorPolicyAuthorityContentHash ^= policy.AuthorityContentHash;
+                else
+                {
+                    RefreshSectorCorridorPolicyAuthority(key, policy);
+                }
             }
         }
     }
@@ -1371,6 +1388,8 @@ public static partial class FlowFieldCrowdMovementSystem
             GoalY = goalY,
             GoalConnector = goalConnector
         };
+        created.GoalConnectorAuthorityContentHash =
+            ComputePortalHierarchyConnectorAuthorityContentHash(goalConnector);
         for (int i = 0; i < goalCluster.BoundaryNodes.Length; i++)
         {
             int node = goalCluster.BoundaryNodes[i];
@@ -1379,7 +1398,7 @@ public static partial class FlowFieldCrowdMovementSystem
             if (!goalConnector.Search.SettledNodes.Contains(node))
                 throw new InvalidOperationException(
                     $"Portal hierarchy reverse policy goal connector exposed an unsettled boundary cost level={level.Level} node={node}.");
-            created.NodeCosts.Add(node, cost);
+            SetPortalHierarchyReversePolicyNodeCost(created, node, cost);
             created.OpenSet.Push(node, cost);
         }
         if (created.OpenSet.Count == 0)
@@ -1452,6 +1471,218 @@ public static partial class FlowFieldCrowdMovementSystem
                 result);
         }
         return result;
+    }
+
+    private static bool TryRebindPortalHierarchyReversePoliciesExactGoal(
+        SectorCorridorPolicy ownerPolicy,
+        int goalSectorId,
+        int goalX,
+        int goalY)
+    {
+        if (ownerPolicy == null)
+            throw new ArgumentNullException(nameof(ownerPolicy));
+        if (ownerPolicy.HierarchyPolicies.Count == 0)
+            return false;
+        PortalHierarchy hierarchy = _world.Hierarchy
+            ?? throw new InvalidOperationException("Moving-target hierarchy policy rebind requires a committed hierarchy.");
+
+        int highestLevelArrayIndex = -1;
+        foreach (int levelArrayIndex in ownerPolicy.HierarchyPolicies.Keys)
+            highestLevelArrayIndex = Math.Max(highestLevelArrayIndex, levelArrayIndex);
+        if (highestLevelArrayIndex < 0 || highestLevelArrayIndex >= hierarchy.Levels.Length)
+            throw new InvalidOperationException($"Moving-target hierarchy policy has an invalid highest level={highestLevelArrayIndex + 1}.");
+
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long connectorStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        _perf.SectorCorridorGoalConnectorBuilds++;
+        PortalHierarchyConnector highestConnector = BuildHierarchyConnector(
+            _world,
+            hierarchy,
+            highestLevelArrayIndex,
+            goalSectorId,
+            goalX,
+            goalY,
+            reverse: true);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCorridorPolicyGoalConnector,
+                Stopwatch.GetTimestamp() - connectorStartTicks);
+        }
+
+        var replacementConnectors = new Dictionary<int, PortalHierarchyConnector>(ownerPolicy.HierarchyPolicies.Count);
+        bool hasUniformDelta = false;
+        long uniformDelta = 0L;
+        foreach (KeyValuePair<int, PortalHierarchyReversePolicy> pair in ownerPolicy.HierarchyPolicies)
+        {
+            int levelArrayIndex = pair.Key;
+            PortalHierarchyReversePolicy existing = pair.Value
+                ?? throw new InvalidOperationException($"Moving-target hierarchy policy contains a null level={levelArrayIndex + 1}.");
+            PortalHierarchyConnector replacement = ResolvePortalHierarchyConnectorAtLevel(
+                highestConnector,
+                levelArrayIndex);
+            if (!ArePortalHierarchyGoalBoundaryCostsUniformlyShifted(
+                    hierarchy,
+                    levelArrayIndex,
+                    existing.GoalSectorId,
+                    existing.GoalConnector,
+                    goalSectorId,
+                    replacement,
+                    out long levelDelta))
+            {
+                return false;
+            }
+            if (!hasUniformDelta)
+            {
+                uniformDelta = levelDelta;
+                hasUniformDelta = true;
+            }
+            else if (levelDelta != uniformDelta)
+            {
+                throw new InvalidOperationException(
+                    $"Moving-target hierarchy connector uniform shift differs between levels expected={uniformDelta}, actual={levelDelta}, level={levelArrayIndex + 1}.");
+            }
+            replacementConnectors.Add(levelArrayIndex, replacement);
+        }
+        if (!hasUniformDelta)
+            return false;
+
+        foreach (KeyValuePair<int, PortalHierarchyReversePolicy> pair in ownerPolicy.HierarchyPolicies)
+        {
+            PortalHierarchyReversePolicy existing = pair.Value;
+            ShiftPortalHierarchyReversePolicyCosts(existing, uniformDelta);
+            existing.GoalSectorId = goalSectorId;
+            existing.GoalX = goalX;
+            existing.GoalY = goalY;
+            existing.GoalConnector = replacementConnectors[pair.Key];
+            existing.GoalConnectorAuthorityContentHash =
+                ComputePortalHierarchyConnectorAuthorityContentHash(existing.GoalConnector);
+            existing.L0WitnessesByStartNode.Clear();
+            existing.L0WitnessesAuthorityContentHash = 0UL;
+        }
+        return true;
+    }
+
+    private static PortalHierarchyConnector ResolvePortalHierarchyConnectorAtLevel(
+        PortalHierarchyConnector connector,
+        int levelArrayIndex)
+    {
+        while (connector != null && connector.TargetLevelIndex > levelArrayIndex)
+            connector = connector.Child;
+        if (connector == null || connector.TargetLevelIndex != levelArrayIndex)
+            throw new InvalidOperationException($"Moving-target goal connector chain is incomplete level={levelArrayIndex + 1}.");
+        return connector;
+    }
+
+    private static bool ArePortalHierarchyGoalBoundaryCostsUniformlyShifted(
+        PortalHierarchy hierarchy,
+        int levelArrayIndex,
+        int previousGoalSectorId,
+        PortalHierarchyConnector previousConnector,
+        int nextGoalSectorId,
+        PortalHierarchyConnector nextConnector,
+        out long uniformDelta)
+    {
+        uniformDelta = 0L;
+        if (previousConnector?.Search == null || nextConnector?.Search == null)
+            throw new InvalidOperationException("Moving-target hierarchy rebind encountered an invalid goal connector.");
+        PortalHierarchyLevel level = hierarchy.Levels[levelArrayIndex];
+        int previousClusterId = ResolveHierarchyClusterId(_world, level, previousGoalSectorId);
+        int nextClusterId = ResolveHierarchyClusterId(_world, level, nextGoalSectorId);
+        if (previousClusterId != nextClusterId)
+            return false;
+        int[] boundaryNodes = level.Clusters[previousClusterId].BoundaryNodes;
+        bool hasDelta = false;
+        for (int i = 0; i < boundaryNodes.Length; i++)
+        {
+            int node = boundaryNodes[i];
+            bool previousHasCost = previousConnector.Search.Costs.TryGetValue(node, out long previousCost);
+            bool nextHasCost = nextConnector.Search.Costs.TryGetValue(node, out long nextCost);
+            if (previousHasCost != nextHasCost)
+                return false;
+            if (!previousHasCost)
+                continue;
+            if (!previousConnector.Search.SettledNodes.Contains(node)
+                || !nextConnector.Search.SettledNodes.Contains(node))
+            {
+                throw new InvalidOperationException(
+                    $"Moving-target hierarchy connector exposes an unsettled boundary node={node}, level={level.Level}.");
+            }
+            long candidateDelta = checked(nextCost - previousCost);
+            if (!hasDelta)
+            {
+                uniformDelta = candidateDelta;
+                hasDelta = true;
+            }
+            else if (candidateDelta != uniformDelta)
+            {
+                return false;
+            }
+        }
+        return hasDelta;
+    }
+
+    private static void ShiftPortalHierarchyReversePolicyCosts(
+        PortalHierarchyReversePolicy policy,
+        long delta)
+    {
+        if (policy == null)
+            throw new ArgumentNullException(nameof(policy));
+        if (delta == 0L)
+            return;
+
+        policy.NodeCostsAuthorityContentHash = ShiftPortalCostDictionary(
+            policy.NodeCosts,
+            delta,
+            0x5048524E434F5354UL);
+        policy.OpenSet.ShiftCosts(delta);
+        policy.DownwardCustomizationsAuthorityContentHash = 0UL;
+        foreach (KeyValuePair<PortalHierarchyCustomizationKey, PortalHierarchyDownwardCustomization> pair
+                 in policy.DownwardCustomizations)
+        {
+            PortalHierarchyDownwardCustomization customization = pair.Value
+                ?? throw new InvalidOperationException("Moving-target hierarchy rebind encountered a null downward customization.");
+            ShiftPortalGraphSearchCosts(customization.Search, delta);
+            customization.AuthorityContentHash =
+                ComputePortalHierarchyDownwardCustomizationAuthorityContentHash(pair.Key, customization);
+            policy.DownwardCustomizationsAuthorityContentHash ^=
+                ComputePortalHierarchyCustomizationEntryAuthorityToken(
+                    pair.Key,
+                    customization.AuthorityContentHash);
+        }
+    }
+
+    private static ulong ShiftPortalCostDictionary(
+        Dictionary<int, long> costs,
+        long delta,
+        ulong authorityDomain)
+    {
+        if (costs == null)
+            throw new ArgumentNullException(nameof(costs));
+        var nodes = new List<int>(costs.Keys);
+        ulong authorityHash = 0UL;
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            int node = nodes[i];
+            long shifted = checked(costs[node] + delta);
+            costs[node] = shifted;
+            authorityHash ^= ComputeAuthorityIntLongToken(authorityDomain, node, shifted);
+        }
+        return authorityHash;
+    }
+
+    private static void ShiftPortalGraphSearchCosts(PortalGraphSearchResult search, long delta)
+    {
+        if (search == null)
+            throw new ArgumentNullException(nameof(search));
+        if (delta == 0L)
+            return;
+        var nodes = new List<int>(search.Costs.Keys);
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            int node = nodes[i];
+            search.Costs[node] = checked(search.Costs[node] + delta);
+        }
     }
 
     private static void ValidatePortalHierarchyGoalPolicy(
@@ -1585,7 +1816,13 @@ public static partial class FlowFieldCrowdMovementSystem
                     TargetRegionId = targetRegionId,
                     Search = search
                 };
+                created.AuthorityContentHash = ComputePortalHierarchyDownwardCustomizationAuthorityContentHash(
+                    key,
+                    created);
+                BeginHashedPortalHierarchyPolicyMutation(ownerPolicy, ref policyAuthorityMutationStarted);
                 policy.DownwardCustomizations.Add(key, created);
+                policy.DownwardCustomizationsAuthorityContentHash ^=
+                    ComputePortalHierarchyCustomizationEntryAuthorityToken(key, created.AuthorityContentHash);
                 _perf.HierarchyDownwardCustomizationExpansions = checked(
                     _perf.HierarchyDownwardCustomizationExpansions + search.ExpansionCount);
                 customizations.Add(created);
@@ -1625,7 +1862,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     DeterministicCostQueueNode item = policy.OpenSet.Pop();
                     if (!policy.NodeCosts.TryGetValue(item.Index, out long currentCost)
                         || item.Cost != currentCost
-                        || !policy.SettledNodes.Add(item.Index))
+                        || !AddPortalHierarchyReversePolicySettledNode(policy, item.Index))
                     {
                         continue;
                     }
@@ -1798,7 +2035,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 DeterministicCostQueueNode item = policy.OpenSet.Pop();
                 if (!policy.NodeCosts.TryGetValue(item.Index, out long currentCost)
                     || item.Cost != currentCost
-                    || !policy.SettledNodes.Add(item.Index))
+                    || !AddPortalHierarchyReversePolicySettledNode(policy, item.Index))
                 {
                     continue;
                 }
@@ -1890,12 +2127,13 @@ public static partial class FlowFieldCrowdMovementSystem
                     $"Portal hierarchy reverse Dijkstra found a cheaper path to settled node={predecessorNode}, previous={existingCost}, next={cost}.");
             }
         }
-        policy.NodeCosts[predecessorNode] = cost;
-        policy.NextNodeTowardGoal[predecessorNode] = nextNodeTowardGoal;
+        SetPortalHierarchyReversePolicyNodeCost(policy, predecessorNode, cost);
+        SetPortalHierarchyReversePolicyNextNode(policy, predecessorNode, nextNodeTowardGoal);
         policy.OpenSet.Push(predecessorNode, cost);
     }
 
     private static bool TryCreatePathHandleFromPortalHierarchyDownwardCustomizations(
+        SectorCorridorPolicy ownerPolicy,
         PortalHierarchyReversePolicy policy,
         List<PortalHierarchyDownwardCustomization> customizations,
         SectorPathCacheKey sectorPathKey,
@@ -1903,6 +2141,7 @@ public static partial class FlowFieldCrowdMovementSystem
         int goalSectorId,
         int goalX,
         int goalY,
+        ref bool policyAuthorityMutationStarted,
         out PathHandle handle)
     {
         handle = null;
@@ -1951,6 +2190,21 @@ public static partial class FlowFieldCrowdMovementSystem
         }
         if (bestStartNode == int.MinValue)
             return false;
+
+        if (policy.L0WitnessesByStartNode.TryGetValue(bestStartNode, out PortalHierarchyL0Witness cachedRoute))
+        {
+            ValidatePortalHierarchyL0Witness(cachedRoute, bestStartNode, startSectorId, goalSectorId);
+            _perf.HierarchyL0WitnessCacheHits++;
+            handle = CreateAndCachePathHandle(
+                sectorPathKey,
+                cachedRoute.SectorIds,
+                cachedRoute.PortalIds,
+                goalX,
+                goalY);
+            handle.BuildSource = $"portalHierarchyPolicyL{_world.Hierarchy.Levels[policy.LevelArrayIndex].Level}:witnessCache";
+            return true;
+        }
+        _perf.HierarchyL0WitnessCacheMisses++;
 
         var l0Nodes = new List<int>(32);
         int cursor = bestStartNode;
@@ -2028,9 +2282,41 @@ public static partial class FlowFieldCrowdMovementSystem
                 MainThreadPerfScope.FlowCorridorPolicyReconstruct,
                 Stopwatch.GetTimestamp() - reconstructStartTicks);
         }
-        handle = CreateAndCachePathHandle(sectorPathKey, sectorIds, portalIds, goalX, goalY);
+        var createdRoute = new PortalHierarchyL0Witness
+        {
+            StartNode = bestStartNode,
+            SectorIds = sectorIds.ToArray(),
+            PortalIds = portalIds.ToArray()
+        };
+        ValidatePortalHierarchyL0Witness(createdRoute, bestStartNode, startSectorId, goalSectorId);
+        createdRoute.AuthorityContentHash = ComputePortalHierarchyL0WitnessAuthorityContentHash(createdRoute);
+        BeginHashedPortalHierarchyPolicyMutation(ownerPolicy, ref policyAuthorityMutationStarted);
+        policy.L0WitnessesByStartNode.Add(bestStartNode, createdRoute);
+        policy.L0WitnessesAuthorityContentHash ^=
+            ComputePortalHierarchyL0WitnessEntryAuthorityToken(bestStartNode, createdRoute.AuthorityContentHash);
+        handle = CreateAndCachePathHandle(sectorPathKey, createdRoute.SectorIds, createdRoute.PortalIds, goalX, goalY);
         handle.BuildSource = $"portalHierarchyPolicyL{level.Level}";
         return true;
+    }
+
+    private static void ValidatePortalHierarchyL0Witness(
+        PortalHierarchyL0Witness witness,
+        int expectedStartNode,
+        int startSectorId,
+        int goalSectorId)
+    {
+        if (witness == null
+            || witness.StartNode != expectedStartNode
+            || witness.SectorIds == null
+            || witness.PortalIds == null
+            || witness.SectorIds.Length == 0
+            || witness.PortalIds.Length + 1 != witness.SectorIds.Length
+            || witness.SectorIds[0] != startSectorId
+            || witness.SectorIds[witness.SectorIds.Length - 1] != goalSectorId)
+        {
+            throw new InvalidOperationException(
+                $"Portal hierarchy L0 witness cache is invalid startNode={expectedStartNode} startSector={startSectorId} goalSector={goalSectorId}.");
+        }
     }
 
     private static bool TryCreatePathHandleFromPortalHierarchyReversePolicy(

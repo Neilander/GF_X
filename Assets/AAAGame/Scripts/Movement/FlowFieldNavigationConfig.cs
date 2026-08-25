@@ -27,6 +27,9 @@ public class FlowFieldNavigationConfig : ScriptableObject
     [Tooltip("Maximum deterministic flow tiles committed per logic Tick before float shadow work.")]
     [Min(1)]
     public int DeterministicFlowTileCommitQuota = 8;
+    [Tooltip("Maximum deterministic flow-tile cell operations processed per logic Tick.")]
+    [Min(1)]
+    public int FlowTileBuildOperationQuota = 2048;
     [Tooltip("Maximum deterministic shared-goal graph operations processed per logic Tick.")]
     [Min(1)]
     public int SharedGoalBuildOperationQuota = 2048;

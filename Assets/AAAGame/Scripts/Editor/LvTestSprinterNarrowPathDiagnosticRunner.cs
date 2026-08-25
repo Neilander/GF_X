@@ -227,7 +227,17 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
         bool enoughPostAggro = probe.FirstAggroFrame > 0
                                && currentFrame >= probe.FirstAggroFrame + MinimumPostAggroFrames;
         bool maximumReached = currentFrame >= s_ScenarioStartFrame + MaximumScenarioFrames;
-        if ((s_HeroReturned && enoughPostAggro) || maximumReached)
+        if (maximumReached)
+        {
+            throw new InvalidOperationException(
+                "LvTest sprinter diagnostic did not complete the authored pursuit route. "
+                + "heroReturned=" + s_HeroReturned
+                + ", firstAggroFrame=" + probe.FirstAggroFrame
+                + ", mode=" + s_Mode
+                + ", waypoint=" + s_WaypointIndex + "/" + s_Route.Count
+                + Environment.NewLine + probe.BuildSummary());
+        }
+        if (s_HeroReturned && enoughPostAggro)
             Complete();
     }
 
@@ -338,6 +348,14 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
     {
         SprinterProbe probe = s_Probe
                               ?? throw new InvalidOperationException("LvTest sprinter diagnostic completed without a probe.");
+        if (!s_HeroReturned || probe.FirstAggroFrame == 0 || !probe.HasPursuitCoverage)
+        {
+            throw new InvalidOperationException(
+                "LvTest sprinter diagnostic completed without full pursuit coverage. "
+                + "heroReturned=" + s_HeroReturned
+                + ", firstAggroFrame=" + probe.FirstAggroFrame
+                + Environment.NewLine + probe.BuildSummary());
+        }
         string result = probe.HasObservedOscillation ? "REPRODUCED" : "NOT_REPRODUCED";
         var report = new StringBuilder(65536);
         report.Append("RESULT=").AppendLine(result);
@@ -444,6 +462,18 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
         public long LogicFrameStableKey => long.MaxValue - 11;
         public ulong FirstAggroFrame { get; private set; }
         public string FrameLog => _frameLog.ToString();
+        public bool HasPursuitCoverage
+        {
+            get
+            {
+                foreach (Sample sample in _samples.Values)
+                {
+                    if ((ulong)sample.PursuitFrames <= RapidModelTurnWindowFrames)
+                        return false;
+                }
+                return true;
+            }
+        }
         public bool HasObservedOscillation
         {
             get
@@ -476,7 +506,8 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                     throw new InvalidOperationException("LvTest sprinter lost SoldierAIBrain. entity=" + sample.EntityId.Value + ".");
 
                 bool targetsHero = ReferenceEquals(sprinter.TargetComp?.CurrentTarget, _hero);
-                if (targetsHero && FirstAggroFrame == 0)
+                bool combatTargetsHero = targetsHero && brain.State == SoldierAIBrain.SoldierState.Combat;
+                if (combatTargetsHero && FirstAggroFrame == 0)
                     FirstAggroFrame = frame;
 
                 LogicAgentCollisionShadowState collision = LogicAgentCollisionShadowService.GetRequiredState(sample.EntityId, frame);
@@ -493,8 +524,7 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                     ? NormalizeOrZero(navigationTarget - sprinter.PositionFixed)
                     : FixVector2.Zero;
                 bool moving = finalDisplacement != FixVector2.Zero;
-                bool pursuing = targetsHero
-                                && brain.State == SoldierAIBrain.SoldierState.Combat
+                bool pursuing = combatTargetsHero
                                 && !(sprinter.AtkComp?.IsAttacking ?? false)
                                 && moving;
                 bool hasStableGoal = FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(
@@ -679,6 +709,7 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
         {
             var result = new StringBuilder(4096);
             result.Append("firstAggroFrame=").AppendLine(FirstAggroFrame.ToString(CultureInfo.InvariantCulture));
+            result.Append("pursuitCoverage=").AppendLine(HasPursuitCoverage.ToString());
             result.Append("observedOscillation=").AppendLine(HasObservedOscillation.ToString());
             foreach (Sample sample in _samples.Values)
             {

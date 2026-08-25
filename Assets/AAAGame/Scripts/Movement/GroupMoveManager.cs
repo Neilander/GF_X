@@ -223,6 +223,7 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
 
     public void CommitNavigationSyncSnapshot()
     {
+        FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
         FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
         FlowFieldCrowdMovementSystem.CommitFixedPortalOwnerSnapshots();
     }
