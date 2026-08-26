@@ -175,7 +175,26 @@ namespace UnityGameFramework.Runtime
         FlowCorridorPolicyStartLeafSearch = 164,
         FlowCorridorPolicyStartExtend = 165,
         FlowCorridorPolicyDownwardCustomize = 166,
-        Count = 167
+        FlowNavigationAgentUpdate = 167,
+        FlowNavigationInactiveClear = 168,
+        FlowNavigationCommit = 169,
+        FlowNavigationResolveRequests = 170,
+        FlowNavigationTileQueue = 171,
+        FlowNavigationPortalOwners = 172,
+        FlowNavigationRequestSort = 173,
+        FlowNavigationDemandResolve = 174,
+        FlowNavigationDemandDispatch = 175,
+        FlowNavigationRequestPrune = 176,
+        FlowNavigationPathAdvance = 177,
+        FlowNavigationPathInitialize = 178,
+        FlowNavigationPathGoalConnector = 179,
+        FlowNavigationPathCreateHierarchy = 180,
+        FlowNavigationPathExpandHierarchy = 181,
+        FlowNavigationPathDownward = 182,
+        FlowNavigationPathL0 = 183,
+        FlowNavigationPathMaterialize = 184,
+        FlowNavigationPathComplete = 185,
+        Count = 186
     }
 
     public static class MainThreadFrameProfiler

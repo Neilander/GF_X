@@ -903,17 +903,21 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, ISkill
                 if (CanRun(m_BuffComp))
                     m_BuffComp.UpdateBuff(deltaTime);
                 break;
-            case MAEntityLogicFramePhase.NavigationSync:
+            case MAEntityLogicFramePhase.NavigationPositionSync:
                 if (UsesFlowNavigationAgent && GroupMoveManager.HasInstance)
-                {
                     GroupMoveManager.Instance.UpdateAgentPosition(this);
-                    if (m_MoveComp is CharacterMoveComp characterMove)
-                        characterMove.PrepareNavigationLogicFrame(deltaTime);
-                }
                 break;
             case MAEntityLogicFramePhase.Brain:
                 if (m_Brain is ITickBrain tickBrain)
                     tickBrain.Tick(this, deltaTime);
+                break;
+            case MAEntityLogicFramePhase.NavigationSync:
+                if (UsesFlowNavigationAgent
+                    && GroupMoveManager.HasInstance
+                    && m_MoveComp is CharacterMoveComp characterMove)
+                {
+                    characterMove.PrepareNavigationLogicFrame(deltaTime);
+                }
                 break;
             case MAEntityLogicFramePhase.Targeting:
                 if (CanRun(m_TargetingComp))

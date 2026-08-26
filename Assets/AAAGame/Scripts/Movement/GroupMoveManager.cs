@@ -223,9 +223,46 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
 
     public void CommitNavigationSyncSnapshot()
     {
-        FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
-        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
-        FlowFieldCrowdMovementSystem.CommitFixedPortalOwnerSnapshots();
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long startTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        try
+        {
+            long phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+            FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationResolveRequests,
+                    Stopwatch.GetTimestamp() - phaseStartTicks);
+            }
+
+            phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationTileQueue,
+                    Stopwatch.GetTimestamp() - phaseStartTicks);
+            }
+
+            phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+            FlowFieldCrowdMovementSystem.CommitFixedPortalOwnerSnapshots();
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPortalOwners,
+                    Stopwatch.GetTimestamp() - phaseStartTicks);
+            }
+        }
+        finally
+        {
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationCommit,
+                    Stopwatch.GetTimestamp() - startTicks);
+            }
+        }
     }
 
     // ── 障碍物注册 ──

@@ -5,17 +5,18 @@ using UnityGameFramework.Runtime;
 public enum MAEntityLogicFramePhase
 {
     BaseAndBuffs = 0,
-    NavigationSync = 1,
+    NavigationPositionSync = 1,
     Brain = 2,
-    Targeting = 3,
-    Projectile = 4,
-    Attack = 5,
-    DamageResolve = 6,
-    MoveIntent = 7,
-    MoveResolve = 8,
-    MoveCommit = 9,
-    PostUpdate = 10,
-    Count = 11,
+    NavigationSync = 3,
+    Targeting = 4,
+    Projectile = 5,
+    Attack = 6,
+    DamageResolve = 7,
+    MoveIntent = 8,
+    MoveResolve = 9,
+    MoveCommit = 10,
+    PostUpdate = 11,
+    Count = 12,
 }
 
 public interface ILogicFrameEntity : IEntityContext
@@ -233,6 +234,7 @@ public static class MAEntityLogicFrameSystem
         return phase switch
         {
             MAEntityLogicFramePhase.BaseAndBuffs => MainThreadPerfScope.LogicEntityBaseAndBuffs,
+            MAEntityLogicFramePhase.NavigationPositionSync => MainThreadPerfScope.LogicEntityNavigationSync,
             MAEntityLogicFramePhase.NavigationSync => MainThreadPerfScope.LogicEntityNavigationSync,
             MAEntityLogicFramePhase.Brain => MainThreadPerfScope.LogicEntityBrain,
             MAEntityLogicFramePhase.Targeting => MainThreadPerfScope.LogicEntityTargeting,

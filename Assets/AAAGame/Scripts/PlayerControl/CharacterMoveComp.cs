@@ -171,48 +171,61 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
 
     public void PrepareNavigationLogicFrame(Fix64 deltaTime)
     {
-        _preparedTargetPosFixed = null;
-        if (_ctx == null)
-            return;
-        if (deltaTime <= Fix64.Zero)
-            throw new System.ArgumentOutOfRangeException(nameof(deltaTime), deltaTime, "NavigationSync delta time must be positive.");
-        if (!_targetPosFixed.HasValue)
-        {
-            FlowFieldCrowdMovementSystem.ClearNavigationSyncRequest(_ctx);
-            return;
-        }
-
-        Fix64 speed = _ctx.GetProperty(CreatureMainProperty.Speed);
-        if (speed < Fix64.Zero)
-            throw new System.InvalidOperationException($"[{_ctx.CharacterKey}] NavigationSync speed cannot be negative: {speed}.");
         long prepareStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        if (LogicFrameRuntime.IsTimelineRunning)
+        try
         {
-            FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(
+            _preparedTargetPosFixed = null;
+            if (_ctx == null)
+                return;
+            if (deltaTime <= Fix64.Zero)
+                throw new System.ArgumentOutOfRangeException(nameof(deltaTime), deltaTime, "NavigationSync delta time must be positive.");
+            if (!_targetPosFixed.HasValue)
+            {
+                long clearStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                try
+                {
+                    FlowFieldCrowdMovementSystem.ClearNavigationSyncRequest(_ctx);
+                }
+                finally
+                {
+                    RecordPerf(
+                        UnityGameFramework.Runtime.MainThreadPerfScope.FlowNavigationInactiveClear,
+                        clearStartTicks);
+                }
+                return;
+            }
+
+            Fix64 speed = _ctx.GetProperty(CreatureMainProperty.Speed);
+            if (speed < Fix64.Zero)
+                throw new System.InvalidOperationException($"[{_ctx.CharacterKey}] NavigationSync speed cannot be negative: {speed}.");
+            if (LogicFrameRuntime.IsTimelineRunning)
+            {
+                FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(
+                    _ctx,
+                    _targetPosFixed.Value,
+                    speed * deltaTime);
+                _preparedTargetPosFixed = _targetPosFixed;
+                return;
+            }
+
+            bool prepared = FlowFieldCrowdMovementSystem.TryPrepareNavigationSyncRequestFixed(
                 _ctx,
                 _targetPosFixed.Value,
-                speed * deltaTime);
+                speed * deltaTime,
+                out string failureReason);
+            if (!prepared)
+            {
+                throw new System.InvalidOperationException(
+                    $"[{_ctx.CharacterKey}] NavigationSync prepare rejected target={_targetPosFixed.Value}: {failureReason}");
+            }
             _preparedTargetPosFixed = _targetPosFixed;
+        }
+        finally
+        {
             RecordPerf(
                 UnityGameFramework.Runtime.MainThreadPerfScope.CharacterMovePrepare,
                 prepareStartTicks);
-            return;
         }
-
-        bool prepared = FlowFieldCrowdMovementSystem.TryPrepareNavigationSyncRequestFixed(
-            _ctx,
-            _targetPosFixed.Value,
-            speed * deltaTime,
-            out string failureReason);
-        RecordPerf(
-            UnityGameFramework.Runtime.MainThreadPerfScope.CharacterMovePrepare,
-            prepareStartTicks);
-        if (!prepared)
-        {
-            throw new System.InvalidOperationException(
-                $"[{_ctx.CharacterKey}] NavigationSync prepare rejected target={_targetPosFixed.Value}: {failureReason}");
-        }
-        _preparedTargetPosFixed = _targetPosFixed;
     }
 
     private static void RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope scope, long startTicks)

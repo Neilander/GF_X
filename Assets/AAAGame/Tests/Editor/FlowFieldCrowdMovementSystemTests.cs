@@ -60,6 +60,283 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.SetConfig(projectConfig);
     }
 
+    [Test]
+    public void 导航路径运行时代码准备不得创建导航权威状态()
+    {
+        FlowFieldCrowdMovementSystem.ResetAll();
+
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathRequestCount());
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathSourceCount());
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationSharedRouteSuffixCount());
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestSectorCorridorPolicyCount());
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount());
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestSharedGoalFieldCacheCount());
+
+        FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
+
+        Assert.IsTrue(AAAGame.FlowPath.FlowPathKernelRuntime.IsPrepared);
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathRequestCount());
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathSourceCount());
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationSharedRouteSuffixCount());
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestSectorCorridorPolicyCount());
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount());
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestSharedGoalFieldCacheCount());
+    }
+
+    [Test]
+    public void FlowPathKernel搜索保持确定性Heap与单OperationStale语义()
+    {
+        using var state = new AAAGame.FlowPath.FlowPathKernelSearchState(16);
+        state.AddSource(9, 10);
+        state.AddSource(2, 10);
+        state.AddSource(5, 20);
+        state.AddSource(5, 5);
+
+        Assert.AreEqual(
+            AAAGame.FlowPath.FlowPathKernelPopStatus.Settled,
+            state.PopOne(out AAAGame.FlowPath.FlowPathKernelSearchEntry first));
+        Assert.AreEqual(5, first.Node);
+        Assert.AreEqual(5L, first.Cost);
+        Assert.AreEqual(
+            AAAGame.FlowPath.FlowPathKernelPopStatus.Settled,
+            state.PopOne(out AAAGame.FlowPath.FlowPathKernelSearchEntry second));
+        Assert.AreEqual(2, second.Node, "同 cost 必须按 portal node 决胜。");
+        Assert.AreEqual(
+            AAAGame.FlowPath.FlowPathKernelPopStatus.Settled,
+            state.PopOne(out AAAGame.FlowPath.FlowPathKernelSearchEntry third));
+        Assert.AreEqual(9, third.Node);
+        Assert.AreEqual(
+            AAAGame.FlowPath.FlowPathKernelPopStatus.CostMismatch,
+            state.PopOne(out _),
+            "降低 cost 留下的旧 heap 项必须单独消费一个 operation，不能在一次 kernel 调用内跳过。");
+        Assert.AreEqual(AAAGame.FlowPath.FlowPathKernelPopStatus.Empty, state.PopOne(out _));
+        Assert.AreEqual(3, state.ExpansionCount);
+        Assert.AreNotEqual(0UL, state.CostsAuthorityHash);
+        Assert.AreNotEqual(0UL, state.SettledAuthorityHash);
+        Assert.AreEqual(0UL, state.OpenAuthorityHash);
+    }
+
+    [Test]
+    public void FlowPathKernelRelax完成后物化唯一CostPreviousSettled状态()
+    {
+        using var state = new AAAGame.FlowPath.FlowPathKernelSearchState(16);
+        state.AddSource(1, 0);
+        Assert.AreEqual(
+            AAAGame.FlowPath.FlowPathKernelPopStatus.Settled,
+            state.PopOne(out AAAGame.FlowPath.FlowPathKernelSearchEntry source));
+        state.Relax(source.Node, 2, 20);
+        state.Relax(source.Node, 2, 10);
+        Assert.AreEqual(
+            AAAGame.FlowPath.FlowPathKernelPopStatus.Settled,
+            state.PopOne(out AAAGame.FlowPath.FlowPathKernelSearchEntry target));
+        Assert.AreEqual(2, target.Node);
+        Assert.AreEqual(10L, target.Cost);
+        Assert.Throws<InvalidOperationException>(() => state.Relax(source.Node, target.Node, 9));
+
+        var costs = new Dictionary<int, long>();
+        var previous = new Dictionary<int, int>();
+        var settled = new HashSet<int>();
+        state.CopyTo(costs.Add, previous.Add, node => settled.Add(node));
+        CollectionAssert.AreEquivalent(new[] { 1, 2 }, costs.Keys);
+        Assert.AreEqual(0L, costs[1]);
+        Assert.AreEqual(10L, costs[2]);
+        Assert.AreEqual(1, previous[2]);
+        CollectionAssert.AreEquivalent(new[] { 1, 2 }, settled);
+    }
+
+    [Test]
+    public void FlowPathKernel统一平移Cost保持Heap顺序与AuthorityHash自洽()
+    {
+        using var state = new AAAGame.FlowPath.FlowPathKernelSearchState(2);
+        state.AddSource(4, 30);
+        state.AddSource(1, 10);
+        Assert.AreEqual(
+            AAAGame.FlowPath.FlowPathKernelPopStatus.Settled,
+            state.PopOne(out AAAGame.FlowPath.FlowPathKernelSearchEntry first));
+        state.Relax(first.Node, 7, 20);
+
+        state.ShiftCosts(100);
+
+        Assert.IsTrue(state.ValidateAuthorityHashes());
+        Assert.AreEqual(110L, GetKernelCost(state, 1));
+        Assert.AreEqual(120L, GetKernelCost(state, 7));
+        Assert.AreEqual(130L, GetKernelCost(state, 4));
+        Assert.AreEqual(1, GetKernelPrevious(state, 7));
+        Assert.IsTrue(state.ContainsSettled(1));
+        Assert.AreEqual(
+            AAAGame.FlowPath.FlowPathKernelPopStatus.Settled,
+            state.PopOne(out AAAGame.FlowPath.FlowPathKernelSearchEntry second));
+        Assert.AreEqual(7, second.Node);
+        Assert.AreEqual(120L, second.Cost);
+        Assert.IsTrue(state.ValidateAuthorityHashes());
+    }
+
+    [Test]
+    public void FlowPathKernelRoute完整展开与Conversion保持单一NativeAuthority()
+    {
+        KernelRouteResult result = RunKernelRouteToCompletion(1);
+
+        CollectionAssert.AreEqual(new[] { 0, 1, 2 }, result.Sectors);
+        CollectionAssert.AreEqual(new[] { 10, 20 }, result.Portals);
+        Assert.AreEqual(4, result.L0NodeCount);
+        Assert.AreNotEqual(0UL, result.L0Hash);
+        Assert.AreNotEqual(0UL, result.SectorHash);
+        Assert.AreNotEqual(0UL, result.PortalHash);
+        Assert.IsTrue(result.AuthorityValid);
+    }
+
+    [Test]
+    public void FlowPathKernelRouteQuota只改变完成Tick不改变Route与AuthorityHash()
+    {
+        KernelRouteResult quotaOne = RunKernelRouteToCompletion(1);
+        KernelRouteResult quotaFour = RunKernelRouteToCompletion(4);
+
+        Assert.Greater(quotaOne.CompleteTick, quotaFour.CompleteTick);
+        CollectionAssert.AreEqual(quotaOne.Sectors, quotaFour.Sectors);
+        CollectionAssert.AreEqual(quotaOne.Portals, quotaFour.Portals);
+        Assert.AreEqual(quotaOne.L0Hash, quotaFour.L0Hash);
+        Assert.AreEqual(quotaOne.SectorHash, quotaFour.SectorHash);
+        Assert.AreEqual(quotaOne.PortalHash, quotaFour.PortalHash);
+    }
+
+    [Test]
+    public void FlowPathKernelRouteDispose后所有Authority访问明确报错()
+    {
+        var state = new AAAGame.FlowPath.FlowPathKernelRouteState(4, 4);
+        state.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => state.Push(default));
+        Assert.Throws<ObjectDisposedException>(() => state.GetL0Node(0));
+        Assert.Throws<ObjectDisposedException>(() => state.AdvanceConversion(0));
+        Assert.Throws<ObjectDisposedException>(() => state.ValidateAuthorityHashes());
+    }
+
+    private struct KernelRouteResult
+    {
+        public int CompleteTick;
+        public int L0NodeCount;
+        public int[] Sectors;
+        public int[] Portals;
+        public ulong L0Hash;
+        public ulong SectorHash;
+        public ulong PortalHash;
+        public bool AuthorityValid;
+    }
+
+    private static KernelRouteResult RunKernelRouteToCompletion(int quota)
+    {
+        const int traverseType = 101;
+        const int hierarchyPairType = 102;
+        const int witnessType = 103;
+        const int l0PairType = 104;
+        int highStart = EncodeKernelPortalNode(0, 10);
+        int highGoal = EncodeKernelPortalNode(2, 20);
+        int[] witnessNodes =
+        {
+            highStart,
+            EncodeKernelPortalNode(1, 10),
+            EncodeKernelPortalNode(1, 20),
+            highGoal
+        };
+        using var search = new AAAGame.FlowPath.FlowPathKernelSearchState(8);
+        search.AddSource(highGoal, 0L);
+        Assert.AreEqual(
+            AAAGame.FlowPath.FlowPathKernelPopStatus.Settled,
+            search.PopOne(out AAAGame.FlowPath.FlowPathKernelSearchEntry goal));
+        search.Relax(goal.Node, highStart, 1L);
+        using var witnessIndex = new AAAGame.FlowPath.FlowPathKernelWitnessIndex(
+            new[]
+            {
+                new AAAGame.FlowPath.FlowPathKernelWitnessEdge(
+                    0,
+                    0,
+                    highStart,
+                    highGoal,
+                    0,
+                    witnessNodes.Length)
+            },
+            witnessNodes);
+        using var route = new AAAGame.FlowPath.FlowPathKernelRouteState(8, 8);
+        route.Push(new AAAGame.FlowPath.FlowPathKernelRouteTask
+        {
+            Type = traverseType,
+            CurrentNode = highStart,
+            LevelIndex = 0
+        });
+
+        int tick = 0;
+        bool complete = false;
+        while (!complete)
+        {
+            tick++;
+            Assert.Less(tick, 64, "Route kernel did not complete within the deterministic operation bound.");
+            for (int operation = 0; operation < quota && !complete; operation++)
+            {
+                if (route.TaskCount == 0)
+                {
+                    complete = route.AdvanceConversion(0)
+                               == AAAGame.FlowPath.FlowPathKernelRouteConversionStatus.Complete;
+                    continue;
+                }
+
+                AAAGame.FlowPath.FlowPathKernelRouteTask task = route.Peek();
+                switch (task.Type)
+                {
+                    case traverseType:
+                        route.AdvanceTraversal(search, hierarchyPairType, search.PreviousCount);
+                        break;
+                    case hierarchyPairType:
+                        route.AdvancePair(witnessIndex, false, 0, 0, witnessType);
+                        break;
+                    case witnessType:
+                        route.AdvanceWitnessTraversal(witnessIndex, l0PairType);
+                        break;
+                    case l0PairType:
+                        route.AdvancePair(witnessIndex, IsKernelPortalCrossing(task), -1, -1, witnessType);
+                        break;
+                    default:
+                        Assert.Fail($"Unknown route kernel task type: {task.Type}.");
+                        break;
+                }
+            }
+        }
+
+        return new KernelRouteResult
+        {
+            CompleteTick = tick,
+            L0NodeCount = route.L0NodeCount,
+            Sectors = route.CopyConvertedSectors(route.ConvertedSectorCount),
+            Portals = route.CopyConvertedPortals(),
+            L0Hash = route.L0AuthorityHash,
+            SectorHash = route.SectorAuthorityHash,
+            PortalHash = route.PortalAuthorityHash,
+            AuthorityValid = route.ValidateAuthorityHashes()
+        };
+    }
+
+    private static bool IsKernelPortalCrossing(AAAGame.FlowPath.FlowPathKernelRouteTask task)
+    {
+        return (task.FromNode & 0xFFFF) == (task.ToNode & 0xFFFF)
+               && (task.FromNode >> 16) != (task.ToNode >> 16);
+    }
+
+    private static int EncodeKernelPortalNode(int sectorId, int portalId)
+    {
+        return (sectorId << 16) | (portalId & 0xFFFF);
+    }
+
+    private static long GetKernelCost(AAAGame.FlowPath.FlowPathKernelSearchState state, int node)
+    {
+        Assert.IsTrue(state.TryGetCost(node, out long cost));
+        return cost;
+    }
+
+    private static int GetKernelPrevious(AAAGame.FlowPath.FlowPathKernelSearchState state, int node)
+    {
+        Assert.IsTrue(state.TryGetPrevious(node, out int previous));
+        return previous;
+    }
+
     private static void SetupCombatPhaseForTests()
     {
         LogicTestInGameDataModelAuthority.Ensure(GamePhase.Defend, nameof(FlowFieldCrowdMovementSystemTests));
@@ -9236,7 +9513,7 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void 多个单位追同一目标时不同目标点不会被共享锚点压成一个点()
+    public void 多个单位追同一目标时开阔区由LOS保持独立Binding且不提前构建精确终点场()
     {
         const int width = 10;
         const int height = 7;
@@ -9258,20 +9535,146 @@ public class FlowFieldCrowdMovementSystemTests
             CurrentTarget = target
         };
 
-        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(first, new Vector3(5.5f, 0f, 2.5f), 2f, out Vector3 firstVelocity));
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
-            first.LogicEntityId.Value,
-            out string firstDiagnostic));
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(second, new Vector3(5.5f, 0f, 4.5f), 2f, out Vector3 secondVelocity));
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
-            second.LogicEntityId.Value,
-            out string secondDiagnostic));
+        var firstGoal = new FixVector2((Fix64)5.5f, (Fix64)2.5f);
+        var secondGoal = new FixVector2((Fix64)5.5f, (Fix64)4.5f);
+        Vector3 firstVelocity = Vector3.zero;
+        Vector3 secondVelocity = Vector3.zero;
+        string firstDiagnostic = "unavailable";
+        string secondDiagnostic = "unavailable";
+        bool observedFirstLowerSteering = false;
+        bool observedSecondUpperSteering = false;
+        FlowFieldCrowdMovementSystem.SetEditorTestRequirePreparedNavigationSnapshot(true);
+        try
+        {
+            for (int frame = 1; frame < 512; frame++)
+            {
+                FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.1f);
+                FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(first, firstGoal, (Fix64)0.2f);
+                FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(second, secondGoal, (Fix64)0.2f);
+                FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+                FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+                FlowFieldCrowdMovementSystem.CommitFixedPortalOwnerSnapshots();
+                Assert.Zero(
+                    FlowFieldCrowdMovementSystem.GetEditorTestPendingFinalGoalFlowTileBuildCount(),
+                    "moving target 开阔区不得把每个 source 的 local binding 提前扩成独立 FinalGoal tile job。");
+                Assert.Zero(
+                    FlowFieldCrowdMovementSystem.GetEditorTestCachedFinalGoalFlowTileCount(),
+                    "moving target 开阔区应按 Chapter 23 的终点 LOS 直接 steering，不应发布精确 FinalGoal tile。");
+                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(first, firstGoal, (Fix64)2, out FixVector2 firstVelocityFixed));
+                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(second, secondGoal, (Fix64)2, out FixVector2 secondVelocityFixed));
+                firstVelocity = new Vector3((float)firstVelocityFixed.x, 0f, (float)firstVelocityFixed.y);
+                secondVelocity = new Vector3((float)secondVelocityFixed.x, 0f, (float)secondVelocityFixed.y);
+                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+                    first.LogicEntityId.Value,
+                    out firstDiagnostic));
+                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+                    second.LogicEntityId.Value,
+                    out secondDiagnostic));
+                observedFirstLowerSteering |= firstVelocity.z < -0.1f;
+                observedSecondUpperSteering |= secondVelocity.z > 0.1f;
+                if (observedFirstLowerSteering && observedSecondUpperSteering)
+                    break;
 
-        Assert.Less(firstVelocity.z, -0.1f,
-            $"第一个目标点在目标下侧，应保持下侧分量 first={firstVelocity}, diagnostic={firstDiagnostic}");
-        Assert.Greater(secondVelocity.z, 0.1f,
-            $"第二个目标点在目标上侧，不应被同 targetId 共享锚点压回下侧 second={secondVelocity}, diagnostic={secondDiagnostic}");
+                first.Position += firstVelocity * 0.1f;
+                second.Position += secondVelocity * 0.1f;
+            }
+        }
+        finally
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestRequirePreparedNavigationSnapshot(false);
+        }
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestLastFixedNavigationGoal(
+            first.LogicEntityId.Value,
+            out FixVector2 firstFinalBinding));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestLastFixedNavigationGoal(
+            second.LogicEntityId.Value,
+            out FixVector2 secondFinalBinding));
+        Assert.AreEqual(((Fix64)2.5f).RawValue, firstFinalBinding.y.RawValue,
+            $"第一个 source 的 final binding 被覆盖，actualRaw=({firstFinalBinding.x.RawValue},{firstFinalBinding.y.RawValue})");
+        Assert.AreEqual(((Fix64)4.5f).RawValue, secondFinalBinding.y.RawValue,
+            $"第二个 source 的 final binding 被覆盖，actualRaw=({secondFinalBinding.x.RawValue},{secondFinalBinding.y.RawValue})");
+
+        Assert.IsTrue(observedFirstLowerSteering,
+            $"第一个 source 沿 corridor 推进后必须出现朝下侧 final binding 的 steering，first={firstVelocity}, diagnostic={firstDiagnostic}");
+        Assert.IsTrue(observedSecondUpperSteering,
+            $"第二个 source 沿 corridor 推进后必须出现朝上侧 final binding 的 steering，second={secondVelocity}, diagnostic={secondDiagnostic}");
+    }
+
+    [Test]
+    public void 移动目标FinalBinding被墙遮挡时显式请求并完成精确终点场()
+    {
+        const int width = 12;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        for (int y = 0; y < height - 1; y++)
+            walkable[5 + y * width] = false;
+
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.EditorTestSectorSizeInCells = width;
+        config.DeterministicFlowTileCommitQuota = 1;
+        config.FlowTileBuildOperationQuota = 32;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext chaser = CreateEntity(new Vector3(1.5f, 0f, 1.5f), false, 0, 0.18f);
+        SimEntityContext target = CreateEntity(new Vector3(10.5f, 0f, 1.5f), false, 0, 0.18f);
+        chaser.TargetComp = new SimTargetingComp(chaser, new List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+        var exactBinding = new FixVector2((Fix64)9.5f, (Fix64)1.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestRequirePreparedNavigationSnapshot(true);
+        try
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 1f / 30f);
+            FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(chaser, exactBinding, Fix64.One);
+            FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+            Assert.AreEqual(
+                1,
+                FlowFieldCrowdMovementSystem.GetEditorTestPendingFinalGoalFlowTileBuildCount(),
+                "LOS 被墙阻断时必须显式提交唯一 exact FinalGoal fallback，不能静默停住或直穿。");
+
+            FixVector2 velocity = FixVector2.Zero;
+            bool completed = false;
+            for (int frame = 2; frame < 2048; frame++)
+            {
+                FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+                FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(chaser, exactBinding, Fix64.One);
+                FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+                FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+                FlowFieldCrowdMovementSystem.CommitFixedPortalOwnerSnapshots();
+                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(
+                    chaser,
+                    exactBinding,
+                    (Fix64)2,
+                    out velocity));
+                if (FlowFieldCrowdMovementSystem.GetEditorTestCachedFinalGoalFlowTileCount() > 0)
+                {
+                    completed = true;
+                    break;
+                }
+            }
+
+            Assert.IsTrue(completed, "被遮挡的 exact FinalGoal fallback 必须在 operation quota 下分帧完成。");
+            Assert.Greater(
+                velocity.y.RawValue,
+                Fix64.FromRaw(100).RawValue,
+                $"精确终点场必须引导单位绕向墙体开口，velocityRaw=({velocity.x.RawValue},{velocity.y.RawValue})");
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestLastSteeringSource(
+                chaser.LogicEntityId.Value,
+                out int source,
+                out bool hasLineOfSight));
+            Assert.AreEqual(1, source, "被墙遮挡时 steering authority 必须来自 flow field。");
+            Assert.IsFalse(hasLineOfSight);
+        }
+        finally
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestRequirePreparedNavigationSnapshot(false);
+        }
     }
 
     [Test]
@@ -10987,6 +11390,74 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 已提交Portal路径等待CurrentTile时必须沿预烘AccessField继续移动()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.EditorTestSectorSizeInCells = 4;
+        config.PathRequestOperationQuota = 1_000_000;
+        config.FlowTileBuildOperationQuota = 1;
+        config.DeterministicFlowTileCommitQuota = 1;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 24;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 3.5f));
+        SimEntityContext target = CreateEntity(new Vector3(23.5f, 0f, 3.5f));
+        chaser.TargetComp = new SimTargetingComp(chaser, new List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestRequirePreparedNavigationSnapshot(true);
+        try
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 1f / 30f);
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryPrepareNavigationSyncRequestFixed(
+                chaser,
+                target.PositionFixed,
+                Fix64.One,
+                out string failureReason), failureReason);
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathPortalIds(
+                chaser.LogicEntityId.Value,
+                out int[] portalIds));
+            Assert.Greater(portalIds.Length, 0, "测试必须先得到正式提交的跨 sector portal route。");
+            Assert.Greater(
+                FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(),
+                0,
+                "测试必须停在 current tile 尚未完成的窗口。");
+            Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount());
+            FlowFieldCrowdMovementSystem.CommitFixedPortalOwnerSnapshots();
+
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(
+                chaser,
+                target.PositionFixed,
+                (Fix64)2,
+                out FixVector2 velocity));
+            Assert.Greater(
+                velocity.x.RawValue,
+                Fix64.Zero.RawValue,
+                $"已提交 portal route 等待 tile 时必须沿 portal access field 前进，velocityRaw=({velocity.x.RawValue},{velocity.y.RawValue})。");
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
+                chaser.LogicEntityId.Value,
+                out string diagnostic));
+            StringAssert.Contains("/lastResult=tile-pending-portal-access", diagnostic);
+            Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestRequiredFlowTileCommitCount(),
+                "prepared MoveIntent 不能同步补完 current tile。");
+            Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestFrameTileBuildCount(),
+                "portal access steering 只能读取预烘 authority，不能在 MoveIntent 构建 tile。");
+        }
+        finally
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestRequirePreparedNavigationSnapshot(false);
+        }
+    }
+
+    [Test]
     public void FlowTileBuildQueue低预算会保留未完成TileJob()
     {
         FlowFieldNavigationConfig config = CreateConfig();
@@ -11175,6 +11646,75 @@ public class FlowFieldCrowdMovementSystemTests
             $"移动目标重复声明不得产生重复 tile key。initial={initialQueueCount}, peak={peakQueueCount}");
         Assert.AreEqual(0, peakPendingSharedGoals,
             "动态目标 corridor 只允许使用局部 portal policy，不得重新进入精确目标格反向全图 SharedGoal 队列。");
+    }
+
+    [Test]
+    public void FlowTile队列必须先推进全部当前与下一Tile再处理远端Corridor()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.EditorTestSectorSizeInCells = 4;
+        SetNavigationWorkQuotas(config, 1_000_000);
+        config.DeterministicFlowTileCommitQuota = 8;
+        config.FlowTileBuildOperationQuota = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 80;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext left = CreateEntity(new Vector3(0.5f, 0f, 1.5f));
+        SimEntityContext right = CreateEntity(new Vector3(79.5f, 0f, 6.5f));
+        FixVector2 leftGoal = new FixVector2((Fix64)79.5f, (Fix64)1.5f);
+        FixVector2 rightGoal = new FixVector2((Fix64)0.5f, (Fix64)6.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestRequirePreparedNavigationSnapshot(true);
+        try
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 1f / 30f);
+            FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(left, leftGoal, Fix64.One);
+            FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(right, rightGoal, Fix64.One);
+            FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+
+            AssertSteeringWorkingSetPrecedesBackground(left, "left");
+            AssertSteeringWorkingSetPrecedesBackground(right, "right");
+            AssertCurrentFlowTileReceivedOperations(left, "left");
+            AssertCurrentFlowTileReceivedOperations(right, "right");
+
+            bool leftWorkingSetReady = false;
+            bool rightWorkingSetReady = false;
+            for (int frame = 2; frame < 512; frame++)
+            {
+                FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+                FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(left, leftGoal, Fix64.One);
+                FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(right, rightGoal, Fix64.One);
+                FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+                FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+
+                leftWorkingSetReady = IsSteeringWorkingSetReady(left);
+                rightWorkingSetReady = IsSteeringWorkingSetReady(right);
+                if (!leftWorkingSetReady || !rightWorkingSetReady)
+                {
+                    Assert.IsFalse(IsCorridorTileCached(left, 2),
+                        "left 的远端 corridor tile 不得先于任一当前 working-set tile 完成。");
+                    Assert.IsFalse(IsCorridorTileCached(right, 2),
+                        "right 的远端 corridor tile 不得先于任一当前 working-set tile 完成。");
+                    continue;
+                }
+
+                break;
+            }
+
+            Assert.IsTrue(leftWorkingSetReady && rightWorkingSetReady,
+                $"当前与下一 tile 必须在固定 operation quota 下先收敛。{FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics()}");
+        }
+        finally
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestRequirePreparedNavigationSnapshot(false);
+        }
     }
 
     [Test]
@@ -11391,6 +11931,116 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void NavigationPathRequest同目标Source规模必须暴露各自Merge与共享Suffix工作量()
+    {
+        int[] sourceCounts = { 1, 8, 100 };
+        int[] policyOperations = new int[sourceCounts.Length];
+        int[] goalConnectorOperations = new int[sourceCounts.Length];
+        int[] conversionOperations = new int[sourceCounts.Length];
+        int[] immutableCopyOperations = new int[sourceCounts.Length];
+        int[] hashOperations = new int[sourceCounts.Length];
+        for (int sampleIndex = 0; sampleIndex < sourceCounts.Length; sampleIndex++)
+        {
+            EntityRegistry.Clear();
+            FlowFieldCrowdMovementSystem.ResetAll();
+            FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
+            FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
+
+            const int width = 256;
+            const int height = 8;
+            bool[] walkable = new bool[width * height];
+            Array.Fill(walkable, true);
+            FlowFieldNavigationConfig config = CreateConfig();
+            config.EditorTestSectorSizeInCells = 4;
+            FlowFieldCrowdMovementSystem.SetConfig(config);
+            FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+                width,
+                height,
+                1f,
+                Vector3.zero,
+                walkable);
+            ProcessWorldBuildQueueUntilReady();
+
+            SimEntityContext target = CreateEntity(new Vector3(254.5f, 0f, 3.5f), false, 0, 0.18f);
+            SimEntityContext[] sources = new SimEntityContext[sourceCounts[sampleIndex]];
+            for (int i = 0; i < sources.Length; i++)
+            {
+                float sourceX = (i % 32) * 4 + 0.5f;
+                sources[i] = CreateEntity(new Vector3(sourceX, 0f, 1.5f), false, 0, 0.18f);
+                sources[i].TargetComp = new SimTargetingComp(
+                    sources[i],
+                    new List<IEntityContext> { target })
+                {
+                    CurrentTarget = target
+                };
+            }
+
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 1f / 30f);
+            for (int i = sources.Length - 1; i >= 0; i--)
+            {
+                FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(
+                    sources[i],
+                    target.PositionFixed,
+                    Fix64.One);
+            }
+            FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+
+            FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathMaterializationOperationCounts(
+                out int initialize,
+                out int startPortal,
+                out int downward,
+                out int policy,
+                out int goalConnector,
+                out int conversion,
+                out int immutableCopy,
+                out int hash,
+                out int publish,
+                out int localBinding);
+            policyOperations[sampleIndex] = policy;
+            goalConnectorOperations[sampleIndex] = goalConnector;
+            conversionOperations[sampleIndex] = conversion;
+            immutableCopyOperations[sampleIndex] = immutableCopy;
+            hashOperations[sampleIndex] = hash;
+            string diagnostics =
+                $"sources={sources.Length}, pathStages={FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathStageDiagnostics()}, " +
+                $"materialize=init:{initialize},start:{startPortal},down:{downward},policy:{policy}," +
+                $"goal:{goalConnector},convert:{conversion},copy:{immutableCopy},hash:{hash}," +
+                $"publish:{publish},local:{localBinding}";
+            TestContext.Out.WriteLine(diagnostics);
+            Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathRequestGroupCount());
+            Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestFrameSectorCorridorGoalConnectorBuildCount());
+            for (int i = 0; i < sources.Length; i++)
+            {
+                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathGoalCell(
+                    sources[i].LogicEntityId.Value,
+                    out _,
+                    out _));
+            }
+        }
+
+        for (int sampleIndex = 1; sampleIndex < sourceCounts.Length; sampleIndex++)
+        {
+            int additionalSources = sourceCounts[sampleIndex] - 1;
+            Assert.AreEqual(policyOperations[0], policyOperations[sampleIndex],
+                "后续 source 命中首 source 的 next-node tree 后不得重复展开共享 hierarchy policy suffix。");
+            Assert.AreEqual(goalConnectorOperations[0], goalConnectorOperations[sampleIndex],
+                "后续 source 合流后不得重复展开共享 goal connector suffix。");
+            Assert.LessOrEqual(
+                conversionOperations[sampleIndex],
+                conversionOperations[0] + additionalSources * 3,
+                "route conversion 只能随各 source 的合流前缀增长，不能重复遍历完整 suffix。");
+            Assert.LessOrEqual(
+                immutableCopyOperations[sampleIndex],
+                immutableCopyOperations[0] + additionalSources * 3,
+                "immutable route 只能复制各 source 前缀，不能复制共享 suffix。");
+            Assert.LessOrEqual(
+                hashOperations[sampleIndex],
+                hashOperations[0] + additionalSources,
+                "共享 suffix 必须复用内容哈希，每个后续 source 只允许一次组合哈希。");
+        }
+    }
+
+    [Test]
     public void NavigationPathRequest低Quota只延后完成且多Source原子提交()
     {
         const int width = 64;
@@ -11496,6 +12146,10 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.Greater(portals.Length, 0);
         Assert.IsFalse(FlowFieldCrowdMovementSystem.GetEditorTestAgentHasPendingNavigation(
             source.LogicEntityId.Value));
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryValidateEditorTestSectorCorridorPoliciesUseNativeSearchAuthorities(
+                out string nativeFailure),
+            nativeFailure);
     }
 
     [Test]
@@ -11882,6 +12536,85 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void NavigationPathRequest动态Dirty必须清除已发布但未提交的SharedSuffix()
+    {
+        const int width = 64;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.EditorTestSectorSizeInCells = 4;
+        config.PathRequestOperationQuota = 1;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        FixVector2 goal = new FixVector2((Fix64)62.5f, (Fix64)3.5f);
+        SimEntityContext first = CreateEntity(new Vector3(0.5f, 0f, 1.5f), false, 0, 0.18f);
+        SimEntityContext second = CreateEntity(new Vector3(8.5f, 0f, 5.5f), false, 0, 0.18f);
+        int suffixPublishFrame = -1;
+        for (int frame = 1; frame < 20000; frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+            FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(first, goal, Fix64.One);
+            FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(second, goal, Fix64.One);
+            FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+            if (FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationSharedRouteSuffixCount() <= 0)
+                continue;
+
+            suffixPublishFrame = frame;
+            break;
+        }
+
+        Assert.Greater(suffixPublishFrame, 0, "测试必须先实际发布共享 suffix，不能只验证空 partial 的清理。");
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathRequestCount());
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationSharedRouteSuffixCount(), 0);
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryValidateEditorTestNavigationSharedRouteSuffixIncrementalAuthorityHashes(
+                out string suffixAuthorityFailure),
+            suffixAuthorityFailure);
+        long suffixDigestVisitsBefore =
+            FlowFieldCrowdMovementSystem.GetEditorTestNavigationSharedRouteSuffixDigestVisitedEntryCount();
+        for (int i = 0; i < 32; i++)
+        {
+            var hasher = new LogicStateHasher();
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(hasher);
+        }
+        Assert.AreEqual(
+            suffixDigestVisitsBefore,
+            FlowFieldCrowdMovementSystem.GetEditorTestNavigationSharedRouteSuffixDigestVisitedEntryCount(),
+            "逐 Tick authority digest 不得遍历 shared suffix map；suffix 内容必须在发布时增量归并。");
+
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(
+            92002,
+            new Vector3(30.5f, 0f, 0.5f),
+            new Vector3(0.49f, 0f, 0.49f));
+        ProcessRuntimeDirtyQueueUntilReady(suffixPublishFrame + 1);
+
+        Assert.Zero(FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathRequestCount());
+        Assert.Zero(FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationSharedRouteSuffixCount(),
+            "dirty topology 失效 partial job 时不得遗留旧 topology 的共享 suffix。");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.GetEditorTestAgentHasPendingNavigation(first.LogicEntityId.Value));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.GetEditorTestAgentHasPendingNavigation(second.LogicEntityId.Value));
+
+        config.PathRequestOperationQuota = 1_000_000;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        int rebuildFrame = suffixPublishFrame + 1000;
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(rebuildFrame, rebuildFrame / 30f);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(first, goal, Fix64.One);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(second, goal, Fix64.One);
+        FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathGoalCell(
+            first.LogicEntityId.Value,
+            out _,
+            out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathGoalCell(
+            second.LogicEntityId.Value,
+            out _,
+            out _));
+    }
+
+    [Test]
     public void NavigationPathRequest注销当前Source后保留同组存活Source并完成提交()
     {
         const int width = 64;
@@ -11920,6 +12653,70 @@ public class FlowFieldCrowdMovementSystemTests
             out int goalY));
         Assert.AreEqual(62, goalX);
         Assert.AreEqual(3, goalY);
+    }
+
+    [Test]
+    public void SectorCorridorPolicyTrim不得释放PendingRequest持有的NativePolicy()
+    {
+        const int width = 136;
+        const int height = 4;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.EditorTestSectorSizeInCells = 4;
+        config.FlowTileCacheLimit = 16;
+        SetNavigationWorkQuotas(config, 1_000_000);
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        for (int i = 0; i < 33; i++)
+        {
+            SimEntityContext target = CreateEntity(new Vector3(6.5f + i * 4f, 0f, 1.5f), false, 0, 0.18f);
+            SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 1.5f), false, 0, 0.18f);
+            chaser.TargetComp = new SimTargetingComp(chaser, new List<IEntityContext> { target })
+            {
+                CurrentTarget = target
+            };
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(i + 1, (i + 1) / 30f);
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(
+                chaser,
+                target.Position,
+                2f,
+                out _));
+        }
+        Assert.AreEqual(33, FlowFieldCrowdMovementSystem.GetEditorTestSectorCorridorPolicyCount(),
+            "测试必须先通过生产 moving-target 链建立 33 个 pinned policy。");
+
+        config.PathRequestOperationQuota = 1;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        SimEntityContext pendingSource = CreateEntity(new Vector3(4.5f, 0f, 2.5f), false, 0, 0.18f);
+        var staticGoal = new FixVector2((Fix64)134.5f, (Fix64)2.5f);
+        int frame = 40;
+        while (FlowFieldCrowdMovementSystem.GetEditorTestSectorCorridorPolicyCount() == 33 && frame < 200)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+            FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(pendingSource, staticGoal, Fix64.One);
+            FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+            frame++;
+        }
+
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathRequestCount());
+        Assert.AreEqual(34, FlowFieldCrowdMovementSystem.GetEditorTestSectorCorridorPolicyCount(),
+            "测试必须让静态 pending request 实际取得自己的 policy 实例。");
+        Assert.DoesNotThrow(FlowFieldCrowdMovementSystem.TrimEditorTestSectorCorridorPolicies);
+        Assert.AreEqual(34, FlowFieldCrowdMovementSystem.GetEditorTestSectorCorridorPolicyCount(),
+            "软容量允许被 active request 暂时超过，trim 不得释放仍被引用的 Native policy。");
+
+        config.PathRequestOperationQuota = 1_000_000;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        int completionFrame = ResolveStaticNavigationPathUntilCommitted(pendingSource, staticGoal, frame);
+        Assert.GreaterOrEqual(completionFrame, frame);
+        Assert.Zero(FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathRequestCount());
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathGoalCell(
+            pendingSource.LogicEntityId.Value,
+            out _,
+            out _));
     }
 
     [Test]
@@ -12019,6 +12816,72 @@ public class FlowFieldCrowdMovementSystemTests
             FlowFieldCrowdMovementSystem.TryValidateEditorTestSectorCorridorPolicyIncrementalAuthorityHashes(
                 out string authorityFailure),
             authorityFailure);
+    }
+
+    [Test]
+    public void NavigationPathRequest同MovingTarget跨Sector局部Binding不得扩张共享Route()
+    {
+        const int width = 40;
+        const int height = 4;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.EditorTestSectorSizeInCells = 4;
+        SetNavigationWorkQuotas(config, 1_000_000);
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext target = CreateEntity(new Vector3(8.5f, 0f, 1.5f), false, 0, 0.18f);
+        SimEntityContext farSource = CreateEntity(new Vector3(31.5f, 0f, 1.5f), false, 0, 0.18f);
+        SimEntityContext nearSource = CreateEntity(new Vector3(0.5f, 0f, 1.5f), false, 0, 0.18f);
+        var targets = new List<IEntityContext> { target };
+        farSource.TargetComp = new SimTargetingComp(farSource, targets) { CurrentTarget = target };
+        nearSource.TargetComp = new SimTargetingComp(nearSource, targets) { CurrentTarget = target };
+        var combatSlotAcrossSector = new FixVector2((Fix64)7.5f, (Fix64)1.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 1f / 30f);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(
+            farSource,
+            combatSlotAcrossSector,
+            Fix64.One);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(
+            nearSource,
+            combatSlotAcrossSector,
+            Fix64.One);
+        Assert.DoesNotThrow(FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests);
+
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathRequestGroupCount());
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathSectorIds(
+            nearSource.LogicEntityId.Value,
+            out int[] nearRoute));
+        Assert.AreEqual(2, nearRoute[nearRoute.Length - 1],
+            "高层 PathHandle 必须终止于共享 moving-target anchor，不能为每个 combat slot 追加多目标 portal suffix。");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathGoalCell(
+            nearSource.LogicEntityId.Value,
+            out int routeGoalX,
+            out int routeGoalY));
+        Assert.AreEqual(8, routeGoalX,
+            "PathHandle 的高层目标必须保持共享 anchor，local binding 只能由 steering 消费。");
+        Assert.AreEqual(1, routeGoalY);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(
+            nearSource.LogicEntityId.Value,
+            out int stableTargetId,
+            out _,
+            out _,
+            out int stableGoalX,
+            out int stableGoalY,
+            out _));
+        Assert.AreEqual(target.LogicEntityId.Value, stableTargetId);
+        Assert.AreEqual(8, stableGoalX,
+            "共享高层 policy authority 必须继续锚定 moving target，而不能被 combat slot 污染。");
+        Assert.AreEqual(1, stableGoalY);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestLastFixedNavigationGoal(
+            nearSource.LogicEntityId.Value,
+            out FixVector2 finalBinding));
+        Assert.AreEqual(combatSlotAcrossSector.x.RawValue, finalBinding.x.RawValue,
+            "近源 combat slot 必须保留为 final local binding，不能被共享 anchor 覆盖。");
+        Assert.AreEqual(combatSlotAcrossSector.y.RawValue, finalBinding.y.RawValue);
     }
 
     [Test]
@@ -12271,8 +13134,8 @@ public class FlowFieldCrowdMovementSystemTests
             FlowFieldCrowdMovementSystem.GetEditorTestFlowTileRetentionDiagnostic());
     }
 
-    [Test]
-    public void LongSession_十万Tick移动目标压力下缓存队列与进程内存保持有界()
+    [UnityTest]
+    public IEnumerator LongSession_十万Tick移动目标压力下缓存队列与进程内存保持有界()
     {
         const int totalFrames = 100000;
         const int warmupFrames = 10000;
@@ -12371,6 +13234,9 @@ public class FlowFieldCrowdMovementSystemTests
                 if (processReservedBefore <= 0)
                     throw new InvalidOperationException("LongSession flow memory gate failed: Unity process reserved memory is unavailable.");
             }
+
+            if ((frame & 255) == 0)
+                yield return null;
         }
 
         Assert.IsTrue(
@@ -19562,6 +20428,61 @@ public class FlowFieldCrowdMovementSystemTests
             null,
             new object[] { point, skewedStart, skewedEnd });
         Assert.AreEqual(50L, pointLowerBound.RawValue);
+    }
+
+    private static void AssertSteeringWorkingSetPrecedesBackground(SimEntityContext entity, string label)
+    {
+        Assert.IsTrue(TryGetWorkingSetTileState(entity, 0, out _, out bool currentPending, out int currentIndex, out _, out _));
+        Assert.IsTrue(TryGetWorkingSetTileState(entity, 1, out _, out bool nextPending, out int nextIndex, out _, out _));
+        Assert.IsTrue(TryGetWorkingSetTileState(entity, 2, out _, out bool backgroundPending, out int backgroundIndex, out _, out _));
+        Assert.IsTrue(currentPending && nextPending && backgroundPending,
+            $"{label} 必须先形成 current/next/background 三层 pending tile。current={currentIndex}, next={nextIndex}, background={backgroundIndex}");
+        Assert.Less(Mathf.Max(currentIndex, nextIndex), backgroundIndex,
+            $"{label} 的 current/next working set 必须整体位于远端 corridor 之前。current={currentIndex}, next={nextIndex}, background={backgroundIndex}");
+    }
+
+    private static void AssertCurrentFlowTileReceivedOperations(SimEntityContext entity, string label)
+    {
+        Assert.IsTrue(TryGetWorkingSetTileState(
+            entity,
+            0,
+            out bool cached,
+            out bool pending,
+            out _,
+            out string stage,
+            out int cursor));
+        Assert.IsTrue(cached || (pending && (stage != "Initialize" || cursor > 0)),
+            $"{label} 当前 tile 必须在同一 queue tick 获得实际 operation time slice。cached={cached}, pending={pending}, stage={stage}, cursor={cursor}");
+    }
+
+    private static bool IsSteeringWorkingSetReady(SimEntityContext entity)
+    {
+        return IsCorridorTileCached(entity, 0) && IsCorridorTileCached(entity, 1);
+    }
+
+    private static bool IsCorridorTileCached(SimEntityContext entity, int corridorOffset)
+    {
+        return TryGetWorkingSetTileState(entity, corridorOffset, out bool cached, out _, out _, out _, out _)
+               && cached;
+    }
+
+    private static bool TryGetWorkingSetTileState(
+        SimEntityContext entity,
+        int corridorOffset,
+        out bool cached,
+        out bool pending,
+        out int queueIndex,
+        out string stage,
+        out int cursor)
+    {
+        return FlowFieldCrowdMovementSystem.TryGetEditorTestSteeringWorkingSetTileState(
+            entity.LogicEntityId.Value,
+            corridorOffset,
+            out cached,
+            out pending,
+            out queueIndex,
+            out stage,
+            out cursor);
     }
 
     private static FlowFieldNavigationConfig CreateConfig()

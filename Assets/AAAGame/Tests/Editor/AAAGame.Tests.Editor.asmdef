@@ -3,6 +3,7 @@
     "rootNamespace": "",
     "references": [
         "Hotfix",
+        "AAAGame.FlowPathKernel",
         "GameFramework",
         "UnityGameFramework.Runtime",
         "Builtin.Runtime",

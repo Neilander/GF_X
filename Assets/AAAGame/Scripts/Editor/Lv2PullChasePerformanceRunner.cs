@@ -37,6 +37,25 @@ internal static class Lv2PullChasePerformanceRunner
         MainThreadPerfScope.LogicFrameTick,
         MainThreadPerfScope.LogicFrameListenerCallbacks,
         MainThreadPerfScope.LogicEntityNavigationSync,
+        MainThreadPerfScope.FlowNavigationAgentUpdate,
+        MainThreadPerfScope.FlowNavigationInactiveClear,
+        MainThreadPerfScope.FlowNavigationCommit,
+        MainThreadPerfScope.FlowNavigationResolveRequests,
+        MainThreadPerfScope.FlowNavigationTileQueue,
+        MainThreadPerfScope.FlowNavigationPortalOwners,
+        MainThreadPerfScope.FlowNavigationRequestSort,
+        MainThreadPerfScope.FlowNavigationDemandResolve,
+        MainThreadPerfScope.FlowNavigationDemandDispatch,
+        MainThreadPerfScope.FlowNavigationRequestPrune,
+        MainThreadPerfScope.FlowNavigationPathAdvance,
+        MainThreadPerfScope.FlowNavigationPathInitialize,
+        MainThreadPerfScope.FlowNavigationPathGoalConnector,
+        MainThreadPerfScope.FlowNavigationPathCreateHierarchy,
+        MainThreadPerfScope.FlowNavigationPathExpandHierarchy,
+        MainThreadPerfScope.FlowNavigationPathDownward,
+        MainThreadPerfScope.FlowNavigationPathL0,
+        MainThreadPerfScope.FlowNavigationPathMaterialize,
+        MainThreadPerfScope.FlowNavigationPathComplete,
         MainThreadPerfScope.LogicEntityBrain,
         MainThreadPerfScope.LogicEntityTargeting,
         MainThreadPerfScope.LogicEntityMoveIntent,
@@ -102,7 +121,9 @@ internal static class Lv2PullChasePerformanceRunner
     private static readonly List<double> s_ApproachLogicMilliseconds = new List<double>(1024);
     private static readonly List<double> s_RetreatFrameMilliseconds = new List<double>(1024);
     private static readonly List<double> s_RetreatLogicMilliseconds = new List<double>(1024);
+    private static readonly Dictionary<int, FixVector2> s_LastEnemyMotionPositions = new Dictionary<int, FixVector2>();
     private static long s_LastEditorUpdateTimestamp;
+    private static ulong s_LastEnemyMotionFrame;
     private static int s_LastProfilerFrame = -1;
     private static int s_LastPeriodicSampleFrame = -1;
     private static double s_MaxFrameMilliseconds;
@@ -122,6 +143,9 @@ internal static class Lv2PullChasePerformanceRunner
     private static int s_PeakPathRequestSourceCommits;
     private static int s_PeakPendingPathRequestGroups;
     private static int s_PeakPendingPathRequestSources;
+    private static int s_PortalTileWaitAccessSamples;
+    private static int s_PortalTileWaitZeroVelocitySamples;
+    private static int s_PortalTileWaitStoppedSamples;
 
     private enum RunnerState
     {
@@ -352,6 +376,7 @@ internal static class Lv2PullChasePerformanceRunner
 
         ulong frame = LogicFrameRuntime.CurrentFrame;
         ScenarioMode mode = (ScenarioMode)SessionState.GetInt(ModeKey, (int)ScenarioMode.Approach);
+        CaptureEnemyMotion(frame, hero, mode);
         int waypointIndex = SessionState.GetInt(WaypointIndexKey, 0);
         if (mode == ScenarioMode.Approach)
         {
@@ -526,6 +551,9 @@ internal static class Lv2PullChasePerformanceRunner
         s_PeakPathRequestSourceCommits = 0;
         s_PeakPendingPathRequestGroups = 0;
         s_PeakPendingPathRequestSources = 0;
+        s_PortalTileWaitAccessSamples = 0;
+        s_PortalTileWaitZeroVelocitySamples = 0;
+        s_PortalTileWaitStoppedSamples = 0;
         s_CaptureActive = true;
     }
 
@@ -533,6 +561,7 @@ internal static class Lv2PullChasePerformanceRunner
     {
         if (!s_CaptureActive)
             return;
+        DrainNavigationPathTickDiagnostics();
         int completedFrame = MainThreadFrameProfiler.LastCompletedFrame;
         if (completedFrame < 0 || completedFrame == s_LastProfilerFrame)
             return;
@@ -621,6 +650,12 @@ internal static class Lv2PullChasePerformanceRunner
         string pathSearch = EditorApplication.isPlaying
             ? FlowFieldCrowdMovementSystem.GetEditorTestFramePathSearchDiagnostics()
             : string.Empty;
+        string pathStages = EditorApplication.isPlaying
+            ? FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathStageDiagnostics()
+            : string.Empty;
+        string navigationSyncStages = EditorApplication.isPlaying
+            ? FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationSyncStageDiagnostics()
+            : string.Empty;
         string startConnectors = EditorApplication.isPlaying
             ? FlowFieldCrowdMovementSystem.GetEditorTestHierarchyStartConnectorDiagnostics(completedFrame)
             : string.Empty;
@@ -633,7 +668,8 @@ internal static class Lv2PullChasePerformanceRunner
             $"untrackedMs={MainThreadFrameProfiler.LastCompletedUntrackedMilliseconds:F3},logicMs={logicMs:F3},editorGapMs={updateGapMs:F3}," +
             $"scopes=[{BuildChaseScopeSample()}],pathRequests=[groups={pathRequestGroups},operations={pathRequestOperations},quota={pathRequestOperationQuota}," +
             $"commits={pathRequestCommits},sourceCommits={pathRequestSourceCommits},pendingGroups={pendingPathRequestGroups},pendingSources={pendingPathRequestSources}]," +
-            $"pathSearch=[{pathSearch}],startConnectors=[{startConnectors}],chase=[{chase}],navigation=[{navigation}]");
+            $"pathSearch=[{pathSearch}],pathStages=[{pathStages}],navigationSyncStages=[{navigationSyncStages}]," +
+            $"startConnectors=[{startConnectors}],chase=[{chase}],navigation=[{navigation}]");
     }
 
     private static void ValidateLogicEntityChain()
@@ -749,17 +785,105 @@ internal static class Lv2PullChasePerformanceRunner
         return $"{entity.LogicEntityId.Value}/{entity.CharacterKey}@{entity.PositionFixed}";
     }
 
+    private static void CaptureEnemyMotion(ulong frame, IEntityContext hero, ScenarioMode mode)
+    {
+        if (frame == s_LastEnemyMotionFrame)
+            return;
+        if (frame < s_LastEnemyMotionFrame)
+            throw new InvalidOperationException($"Lv2 enemy motion frame moved backwards. previous={s_LastEnemyMotionFrame}, current={frame}.");
+        s_LastEnemyMotionFrame = frame;
+
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            IEntityContext entity = entities[i];
+            if (entity == null
+                || !entity.Alive
+                || entity.Side != SideType.EnemySide
+                || entity.Brain is not SoldierAIBrain brain
+                || (brain.State != SoldierAIBrain.SoldierState.Combat
+                    && brain.State != SoldierAIBrain.SoldierState.Returning
+                    && !ReferenceEquals(entity.TargetComp?.CurrentTarget, hero)))
+            {
+                continue;
+            }
+
+            int entityId = entity.LogicEntityId.Value;
+            FixVector2 position = entity.PositionFixed;
+            bool hasPrevious = s_LastEnemyMotionPositions.TryGetValue(entityId, out FixVector2 previousPosition);
+            FixVector2 displacement = hasPrevious ? position - previousPosition : FixVector2.Zero;
+            s_LastEnemyMotionPositions[entityId] = position;
+
+            FixVector2 moveTarget = FixVector2.Zero;
+            bool hasMoveTarget = entity.MoveComp is CharacterMoveComp moveComp
+                                 && moveComp.TryGetNavigationTargetFixed(out moveTarget);
+            string collision = "unavailable";
+            if (LogicAgentCollisionShadowService.LastCompletedFrame == frame)
+            {
+                LogicAgentCollisionShadowState state = LogicAgentCollisionShadowService.GetRequiredState(
+                    entity.LogicEntityId,
+                    frame);
+                collision =
+                    $"proposedRaw=({state.ProposedPosition.x.RawValue},{state.ProposedPosition.y.RawValue})" +
+                    $"/pairRaw=({state.PairCorrection.x.RawValue},{state.PairCorrection.y.RawValue})" +
+                    $"/staticRaw=({state.StaticCorrection.x.RawValue},{state.StaticCorrection.y.RawValue})" +
+                    $"/regionRaw=({state.RegionCorrection.x.RawValue},{state.RegionCorrection.y.RawValue})" +
+                    $"/finalRaw=({state.FinalResolvedPosition.x.RawValue},{state.FinalResolvedPosition.y.RawValue})" +
+                    $"/staticContact={state.StaticContactKind}/regionFailure={state.RegionConstraintFailure}";
+            }
+
+            string navigation = FlowFieldCrowdMovementSystem.GetEditorTestAgentMotionDiagnostics(entityId);
+            bool isPortalTileWait = navigation.Contains("/goalKind=Portal/", StringComparison.Ordinal)
+                                    && navigation.Contains("/cached=false/", StringComparison.Ordinal);
+            if (isPortalTileWait
+                && navigation.Contains("/lastResult=tile-pending-portal-access", StringComparison.Ordinal))
+            {
+                s_PortalTileWaitAccessSamples++;
+                if (navigation.Contains("/lastVelocityRaw=(0,0)", StringComparison.Ordinal))
+                    s_PortalTileWaitZeroVelocitySamples++;
+            }
+            if (isPortalTileWait
+                && navigation.Contains("/lastResult=pending-navigation-current-tile", StringComparison.Ordinal))
+            {
+                s_PortalTileWaitStoppedSamples++;
+            }
+            s_Samples.Add(
+                $"enemyMotion logic={frame},mode={mode},id={entityId},state={brain.State},attack={brain.Attack}," +
+                $"target={entity.TargetComp?.CurrentTarget?.LogicEntityId.Value.ToString() ?? "null"}," +
+                $"positionRaw=({position.x.RawValue},{position.y.RawValue})," +
+                $"displacementRaw=({displacement.x.RawValue},{displacement.y.RawValue}),hasPrevious={hasPrevious}," +
+                $"isMoving={entity.MoveComp?.IsMoving ?? false},hasMoveTarget={hasMoveTarget}," +
+                $"moveTargetRaw={(hasMoveTarget ? $"({moveTarget.x.RawValue},{moveTarget.y.RawValue})" : "null")}," +
+                $"collision=[{collision}],navigation=[{navigation}]");
+        }
+    }
+
     private static void AppendEvent(string name, ulong logicFrame, string detail)
     {
         s_Samples.Add($"event name={name},render={Time.frameCount},logic={logicFrame},detail=[{detail ?? string.Empty}]");
     }
 
+    private static void DrainNavigationPathTickDiagnostics()
+    {
+        string[] diagnostics = FlowFieldCrowdMovementSystem.DrainEditorTestNavigationPathTickDiagnostics();
+        for (int i = 0; i < diagnostics.Length; i++)
+            s_Samples.Add(diagnostics[i]);
+    }
+
     private static void Pass(ulong frame, IEntityContext hero, IEntityContext target)
     {
+        DrainNavigationPathTickDiagnostics();
         if (s_PeakRequiredFlowTileCommits != 0)
         {
             throw new InvalidOperationException(
                 $"Lv2 pull-chase observed {s_PeakRequiredFlowTileCommits} required Flow tile commits inside steering.");
+        }
+        if (s_PortalTileWaitZeroVelocitySamples != 0 || s_PortalTileWaitStoppedSamples != 0)
+        {
+            throw new InvalidOperationException(
+                $"Lv2 pull-chase observed navigation-induced portal tile waiting stops. " +
+                $"accessSamples={s_PortalTileWaitAccessSamples}, zeroVelocity={s_PortalTileWaitZeroVelocitySamples}, " +
+                $"pendingCurrentTile={s_PortalTileWaitStoppedSamples}.");
         }
 
         string report =
@@ -781,6 +905,9 @@ internal static class Lv2PullChasePerformanceRunner
             "peakPathRequestSourceCommits=" + s_PeakPathRequestSourceCommits + Environment.NewLine +
             "peakPendingPathRequestGroups=" + s_PeakPendingPathRequestGroups + Environment.NewLine +
             "peakPendingPathRequestSources=" + s_PeakPendingPathRequestSources + Environment.NewLine +
+            "portalTileWaitAccessSamples=" + s_PortalTileWaitAccessSamples + Environment.NewLine +
+            "portalTileWaitZeroVelocitySamples=" + s_PortalTileWaitZeroVelocitySamples + Environment.NewLine +
+            "portalTileWaitStoppedSamples=" + s_PortalTileWaitStoppedSamples + Environment.NewLine +
             BuildDistributionReport("approach-frame", s_ApproachFrameMilliseconds) + Environment.NewLine +
             BuildDistributionReport("approach-logic", s_ApproachLogicMilliseconds) + Environment.NewLine +
             BuildDistributionReport("retreat-frame", s_RetreatFrameMilliseconds) + Environment.NewLine +
@@ -798,6 +925,8 @@ internal static class Lv2PullChasePerformanceRunner
 
     private static void Fail(Exception exception)
     {
+        if (EditorApplication.isPlaying)
+            DrainNavigationPathTickDiagnostics();
         string report =
             "RESULT=FAIL" + Environment.NewLine +
             "startedUtc=" + SessionState.GetString(StartedUtcKey, string.Empty) + Environment.NewLine +
@@ -842,6 +971,8 @@ internal static class Lv2PullChasePerformanceRunner
         s_ApproachLogicMilliseconds.Clear();
         s_RetreatFrameMilliseconds.Clear();
         s_RetreatLogicMilliseconds.Clear();
+        s_LastEnemyMotionPositions.Clear();
+        s_LastEnemyMotionFrame = 0;
         s_PeakRequiredFlowTileCommits = 0;
         s_PeakFlowTileQueueMutations = 0;
         s_PeakPathPortalExpansions = 0;
@@ -851,6 +982,9 @@ internal static class Lv2PullChasePerformanceRunner
         s_PeakPathRequestSourceCommits = 0;
         s_PeakPendingPathRequestGroups = 0;
         s_PeakPendingPathRequestSources = 0;
+        s_PortalTileWaitAccessSamples = 0;
+        s_PortalTileWaitZeroVelocitySamples = 0;
+        s_PortalTileWaitStoppedSamples = 0;
         s_NavigationBeforeInvade = string.Empty;
         s_NavigationAfterInvade = string.Empty;
         s_LastRetreatDirection = string.Empty;

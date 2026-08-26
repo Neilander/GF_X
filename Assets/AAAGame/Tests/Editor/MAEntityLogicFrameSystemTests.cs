@@ -101,6 +101,14 @@ public class MAEntityLogicFrameSystemTests
     }
 
     [Test]
+    public void PhaseOrder_SynchronizesPositionBeforeBrainAndNavigationCommandAfterBrain()
+    {
+        Assert.Less(MAEntityLogicFramePhase.NavigationPositionSync, MAEntityLogicFramePhase.Brain);
+        Assert.Less(MAEntityLogicFramePhase.Brain, MAEntityLogicFramePhase.NavigationSync);
+        Assert.Less(MAEntityLogicFramePhase.NavigationSync, MAEntityLogicFramePhase.MoveIntent);
+    }
+
+    [Test]
     public void Tick执行途中_最近完整实体帧快照保持上一Tick并可通过实体链门禁()
     {
         var entity = new PureLogicFrameEntity

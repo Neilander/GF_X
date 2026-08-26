@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using AAAGame.FlowPath;
 using UnityGameFramework.Runtime;
 using UnityEngine;
 
@@ -194,6 +195,7 @@ public static partial class FlowFieldCrowdMovementSystem
     private static ulong _costStampAuthorityContentHash;
     private static int _sharedGoalBuildJobAuthorityHashRefreshCount;
     private static long _sharedGoalBuildJobAuthorityHashVisitedEntryCount;
+    private static long _navigationSharedRouteSuffixDigestVisitedEntryCount;
     private static readonly List<int> AuthorityWorldKeys = new List<int>();
     private static readonly List<int> AuthorityCircleObstacleIds = new List<int>();
     private static readonly List<int> AuthorityBoxObstacleIds = new List<int>();
@@ -232,8 +234,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 throw new InvalidOperationException("Flow memory census encountered a null sector-path entry.");
             sectorPathPayloadBytes = checked(
                 sectorPathPayloadBytes
-                + GetArrayPayloadBytes(entry.SectorIds, sizeof(int))
-                + GetArrayPayloadBytes(entry.PortalIds, sizeof(int)));
+                + (long)entry.SectorIds.Length * sizeof(int)
+                + (long)entry.PortalIds.Length * sizeof(int));
         }
 
         long flowTilePayloadBytes = 0;
@@ -603,6 +605,7 @@ public static partial class FlowFieldCrowdMovementSystem
         _costStampAuthorityContentHash = 0;
         _sharedGoalBuildJobAuthorityHashRefreshCount = 0;
         _sharedGoalBuildJobAuthorityHashVisitedEntryCount = 0;
+        _navigationSharedRouteSuffixDigestVisitedEntryCount = 0;
         DiagnosticCheckpointRefreshCount = 0;
     }
 
@@ -856,14 +859,7 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(key.GoalSectorId);
         hasher.Add(key.GoalCellIndex);
         hasher.Add(key.GoalSectorDirtyVersion);
-        hasher.Add(policy.NodeCosts.Count);
-        hasher.Add(policy.NodeCostsAuthorityContentHash);
-        hasher.Add(policy.NextNodeTowardGoal.Count);
-        hasher.Add(policy.NextNodeTowardGoalAuthorityContentHash);
-        hasher.Add(policy.SettledPortalNodes.Count);
-        hasher.Add(policy.SettledPortalAuthorityContentHash);
-        hasher.Add(policy.PortalOpenSet.Count);
-        hasher.Add(policy.PortalOpenSet.AuthorityContentHash);
+        AddFlowPathKernelSearchState(hasher, policy.SearchState);
         hasher.Add(policy.HierarchyPolicies.Count);
         hasher.Add(policy.HierarchyPoliciesAuthorityContentHash);
         return hasher.Hash;
@@ -898,14 +894,7 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(policy.GoalX);
         hasher.Add(policy.GoalY);
         hasher.Add(policy.GoalConnectorAuthorityContentHash);
-        hasher.Add(policy.NodeCosts.Count);
-        hasher.Add(policy.NodeCostsAuthorityContentHash);
-        hasher.Add(policy.NextNodeTowardGoal.Count);
-        hasher.Add(policy.NextNodeTowardGoalAuthorityContentHash);
-        hasher.Add(policy.SettledNodes.Count);
-        hasher.Add(policy.SettledNodesAuthorityContentHash);
-        hasher.Add(policy.OpenSet.Count);
-        hasher.Add(policy.OpenSet.AuthorityContentHash);
+        AddFlowPathKernelSearchState(hasher, policy.SearchState);
         hasher.Add(policy.DownwardCustomizations.Count);
         hasher.Add(policy.DownwardCustomizationsAuthorityContentHash);
         hasher.Add(policy.L0WitnessesByStartNode.Count);
@@ -924,8 +913,9 @@ public static partial class FlowFieldCrowdMovementSystem
         PortalHierarchyCustomizationKey key,
         PortalHierarchyDownwardCustomization customization)
     {
-        if (customization?.Search == null)
+        if (customization == null)
             throw new InvalidOperationException("Cannot hash a downward customization without search state.");
+        customization.RequireSingleAuthority();
         var hasher = new LogicStateHasher();
         hasher.Add(0x5048444F574E4355UL);
         hasher.Add(key.SourceLevelArrayIndex);
@@ -934,10 +924,15 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(customization.SourceLevelArrayIndex);
         hasher.Add(customization.ClusterId);
         hasher.Add(customization.TargetRegionId);
-        AddSortedLongDictionary(hasher, customization.Search.Costs);
-        AddSortedIntDictionary(hasher, customization.Search.PreviousNode);
-        AddSortedInts(hasher, customization.Search.SettledNodes);
-        hasher.Add(customization.Search.ExpansionCount);
+        if (customization.SearchState != null)
+            AddFlowPathKernelSearchState(hasher, customization.SearchState);
+        else
+        {
+            AddSortedLongDictionary(hasher, customization.Search.Costs);
+            AddSortedIntDictionary(hasher, customization.Search.PreviousNode);
+            AddSortedInts(hasher, customization.Search.SettledNodes);
+            hasher.Add(customization.Search.ExpansionCount);
+        }
         return hasher.Hash;
     }
 
@@ -971,47 +966,6 @@ public static partial class FlowFieldCrowdMovementSystem
         return ComputeAuthorityIntLongToken(0x50484C305749544EUL, startNode, unchecked((long)contentHash));
     }
 
-    private static void SetPortalHierarchyReversePolicyNodeCost(
-        PortalHierarchyReversePolicy policy,
-        int node,
-        long cost)
-    {
-        if (policy.NodeCosts.TryGetValue(node, out long previousCost))
-        {
-            policy.NodeCostsAuthorityContentHash ^=
-                ComputeAuthorityIntLongToken(0x5048524E434F5354UL, node, previousCost);
-        }
-        policy.NodeCosts[node] = cost;
-        policy.NodeCostsAuthorityContentHash ^=
-            ComputeAuthorityIntLongToken(0x5048524E434F5354UL, node, cost);
-    }
-
-    private static void SetPortalHierarchyReversePolicyNextNode(
-        PortalHierarchyReversePolicy policy,
-        int node,
-        int nextNode)
-    {
-        if (policy.NextNodeTowardGoal.TryGetValue(node, out int previousNextNode))
-        {
-            policy.NextNodeTowardGoalAuthorityContentHash ^=
-                ComputeAuthorityIntIntToken(0x5048524E4558544EUL, node, previousNextNode);
-        }
-        policy.NextNodeTowardGoal[node] = nextNode;
-        policy.NextNodeTowardGoalAuthorityContentHash ^=
-            ComputeAuthorityIntIntToken(0x5048524E4558544EUL, node, nextNode);
-    }
-
-    private static bool AddPortalHierarchyReversePolicySettledNode(
-        PortalHierarchyReversePolicy policy,
-        int node)
-    {
-        if (!policy.SettledNodes.Add(node))
-            return false;
-        policy.SettledNodesAuthorityContentHash ^=
-            ComputeAuthorityIntToken(0x504852534554544CUL, node);
-        return true;
-    }
-
     private static void AddPortalHierarchyReversePolicies(
         LogicStateHasher hasher,
         SectorCorridorPolicy policy)
@@ -1031,10 +985,7 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(hierarchyPolicy.GoalX);
             hasher.Add(hierarchyPolicy.GoalY);
             AddPortalHierarchyConnectorState(hasher, hierarchyPolicy.GoalConnector);
-            AddSortedLongDictionary(hasher, hierarchyPolicy.NodeCosts);
-            AddSortedIntDictionary(hasher, hierarchyPolicy.NextNodeTowardGoal);
-            AddSortedInts(hasher, hierarchyPolicy.SettledNodes);
-            hierarchyPolicy.OpenSet.WriteDeterministicState(hasher);
+            AddFlowPathKernelSearchState(hasher, hierarchyPolicy.SearchState);
             AddPortalHierarchyDownwardCustomizations(hasher, hierarchyPolicy);
             AddPortalHierarchyL0Witnesses(hasher, hierarchyPolicy);
         }
@@ -1064,12 +1015,16 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(customization.SourceLevelArrayIndex);
             hasher.Add(customization.ClusterId);
             hasher.Add(customization.TargetRegionId);
-            if (customization.Search == null)
-                throw new InvalidOperationException("Navigation authority digest encountered a downward customization without search state.");
-            AddSortedLongDictionary(hasher, customization.Search.Costs);
-            AddSortedIntDictionary(hasher, customization.Search.PreviousNode);
-            AddSortedInts(hasher, customization.Search.SettledNodes);
-            hasher.Add(customization.Search.ExpansionCount);
+            customization.RequireSingleAuthority();
+            if (customization.SearchState != null)
+                AddFlowPathKernelSearchState(hasher, customization.SearchState);
+            else
+            {
+                AddSortedLongDictionary(hasher, customization.Search.Costs);
+                AddSortedIntDictionary(hasher, customization.Search.PreviousNode);
+                AddSortedInts(hasher, customization.Search.SettledNodes);
+                hasher.Add(customization.Search.ExpansionCount);
+            }
         }
     }
 
@@ -1101,15 +1056,18 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(false);
             return;
         }
-        if (connector.Search == null)
-            throw new InvalidOperationException("Navigation authority digest encountered a hierarchy connector without search state.");
-
+        connector.RequireSingleAuthority();
         hasher.Add(true);
         hasher.Add(connector.TargetLevelIndex);
-        AddSortedLongDictionary(hasher, connector.Search.Costs);
-        AddSortedIntDictionary(hasher, connector.Search.PreviousNode);
-        AddSortedInts(hasher, connector.Search.SettledNodes);
-        hasher.Add(connector.Search.ExpansionCount);
+        if (connector.SearchState != null)
+            AddFlowPathKernelSearchState(hasher, connector.SearchState);
+        else
+        {
+            AddSortedLongDictionary(hasher, connector.Search.Costs);
+            AddSortedIntDictionary(hasher, connector.Search.PreviousNode);
+            AddSortedInts(hasher, connector.Search.SettledNodes);
+            hasher.Add(connector.Search.ExpansionCount);
+        }
         AddPortalHierarchyConnectorState(hasher, connector.Child);
     }
 
@@ -1203,16 +1161,42 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void RemoveSectorCorridorPolicy(SectorCorridorPolicyKey key)
     {
-        if (!SectorCorridorPolicies.TryGetValue(key, out SectorCorridorPolicy policy))
+        SectorCorridorPolicy policy = DetachSectorCorridorPolicy(key);
+        if (policy == null)
             return;
+        policy.Dispose();
+    }
+
+    private static SectorCorridorPolicy DetachSectorCorridorPolicy(SectorCorridorPolicyKey key)
+    {
+        if (!SectorCorridorPolicies.TryGetValue(key, out SectorCorridorPolicy policy))
+            return null;
         if (policy == null || !policy.HasAuthorityContentHash)
-            throw new InvalidOperationException("Cannot remove an unhashed sector corridor policy.");
+            throw new InvalidOperationException("Cannot detach an unhashed sector corridor policy.");
+        if (IsSectorCorridorPolicyReferencedByPendingNavigationPathRequest(key, policy))
+        {
+            throw new InvalidOperationException(
+                "Cannot detach a sector corridor policy referenced by a pending navigation path request.");
+        }
         _sectorCorridorPolicyAuthorityContentHash ^= policy.AuthorityContentHash;
         SectorCorridorPolicies.Remove(key);
+        return policy;
     }
 
     private static void ClearSectorCorridorPolicyCache()
     {
+        foreach (KeyValuePair<SectorCorridorPolicyKey, SectorCorridorPolicy> pair in SectorCorridorPolicies)
+        {
+            SectorCorridorPolicy policy = pair.Value
+                ?? throw new InvalidOperationException("Cannot clear a null sector corridor policy.");
+            if (IsSectorCorridorPolicyReferencedByPendingNavigationPathRequest(pair.Key, policy))
+            {
+                throw new InvalidOperationException(
+                    "Cannot clear the sector corridor policy cache while a pending navigation path request references it.");
+            }
+        }
+        foreach (SectorCorridorPolicy policy in SectorCorridorPolicies.Values)
+            policy.Dispose();
         SectorCorridorPolicies.Clear();
         _sectorCorridorPolicyAuthorityContentHash = 0;
     }
@@ -1590,6 +1574,51 @@ public static partial class FlowFieldCrowdMovementSystem
         return true;
     }
 
+    public static bool TryValidateEditorTestNavigationSharedRouteSuffixIncrementalAuthorityHashes(
+        out string failureReason)
+    {
+        int indexedCount = 0;
+        for (LinkedListNode<NavigationPathRequestJob> node = NavigationPathRequestQueue.First;
+             node != null;
+             node = node.Next)
+        {
+            NavigationPathRequestJob job = node.Value;
+            if (job == null)
+            {
+                failureReason = "Navigation path request queue contains a null job.";
+                return false;
+            }
+            if (!PendingNavigationPathRequests.TryGetValue(job.IdentityKey, out NavigationPathRequestJob indexed)
+                || !ReferenceEquals(indexed, job))
+            {
+                failureReason = $"Navigation path request queue/index mismatch key={job.IdentityKey}.";
+                return false;
+            }
+
+            indexedCount++;
+            ulong recomputedHash = 0UL;
+            foreach (KeyValuePair<int, NavigationSharedRouteSuffix> pair in job.SharedRouteSuffixes)
+                recomputedHash ^= ComputeNavigationSharedRouteSuffixAuthorityToken(pair.Key, pair.Value);
+            if (recomputedHash != job.SharedRouteSuffixesAuthorityContentHash)
+            {
+                failureReason =
+                    $"Navigation shared suffix authority hash mismatch key={job.IdentityKey}, " +
+                    $"expected={recomputedHash}, actual={job.SharedRouteSuffixesAuthorityContentHash}.";
+                return false;
+            }
+        }
+        if (indexedCount != PendingNavigationPathRequests.Count)
+        {
+            failureReason =
+                $"Navigation path request queue/index count mismatch queue={indexedCount}, " +
+                $"index={PendingNavigationPathRequests.Count}.";
+            return false;
+        }
+
+        failureReason = null;
+        return true;
+    }
+
     private static bool TryValidateSharedGoalFieldIncrementalAuthorityHashes(SharedGoalField field, out string failureReason)
     {
         if (field == null)
@@ -1679,28 +1708,11 @@ public static partial class FlowFieldCrowdMovementSystem
             foreach (KeyValuePair<int, PortalHierarchyReversePolicy> hierarchyPair in policy.HierarchyPolicies)
             {
                 PortalHierarchyReversePolicy hierarchyPolicy = hierarchyPair.Value;
-                if (hierarchyPolicy.NodeCostsAuthorityContentHash
-                    != ComputeAuthorityIntLongMapHash(hierarchyPolicy.NodeCosts, 0x5048524E434F5354UL))
+                if (hierarchyPolicy.SearchState == null
+                    || !hierarchyPolicy.SearchState.IsCreated
+                    || !hierarchyPolicy.SearchState.ValidateAuthorityHashes())
                 {
-                    failureReason = $"Hierarchy node-cost authority hash mismatch level={hierarchyPair.Key + 1}.";
-                    return false;
-                }
-                if (hierarchyPolicy.NextNodeTowardGoalAuthorityContentHash
-                    != ComputeAuthorityIntIntMapHash(hierarchyPolicy.NextNodeTowardGoal, 0x5048524E4558544EUL))
-                {
-                    failureReason = $"Hierarchy next-node authority hash mismatch level={hierarchyPair.Key + 1}.";
-                    return false;
-                }
-                if (hierarchyPolicy.SettledNodesAuthorityContentHash
-                    != ComputeAuthorityIntSetHash(hierarchyPolicy.SettledNodes, 0x504852534554544CUL))
-                {
-                    failureReason = $"Hierarchy settled-node authority hash mismatch level={hierarchyPair.Key + 1}.";
-                    return false;
-                }
-                if (hierarchyPolicy.OpenSet.AuthorityContentHash
-                    != hierarchyPolicy.OpenSet.ComputeAuthorityContentHashForValidation())
-                {
-                    failureReason = $"Hierarchy open-set authority hash mismatch level={hierarchyPair.Key + 1}.";
+                    failureReason = $"Hierarchy kernel authority hash mismatch level={hierarchyPair.Key + 1}.";
                     return false;
                 }
                 if (hierarchyPolicy.GoalConnectorAuthorityContentHash
@@ -1714,6 +1726,13 @@ public static partial class FlowFieldCrowdMovementSystem
                 foreach (KeyValuePair<PortalHierarchyCustomizationKey, PortalHierarchyDownwardCustomization> customizationPair
                          in hierarchyPolicy.DownwardCustomizations)
                 {
+                    if (customizationPair.Value?.SearchState != null
+                        && (!customizationPair.Value.SearchState.IsCreated
+                            || !customizationPair.Value.SearchState.ValidateAuthorityHashes()))
+                    {
+                        failureReason = $"Hierarchy downward-customization has an invalid kernel hash level={hierarchyPair.Key + 1}.";
+                        return false;
+                    }
                     ulong contentHash = ComputePortalHierarchyDownwardCustomizationAuthorityContentHash(
                         customizationPair.Key,
                         customizationPair.Value);
@@ -1749,6 +1768,12 @@ public static partial class FlowFieldCrowdMovementSystem
                     failureReason = $"Hierarchy L0 witness aggregate hash mismatch level={hierarchyPair.Key + 1}.";
                     return false;
                 }
+                if (!TryValidatePortalHierarchyConnectorKernelAuthorities(
+                        hierarchyPolicy.GoalConnector,
+                        out failureReason))
+                {
+                    return false;
+                }
 
                 ulong hierarchyPolicyHash = ComputePortalHierarchyReversePolicyAuthorityContentHash(hierarchyPolicy);
                 hierarchyContentHash ^= ComputeAuthorityIntLongToken(
@@ -1761,6 +1786,13 @@ public static partial class FlowFieldCrowdMovementSystem
                 failureReason = $"Sector corridor hierarchy aggregate hash mismatch key={pair.Key}.";
                 return false;
             }
+            if (policy.SearchState == null
+                || !policy.SearchState.IsCreated
+                || !policy.SearchState.ValidateAuthorityHashes())
+            {
+                failureReason = $"Sector corridor kernel authority hash mismatch key={pair.Key}.";
+                return false;
+            }
             if (!policy.HasAuthorityContentHash
                 || policy.AuthorityContentHash != ComputeSectorCorridorPolicyAuthorityContentHash(pair.Key, policy))
             {
@@ -1769,6 +1801,72 @@ public static partial class FlowFieldCrowdMovementSystem
             }
         }
 
+        failureReason = null;
+        return true;
+    }
+
+    private static bool TryValidatePortalHierarchyConnectorKernelAuthorities(
+        PortalHierarchyConnector connector,
+        out string failureReason)
+    {
+        for (PortalHierarchyConnector cursor = connector; cursor != null; cursor = cursor.Child)
+        {
+            if (cursor.SearchState != null
+                && (!cursor.SearchState.IsCreated
+                    || !cursor.SearchState.ValidateAuthorityHashes()))
+            {
+                failureReason = $"Hierarchy connector has an invalid kernel hash level={cursor.TargetLevelIndex + 1}.";
+                return false;
+            }
+        }
+        failureReason = null;
+        return true;
+    }
+
+    public static bool TryValidateEditorTestSectorCorridorPoliciesUseNativeSearchAuthorities(
+        out string failureReason)
+    {
+        foreach (KeyValuePair<SectorCorridorPolicyKey, SectorCorridorPolicy> pair in SectorCorridorPolicies)
+        {
+            SectorCorridorPolicy policy = pair.Value;
+            if (policy?.SearchState == null || !policy.SearchState.IsCreated)
+            {
+                failureReason = $"Sector corridor policy has no native search authority key={pair.Key}.";
+                return false;
+            }
+            foreach (KeyValuePair<int, PortalHierarchyReversePolicy> hierarchyPair in policy.HierarchyPolicies)
+            {
+                PortalHierarchyReversePolicy hierarchyPolicy = hierarchyPair.Value;
+                if (hierarchyPolicy?.SearchState == null || !hierarchyPolicy.SearchState.IsCreated)
+                {
+                    failureReason = $"Hierarchy policy has no native search authority level={hierarchyPair.Key + 1}.";
+                    return false;
+                }
+                foreach (PortalHierarchyDownwardCustomization customization
+                         in hierarchyPolicy.DownwardCustomizations.Values)
+                {
+                    if (customization?.Search != null
+                        || customization?.SearchState == null
+                        || !customization.SearchState.IsCreated)
+                    {
+                        failureReason = $"Hierarchy downward customization retained a managed search mirror level={hierarchyPair.Key + 1}.";
+                        return false;
+                    }
+                }
+                for (PortalHierarchyConnector connector = hierarchyPolicy.GoalConnector;
+                     connector != null;
+                     connector = connector.Child)
+                {
+                    if (connector.Search != null
+                        || connector.SearchState == null
+                        || !connector.SearchState.IsCreated)
+                    {
+                        failureReason = $"Hierarchy connector retained a managed search mirror level={connector.TargetLevelIndex + 1}.";
+                        return false;
+                    }
+                }
+            }
+        }
         failureReason = null;
         return true;
     }
@@ -1850,6 +1948,7 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(job.StableGoal.x.RawValue);
             hasher.Add(job.StableGoal.y.RawValue);
             hasher.Add(job.Complete);
+            AddNavigationSharedRouteSuffixes(hasher, job);
             hasher.Add(job.Sources.Count);
             for (int i = 0; i < job.Sources.Count; i++)
                 AddNavigationPathSourceJob(hasher, job.Sources[i]);
@@ -1859,6 +1958,47 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException(
                 $"Navigation path request pending index count mismatch. queue={indexedCount}, index={PendingNavigationPathRequests.Count}.");
         }
+    }
+
+    private static void AddNavigationSharedRouteSuffixes(
+        LogicStateHasher hasher,
+        NavigationPathRequestJob job)
+    {
+        hasher.Add(job.SharedRouteSuffixes.Count);
+        hasher.Add(job.SharedRouteSuffixesAuthorityContentHash);
+    }
+
+    private static ulong ComputeNavigationSharedRouteSuffixAuthorityToken(
+        int node,
+        NavigationSharedRouteSuffix suffix)
+    {
+        if (suffix == null)
+            throw new InvalidOperationException("Navigation shared route authority contains a null suffix.");
+        if (node != suffix.MergeNode)
+            throw new InvalidOperationException(
+                $"Navigation shared route authority key mismatch key={node}, mergeNode={suffix.MergeNode}.");
+        if (suffix.SectorStartIndex < 0
+            || suffix.SectorStartIndex >= suffix.SectorIds.Length
+            || suffix.PortalStartIndex < 0
+            || suffix.PortalStartIndex > suffix.PortalIds.Length)
+        {
+            throw new InvalidOperationException(
+                $"Navigation shared route authority range is invalid node={node}, " +
+                $"sectorStart={suffix.SectorStartIndex}/{suffix.SectorIds.Length}, " +
+                $"portalStart={suffix.PortalStartIndex}/{suffix.PortalIds.Length}.");
+        }
+
+        var hasher = new LogicStateHasher();
+        hasher.Add(0x4E41565355464658UL);
+        hasher.Add(node);
+        hasher.Add(suffix.MergeNode);
+        hasher.Add(suffix.SectorStartIndex);
+        hasher.Add(suffix.PortalStartIndex);
+        hasher.Add(suffix.SectorIds.Length);
+        hasher.Add(suffix.SectorIds.AuthorityContentHash);
+        hasher.Add(suffix.PortalIds.Length);
+        hasher.Add(suffix.PortalIds.AuthorityContentHash);
+        return hasher.Hash;
     }
 
     private static void AddNavigationPathRequestIdentityKey(
@@ -1901,10 +2041,14 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(demand.GoalSectorId);
         hasher.Add(demand.GoalX);
         hasher.Add(demand.GoalY);
+        hasher.Add(demand.FinalGoalX);
+        hasher.Add(demand.FinalGoalY);
         hasher.Add(demand.InputGoal.x.RawValue);
         hasher.Add(demand.InputGoal.y.RawValue);
         hasher.Add(demand.StableGoal.x.RawValue);
         hasher.Add(demand.StableGoal.y.RawValue);
+        hasher.Add(demand.FinalGoal.x.RawValue);
+        hasher.Add(demand.FinalGoal.y.RawValue);
         hasher.Add(demand.MaximumTravelDistance.RawValue);
         hasher.Add(latestDemand.SourceId);
         hasher.Add(latestDemand.AgentTypeId);
@@ -1916,10 +2060,14 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(latestDemand.GoalSectorId);
         hasher.Add(latestDemand.GoalX);
         hasher.Add(latestDemand.GoalY);
+        hasher.Add(latestDemand.FinalGoalX);
+        hasher.Add(latestDemand.FinalGoalY);
         hasher.Add(latestDemand.InputGoal.x.RawValue);
         hasher.Add(latestDemand.InputGoal.y.RawValue);
         hasher.Add(latestDemand.StableGoal.x.RawValue);
         hasher.Add(latestDemand.StableGoal.y.RawValue);
+        hasher.Add(latestDemand.FinalGoal.x.RawValue);
+        hasher.Add(latestDemand.FinalGoal.y.RawValue);
         hasher.Add(latestDemand.MaximumTravelDistance.RawValue);
         hasher.Add(source.LastRequestedFrame);
         hasher.Add((int)source.Stage);
@@ -1958,12 +2106,28 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(policy.GoalSectorId);
         hasher.Add(policy.GoalX);
         hasher.Add(policy.GoalY);
-        AddSortedLongDictionary(hasher, policy.NodeCosts);
-        AddSortedIntDictionary(hasher, policy.NextNodeTowardGoal);
-        AddSortedInts(hasher, policy.SettledNodes);
-        policy.OpenSet.WriteDeterministicState(hasher);
+        AddFlowPathKernelSearchState(hasher, policy.SearchState);
         AddPortalHierarchyDownwardCustomizations(hasher, policy);
         AddPortalHierarchyL0Witnesses(hasher, policy);
+    }
+
+    private static void AddFlowPathKernelSearchState(
+        LogicStateHasher hasher,
+        FlowPathKernelSearchState search)
+    {
+        bool valid = search != null && search.IsCreated;
+        hasher.Add(valid);
+        if (!valid)
+            return;
+        hasher.Add(search.CostCount);
+        hasher.Add(search.CostsAuthorityHash);
+        hasher.Add(search.PreviousCount);
+        hasher.Add(search.PreviousAuthorityHash);
+        hasher.Add(search.SettledCount);
+        hasher.Add(search.SettledAuthorityHash);
+        hasher.Add(search.ExpansionCount);
+        hasher.Add(search.OpenCount);
+        hasher.Add(search.OpenAuthorityHash);
     }
 
     private static void AddIncrementalRestrictedPortalSearch(
@@ -1977,6 +2141,7 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(search.ContainingCluster?.ClusterId ?? -1);
         hasher.Add(search.LowerLevel?.Level ?? 0);
         hasher.Add(search.Reverse);
+        hasher.Add(search.MaterializeResultOnComplete);
         hasher.Add(search.RemainingTargets);
         hasher.Add((int)search.Stage);
         hasher.Add(search.TargetInitializationCursor);
@@ -1986,11 +2151,27 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(search.CurrentSectorId);
         hasher.Add(search.CurrentPortalId);
         hasher.Add(search.EdgeCursor);
-        AddSortedLongDictionary(hasher, search.Result.Costs);
-        AddSortedIntDictionary(hasher, search.Result.PreviousNode);
-        AddSortedInts(hasher, search.Result.SettledNodes);
-        hasher.Add(search.Result.ExpansionCount);
-        search.OpenSet.WriteDeterministicState(hasher);
+        bool hasKernelState = search.KernelState != null;
+        hasher.Add(hasKernelState);
+        if (hasKernelState)
+        {
+            hasher.Add(search.KernelState.CostCount);
+            hasher.Add(search.KernelState.CostsAuthorityHash);
+            hasher.Add(search.KernelState.PreviousCount);
+            hasher.Add(search.KernelState.PreviousAuthorityHash);
+            hasher.Add(search.KernelState.SettledCount);
+            hasher.Add(search.KernelState.SettledAuthorityHash);
+            hasher.Add(search.KernelState.ExpansionCount);
+            hasher.Add(search.KernelState.OpenCount);
+            hasher.Add(search.KernelState.OpenAuthorityHash);
+        }
+        else
+        {
+            AddSortedLongDictionary(hasher, search.Result.Costs);
+            AddSortedIntDictionary(hasher, search.Result.PreviousNode);
+            AddSortedInts(hasher, search.Result.SettledNodes);
+            hasher.Add(search.Result.ExpansionCount);
+        }
         AddSortedInts(hasher, search.TargetNodes);
         AddIntList(hasher, search.TargetNodeSequence);
         AddIntList(hasher, search.SourceNodes);
@@ -2036,35 +2217,57 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(state.DownwardCustomizationIndex);
         hasher.Add(state.PolicyExpansionScheduled);
         hasher.Add(state.GoalConnectorScheduled);
-        hasher.Add(state.LastLogicalNode);
-        hasher.Add(state.ConvertCursor);
-        hasher.Add(state.ImmutableCopyCursor);
+        hasher.Add(state.RouteState == null || !state.RouteState.IsCreated
+            ? int.MinValue
+            : state.RouteState.LastLogicalNode);
         hasher.Add(state.AuthorityHashCursor);
         hasher.Add(state.HashingPortalIds);
+        hasher.Add(state.SharedSuffixRegistrationCursor);
+        hasher.Add(state.SharedSuffixSectorPathIndex);
         hasher.Add(state.PathAuthorityHash);
         hasher.Add(state.WitnessAuthorityHash);
-        AddIntList(hasher, state.L0Nodes);
-        AddIntList(hasher, state.SectorIds);
-        AddIntList(hasher, state.PortalIds);
         AddIntArray(hasher, state.ImmutableSectorIds);
         AddIntArray(hasher, state.ImmutablePortalIds);
-        hasher.Add(state.PathAuthorityHasher?.Hash ?? 0UL);
-        hasher.Add(state.WitnessAuthorityHasher?.Hash ?? 0UL);
-        hasher.Add(state.Tasks.Count);
-        foreach (RouteExpansionTask task in state.Tasks)
+        AddIntArray(hasher, state.RouteSectorIds);
+        AddIntArray(hasher, state.RoutePortalIds);
+        hasher.Add(state.MergedSuffix != null);
+        if (state.MergedSuffix != null)
         {
-            if (task == null)
-                throw new InvalidOperationException("Navigation route materialization contains a null task.");
-            hasher.Add((int)task.Type);
-            hasher.Add(task.Cursor);
-            hasher.Add(task.CurrentNode);
-            hasher.Add(task.FromNode);
-            hasher.Add(task.ToNode);
-            hasher.Add(task.LevelIndex);
-            hasher.Add(task.Guard);
-            hasher.Add(task.Started);
-            AddIntArray(hasher, task.Nodes);
-            hasher.Add(task.Connector?.TargetLevelIndex ?? -1);
+            hasher.Add(state.MergedSuffix.MergeNode);
+            hasher.Add(state.MergedSuffix.SectorStartIndex);
+            hasher.Add(state.MergedSuffix.PortalStartIndex);
+            AddIntArray(hasher, state.MergedSuffix.SectorIds);
+            AddIntArray(hasher, state.MergedSuffix.PortalIds);
+        }
+        hasher.Add(state.WitnessAuthorityHasher?.Hash ?? 0UL);
+        bool routeStateCreated = state.RouteState != null && state.RouteState.IsCreated;
+        hasher.Add(routeStateCreated);
+        if (routeStateCreated)
+        {
+            hasher.Add(state.RouteState.TaskCount);
+            hasher.Add(state.RouteState.TaskAuthorityHash);
+            hasher.Add(state.RouteState.L0NodeCount);
+            hasher.Add(state.RouteState.L0AuthorityHash);
+            hasher.Add(state.RouteState.LastLogicalNode);
+            hasher.Add(state.RouteState.ConvertCursor);
+            hasher.Add(state.RouteState.ConvertedSectorCount);
+            hasher.Add(state.RouteState.SectorAuthorityHash);
+            hasher.Add(state.RouteState.ConvertedPortalCount);
+            hasher.Add(state.RouteState.PortalAuthorityHash);
+            hasher.Add(state.SearchAuthorities.Count);
+            for (int i = 0; i < state.SearchAuthorities.Count; i++)
+            {
+                FlowPathKernelSearchState search = state.SearchAuthorities[i]
+                    ?? throw new InvalidOperationException("Navigation route digest contains a null search authority.");
+                hasher.Add(i);
+                AddFlowPathKernelSearchState(hasher, search);
+            }
+            hasher.Add(state.ConnectorAuthorities.Count);
+            for (int i = 0; i < state.ConnectorAuthorities.Count; i++)
+            {
+                hasher.Add(i);
+                AddPortalHierarchyConnectorState(hasher, state.ConnectorAuthorities[i]);
+            }
         }
     }
 
@@ -3871,10 +4074,7 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(key.GoalCellIndex);
             hasher.Add(key.GoalSectorDirtyVersion);
             SectorCorridorPolicy policy = SectorCorridorPolicies[key];
-            AddSortedLongDictionary(hasher, policy.NodeCosts);
-            AddSortedIntDictionary(hasher, policy.NextNodeTowardGoal);
-            AddSortedInts(hasher, policy.SettledPortalNodes);
-            policy.PortalOpenSet.WriteDeterministicState(hasher);
+            AddFlowPathKernelSearchState(hasher, policy.SearchState);
             AddPortalHierarchyReversePolicies(hasher, policy);
             hasher.Add(policy.LastUsedFrame);
         }
@@ -4332,6 +4532,13 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(count);
         for (int i = 0; i < count; i++)
             hasher.Add(values[i]);
+    }
+
+    private static void AddIntArray(LogicStateHasher hasher, ImmutableRouteSequence values)
+    {
+        int count = values?.Length ?? 0;
+        hasher.Add(count);
+        hasher.Add(values?.AuthorityContentHash ?? 0UL);
     }
 
     private static void AddIntArrayArray(LogicStateHasher hasher, int[][] values)

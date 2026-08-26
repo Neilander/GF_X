@@ -2937,7 +2937,7 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
-    public void StateHostedBuildingPhaseGuard_ChangesProtectionOnEffectiveTick()
+    public void StateHostedBuildingPhaseGuard_ProtectsDefendingEnemyAndInvadingPlayer()
     {
         LogicEntityState state = CreateConfiguredState("Building_PhaseGuard", false);
         state.ConfigureBuilding(
@@ -2960,6 +2960,7 @@ public class LogicEntityIdentityTests
         ActivateRequestedState(state.EntityId, 1);
 
         Assert.IsTrue(state.IsPhaseProtected);
+        Assert.IsTrue(state.HasInvincibleBuff());
         state.TakeDamage((Fix64)20, HealthModifyType.empty);
         Assert.AreEqual((Fix64)100, state.HealthValue);
 
@@ -2968,8 +2969,25 @@ public class LogicEntityIdentityTests
         LogicPhaseCommandService.ApplyFrameForTests(2, _ => { });
 
         Assert.IsFalse(state.IsPhaseProtected);
+        Assert.IsFalse(state.HasInvincibleBuff());
         state.TakeDamage((Fix64)20, HealthModifyType.empty);
         Assert.AreEqual((Fix64)80, state.HealthValue);
+
+        state.SetOwnerFaction(EntitySideHelper.PlayerFactionId);
+
+        Assert.IsTrue(state.IsPhaseProtected);
+        Assert.IsTrue(state.HasInvincibleBuff());
+        state.TakeDamage((Fix64)20, HealthModifyType.empty);
+        Assert.AreEqual((Fix64)80, state.HealthValue);
+
+        LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.Defend);
+        LogicTimeControlService.BeginFrame(3);
+        LogicPhaseCommandService.ApplyFrameForTests(3, _ => { });
+
+        Assert.IsFalse(state.IsPhaseProtected);
+        Assert.IsFalse(state.HasInvincibleBuff());
+        state.TakeDamage((Fix64)20, HealthModifyType.empty);
+        Assert.AreEqual((Fix64)60, state.HealthValue);
     }
 
     [Test]
@@ -3013,8 +3031,9 @@ public class LogicEntityIdentityTests
 
         state.BeginLogicFrame(LogicFrameRuntime.FixedDeltaTime);
         state.ExecuteLogicFramePhase(MAEntityLogicFramePhase.BaseAndBuffs, LogicFrameRuntime.FixedDeltaTime);
-        state.ExecuteLogicFramePhase(MAEntityLogicFramePhase.NavigationSync, LogicFrameRuntime.FixedDeltaTime);
+        state.ExecuteLogicFramePhase(MAEntityLogicFramePhase.NavigationPositionSync, LogicFrameRuntime.FixedDeltaTime);
         state.ExecuteLogicFramePhase(MAEntityLogicFramePhase.Brain, LogicFrameRuntime.FixedDeltaTime);
+        state.ExecuteLogicFramePhase(MAEntityLogicFramePhase.NavigationSync, LogicFrameRuntime.FixedDeltaTime);
         state.ExecuteLogicFramePhase(MAEntityLogicFramePhase.Targeting, LogicFrameRuntime.FixedDeltaTime);
         state.ExecuteLogicFramePhase(MAEntityLogicFramePhase.Projectile, LogicFrameRuntime.FixedDeltaTime);
         state.ExecuteLogicFramePhase(MAEntityLogicFramePhase.Attack, LogicFrameRuntime.FixedDeltaTime);

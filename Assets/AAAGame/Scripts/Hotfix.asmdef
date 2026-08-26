@@ -11,6 +11,7 @@
         "UniTask",
         "GameFramework",
         "DOTween.Extension",
+        "AAAGame.FlowPathKernel",
         "Unity.Jobs",
         "Unity.Collections",
         "Unity.Mathematics",

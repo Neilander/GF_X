@@ -1,0 +1,18 @@
+{
+    "name": "AAAGame.FlowPathKernel",
+    "rootNamespace": "AAAGame.FlowPath",
+    "references": [
+        "Unity.Burst",
+        "Unity.Collections",
+        "Unity.Jobs"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

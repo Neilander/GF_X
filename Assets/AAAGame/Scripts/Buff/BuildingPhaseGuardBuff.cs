@@ -1,6 +1,6 @@
 /// <summary>
 /// 建筑阶段保护 Buff：
-/// - 战斗保护：非 Invade 阶段给敌方建筑提供“无敌/不可被索敌/不攻击”保护。
+/// - 战斗保护：非 Invade 阶段保护敌方建筑，Invade 阶段保护我方建筑（保留教程敌方响应例外）。
 /// - 血条效果：进入 Build 阶段后为双方建筑施加“禁用血条”效果，离开 Build 后恢复。
 /// </summary>
 public class BuildingPhaseGuardBuff : BuffCallback, ILogicDeterministicStateContributor
@@ -70,10 +70,13 @@ public class BuildingPhaseGuardBuff : BuffCallback, ILogicDeterministicStateCont
 
         GamePhase phase = LogicPhaseCommandService.GetRequiredCurrentPhase();
 
+        bool isPlayerBuilding = building.OwnerFactionId == EntitySideHelper.PlayerFactionId;
         bool isEnemyBuilding = building.OwnerFactionId == EntitySideHelper.EnemyFactionId;
-        bool shouldProtect = isEnemyBuilding
-                             && (phase != GamePhase.Invade
-                                 || !TutorialManager.IsInvadeStrongholdResponseAllowed(building.StrongholdId));
+        bool shouldProtect = phase == GamePhase.Invade
+            ? isPlayerBuilding
+              || (isEnemyBuilding
+                  && !TutorialManager.IsInvadeStrongholdResponseAllowed(building.StrongholdId))
+            : isEnemyBuilding;
 
         building.SetPhaseProtectionByBuff(shouldProtect);
         if (shouldProtect)
