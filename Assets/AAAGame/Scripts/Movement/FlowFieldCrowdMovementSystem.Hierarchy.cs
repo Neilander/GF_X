@@ -13,6 +13,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int Fanout;
         public PortalHierarchyLevel[] Levels;
         public FlowPathKernelWitnessIndex WitnessIndex;
+        public FlowPathKernelGraphIndex[] SearchGraphIndexes;
     }
 
     private sealed class PortalHierarchyLevel
@@ -3348,6 +3349,81 @@ public static partial class FlowFieldCrowdMovementSystem
         hierarchy.WitnessIndex = new FlowPathKernelWitnessIndex(records.ToArray(), witnessNodes.ToArray());
     }
 
+    private static void EnsureFlowPathKernelSearchGraphIndexes(NavigationWorld world)
+    {
+        if (world == null || world.Sectors == null || world.Portals == null || world.Hierarchy?.Levels == null)
+            throw new InvalidOperationException("Flow path kernel graph indexes require a committed world and hierarchy.");
+        if (world.L0SearchGraphIndex != null || world.Hierarchy.SearchGraphIndexes != null)
+            throw new InvalidOperationException("Flow path kernel graph indexes were initialized more than once.");
+
+        world.L0SearchGraphIndex = BuildFlowPathKernelL0SearchGraphIndex(world);
+
+        PortalHierarchyLevel[] levels = world.Hierarchy.Levels;
+        world.Hierarchy.SearchGraphIndexes = new FlowPathKernelGraphIndex[levels.Length];
+        for (int levelIndex = 0; levelIndex < levels.Length; levelIndex++)
+        {
+            PortalHierarchyLevel level = levels[levelIndex];
+            var edges = new List<FlowPathKernelGraphEdge>();
+            for (int clusterIndex = 0; clusterIndex < level.Clusters.Length; clusterIndex++)
+            {
+                PortalHierarchyCluster cluster = level.Clusters[clusterIndex]
+                    ?? throw new InvalidOperationException(
+                        $"Flow path hierarchy graph is missing level={levelIndex + 1} cluster={clusterIndex}.");
+                for (int edgeIndex = 0; edgeIndex < cluster.Edges.Length; edgeIndex++)
+                {
+                    PortalHierarchyEdge edge = cluster.Edges[edgeIndex];
+                    edges.Add(new FlowPathKernelGraphEdge(edge.FromNode, edge.ToNode, edge.DeterministicCost));
+                }
+            }
+            AddPortalCrossingGraphEdges(world, edges, level);
+            world.Hierarchy.SearchGraphIndexes[levelIndex] = new FlowPathKernelGraphIndex(edges.ToArray());
+        }
+    }
+
+    private static FlowPathKernelGraphIndex BuildFlowPathKernelL0SearchGraphIndex(NavigationWorld world)
+    {
+        var l0Edges = new List<FlowPathKernelGraphEdge>();
+        for (int sectorId = 0; sectorId < world.Sectors.Length; sectorId++)
+        {
+            SectorData sector = world.Sectors[sectorId]
+                ?? throw new InvalidOperationException($"Flow path L0 graph is missing sector={sectorId}.");
+            for (int edgeIndex = 0; edgeIndex < sector.PortalTransitions.Count; edgeIndex++)
+            {
+                PortalTransition edge = sector.PortalTransitions[edgeIndex];
+                if (edge.DeterministicCost == long.MaxValue)
+                    continue;
+                l0Edges.Add(new FlowPathKernelGraphEdge(
+                    EncodePortalNode(sectorId, edge.FromPortalId),
+                    EncodePortalNode(sectorId, edge.ToPortalId),
+                    edge.DeterministicCost));
+            }
+        }
+        AddPortalCrossingGraphEdges(world, l0Edges, null);
+        return new FlowPathKernelGraphIndex(l0Edges.ToArray());
+    }
+
+    private static void AddPortalCrossingGraphEdges(
+        NavigationWorld world,
+        List<FlowPathKernelGraphEdge> edges,
+        PortalHierarchyLevel level)
+    {
+        for (int i = 0; i < world.Portals.Length; i++)
+        {
+            PortalData portal = world.Portals[i]
+                ?? throw new InvalidOperationException($"Flow path graph is missing portal index={i}.");
+            if (level != null
+                && ResolveHierarchyClusterId(world, level, portal.SectorAId)
+                == ResolveHierarchyClusterId(world, level, portal.SectorBId))
+            {
+                continue;
+            }
+            int nodeA = EncodePortalNode(portal.SectorAId, portal.PortalId);
+            int nodeB = EncodePortalNode(portal.SectorBId, portal.PortalId);
+            edges.Add(new FlowPathKernelGraphEdge(nodeA, nodeB, DeterministicPortalCrossingCost));
+            edges.Add(new FlowPathKernelGraphEdge(nodeB, nodeA, DeterministicPortalCrossingCost));
+        }
+    }
+
     private static int CompareFlowPathKernelWitnessEdges(
         FlowPathKernelWitnessEdge left,
         FlowPathKernelWitnessEdge right)
@@ -3362,17 +3438,30 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void DisposeFlowPathKernelWitnessIndex(PortalHierarchy hierarchy)
     {
-        if (hierarchy?.WitnessIndex == null)
+        if (hierarchy == null)
             return;
-        hierarchy.WitnessIndex.Dispose();
-        hierarchy.WitnessIndex = null;
+        if (hierarchy.WitnessIndex != null)
+        {
+            hierarchy.WitnessIndex.Dispose();
+            hierarchy.WitnessIndex = null;
+        }
+        if (hierarchy.SearchGraphIndexes != null)
+        {
+            for (int i = 0; i < hierarchy.SearchGraphIndexes.Length; i++)
+                hierarchy.SearchGraphIndexes[i]?.Dispose();
+            hierarchy.SearchGraphIndexes = null;
+        }
     }
 
     public static void BuildEditorTestPortalHierarchy()
     {
         if (_world == null)
             throw new InvalidOperationException("BuildEditorTestPortalHierarchy failed: world is unavailable.");
-        _world.Hierarchy = BuildPortalHierarchy(_world, DefaultHierarchyFanout);
+        PortalHierarchy previousHierarchy = _world.Hierarchy;
+        PortalHierarchy replacementHierarchy = BuildPortalHierarchy(_world, DefaultHierarchyFanout);
+        if (!ReferenceEquals(previousHierarchy, replacementHierarchy))
+            DisposeFlowPathKernelWitnessIndex(previousHierarchy);
+        _world.Hierarchy = replacementHierarchy;
     }
 
     public static int GetEditorTestPortalHierarchyLevelCount()

@@ -185,6 +185,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int SectorCountY;
         public SectorData[] Sectors;
         public PortalData[] Portals;
+        public FlowPathKernelGraphIndex L0SearchGraphIndex;
         public Dictionary<int, PortalData> PortalsById;
         public Dictionary<PortalSignature, int> PortalIdsBySignature = new Dictionary<PortalSignature, int>();
         public HashSet<int> UsedPortalIds = new HashSet<int>();
@@ -3008,6 +3009,9 @@ public static partial class FlowFieldCrowdMovementSystem
 
         if (!ReferenceEquals(working.Hierarchy, job.TargetWorld?.Hierarchy))
             DisposeFlowPathKernelWitnessIndex(working.Hierarchy);
+        if (!ReferenceEquals(working.L0SearchGraphIndex, job.TargetWorld?.L0SearchGraphIndex))
+            working.L0SearchGraphIndex?.Dispose();
+        working.L0SearchGraphIndex = null;
 
         ReturnWorldArrayIfOwned(working.WalkableMask, working.BaseWalkableMask, null);
         ReturnWorldArrayIfOwned(working.NeighborTraversalMask, working.BaseNeighborTraversalMask, null);
@@ -3445,6 +3449,10 @@ public static partial class FlowFieldCrowdMovementSystem
         public int NavigationPathRequestGroups;
         public int NavigationPathRequestSourceAdds;
         public int NavigationPathRequestOperations;
+        public int NavigationPathSearchCommandSlices;
+        public int NavigationPathSearchCommandOperations;
+        public int NavigationPathRouteSlices;
+        public int NavigationPathRouteSliceOperations;
         public int NavigationPathRequestCommits;
         public int NavigationPathSourceCommits;
         public int NavigationPathPolicyCreates;
@@ -3555,6 +3563,15 @@ public static partial class FlowFieldCrowdMovementSystem
         public long FlowTilePruneTicks;
         public long FlowTileReferenceTicks;
         public long NavigationPathInitializeTicks;
+        public long NavigationPathInitializeSameSectorTicks;
+        public long NavigationPathInitializePolicyTicks;
+        public long NavigationPathInitializePolicyLookupTicks;
+        public long NavigationPathInitializePolicyAnchorTicks;
+        public long NavigationPathInitializePolicyConstructTicks;
+        public long NavigationPathInitializePolicyAuthorityTicks;
+        public long NavigationPathInitializePolicyPinTicks;
+        public long NavigationPathInitializeHierarchyResolveTicks;
+        public long NavigationPathInitializeHierarchySelectionTicks;
         public long NavigationPathGoalConnectorTicks;
         public long NavigationPathCreateHierarchyTicks;
         public long NavigationPathExpandHierarchyTicks;
@@ -3583,7 +3600,10 @@ public static partial class FlowFieldCrowdMovementSystem
         public long NavigationDemandResolutionTicks;
         public long NavigationDemandDispatchTicks;
         public long NavigationPathRequestQueueTicks;
-        public long NavigationPathMonoUsedBytesDelta;
+        public long NavigationPathPolicyCommitTicks;
+        public long NavigationPathBudgetConsumeTicks;
+        public long NavigationPathRequestRemovalTicks;
+        public long NavigationPathAllocatedBytes;
         public int NavigationPathGen0Collections;
         public int NavigationPathGen1Collections;
         public int NavigationPathGen2Collections;
@@ -3720,6 +3740,9 @@ public static partial class FlowFieldCrowdMovementSystem
         foreach (WorldRuntimeState state in WorldStates.Values)
         {
             ReturnRuntimeDirtyWorkingWorld(state.RuntimeDirtyJob);
+            state.World?.L0SearchGraphIndex?.Dispose();
+            if (state.World != null)
+                state.World.L0SearchGraphIndex = null;
             DisposeFlowPathKernelWitnessIndex(state.World?.Hierarchy);
         }
 
@@ -14080,6 +14103,14 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             if (CollectedNavigationSyncSourceIds.Count != 0)
                 throw new InvalidOperationException("NavigationSync request source index is non-empty while the request list is empty.");
+            long pruneStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+            PruneInactiveNavigationPathRequestSources(frame);
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationRequestPrune,
+                    Stopwatch.GetTimestamp() - pruneStartTicks);
+            }
             _collectedNavigationSyncFrame = frame;
             return;
         }
@@ -14140,11 +14171,11 @@ public static partial class FlowFieldCrowdMovementSystem
                 Stopwatch.GetTimestamp() - sectionStartTicks);
         }
         BeginNavigationWorkBudget(Config.PathRequestOperationQuota);
-        long pathQueueStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
-        long pathQueueMonoUsedBytes = profile ? UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong() : 0L;
+        long pathQueueAllocatedBytes = profile ? GC.GetAllocatedBytesForCurrentThread() : 0L;
         int pathQueueGen0Collections = profile ? GC.CollectionCount(0) : 0;
         int pathQueueGen1Collections = profile ? GC.CollectionCount(1) : 0;
         int pathQueueGen2Collections = profile ? GC.CollectionCount(2) : 0;
+        long pathQueueStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         try
         {
             ProcessNavigationPathRequestsAcrossWorlds();
@@ -14155,11 +14186,13 @@ public static partial class FlowFieldCrowdMovementSystem
             {
                 long elapsedTicks = Stopwatch.GetTimestamp() - pathQueueStartTicks;
                 _perf.NavigationPathRequestQueueTicks += elapsedTicks;
-                _perf.NavigationPathMonoUsedBytesDelta +=
-                    UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong() - pathQueueMonoUsedBytes;
+                _perf.NavigationPathAllocatedBytes += Math.Max(
+                    0L,
+                    GC.GetAllocatedBytesForCurrentThread() - pathQueueAllocatedBytes);
                 _perf.NavigationPathGen0Collections += GC.CollectionCount(0) - pathQueueGen0Collections;
                 _perf.NavigationPathGen1Collections += GC.CollectionCount(1) - pathQueueGen1Collections;
                 _perf.NavigationPathGen2Collections += GC.CollectionCount(2) - pathQueueGen2Collections;
+                RecordNavigationPathStageProfilerScopes();
                 MainThreadFrameProfiler.Record(
                     MainThreadPerfScope.FlowNavigationPathAdvance,
                     elapsedTicks);
@@ -19257,7 +19290,7 @@ public static partial class FlowFieldCrowdMovementSystem
             $"queues(world={TicksToMs(_perf.WorldBuildQueueTicks):F3}ms,runtime={TicksToMs(_perf.RuntimeRebuildQueueTicks):F3}ms,tile={TicksToMs(_perf.FlowTileQueueTicks):F3}ms," +
             $"tileActive={TicksToMs(_perf.FlowTileActiveEnqueueTicks):F3}ms,tilePrune={TicksToMs(_perf.FlowTilePruneTicks):F3}ms,tileRefs={TicksToMs(_perf.FlowTileReferenceTicks):F3}ms," +
             $"sharedActive={TicksToMs(_perf.SharedGoalActiveEnqueueTicks):F3}ms,sharedPrune={TicksToMs(_perf.SharedGoalPruneTicks):F3}ms,sharedProcess={TicksToMs(_perf.SharedGoalProcessTicks):F3}ms,sharedPortalNodes={_perf.SharedGoalPortalGraphNodeExpansions},sharedPortalIncoming={_perf.SharedGoalPortalGraphIncomingTransitionScans},sharedPortalHits={_perf.SharedGoalPortalGraphIncomingTransitionHits},refCalls={_perf.FlowTileReferenceRefreshCalls},refKeys={_perf.FlowTileReferenceKeyScans}) " +
-            $"pathRequests(groups={_perf.NavigationPathRequestGroups},operations={_perf.NavigationPathRequestOperations},commits={_perf.NavigationPathRequestCommits},sourceCommits={_perf.NavigationPathSourceCommits},pendingGroups={PendingNavigationPathRequests.Count}) " +
+            $"pathRequests(groups={_perf.NavigationPathRequestGroups},operations={_perf.NavigationPathRequestOperations},searchSlices={_perf.NavigationPathSearchCommandSlices}/{_perf.NavigationPathSearchCommandOperations},routeSlices={_perf.NavigationPathRouteSlices}/{_perf.NavigationPathRouteSliceOperations},commits={_perf.NavigationPathRequestCommits},sourceCommits={_perf.NavigationPathSourceCommits},pendingGroups={PendingNavigationPathRequests.Count}) " +
             $"pathPortal(nodes={_perf.PathPortalGraphNodeExpansions},outgoing={_perf.PathPortalGraphOutgoingTransitionScans},hits={_perf.PathPortalGraphOutgoingTransitionHits}) " +
             $"corridorPolicy(ms={TicksToMs(_perf.SectorCorridorPolicyTicks):F3},queries={_perf.SectorCorridorPolicyQueries}) " +
             $"agentUpdate={TicksToMs(_perf.AgentUpdateTicks):F3}ms " +
@@ -21499,8 +21532,14 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("CommitWorldBuildJob failed: hierarchy was not prepared before commit.");
         ValidatePortalHierarchyEdgeCosts(state.World, state.World.Hierarchy);
         EnsureFlowPathKernelWitnessIndex(state.World.Hierarchy);
+        EnsureFlowPathKernelSearchGraphIndexes(state.World);
         if (!ReferenceEquals(previousWorld?.Hierarchy, state.World.Hierarchy))
+        {
+            previousWorld?.L0SearchGraphIndex?.Dispose();
+            if (previousWorld != null)
+                previousWorld.L0SearchGraphIndex = null;
             DisposeFlowPathKernelWitnessIndex(previousWorld?.Hierarchy);
+        }
         RefreshNavigationWorldDeterministicHash(state.World);
         CombatTargetSlotCache.Clear();
         ClearFixedPortalOwnersForWorld(previousWorldVersion);
@@ -22807,6 +22846,12 @@ public static partial class FlowFieldCrowdMovementSystem
         if (job.WorkingWorld.Hierarchy == null)
             throw new InvalidOperationException("PrepareRuntimeDirtyCommit failed: hierarchy was not prepared.");
         EnsureFlowPathKernelWitnessIndex(job.WorkingWorld.Hierarchy);
+        if (job.WorkingWorld.L0SearchGraphIndex != null)
+            throw new InvalidOperationException("PrepareRuntimeDirtyCommit found a pre-existing working L0 graph index.");
+        if (job.WorkingWorld.Hierarchy.SearchGraphIndexes == null)
+            EnsureFlowPathKernelSearchGraphIndexes(job.WorkingWorld);
+        else
+            job.WorkingWorld.L0SearchGraphIndex = BuildFlowPathKernelL0SearchGraphIndex(job.WorkingWorld);
         job.WorldHashBuildJob = CreateNavigationWorldHashBuildJob(job.WorkingWorld);
     }
 
@@ -22852,6 +22897,7 @@ public static partial class FlowFieldCrowdMovementSystem
         bool[] oldWalkableMask = target.WalkableMask;
         byte[] oldNeighborTraversalMask = target.NeighborTraversalMask;
         int[] oldIslandIds = target.IslandIds;
+        FlowPathKernelGraphIndex oldL0SearchGraphIndex = target.L0SearchGraphIndex;
         List<SectorPortalAccessKey> oldPortalAccessKeys = CreatePortalAccessInvalidationKeys(
             target,
             job.PortalTransitionSectorIds);
@@ -22867,6 +22913,8 @@ public static partial class FlowFieldCrowdMovementSystem
         target.Sectors = working.Sectors;
         target.Portals = working.Portals;
         target.PortalsById = working.PortalsById;
+        target.L0SearchGraphIndex = working.L0SearchGraphIndex;
+        working.L0SearchGraphIndex = null;
         target.NextPortalId = working.NextPortalId;
         target.DeterministicContentHash = working.DeterministicContentHash;
         target.HasDeterministicContentHash = true;
@@ -22882,6 +22930,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         stepStartTicks = Stopwatch.GetTimestamp();
         InvalidateCachesForDirtySectors(target, job.CostDirtySectors, oldPortalAccessKeys);
+        oldL0SearchGraphIndex?.Dispose();
         if (!ReferenceEquals(oldHierarchy, target.Hierarchy))
             DisposeFlowPathKernelWitnessIndex(oldHierarchy);
         job.CommitCacheInvalidationTicks = Stopwatch.GetTimestamp() - stepStartTicks;
@@ -23339,6 +23388,7 @@ public static partial class FlowFieldCrowdMovementSystem
         if (portalAccessKeysToRemove == null)
             throw new InvalidOperationException("InvalidateCachesForDirtySectors failed: portal access keys are null.");
 
+        InvalidatePendingNavigationPathRequestsForDirtySectors(world, dirtySectors);
         ClearSectorCorridorPolicies();
 
         List<FlowTileCacheKey> tileKeysToRemove = null;
@@ -23417,7 +23467,6 @@ public static partial class FlowFieldCrowdMovementSystem
         if (dirtySectors == null || dirtySectors.Count == 0)
             return;
 
-        InvalidatePendingNavigationPathRequestsForDirtySectors(world, dirtySectors);
         InvalidatePendingFlowTileBuildJobsForDirtySectors(world, dirtySectors);
         InvalidatePendingSharedGoalFieldBuildJobsForDirtySectors(world, dirtySectors);
     }
@@ -31831,6 +31880,18 @@ public static partial class FlowFieldCrowdMovementSystem
         ReferencedMovingTargetAnchorKeysScratch.Clear();
         if (_world == null)
             return;
+
+        foreach (NavigationPathRequestJob job in PendingNavigationPathRequests.Values)
+        {
+            if (job == null)
+                throw new InvalidOperationException("Pending navigation path request index contains a null job during anchor ownership collection.");
+            if (job.Key.MovingTargetId == int.MinValue)
+                continue;
+            ReferencedMovingTargetAnchorKeysScratch.Add(new MovingTargetAnchorKey(
+                job.Key.MovingTargetId,
+                job.Key.AgentTypeId,
+                job.Key.SourceIslandId));
+        }
 
         foreach (AgentRuntimeData agent in Agents.Values)
         {

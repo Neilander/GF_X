@@ -172,6 +172,172 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void FlowPathKernel搜索CommandSlice批量执行保持逐Operation结果与AuthorityHash()
+    {
+        using var sequential = new AAAGame.FlowPath.FlowPathKernelSearchState(16);
+        sequential.AddSource(9, 10);
+        sequential.AddSource(2, 10);
+        sequential.Relax(9, 5, 20);
+        sequential.Relax(9, 5, 5);
+
+        using var sliced = new AAAGame.FlowPath.FlowPathKernelSearchState(16);
+        sliced.BeginCommandSlice();
+        sliced.AppendAddSource(9, 10);
+        sliced.AppendAddSource(2, 10);
+        sliced.AppendRelax(9, 5, 20);
+        sliced.AppendRelax(9, 5, 5);
+        Assert.AreEqual(
+            4,
+            sliced.ExecuteCommandSlice(out AAAGame.FlowPath.FlowPathKernelPopStatus popStatus, out _));
+        Assert.AreEqual(AAAGame.FlowPath.FlowPathKernelPopStatus.Empty, popStatus);
+
+        Assert.AreEqual(sequential.CostCount, sliced.CostCount);
+        Assert.AreEqual(sequential.PreviousCount, sliced.PreviousCount);
+        Assert.AreEqual(sequential.OpenCount, sliced.OpenCount);
+        Assert.AreEqual(sequential.CostsAuthorityHash, sliced.CostsAuthorityHash);
+        Assert.AreEqual(sequential.PreviousAuthorityHash, sliced.PreviousAuthorityHash);
+        Assert.AreEqual(sequential.OpenAuthorityHash, sliced.OpenAuthorityHash);
+        Assert.IsTrue(sliced.ValidateAuthorityHashes());
+
+        Assert.AreEqual(sequential.PopOne(out AAAGame.FlowPath.FlowPathKernelSearchEntry expected),
+            sliced.PopOne(out AAAGame.FlowPath.FlowPathKernelSearchEntry actual));
+        Assert.AreEqual(expected.Node, actual.Node);
+        Assert.AreEqual(expected.Cost, actual.Cost);
+        Assert.AreEqual(sequential.SettledAuthorityHash, sliced.SettledAuthorityHash);
+        Assert.AreEqual(sequential.OpenAuthorityHash, sliced.OpenAuthorityHash);
+    }
+
+    [Test]
+    public void FlowPathKernelGraphWalkerQuota只改变完成Slice不改变SearchAuthority()
+    {
+        var edges = new[]
+        {
+            new AAAGame.FlowPath.FlowPathKernelGraphEdge(0, 1, 4),
+            new AAAGame.FlowPath.FlowPathKernelGraphEdge(0, 2, 1),
+            new AAAGame.FlowPath.FlowPathKernelGraphEdge(2, 1, 2),
+            new AAAGame.FlowPath.FlowPathKernelGraphEdge(1, 3, 1),
+            new AAAGame.FlowPath.FlowPathKernelGraphEdge(2, 3, 8)
+        };
+        using var graph = new AAAGame.FlowPath.FlowPathKernelGraphIndex(edges);
+        KernelSearchResult quotaOne = RunKernelGraphSearchToCompletion(graph, 1);
+        KernelSearchResult quotaMany = RunKernelGraphSearchToCompletion(graph, 64);
+
+        Assert.Greater(quotaOne.SliceCount, quotaMany.SliceCount);
+        Assert.AreEqual(quotaOne.OperationCount, quotaMany.OperationCount);
+        Assert.AreEqual(quotaOne.TargetCost, quotaMany.TargetCost);
+        Assert.AreEqual(quotaOne.TargetPrevious, quotaMany.TargetPrevious);
+        Assert.AreEqual(quotaOne.CostsHash, quotaMany.CostsHash);
+        Assert.AreEqual(quotaOne.PreviousHash, quotaMany.PreviousHash);
+        Assert.AreEqual(quotaOne.SettledHash, quotaMany.SettledHash);
+        Assert.AreEqual(quotaOne.OpenHash, quotaMany.OpenHash);
+        Assert.IsTrue(quotaOne.AuthorityValid);
+        Assert.IsTrue(quotaMany.AuthorityValid);
+    }
+
+    [Test]
+    public void FlowPathKernelGraphWalker真实饱和扩容不改变Quota与SearchAuthority()
+    {
+        var edges = new[]
+        {
+            new AAAGame.FlowPath.FlowPathKernelGraphEdge(0, 1, 9),
+            new AAAGame.FlowPath.FlowPathKernelGraphEdge(0, 2, 1),
+            new AAAGame.FlowPath.FlowPathKernelGraphEdge(0, 3, 7),
+            new AAAGame.FlowPath.FlowPathKernelGraphEdge(2, 1, 2),
+            new AAAGame.FlowPath.FlowPathKernelGraphEdge(2, 3, 3),
+            new AAAGame.FlowPath.FlowPathKernelGraphEdge(1, 4, 1),
+            new AAAGame.FlowPath.FlowPathKernelGraphEdge(3, 4, 1)
+        };
+        using var graph = new AAAGame.FlowPath.FlowPathKernelGraphIndex(edges);
+        KernelSearchResult quotaOne = RunKernelGraphSearchToCompletion(graph, 1, 1);
+        KernelSearchResult quotaMany = RunKernelGraphSearchToCompletion(graph, 64, 1);
+
+        Assert.Greater(quotaOne.SliceCount, quotaMany.SliceCount);
+        Assert.AreEqual(quotaOne.OperationCount, quotaMany.OperationCount);
+        Assert.AreEqual(quotaOne.TargetCost, quotaMany.TargetCost);
+        Assert.AreEqual(quotaOne.TargetPrevious, quotaMany.TargetPrevious);
+        Assert.AreEqual(quotaOne.CostsHash, quotaMany.CostsHash);
+        Assert.AreEqual(quotaOne.PreviousHash, quotaMany.PreviousHash);
+        Assert.AreEqual(quotaOne.SettledHash, quotaMany.SettledHash);
+        Assert.AreEqual(quotaOne.OpenHash, quotaMany.OpenHash);
+        Assert.IsTrue(quotaOne.AuthorityValid);
+        Assert.IsTrue(quotaMany.AuthorityValid);
+    }
+
+    [TestCase(1)]
+    [TestCase(64)]
+    public void RestrictedConnector边界包含不可达候选时提交可达子集(int operationQuota)
+    {
+        FlowFieldCrowdMovementSystem.RunEditorTestDisconnectedRestrictedBoundarySearch(
+            operationQuota,
+            out long reachableCost,
+            out bool unreachableSettled);
+
+        Assert.AreEqual(7L, reachableCost);
+        Assert.IsFalse(unreachableSettled);
+    }
+
+    private static KernelSearchResult RunKernelGraphSearchToCompletion(
+        AAAGame.FlowPath.FlowPathKernelGraphIndex graph,
+        int quota,
+        int initialCapacity = 8)
+    {
+        using var search = new AAAGame.FlowPath.FlowPathKernelSearchState(initialCapacity);
+        search.AddSource(0, 0);
+        search.SetGraphSliceTargets(new[] { 3 });
+        var cursor = new AAAGame.FlowPath.FlowPathKernelGraphCursor();
+        int slices = 0;
+        int operations = 0;
+        while (!search.ContainsSettled(3))
+        {
+            slices++;
+            Assert.Less(slices, 32, "Graph walker did not complete within the deterministic slice bound.");
+            AAAGame.FlowPath.FlowPathKernelGraphSliceResult result = search.AdvanceGraphSlice(
+                graph,
+                reverse: false,
+                sectorCountX: 1,
+                allowedStartSectorX: 0,
+                allowedStartSectorY: 0,
+                allowedWidthSectors: 0,
+                allowedHeightSectors: 0,
+                cursor,
+                quota);
+            Assert.Greater(result.OperationCount, 0);
+            Assert.AreNotEqual(
+                AAAGame.FlowPath.FlowPathKernelGraphSliceStopReason.FrontierEmpty,
+                result.StopReason);
+            operations += result.OperationCount;
+            cursor = result.Cursor;
+        }
+        Assert.IsTrue(search.TryGetCost(3, out long targetCost));
+        Assert.IsTrue(search.TryGetPrevious(3, out int targetPrevious));
+        return new KernelSearchResult
+        {
+            SliceCount = slices,
+            OperationCount = operations,
+            TargetCost = targetCost,
+            TargetPrevious = targetPrevious,
+            CostsHash = search.CostsAuthorityHash,
+            PreviousHash = search.PreviousAuthorityHash,
+            SettledHash = search.SettledAuthorityHash,
+            OpenHash = search.OpenAuthorityHash,
+            AuthorityValid = search.ValidateAuthorityHashes()
+        };
+    }
+
+    private struct KernelSearchResult
+    {
+        public int SliceCount;
+        public int OperationCount;
+        public long TargetCost;
+        public int TargetPrevious;
+        public ulong CostsHash;
+        public ulong PreviousHash;
+        public ulong SettledHash;
+        public ulong OpenHash;
+        public bool AuthorityValid;
+    }
+
+    [Test]
     public void FlowPathKernelRoute完整展开与Conversion保持单一NativeAuthority()
     {
         KernelRouteResult result = RunKernelRouteToCompletion(1);
@@ -200,6 +366,52 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void FlowPathKernelRouteSliceQuota只改变完成Tick不改变Route与AuthorityHash()
+    {
+        KernelRouteResult operationByOperation = RunKernelRouteToCompletion(1);
+        KernelRouteResult sliceOne = RunKernelRouteSliceToCompletion(1);
+        KernelRouteResult sliceMany = RunKernelRouteSliceToCompletion(64);
+
+        Assert.Greater(sliceOne.CompleteTick, sliceMany.CompleteTick);
+        CollectionAssert.AreEqual(operationByOperation.Sectors, sliceOne.Sectors);
+        CollectionAssert.AreEqual(operationByOperation.Portals, sliceOne.Portals);
+        CollectionAssert.AreEqual(sliceOne.Sectors, sliceMany.Sectors);
+        CollectionAssert.AreEqual(sliceOne.Portals, sliceMany.Portals);
+        Assert.AreEqual(operationByOperation.L0Hash, sliceMany.L0Hash);
+        Assert.AreEqual(operationByOperation.SectorHash, sliceMany.SectorHash);
+        Assert.AreEqual(operationByOperation.PortalHash, sliceMany.PortalHash);
+        Assert.IsTrue(sliceOne.AuthorityValid);
+        Assert.IsTrue(sliceMany.AuthorityValid);
+    }
+
+    [Test]
+    public void FlowPathKernelRoute批处理在首个共享树节点停止且不受Quota影响()
+    {
+        KernelRouteMergeResult quotaOne = RunKernelRouteSliceUntilMerge(1);
+        KernelRouteMergeResult quotaMany = RunKernelRouteSliceUntilMerge(64);
+
+        Assert.Greater(quotaOne.SliceCount, quotaMany.SliceCount);
+        Assert.AreEqual(
+            AAAGame.FlowPath.FlowPathKernelRouteSliceStopReason.RouteNodeBoundary,
+            quotaOne.StopReason);
+        Assert.AreEqual(quotaOne.StopReason, quotaMany.StopReason);
+        CollectionAssert.AreEqual(quotaOne.L0Nodes, quotaMany.L0Nodes);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                EncodeKernelPortalNode(0, 10),
+                EncodeKernelPortalNode(1, 10),
+                EncodeKernelPortalNode(1, 20)
+            },
+            quotaMany.L0Nodes);
+        Assert.AreEqual(quotaOne.L0Hash, quotaMany.L0Hash);
+        Assert.Greater(quotaOne.PendingTaskCount, 0);
+        Assert.AreEqual(quotaOne.PendingTaskCount, quotaMany.PendingTaskCount);
+        Assert.IsTrue(quotaOne.AuthorityValid);
+        Assert.IsTrue(quotaMany.AuthorityValid);
+    }
+
+    [Test]
     public void FlowPathKernelRouteDispose后所有Authority访问明确报错()
     {
         var state = new AAAGame.FlowPath.FlowPathKernelRouteState(4, 4);
@@ -221,6 +433,100 @@ public class FlowFieldCrowdMovementSystemTests
         public ulong SectorHash;
         public ulong PortalHash;
         public bool AuthorityValid;
+    }
+
+    private struct KernelRouteMergeResult
+    {
+        public int SliceCount;
+        public int[] L0Nodes;
+        public int PendingTaskCount;
+        public ulong L0Hash;
+        public AAAGame.FlowPath.FlowPathKernelRouteSliceStopReason StopReason;
+        public bool AuthorityValid;
+    }
+
+    private static KernelRouteMergeResult RunKernelRouteSliceUntilMerge(int quota)
+    {
+        const int hierarchyTraversalType = 101;
+        const int hierarchyPairType = 102;
+        const int witnessType = 103;
+        const int l0PairType = 104;
+        const int l0TraversalType = 105;
+        const int downwardTraversalType = 106;
+        const int connectorTraversalType = 107;
+        const int connectorBoundaryType = 108;
+        int highStart = EncodeKernelPortalNode(0, 10);
+        int highGoal = EncodeKernelPortalNode(2, 20);
+        int mergeNode = EncodeKernelPortalNode(1, 20);
+        int[] witnessNodes =
+        {
+            highStart,
+            EncodeKernelPortalNode(1, 10),
+            mergeNode,
+            highGoal
+        };
+        using var search = new AAAGame.FlowPath.FlowPathKernelSearchState(8);
+        search.AddSource(highGoal, 0L);
+        Assert.AreEqual(
+            AAAGame.FlowPath.FlowPathKernelPopStatus.Settled,
+            search.PopOne(out AAAGame.FlowPath.FlowPathKernelSearchEntry goal));
+        search.Relax(goal.Node, highStart, 1L);
+        using var witnessIndex = new AAAGame.FlowPath.FlowPathKernelWitnessIndex(
+            new[]
+            {
+                new AAAGame.FlowPath.FlowPathKernelWitnessEdge(
+                    0,
+                    0,
+                    highStart,
+                    highGoal,
+                    0,
+                    witnessNodes.Length)
+            },
+            witnessNodes);
+        using var mergeIndex = new AAAGame.FlowPath.FlowPathKernelRouteMergeIndex(4);
+        Assert.IsTrue(mergeIndex.Add(mergeNode));
+        using var route = new AAAGame.FlowPath.FlowPathKernelRouteState(8, 8);
+        route.Push(new AAAGame.FlowPath.FlowPathKernelRouteTask
+        {
+            Type = hierarchyTraversalType,
+            AuthoritySlot = 0,
+            CurrentNode = highStart,
+            LevelIndex = 0
+        });
+
+        int slices = 0;
+        AAAGame.FlowPath.FlowPathKernelRouteSliceResult result;
+        do
+        {
+            slices++;
+            Assert.Less(slices, 64, "Route kernel did not reach the shared-tree merge node within the deterministic bound.");
+            result = route.AdvanceSlice(
+                search,
+                witnessIndex,
+                mergeIndex,
+                0,
+                hierarchyTraversalType,
+                l0TraversalType,
+                downwardTraversalType,
+                connectorTraversalType,
+                hierarchyPairType,
+                l0PairType,
+                witnessType,
+                connectorBoundaryType,
+                quota);
+            Assert.Greater(result.OperationCount, 0);
+        }
+        while (result.StopReason != AAAGame.FlowPath.FlowPathKernelRouteSliceStopReason.RouteNodeBoundary);
+
+        return new KernelRouteMergeResult
+        {
+            SliceCount = slices,
+            L0Nodes = route.CopyL0Nodes(),
+            PendingTaskCount = route.TaskCount,
+            L0Hash = route.L0AuthorityHash,
+            StopReason = result.StopReason,
+            AuthorityValid = route.ValidateAuthorityHashes()
+        };
     }
 
     private static KernelRouteResult RunKernelRouteToCompletion(int quota)
@@ -298,6 +604,100 @@ public class FlowFieldCrowdMovementSystemTests
                         Assert.Fail($"Unknown route kernel task type: {task.Type}.");
                         break;
                 }
+            }
+        }
+
+        return new KernelRouteResult
+        {
+            CompleteTick = tick,
+            L0NodeCount = route.L0NodeCount,
+            Sectors = route.CopyConvertedSectors(route.ConvertedSectorCount),
+            Portals = route.CopyConvertedPortals(),
+            L0Hash = route.L0AuthorityHash,
+            SectorHash = route.SectorAuthorityHash,
+            PortalHash = route.PortalAuthorityHash,
+            AuthorityValid = route.ValidateAuthorityHashes()
+        };
+    }
+
+    private static KernelRouteResult RunKernelRouteSliceToCompletion(int quota)
+    {
+        const int hierarchyTraversalType = 101;
+        const int hierarchyPairType = 102;
+        const int witnessType = 103;
+        const int l0PairType = 104;
+        const int l0TraversalType = 105;
+        const int downwardTraversalType = 106;
+        const int connectorTraversalType = 107;
+        const int connectorBoundaryType = 108;
+        int highStart = EncodeKernelPortalNode(0, 10);
+        int highGoal = EncodeKernelPortalNode(2, 20);
+        int[] witnessNodes =
+        {
+            highStart,
+            EncodeKernelPortalNode(1, 10),
+            EncodeKernelPortalNode(1, 20),
+            highGoal
+        };
+        using var search = new AAAGame.FlowPath.FlowPathKernelSearchState(8);
+        search.AddSource(highGoal, 0L);
+        Assert.AreEqual(
+            AAAGame.FlowPath.FlowPathKernelPopStatus.Settled,
+            search.PopOne(out AAAGame.FlowPath.FlowPathKernelSearchEntry goal));
+        search.Relax(goal.Node, highStart, 1L);
+        using var witnessIndex = new AAAGame.FlowPath.FlowPathKernelWitnessIndex(
+            new[]
+            {
+                new AAAGame.FlowPath.FlowPathKernelWitnessEdge(
+                    0,
+                    0,
+                    highStart,
+                    highGoal,
+                    0,
+                    witnessNodes.Length)
+            },
+            witnessNodes);
+        using var mergeIndex = new AAAGame.FlowPath.FlowPathKernelRouteMergeIndex(1);
+        using var route = new AAAGame.FlowPath.FlowPathKernelRouteState(8, 8);
+        route.Push(new AAAGame.FlowPath.FlowPathKernelRouteTask
+        {
+            Type = hierarchyTraversalType,
+            AuthoritySlot = 0,
+            CurrentNode = highStart,
+            LevelIndex = 0
+        });
+
+        int tick = 0;
+        bool complete = false;
+        while (!complete)
+        {
+            tick++;
+            Assert.Less(tick, 64, "Sliced route kernel did not complete within the deterministic bound.");
+            if (route.TaskCount > 0)
+            {
+                AAAGame.FlowPath.FlowPathKernelRouteSliceResult result = route.AdvanceSlice(
+                    search,
+                    witnessIndex,
+                    mergeIndex,
+                    0,
+                    hierarchyTraversalType,
+                    l0TraversalType,
+                    downwardTraversalType,
+                    connectorTraversalType,
+                    hierarchyPairType,
+                    l0PairType,
+                    witnessType,
+                    connectorBoundaryType,
+                    quota);
+                Assert.Greater(result.OperationCount, 0);
+            }
+            else
+            {
+                AAAGame.FlowPath.FlowPathKernelRouteSliceResult result =
+                    route.AdvanceConversionSlice(0, quota);
+                Assert.Greater(result.OperationCount, 0);
+                complete = result.StopReason
+                           == AAAGame.FlowPath.FlowPathKernelRouteSliceStopReason.RouteComplete;
             }
         }
 
@@ -11919,6 +12319,17 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.AreEqual(
             chasers.Length,
             FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPrepareRequestCount());
+        FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathSliceCounts(
+            out int searchSlices,
+            out int searchOperations,
+            out int routeSlices,
+            out int routeOperations);
+        Assert.Greater(searchSlices, 0, "真实多 sector request 必须执行 search command slice。");
+        Assert.GreaterOrEqual(searchOperations, searchSlices * 8,
+            "真实多 sector request 的 graph walker 必须跨越多个 pop/邻接 primitive 后才返回 managed。");
+        Assert.Greater(routeSlices, 0, "真实多 sector request 必须执行 route slice。");
+        Assert.Greater(routeOperations, routeSlices,
+            "真实多 sector request 的 route primitive operations 必须被少量 slice 批量执行。");
         for (int i = 0; i < chasers.Length; i++)
         {
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathGoalCell(
@@ -12375,6 +12786,60 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void NavigationPathRequest移动目标高Quota同TickFollowUp必须先提交旧PolicyAuthority()
+    {
+        const int width = 256;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.EditorTestSectorSizeInCells = 4;
+        config.PathRequestOperationQuota = 1_000_000;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext target = CreateEntity(new Vector3(254.5f, 0f, 3.5f), false, 0, 0.18f);
+        SimEntityContext source = CreateEntity(new Vector3(0.5f, 0f, 3.5f), false, 0, 0.18f);
+        source.TargetComp = new SimTargetingComp(source, new List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 1f / 30f);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(source, target.PositionFixed, Fix64.One);
+        FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+
+        config.PathRequestOperationQuota = 1;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        target.Position = new Vector3(236.5f, 0f, 3.5f);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 2f / 30f);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(source, target.PositionFixed, Fix64.One);
+        FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathRequestCount());
+
+        config.PathRequestOperationQuota = 1_000_000;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        target.Position = new Vector3(172.5f, 0f, 3.5f);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(3, 3f / 30f);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(source, target.PositionFixed, Fix64.One);
+        Assert.DoesNotThrow(FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests,
+            "旧 goal policy 在同 Tick follow-up 切换 authority 前必须完成 hash 提交。");
+
+        Assert.Zero(FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathRequestCount());
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathGoalCell(
+            source.LogicEntityId.Value,
+            out int goalX,
+            out int goalY));
+        Assert.AreEqual(172, goalX);
+        Assert.AreEqual(3, goalY);
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryValidateEditorTestSectorCorridorPolicyIncrementalAuthorityHashes(
+                out string authorityFailure),
+            authorityFailure);
+    }
+
+    [Test]
     public void NavigationPathRequestSource走出冻结Corridor时只重做SourceMerge并复用目标侧Policy()
     {
         const int width = 256;
@@ -12717,6 +13182,62 @@ public class FlowFieldCrowdMovementSystemTests
             pendingSource.LogicEntityId.Value,
             out _,
             out _));
+    }
+
+    [Test]
+    public void NavigationPathRequest空批次必须Prune且AnchorTrim不得释放PendingPolicy()
+    {
+        const int width = 64;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.EditorTestSectorSizeInCells = 4;
+        config.PathRequestOperationQuota = 1;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext target = CreateEntity(new Vector3(62.5f, 0f, 3.5f), false, 0, 0.18f);
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 3.5f), false, 0, 0.18f);
+        chaser.TargetComp = new SimTargetingComp(chaser, new List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        int frame = 1;
+        while (FlowFieldCrowdMovementSystem.GetEditorTestSectorCorridorPolicyCount() == 0 && frame < 512)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+            FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(
+                chaser,
+                target.PositionFixed,
+                Fix64.One);
+            FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+            frame++;
+        }
+
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathRequestCount(),
+            "测试必须先保留一个跨 Tick 的 moving-target request。");
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestSectorCorridorPolicyCount(),
+            "测试必须让 pending request 实际取得 anchor 持有的 policy。");
+
+        chaser.MoveComp = new NoMoveComp();
+        FlowFieldCrowdMovementSystem.UpdateAgentForEditorTest(chaser, 0.18f, 0);
+        int expiredFrame = frame + 301;
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(expiredFrame, expiredFrame / 30f);
+        Assert.DoesNotThrow(FlowFieldCrowdMovementSystem.PulsePerformanceFrame,
+            "anchor trim 必须识别 pending request 的 policy 引用，不能先销毁 owner。");
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestSectorCorridorPolicyCount());
+
+        Assert.DoesNotThrow(FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests,
+            "空请求批次也必须清理上一 Tick 已停止提交的 pending source。");
+        Assert.Zero(FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathRequestCount());
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(expiredFrame + 1, (expiredFrame + 1) / 30f);
+        Assert.DoesNotThrow(FlowFieldCrowdMovementSystem.PulsePerformanceFrame);
+        Assert.Zero(FlowFieldCrowdMovementSystem.GetEditorTestSectorCorridorPolicyCount(),
+            "pending owner 释放后，下一次 maintenance 必须正常释放过期 anchor policy。");
     }
 
     [Test]

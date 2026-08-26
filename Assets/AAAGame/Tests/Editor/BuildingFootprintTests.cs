@@ -7,7 +7,7 @@ public sealed class BuildingFootprintTests
     [TestCase(BuilType.Prod, 2)]
     [TestCase(BuilType.Def, 2)]
     [TestCase(BuilType.Army, 3)]
-    [TestCase(BuilType.Base, 4)]
+    [TestCase(BuilType.Base, 5)]
     public void ResolveGridSize_UsesBuildingTypeDefaults(BuilType buildingType, int expectedGridSize)
     {
         Assert.AreEqual(expectedGridSize, BuildingFootprint.ResolveGridSize(buildingType));

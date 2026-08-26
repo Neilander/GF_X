@@ -72,37 +72,37 @@
 					"__worldY": -2280
 				},
 				{
-					"__identifier": "Building44",
+					"__identifier": "Building55",
 					"__grid": [40,54],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": { "tilesetUid": 57, "x": 0, "y": 0, "w": 96, "h": 96 },
+					"__tile": null,
 					"__smartColor": "#D77643",
 					"iid": "f37274b0-6fc0-11f1-ba80-fd153a9ad6d1",
-					"width": 64,
-					"height": 64,
-					"defUid": 51,
-					"px": [640,864],
+					"width": 80,
+					"height": 80,
+					"defUid": 65,
+					"px": [648,872],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_ResearchCenter_Lv1", "__tile": null, "defUid": 52, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_ResearchCenter_Lv1", "__tile": null, "defUid": 66, "realEditorValues": [{
 							"id": "V_String",
 							"params": ["Buil_ResearchCenter_Lv1"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 53, "realEditorValues": [{
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 67, "realEditorValues": [{
 							"id": "V_Bool",
 							"params": [ true ]
 						}] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 54, "realEditorValues": [] }
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 68, "realEditorValues": [] }
 					],
-					"__worldX": 2560,
-					"__worldY": -2464
+					"__worldX": 2568,
+					"__worldY": -2456
 				},
 				{
 					"__identifier": "Building33",
 					"__grid": [29,46],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": { "tilesetUid": 56, "x": 0, "y": 0, "w": 80, "h": 80 },
+					"__tile": null,
 					"__smartColor": "#D77643",
 					"iid": "f37274b1-6fc0-11f1-ba80-bb0930fc523c",
 					"width": 48,
@@ -125,7 +125,7 @@
 					"__grid": [30,51],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": { "tilesetUid": 55, "x": 0, "y": 0, "w": 64, "h": 64 },
+					"__tile": null,
 					"__smartColor": "#D77643",
 					"iid": "f37274b2-6fc0-11f1-ba80-03cb727aa60a",
 					"width": 32,
@@ -213,37 +213,37 @@
 					"__worldY": -2936
 				},
 				{
-					"__identifier": "Building44",
+					"__identifier": "Building55",
 					"__grid": [47,24],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": { "tilesetUid": 57, "x": 0, "y": 0, "w": 96, "h": 96 },
+					"__tile": null,
 					"__smartColor": "#D77643",
 					"iid": "f37274b6-6fc0-11f1-ba80-a3e4b99aea0c",
-					"width": 64,
-					"height": 64,
-					"defUid": 51,
-					"px": [752,384],
+					"width": 80,
+					"height": 80,
+					"defUid": 65,
+					"px": [760,392],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_DreamPark_Lv1", "__tile": null, "defUid": 52, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_DreamPark_Lv1", "__tile": null, "defUid": 66, "realEditorValues": [{
 							"id": "V_String",
 							"params": ["Buil_DreamPark_Lv1"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 53, "realEditorValues": [{
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 67, "realEditorValues": [{
 							"id": "V_Bool",
 							"params": [ true ]
 						}] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 54, "realEditorValues": [] }
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 68, "realEditorValues": [] }
 					],
-					"__worldX": 2672,
-					"__worldY": -2944
+					"__worldX": 2680,
+					"__worldY": -2936
 				},
 				{
 					"__identifier": "Building33",
 					"__grid": [54,28],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": { "tilesetUid": 56, "x": 0, "y": 0, "w": 80, "h": 80 },
+					"__tile": null,
 					"__smartColor": "#D77643",
 					"iid": "f37274b7-6fc0-11f1-ba80-a5a5e6c63cff",
 					"width": 48,
@@ -269,7 +269,7 @@
 					"__grid": [46,32],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": { "tilesetUid": 55, "x": 0, "y": 0, "w": 64, "h": 64 },
+					"__tile": null,
 					"__smartColor": "#D77643",
 					"iid": "f37274b8-6fc0-11f1-ba80-ffa916700216",
 					"width": 32,
@@ -295,7 +295,7 @@
 					"__grid": [54,24],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
-					"__tile": { "tilesetUid": 56, "x": 0, "y": 0, "w": 80, "h": 80 },
+					"__tile": null,
 					"__smartColor": "#D77643",
 					"iid": "f37274b9-6fc0-11f1-ba80-cb270d263967",
 					"width": 48,

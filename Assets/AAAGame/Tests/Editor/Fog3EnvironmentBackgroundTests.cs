@@ -121,7 +121,7 @@ public sealed class Fog3EnvironmentBackgroundTests
                     "Assets/AAAGame/Scripts/MiniMap/FOG3/View/Fog3OverlayAlwaysOnTop.shader"),
             };
             Assert.That(settings.OverlayAlwaysOnTopShader, Is.Not.Null);
-            view.Build(terrain, settings, 1f, (LayerMask)0, Vector3.zero, 10f);
+            view.Build(terrain, settings, 1f, (LayerMask)0, Vector3.zero, 10f, 0.25f);
 
             Assert.That(view.FogTexture.GetPixel(0, 0), Is.EqualTo(settings.OutsideColor));
             Assert.That(view.OutsideMaskQuadCount, Is.EqualTo(4));

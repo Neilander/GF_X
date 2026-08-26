@@ -13,7 +13,7 @@ public static class BuildingFootprint
             BuilType.Prod => 2,
             BuilType.Def => 2,
             BuilType.Army => 3,
-            BuilType.Base => 4,
+            BuilType.Base => 5,
             _ => throw new ArgumentOutOfRangeException(
                 nameof(buildingType),
                 buildingType,

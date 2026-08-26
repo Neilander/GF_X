@@ -243,6 +243,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int TargetCursor;
         public bool HasAccessibleTarget;
         public readonly HashSet<int> PendingTargetNodes = new HashSet<int>();
+        public readonly List<int> GraphTargetScratch = new List<int>();
         public IncrementalReversePolicyExpansionStage Stage;
         public int CurrentNode;
         public long CurrentCost;
@@ -343,6 +344,8 @@ public static partial class FlowFieldCrowdMovementSystem
         public readonly List<NavigationPathSourceJob> Sources = new List<NavigationPathSourceJob>(8);
         public readonly Dictionary<int, NavigationSharedRouteSuffix> SharedRouteSuffixes =
             new Dictionary<int, NavigationSharedRouteSuffix>(32);
+        public readonly FlowPathKernelRouteMergeIndex SharedRouteMergeIndex =
+            new FlowPathKernelRouteMergeIndex(32);
         public ulong SharedRouteSuffixesAuthorityContentHash;
         public int SourceCursor;
         public int GoalX;
@@ -394,6 +397,23 @@ public static partial class FlowFieldCrowdMovementSystem
         requestQueue.Remove(requestNode);
         requestQueue.Clear();
 
+        using (var policy = new SectorCorridorPolicy
+               {
+                   GoalSectorId = 5,
+                   GoalCellIndex = 6,
+                   GoalSectorDirtyVersion = 7,
+                   LastUsedFrame = 8
+               })
+        {
+            var key = new SectorCorridorPolicyKey(1, 2, 3, 4, 5, 6, 7);
+            RefreshSectorCorridorPolicyHierarchyAuthorityContentHash(policy);
+            _ = ComputeSectorCorridorPolicyAuthorityContentHash(key, policy);
+            if (!policy.SearchState.ValidateAuthorityHashes())
+            {
+                throw new InvalidOperationException(
+                    "Navigation path runtime policy preparation produced an invalid search authority hash.");
+            }
+        }
     }
 
     private static void PrepareLocalDictionaryCode<TKey, TValue>(TKey key, TValue value)
@@ -784,6 +804,7 @@ public static partial class FlowFieldCrowdMovementSystem
             ?? throw new InvalidOperationException("Cannot remove a null navigation path request node.");
         for (int i = 0; i < job.Sources.Count; i++)
             DisposeNavigationPathSourceTransientState(job.Sources[i]);
+        job.SharedRouteMergeIndex.Dispose();
         if (!PendingNavigationPathRequests.Remove(job.IdentityKey))
             throw new InvalidOperationException("Navigation path request pending index is inconsistent.");
         NavigationPathRequestQueue.Remove(node);
@@ -869,19 +890,67 @@ public static partial class FlowFieldCrowdMovementSystem
             {
                 while (!job.Complete && !IsNavigationWorkBudgetExhausted())
                 {
-                    AdvanceNavigationPathRequestOneOperation(job, ref policyMutationStarted);
-                    _perf.NavigationPathRequestOperations++;
-                    IsBudgetExpired(0L, 0);
+                    int operationCapacity = _remainingNavigationWorkOperations;
+                    int operationCount = AdvanceNavigationPathRequestSlice(
+                        job,
+                        ref policyMutationStarted,
+                        operationCapacity);
+                    if (operationCount <= 0 || operationCount > operationCapacity)
+                    {
+                        throw new InvalidOperationException(
+                            $"Navigation path request slice consumed an invalid operation count. consumed={operationCount}, capacity={operationCapacity}.");
+                    }
+                    _perf.NavigationPathRequestOperations = checked(
+                        _perf.NavigationPathRequestOperations + operationCount);
+                    long budgetStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                        ? Stopwatch.GetTimestamp()
+                        : 0L;
+                    for (int i = 0; i < operationCount; i++)
+                        IsBudgetExpired(0L, 0);
+                    if (MainThreadFrameProfiler.LoggingEnabled)
+                    {
+                        _perf.NavigationPathBudgetConsumeTicks +=
+                            Stopwatch.GetTimestamp() - budgetStartTicks;
+                    }
                 }
             }
             finally
             {
-                if (policyMutationStarted)
-                    RefreshSectorCorridorPolicyAuthority(job.PolicyKey, job.Policy);
+                long commitStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                    ? Stopwatch.GetTimestamp()
+                    : 0L;
+                try
+                {
+                    CommitNavigationPathPolicyMutation(job, ref policyMutationStarted);
+                }
+                finally
+                {
+                    if (MainThreadFrameProfiler.LoggingEnabled)
+                    {
+                        _perf.NavigationPathPolicyCommitTicks +=
+                            Stopwatch.GetTimestamp() - commitStartTicks;
+                    }
+                }
             }
 
             if (job.Complete)
-                RemoveNavigationPathRequestNode(node);
+            {
+                long removalStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                    ? Stopwatch.GetTimestamp()
+                    : 0L;
+                try
+                {
+                    RemoveNavigationPathRequestNode(node);
+                }
+                finally
+                {
+                    if (MainThreadFrameProfiler.LoggingEnabled)
+                    {
+                        _perf.NavigationPathRequestRemovalTicks +=
+                            Stopwatch.GetTimestamp() - removalStartTicks;
+                    }
+                }
+            }
             node = next;
         }
     }
@@ -907,17 +976,20 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
-    private static void AdvanceNavigationPathRequestOneOperation(
+    private static int AdvanceNavigationPathRequestSlice(
         NavigationPathRequestJob job,
-        ref bool policyMutationStarted)
+        ref bool policyMutationStarted,
+        int operationCapacity)
     {
+        if (operationCapacity <= 0)
+            throw new ArgumentOutOfRangeException(nameof(operationCapacity));
         if (job.SourceCursor >= job.Sources.Count)
         {
-            if (RestartCompletedNavigationPathSourceMergesForLatestStarts(job))
-                return;
+            if (RestartCompletedNavigationPathSourceMergesForLatestStarts(job, ref policyMutationStarted))
+                return 1;
             CommitNavigationPathRequest(job);
             job.Complete = true;
-            return;
+            return 1;
         }
 
         NavigationPathSourceJob source = job.Sources[job.SourceCursor];
@@ -929,6 +1001,7 @@ public static partial class FlowFieldCrowdMovementSystem
             : -1;
         bool recordTiming = MainThreadFrameProfiler.LoggingEnabled;
         long startTicks = recordTiming ? Stopwatch.GetTimestamp() : 0L;
+        int operationCount = 1;
         try
         {
             switch (stage)
@@ -937,22 +1010,42 @@ public static partial class FlowFieldCrowdMovementSystem
                     InitializeNavigationPathSource(job, source);
                     break;
                 case NavigationPathSourceStage.BuildGoalConnector:
-                    AdvanceNavigationGoalConnector(job, source);
+                    operationCount = AdvanceNavigationGoalConnector(job, source, operationCapacity);
                     break;
                 case NavigationPathSourceStage.CreateHierarchyPolicy:
-                    CreateNavigationHierarchyPolicy(job, source, ref policyMutationStarted);
+                    operationCount = CreateNavigationHierarchyPolicy(
+                        job,
+                        source,
+                        ref policyMutationStarted,
+                        operationCapacity);
                     break;
                 case NavigationPathSourceStage.ExpandHierarchyPolicy:
-                    AdvanceNavigationHierarchyPolicy(job, source, ref policyMutationStarted);
+                    operationCount = AdvanceNavigationHierarchyPolicy(
+                        job,
+                        source,
+                        ref policyMutationStarted,
+                        operationCapacity);
                     break;
                 case NavigationPathSourceStage.BuildDownwardCustomization:
-                    AdvanceNavigationDownwardCustomization(job, source, ref policyMutationStarted);
+                    operationCount = AdvanceNavigationDownwardCustomization(
+                        job,
+                        source,
+                        ref policyMutationStarted,
+                        operationCapacity);
                     break;
                 case NavigationPathSourceStage.ExpandL0Policy:
-                    AdvanceNavigationL0Policy(job, source, ref policyMutationStarted);
+                    operationCount = AdvanceNavigationL0Policy(
+                        job,
+                        source,
+                        ref policyMutationStarted,
+                        operationCapacity);
                     break;
                 case NavigationPathSourceStage.MaterializeRoute:
-                    AdvanceNavigationPathSourceMaterialization(job, source, ref policyMutationStarted);
+                    operationCount = AdvanceNavigationPathSourceMaterialization(
+                        job,
+                        source,
+                        ref policyMutationStarted,
+                        operationCapacity);
                     break;
                 case NavigationPathSourceStage.Complete:
                     job.SourceCursor++;
@@ -965,9 +1058,9 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             long elapsedTicks = recordTiming ? Stopwatch.GetTimestamp() - startTicks : 0L;
             if (recordTiming)
-                RecordNavigationPathRequestStage(stage, elapsedTicks);
+                RecordNavigationPathRequestStage(stage, operationCount, elapsedTicks);
             else
-                RecordNavigationPathRequestStage(stage, 0L);
+                RecordNavigationPathRequestStage(stage, operationCount, 0L);
             if (elapsedTicks > _perf.NavigationPathSlowestOperationTicks)
             {
                 _perf.NavigationPathSlowestOperationTicks = elapsedTicks;
@@ -984,76 +1077,90 @@ public static partial class FlowFieldCrowdMovementSystem
                     : -1;
             }
         }
+        return operationCount;
     }
 
-    private static void RecordNavigationPathRequestStage(NavigationPathSourceStage stage, long elapsedTicks)
+    private static void RecordNavigationPathRequestStage(
+        NavigationPathSourceStage stage,
+        int operationCount,
+        long elapsedTicks)
     {
+        if (operationCount <= 0)
+            throw new ArgumentOutOfRangeException(nameof(operationCount));
         switch (stage)
         {
             case NavigationPathSourceStage.Initialize:
-                _perf.NavigationPathInitializeOperations++;
+                _perf.NavigationPathInitializeOperations = checked(_perf.NavigationPathInitializeOperations + operationCount);
                 _perf.NavigationPathInitializeTicks += elapsedTicks;
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationPathInitialize,
-                    elapsedTicks);
                 return;
             case NavigationPathSourceStage.BuildGoalConnector:
-                _perf.NavigationPathGoalConnectorOperations++;
+                _perf.NavigationPathGoalConnectorOperations = checked(_perf.NavigationPathGoalConnectorOperations + operationCount);
                 _perf.NavigationPathGoalConnectorTicks += elapsedTicks;
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationPathGoalConnector,
-                    elapsedTicks);
                 return;
             case NavigationPathSourceStage.CreateHierarchyPolicy:
-                _perf.NavigationPathCreateHierarchyOperations++;
+                _perf.NavigationPathCreateHierarchyOperations = checked(_perf.NavigationPathCreateHierarchyOperations + operationCount);
                 _perf.NavigationPathCreateHierarchyTicks += elapsedTicks;
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationPathCreateHierarchy,
-                    elapsedTicks);
                 return;
             case NavigationPathSourceStage.ExpandHierarchyPolicy:
-                _perf.NavigationPathExpandHierarchyOperations++;
+                _perf.NavigationPathExpandHierarchyOperations = checked(_perf.NavigationPathExpandHierarchyOperations + operationCount);
                 _perf.NavigationPathExpandHierarchyTicks += elapsedTicks;
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationPathExpandHierarchy,
-                    elapsedTicks);
                 return;
             case NavigationPathSourceStage.BuildDownwardCustomization:
-                _perf.NavigationPathDownwardOperations++;
+                _perf.NavigationPathDownwardOperations = checked(_perf.NavigationPathDownwardOperations + operationCount);
                 _perf.NavigationPathDownwardTicks += elapsedTicks;
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationPathDownward,
-                    elapsedTicks);
                 return;
             case NavigationPathSourceStage.ExpandL0Policy:
-                _perf.NavigationPathL0Operations++;
+                _perf.NavigationPathL0Operations = checked(_perf.NavigationPathL0Operations + operationCount);
                 _perf.NavigationPathL0Ticks += elapsedTicks;
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationPathL0,
-                    elapsedTicks);
                 return;
             case NavigationPathSourceStage.MaterializeRoute:
-                _perf.NavigationPathMaterializeOperations++;
+                _perf.NavigationPathMaterializeOperations = checked(_perf.NavigationPathMaterializeOperations + operationCount);
                 _perf.NavigationPathMaterializeTicks += elapsedTicks;
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationPathMaterialize,
-                    elapsedTicks);
                 return;
             case NavigationPathSourceStage.Complete:
-                _perf.NavigationPathCompleteOperations++;
+                _perf.NavigationPathCompleteOperations = checked(_perf.NavigationPathCompleteOperations + operationCount);
                 _perf.NavigationPathCompleteTicks += elapsedTicks;
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationPathComplete,
-                    elapsedTicks);
                 return;
             default:
                 throw new ArgumentOutOfRangeException(nameof(stage), stage, "Unknown navigation path source stage.");
         }
     }
 
-    private static bool RestartCompletedNavigationPathSourceMergesForLatestStarts(
-        NavigationPathRequestJob job)
+    private static void RecordNavigationPathStageProfilerScopes()
     {
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathInitialize,
+            _perf.NavigationPathInitializeTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathGoalConnector,
+            _perf.NavigationPathGoalConnectorTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathCreateHierarchy,
+            _perf.NavigationPathCreateHierarchyTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathExpandHierarchy,
+            _perf.NavigationPathExpandHierarchyTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathDownward,
+            _perf.NavigationPathDownwardTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathL0,
+            _perf.NavigationPathL0Ticks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterialize,
+            _perf.NavigationPathMaterializeTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathComplete,
+            _perf.NavigationPathCompleteTicks);
+    }
+
+    private static bool RestartCompletedNavigationPathSourceMergesForLatestStarts(
+        NavigationPathRequestJob job,
+        ref bool policyMutationStarted)
+    {
+        if (RestartCompletedNavigationPathRequestForLatestGoal(job, ref policyMutationStarted))
+            return true;
+
         int firstRestartedSourceIndex = -1;
         for (int i = 0; i < job.Sources.Count; i++)
         {
@@ -1082,6 +1189,66 @@ public static partial class FlowFieldCrowdMovementSystem
         return true;
     }
 
+    private static bool RestartCompletedNavigationPathRequestForLatestGoal(
+        NavigationPathRequestJob job,
+        ref bool policyMutationStarted)
+    {
+        if (job.Key.MovingTargetId == int.MinValue || job.Sources.Count == 0)
+            return false;
+        NavigationPathDemand latestGoal = job.Sources[0].LatestDemand
+            ?? throw new InvalidOperationException("Navigation path request has no latest moving-target demand.");
+        for (int i = 1; i < job.Sources.Count; i++)
+        {
+            NavigationPathDemand candidate = job.Sources[i].LatestDemand
+                ?? throw new InvalidOperationException("Navigation path request has no latest moving-target demand.");
+            if (candidate.GoalSectorId != latestGoal.GoalSectorId
+                || candidate.GoalX != latestGoal.GoalX
+                || candidate.GoalY != latestGoal.GoalY
+                || candidate.StableGoal != latestGoal.StableGoal)
+            {
+                throw new InvalidOperationException(
+                    "Navigation path request moving-target sources disagree on the latest stable goal.");
+            }
+        }
+        if (latestGoal.GoalSectorId == job.Key.GoalSectorId)
+            return false;
+
+        for (int i = 0; i < job.Sources.Count; i++)
+        {
+            NavigationPathSourceJob source = job.Sources[i];
+            if (source.Stage != NavigationPathSourceStage.Complete || source.Handle == null)
+                throw new InvalidOperationException("Navigation path goal follow-up requires completed frozen sources.");
+            source.Demand = source.LatestDemand;
+            ResetNavigationPathSourceJobForLatestStart(source);
+        }
+
+        CommitNavigationPathPolicyMutation(job, ref policyMutationStarted);
+        NavigationPathRequestKey nextKey = CreateNavigationPathRequestKey(latestGoal);
+        job.Key = nextKey;
+        job.PolicyKey = CreateNavigationPathPolicyKey(nextKey, latestGoal.GoalX, latestGoal.GoalY);
+        job.Policy = null;
+        job.GoalX = latestGoal.GoalX;
+        job.GoalY = latestGoal.GoalY;
+        job.StableGoal = latestGoal.StableGoal;
+        job.SharedRouteSuffixes.Clear();
+        job.SharedRouteMergeIndex.Clear();
+        job.SharedRouteSuffixesAuthorityContentHash = 0UL;
+        job.SourceCursor = 0;
+        return true;
+    }
+
+    private static void CommitNavigationPathPolicyMutation(
+        NavigationPathRequestJob job,
+        ref bool policyMutationStarted)
+    {
+        if (!policyMutationStarted)
+            return;
+        if (job?.Policy == null)
+            throw new InvalidOperationException("Navigation path policy mutation lost its authority instance before commit.");
+        RefreshSectorCorridorPolicyAuthority(job.PolicyKey, job.Policy);
+        policyMutationStarted = false;
+    }
+
     private static void RequireMatchingNavigationPathDemandIdentity(
         NavigationPathDemand buildDemand,
         NavigationPathDemand latestDemand)
@@ -1099,31 +1266,44 @@ public static partial class FlowFieldCrowdMovementSystem
         NavigationPathRequestJob job,
         NavigationPathSourceJob source)
     {
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
         NavigationPathDemand demand = source.Demand;
         if (demand.StartSectorId == job.Key.GoalSectorId)
         {
-            source.Stage = AreCellsConnectedInsideSector(
+            long phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+            bool connected = AreCellsConnectedInsideSector(
                     _world.Sectors[demand.StartSectorId],
                     demand.StartX,
                     demand.StartY,
                     job.GoalX,
-                    job.GoalY)
+                    job.GoalY);
+            if (profile)
+                _perf.NavigationPathInitializeSameSectorTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
+            source.Stage = connected
                 ? NavigationPathSourceStage.MaterializeRoute
                 : NavigationPathSourceStage.ExpandL0Policy;
             return;
         }
 
+        long policyStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         EnsureNavigationPathRequestPolicy(job);
+        if (profile)
+            _perf.NavigationPathInitializePolicyTicks += Stopwatch.GetTimestamp() - policyStartTicks;
+        long hierarchyResolveStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         source.HierarchyLevelArrayIndex = ResolveHighestRequiredPortalHierarchyLevelIndex(
             _world,
             demand.StartSectorId,
             job.Key.GoalSectorId);
+        if (profile)
+            _perf.NavigationPathInitializeHierarchyResolveTicks +=
+                Stopwatch.GetTimestamp() - hierarchyResolveStartTicks;
         if (source.HierarchyLevelArrayIndex < 0)
         {
             source.Stage = NavigationPathSourceStage.ExpandL0Policy;
             return;
         }
 
+        long hierarchySelectionStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (job.Policy.HierarchyPolicies.TryGetValue(
                 source.HierarchyLevelArrayIndex,
                 out PortalHierarchyReversePolicy cached))
@@ -1131,6 +1311,9 @@ public static partial class FlowFieldCrowdMovementSystem
             source.HierarchyPolicy = cached;
             source.NextDownwardLevel = source.HierarchyLevelArrayIndex;
             source.Stage = NavigationPathSourceStage.ExpandHierarchyPolicy;
+            if (profile)
+                _perf.NavigationPathInitializeHierarchySelectionTicks +=
+                    Stopwatch.GetTimestamp() - hierarchySelectionStartTicks;
             return;
         }
 
@@ -1147,18 +1330,28 @@ public static partial class FlowFieldCrowdMovementSystem
         source.NextGoalConnectorLevel = lowerConnector == null ? 0 : lowerConnector.TargetLevelIndex + 1;
         _perf.SectorCorridorGoalConnectorBuilds++;
         source.Stage = NavigationPathSourceStage.BuildGoalConnector;
+        if (profile)
+            _perf.NavigationPathInitializeHierarchySelectionTicks +=
+                Stopwatch.GetTimestamp() - hierarchySelectionStartTicks;
     }
 
     private static void EnsureNavigationPathRequestPolicy(NavigationPathRequestJob job)
     {
         if (job.Policy != null)
             return;
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (SectorCorridorPolicies.TryGetValue(job.PolicyKey, out SectorCorridorPolicy cached))
         {
+            if (profile)
+                _perf.NavigationPathInitializePolicyLookupTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
             job.Policy = cached;
             return;
         }
+        if (profile)
+            _perf.NavigationPathInitializePolicyLookupTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
 
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (job.Key.MovingTargetId != int.MinValue)
         {
             var anchorKey = new MovingTargetAnchorKey(
@@ -1178,7 +1371,10 @@ public static partial class FlowFieldCrowdMovementSystem
                 anchor.PinnedSectorCorridorPolicyKey = default;
             }
         }
+        if (profile)
+            _perf.NavigationPathInitializePolicyAnchorTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
 
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         job.Policy = new SectorCorridorPolicy
         {
             GoalSectorId = job.Key.GoalSectorId,
@@ -1186,8 +1382,14 @@ public static partial class FlowFieldCrowdMovementSystem
             GoalSectorDirtyVersion = job.Key.GoalSectorDirtyVersion,
             LastUsedFrame = GetFrameCount()
         };
+        if (profile)
+            _perf.NavigationPathInitializePolicyConstructTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
         _perf.NavigationPathPolicyCreates++;
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         SetSectorCorridorPolicy(job.PolicyKey, job.Policy);
+        if (profile)
+            _perf.NavigationPathInitializePolicyAuthorityTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (job.Key.MovingTargetId != int.MinValue)
         {
             var anchorKey = new MovingTargetAnchorKey(
@@ -1196,6 +1398,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 job.Key.SourceIslandId);
             PinMovingTargetSectorCorridorPolicy(MovingTargetAnchors[anchorKey], job.PolicyKey);
         }
+        if (profile)
+            _perf.NavigationPathInitializePolicyPinTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
         _perf.SectorPathSearches++;
     }
 
@@ -1233,154 +1437,171 @@ public static partial class FlowFieldCrowdMovementSystem
         return search;
     }
 
-    private static bool AdvanceIncrementalRestrictedPortalSearchOneOperation(
-        IncrementalRestrictedPortalSearch search)
+    private static int ExecuteNavigationPathSearchCommandSlice(
+        FlowPathKernelSearchState searchState,
+        out FlowPathKernelPopStatus popStatus,
+        out FlowPathKernelSearchEntry popEntry)
+    {
+        int operations = searchState.ExecuteCommandSlice(out popStatus, out popEntry);
+        if (operations <= 0)
+            throw new InvalidOperationException("Navigation path search command slice executed no operations.");
+        RecordNavigationPathGraphSlice(operations);
+        return operations;
+    }
+
+    private static void RecordNavigationPathGraphSlice(int operations)
+    {
+        if (operations <= 0)
+            throw new ArgumentOutOfRangeException(nameof(operations));
+        _perf.NavigationPathSearchCommandSlices = checked(_perf.NavigationPathSearchCommandSlices + 1);
+        _perf.NavigationPathSearchCommandOperations = checked(
+            _perf.NavigationPathSearchCommandOperations + operations);
+    }
+
+    private static FlowPathKernelGraphIndex ResolveFlowPathKernelSearchGraphIndex(
+        NavigationWorld world,
+        PortalHierarchyLevel level)
+    {
+        if (world == null)
+            throw new InvalidOperationException("Navigation graph slice has no world.");
+        if (level == null)
+        {
+            if (world.L0SearchGraphIndex == null || !world.L0SearchGraphIndex.IsCreated)
+                throw new InvalidOperationException("Navigation graph slice has no committed L0 graph index.");
+            return world.L0SearchGraphIndex;
+        }
+        int index = level.Level - 1;
+        FlowPathKernelGraphIndex[] indexes = world.Hierarchy?.SearchGraphIndexes;
+        if ((uint)index >= (uint)(indexes?.Length ?? 0)
+            || !ReferenceEquals(world.Hierarchy.Levels[index], level)
+            || indexes[index] == null
+            || !indexes[index].IsCreated)
+        {
+            throw new InvalidOperationException($"Navigation graph slice has no committed hierarchy index level={level.Level}.");
+        }
+        return indexes[index];
+    }
+
+    private static int AdvanceIncrementalRestrictedPortalSearchSlice(
+        IncrementalRestrictedPortalSearch search,
+        int operationCapacity,
+        out bool complete)
     {
         if (search == null)
             throw new ArgumentNullException(nameof(search));
-        switch (search.Stage)
+        if (operationCapacity <= 0)
+            throw new ArgumentOutOfRangeException(nameof(operationCapacity));
+
+        int operationCount = 0;
+        complete = false;
+        while (operationCount < operationCapacity)
         {
-            case IncrementalRestrictedSearchStage.InitializeTargets:
+            switch (search.Stage)
             {
-                if (search.TargetInitializationCursor < search.TargetNodeSequence.Count)
-                {
-                    int target = search.TargetNodeSequence[search.TargetInitializationCursor++];
-                    if (!search.TargetNodes.Add(target))
-                        throw new InvalidOperationException("Incremental restricted search contains a duplicate target.");
-                    return false;
-                }
-                search.Stage = IncrementalRestrictedSearchStage.InitializeSources;
-                return false;
-            }
-            case IncrementalRestrictedSearchStage.InitializeSources:
-            {
-                if (search.SourceInitializationCursor < search.SourceNodes.Count)
-                {
-                    int index = search.SourceInitializationCursor++;
-                    int node = search.SourceNodes[index];
-                    DecodePortalNode(node, out int sectorId, out _);
-                    if (!IsIncrementalRestrictedSearchSectorAllowed(search, sectorId))
-                        throw new InvalidOperationException("Incremental restricted search source is outside its containing cluster.");
-                    long sourceCost = search.SourceCosts[index];
-                    search.KernelState.AddSource(node, sourceCost);
-                    return false;
-                }
-                if (search.KernelState.OpenCount == 0)
-                    throw new InvalidOperationException("Incremental restricted search has no reachable source.");
-                search.Stage = IncrementalRestrictedSearchStage.Pop;
-                return false;
-            }
-            case IncrementalRestrictedSearchStage.Pop:
-            {
-                if (search.KernelState.OpenCount == 0)
-                {
-                    CompleteIncrementalRestrictedPortalSearch(search);
-                    search.Stage = IncrementalRestrictedSearchStage.Complete;
-                    return true;
-                }
-                FlowPathKernelPopStatus popStatus = search.KernelState.PopOne(
-                    out FlowPathKernelSearchEntry item);
-                if (popStatus == FlowPathKernelPopStatus.Empty)
-                    throw new InvalidOperationException("Restricted search kernel returned empty with a non-empty heap.");
-                if (popStatus == FlowPathKernelPopStatus.MissingCost)
-                    throw new InvalidOperationException("Restricted search kernel popped a node without authoritative cost.");
-                if (popStatus != FlowPathKernelPopStatus.Settled)
-                    return false;
-                if (search.TargetNodes.Contains(item.Node))
-                    search.RemainingTargets--;
-                if (search.RemainingTargets == 0)
-                {
-                    CompleteIncrementalRestrictedPortalSearch(search);
-                    search.Stage = IncrementalRestrictedSearchStage.Complete;
-                    return true;
-                }
-                DecodePortalNode(item.Node, out search.CurrentSectorId, out search.CurrentPortalId);
-                if (!IsIncrementalRestrictedSearchSectorAllowed(search, search.CurrentSectorId))
-                {
-                    throw new InvalidOperationException("Incremental restricted search expanded outside its containing cluster.");
-                }
-                search.CurrentNode = item.Node;
-                search.CurrentCost = item.Cost;
-                search.CurrentL0Edges = null;
-                search.CurrentHierarchyEdges = null;
-                search.EdgeCursor = 0;
-                if (search.LowerLevel == null)
-                {
-                    search.CurrentL0Edges = search.Reverse
-                        ? GetIncomingPortalTransitions(search.World.Sectors[search.CurrentSectorId], search.CurrentPortalId)
-                        : GetOutgoingPortalTransitions(search.World.Sectors[search.CurrentSectorId], search.CurrentPortalId);
-                }
-                else
-                {
-                    int clusterId = ResolveHierarchyClusterId(
-                        search.World,
-                        search.LowerLevel,
-                        search.CurrentSectorId);
-                    PortalHierarchyCluster cluster = search.LowerLevel.Clusters[clusterId];
-                    Dictionary<int, List<PortalHierarchyEdge>> edgeIndex = search.Reverse
-                        ? cluster.IncomingEdgesByNode
-                        : cluster.OutgoingEdgesByNode;
-                    if (!edgeIndex.TryGetValue(item.Node, out search.CurrentHierarchyEdges))
-                        throw new InvalidOperationException("Incremental restricted hierarchy search is missing an overlay node.");
-                }
-                search.Stage = IncrementalRestrictedSearchStage.Crossing;
-                return false;
-            }
-            case IncrementalRestrictedSearchStage.Crossing:
-            {
-                PortalData portal = GetPortalById(search.World, search.CurrentPortalId);
-                int oppositeSectorId = GetOppositeSectorId(portal, search.CurrentSectorId);
-                if (search.LowerLevel != null
-                    && ResolveHierarchyClusterId(search.World, search.LowerLevel, oppositeSectorId)
-                    == ResolveHierarchyClusterId(search.World, search.LowerLevel, search.CurrentSectorId))
-                {
-                    throw new InvalidOperationException("Incremental restricted hierarchy search found an internal overlay crossing.");
-                }
-                if (IsIncrementalRestrictedSearchSectorAllowed(search, oppositeSectorId))
-                {
-                    search.KernelState.Relax(
-                        search.CurrentNode,
-                        EncodePortalNode(oppositeSectorId, search.CurrentPortalId),
-                        AddDeterministicPortalCosts(search.CurrentCost, DeterministicPortalCrossingCost));
-                }
-                search.Stage = IncrementalRestrictedSearchStage.Edges;
-                return false;
-            }
-            case IncrementalRestrictedSearchStage.Edges:
-            {
-                int edgeCount = search.LowerLevel == null
-                    ? search.CurrentL0Edges?.Count ?? 0
-                    : search.CurrentHierarchyEdges?.Count ?? 0;
-                if (search.EdgeCursor >= edgeCount)
-                {
+                case IncrementalRestrictedSearchStage.InitializeTargets:
+                    if (search.TargetInitializationCursor < search.TargetNodeSequence.Count)
+                    {
+                        int target = search.TargetNodeSequence[search.TargetInitializationCursor++];
+                        if (!search.TargetNodes.Add(target))
+                            throw new InvalidOperationException("Incremental restricted search contains a duplicate target.");
+                    }
+                    else
+                    {
+                        search.Stage = IncrementalRestrictedSearchStage.InitializeSources;
+                    }
+                    operationCount++;
+                    continue;
+
+                case IncrementalRestrictedSearchStage.InitializeSources:
+                    if (search.SourceInitializationCursor < search.SourceNodes.Count)
+                    {
+                        search.KernelState.BeginCommandSlice();
+                        do
+                        {
+                            int index = search.SourceInitializationCursor++;
+                            int node = search.SourceNodes[index];
+                            DecodePortalNode(node, out int sectorId, out _);
+                            if (!IsIncrementalRestrictedSearchSectorAllowed(search, sectorId))
+                            {
+                                throw new InvalidOperationException(
+                                    "Incremental restricted search source is outside its containing cluster.");
+                            }
+                            search.KernelState.AppendAddSource(node, search.SourceCosts[index]);
+                            operationCount++;
+                        }
+                        while (operationCount < operationCapacity
+                               && search.SourceInitializationCursor < search.SourceNodes.Count);
+                        int executed = ExecuteNavigationPathSearchCommandSlice(search.KernelState, out _, out _);
+                        if (executed <= 0)
+                            throw new InvalidOperationException("Incremental restricted search source slice executed no commands.");
+                        continue;
+                    }
+                    if (search.KernelState.OpenCount == 0)
+                        throw new InvalidOperationException("Incremental restricted search has no reachable source.");
+                    search.KernelState.SetGraphSliceTargets(search.TargetNodeSequence);
                     search.Stage = IncrementalRestrictedSearchStage.Pop;
-                    return false;
-                }
-                if (search.LowerLevel == null)
+                    operationCount++;
+                    continue;
+
+                case IncrementalRestrictedSearchStage.Pop:
+                case IncrementalRestrictedSearchStage.Crossing:
+                case IncrementalRestrictedSearchStage.Edges:
                 {
-                    PortalTransition edge = search.CurrentL0Edges[search.EdgeCursor++];
-                    int nextPortalId = search.Reverse ? edge.FromPortalId : edge.ToPortalId;
-                    search.KernelState.Relax(
-                        search.CurrentNode,
-                        EncodePortalNode(search.CurrentSectorId, nextPortalId),
-                        AddDeterministicPortalCosts(search.CurrentCost, edge.DeterministicCost));
+                    FlowPathKernelGraphIndex graph = ResolveFlowPathKernelSearchGraphIndex(
+                        search.World,
+                        search.LowerLevel);
+                    FlowPathKernelGraphCursor cursor = new FlowPathKernelGraphCursor
+                    {
+                        Stage = search.Stage == IncrementalRestrictedSearchStage.Pop ? 0 : 1,
+                        CurrentNode = search.CurrentNode,
+                        CurrentCost = search.CurrentCost,
+                        EdgeCursor = search.EdgeCursor
+                    };
+                    PortalHierarchyCluster cluster = search.ContainingCluster;
+                    FlowPathKernelGraphSliceResult slice = search.KernelState.AdvanceGraphSlice(
+                        graph,
+                        search.Reverse,
+                        search.World.SectorCountX,
+                        cluster?.StartSectorX ?? 0,
+                        cluster?.StartSectorY ?? 0,
+                        cluster?.WidthSectors ?? 0,
+                        cluster?.HeightSectors ?? 0,
+                        cursor,
+                        operationCapacity - operationCount);
+                    if (slice.OperationCount <= 0)
+                        throw new InvalidOperationException("Incremental restricted graph slice consumed no operations.");
+                    RecordNavigationPathGraphSlice(slice.OperationCount);
+                    search.CurrentNode = slice.Cursor.CurrentNode;
+                    search.CurrentCost = slice.Cursor.CurrentCost;
+                    search.EdgeCursor = slice.Cursor.EdgeCursor;
+                    search.Stage = slice.Cursor.Stage == 0
+                        ? IncrementalRestrictedSearchStage.Pop
+                        : IncrementalRestrictedSearchStage.Edges;
+                    operationCount += slice.OperationCount;
+                    search.RemainingTargets = slice.RemainingTargets;
+                    if (slice.StopReason == FlowPathKernelGraphSliceStopReason.TargetSettled
+                        || slice.StopReason == FlowPathKernelGraphSliceStopReason.FrontierEmpty)
+                    {
+                        CompleteIncrementalRestrictedPortalSearch(search);
+                        search.Stage = IncrementalRestrictedSearchStage.Complete;
+                        complete = true;
+                    }
+                    return operationCount;
                 }
-                else
-                {
-                    PortalHierarchyEdge edge = search.CurrentHierarchyEdges[search.EdgeCursor++];
-                    int nextNode = search.Reverse ? edge.FromNode : edge.ToNode;
-                    search.KernelState.Relax(
-                        search.CurrentNode,
-                        nextNode,
-                        AddDeterministicPortalCosts(search.CurrentCost, edge.DeterministicCost));
-                }
-                return false;
+
+                case IncrementalRestrictedSearchStage.Complete:
+                    operationCount++;
+                    complete = true;
+                    return operationCount;
+
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(search.Stage),
+                        search.Stage,
+                        "Unknown incremental restricted search stage.");
             }
-            case IncrementalRestrictedSearchStage.Complete:
-                return true;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(search.Stage), search.Stage, "Unknown incremental restricted search stage.");
         }
+        return operationCount;
     }
 
     private static bool IsIncrementalRestrictedSearchSectorAllowed(
@@ -1413,16 +1634,17 @@ public static partial class FlowFieldCrowdMovementSystem
         search.KernelState = null;
     }
 
-    private static void AdvanceNavigationGoalConnector(
+    private static int AdvanceNavigationGoalConnector(
         NavigationPathRequestJob job,
-        NavigationPathSourceJob source)
+        NavigationPathSourceJob source,
+        int operationCapacity)
     {
         PortalHierarchy hierarchy = _world.Hierarchy
             ?? throw new InvalidOperationException("Navigation path request requires a committed hierarchy.");
         if (source.NextGoalConnectorLevel > source.HierarchyLevelArrayIndex)
         {
             source.Stage = NavigationPathSourceStage.CreateHierarchyPolicy;
-            return;
+            return 1;
         }
 
         if (source.GoalConnector == null)
@@ -1436,7 +1658,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 if (!source.RestrictedInputCollectionActive)
                 {
                     BeginRestrictedInputCollection(source);
-                    return;
+                    return 1;
                 }
                 if (source.RestrictedSourceCollectionCursor < goalSector.PortalIds.Count)
                 {
@@ -1448,16 +1670,16 @@ public static partial class FlowFieldCrowdMovementSystem
                         job.Policy.GoalCellIndex % _world.Width,
                         job.Policy.GoalCellIndex / _world.Width);
                     if (cost == long.MaxValue)
-                        return;
+                        return 1;
                     source.RestrictedSourceNodes.Add(EncodePortalNode(job.Key.GoalSectorId, portalId));
                     source.RestrictedSourceCosts.Add(cost);
-                    return;
+                    return 1;
                 }
                 if (source.RestrictedTargetCollectionCursor < cluster.BoundaryNodes.Length)
                 {
                     source.RestrictedTargetNodes.Add(
                         cluster.BoundaryNodes[source.RestrictedTargetCollectionCursor++]);
-                    return;
+                    return 1;
                 }
                 source.RestrictedSearch = CreateIncrementalRestrictedPortalSearch(
                     _world,
@@ -1469,10 +1691,14 @@ public static partial class FlowFieldCrowdMovementSystem
                     source.RestrictedTargetNodes.ToArray());
                 source.RestrictedSearch.MaterializeResultOnComplete = false;
                 EndRestrictedInputCollection(source);
-                return;
+                return 1;
             }
-            if (!AdvanceIncrementalRestrictedPortalSearchOneOperation(source.RestrictedSearch))
-                return;
+            int operationCount = AdvanceIncrementalRestrictedPortalSearchSlice(
+                source.RestrictedSearch,
+                operationCapacity,
+                out bool complete);
+            if (!complete)
+                return operationCount;
             source.GoalConnector = new PortalHierarchyConnector
             {
                 TargetLevelIndex = 0,
@@ -1481,7 +1707,7 @@ public static partial class FlowFieldCrowdMovementSystem
             source.RestrictedSearch.KernelState = null;
             source.RestrictedSearch = null;
             source.NextGoalConnectorLevel = 1;
-            return;
+            return operationCount;
         }
 
         if (source.RestrictedSearch == null)
@@ -1495,24 +1721,24 @@ public static partial class FlowFieldCrowdMovementSystem
             if (!source.RestrictedInputCollectionActive)
             {
                 BeginRestrictedInputCollection(source);
-                return;
+                return 1;
             }
             if (source.RestrictedSourceCollectionCursor < childCluster.BoundaryNodes.Length)
             {
                 int node = childCluster.BoundaryNodes[source.RestrictedSourceCollectionCursor++];
                 if (!source.GoalConnector.TryGetCost(node, out long cost))
-                    return;
+                    return 1;
                 if (!source.GoalConnector.ContainsSettled(node))
                     throw new InvalidOperationException("Navigation child goal connector exposed an unsettled boundary.");
                 source.RestrictedSourceNodes.Add(node);
                 source.RestrictedSourceCosts.Add(cost);
-                return;
+                return 1;
             }
             if (source.RestrictedTargetCollectionCursor < targetCluster.BoundaryNodes.Length)
             {
                 source.RestrictedTargetNodes.Add(
                     targetCluster.BoundaryNodes[source.RestrictedTargetCollectionCursor++]);
-                return;
+                return 1;
             }
             source.RestrictedSearch = CreateIncrementalRestrictedPortalSearch(
                 _world,
@@ -1524,10 +1750,14 @@ public static partial class FlowFieldCrowdMovementSystem
                 source.RestrictedTargetNodes.ToArray());
             source.RestrictedSearch.MaterializeResultOnComplete = false;
             EndRestrictedInputCollection(source);
-            return;
+            return 1;
         }
-        if (!AdvanceIncrementalRestrictedPortalSearchOneOperation(source.RestrictedSearch))
-            return;
+        int upperOperationCount = AdvanceIncrementalRestrictedPortalSearchSlice(
+            source.RestrictedSearch,
+            operationCapacity,
+            out bool upperComplete);
+        if (!upperComplete)
+            return upperOperationCount;
         source.GoalConnector = new PortalHierarchyConnector
         {
             TargetLevelIndex = source.NextGoalConnectorLevel,
@@ -1537,6 +1767,7 @@ public static partial class FlowFieldCrowdMovementSystem
         source.RestrictedSearch.KernelState = null;
         source.RestrictedSearch = null;
         source.NextGoalConnectorLevel++;
+        return upperOperationCount;
     }
 
     private static void BeginRestrictedInputCollection(NavigationPathSourceJob source)
@@ -1559,11 +1790,14 @@ public static partial class FlowFieldCrowdMovementSystem
         source.RestrictedInputCollectionActive = false;
     }
 
-    private static void CreateNavigationHierarchyPolicy(
+    private static int CreateNavigationHierarchyPolicy(
         NavigationPathRequestJob job,
         NavigationPathSourceJob source,
-        ref bool policyMutationStarted)
+        ref bool policyMutationStarted,
+        int operationCapacity)
     {
+        if (operationCapacity <= 0)
+            throw new ArgumentOutOfRangeException(nameof(operationCapacity));
         PortalHierarchyLevel level = _world.Hierarchy.Levels[source.HierarchyLevelArrayIndex];
         PortalHierarchyCluster goalCluster = level.Clusters[
             ResolveHierarchyClusterId(_world, level, job.Key.GoalSectorId)];
@@ -1580,18 +1814,41 @@ public static partial class FlowFieldCrowdMovementSystem
             };
             _perf.NavigationPathHierarchyPolicyCreates++;
             source.HierarchyPolicyBoundaryCursor = 0;
-            return;
+            return 1;
         }
 
         if (source.HierarchyPolicyBoundaryCursor < goalCluster.BoundaryNodes.Length)
         {
-            int node = goalCluster.BoundaryNodes[source.HierarchyPolicyBoundaryCursor++];
-            if (!source.GoalConnector.TryGetCost(node, out long cost))
-                return;
-            if (!source.GoalConnector.ContainsSettled(node))
-                throw new InvalidOperationException("Navigation goal connector exposed an unsettled boundary.");
-            source.HierarchyPolicy.SearchState.AddSource(node, cost);
-            return;
+            FlowPathKernelSearchState searchState = source.HierarchyPolicy.SearchState;
+            searchState.BeginCommandSlice();
+            int operationCount = 0;
+            int commandCount = 0;
+            while (operationCount < operationCapacity
+                   && source.HierarchyPolicyBoundaryCursor < goalCluster.BoundaryNodes.Length)
+            {
+                int node = goalCluster.BoundaryNodes[source.HierarchyPolicyBoundaryCursor++];
+                if (source.GoalConnector.TryGetCost(node, out long cost))
+                {
+                    if (!source.GoalConnector.ContainsSettled(node))
+                    {
+                        throw new InvalidOperationException(
+                            "Navigation goal connector exposed an unsettled boundary.");
+                    }
+                    searchState.AppendAddSource(node, cost);
+                    commandCount++;
+                }
+                operationCount++;
+            }
+            if (commandCount > 0)
+            {
+                int executed = ExecuteNavigationPathSearchCommandSlice(searchState, out _, out _);
+                if (executed != commandCount)
+                {
+                    throw new InvalidOperationException(
+                        $"Navigation hierarchy policy source count mismatch. queued={commandCount}, executed={executed}.");
+                }
+            }
+            return operationCount;
         }
 
         if (source.HierarchyPolicy.SearchState.OpenCount == 0)
@@ -1600,12 +1857,14 @@ public static partial class FlowFieldCrowdMovementSystem
         job.Policy.HierarchyPolicies.Add(source.HierarchyLevelArrayIndex, source.HierarchyPolicy);
         source.NextDownwardLevel = source.HierarchyLevelArrayIndex;
         source.Stage = NavigationPathSourceStage.ExpandHierarchyPolicy;
+        return 1;
     }
 
-    private static void AdvanceNavigationHierarchyPolicy(
+    private static int AdvanceNavigationHierarchyPolicy(
         NavigationPathRequestJob job,
         NavigationPathSourceJob source,
-        ref bool policyMutationStarted)
+        ref bool policyMutationStarted,
+        int operationCapacity)
     {
         if (source.ReversePolicyExpansion == null)
         {
@@ -1618,27 +1877,32 @@ public static partial class FlowFieldCrowdMovementSystem
                     ResolveHierarchyClusterId(_world, level, source.Demand.StartSectorId)],
                 Stage = IncrementalReversePolicyExpansionStage.CollectTargets
             };
-            return;
+            return 1;
         }
 
-        AdvanceReversePolicyExpansionOneOperation(job, source, ref policyMutationStarted);
+        int operationCount = AdvanceReversePolicyExpansionSlice(
+            job,
+            source,
+            ref policyMutationStarted,
+            operationCapacity);
         if (source.ReversePolicyExpansion.Stage == IncrementalReversePolicyExpansionStage.Complete)
         {
             source.ReversePolicyExpansion = null;
             source.Stage = NavigationPathSourceStage.BuildDownwardCustomization;
-            return;
         }
+        return operationCount;
     }
 
-    private static void AdvanceNavigationDownwardCustomization(
+    private static int AdvanceNavigationDownwardCustomization(
         NavigationPathRequestJob job,
         NavigationPathSourceJob source,
-        ref bool policyMutationStarted)
+        ref bool policyMutationStarted,
+        int operationCapacity)
     {
         if (source.NextDownwardLevel < 0)
         {
             source.Stage = NavigationPathSourceStage.MaterializeRoute;
-            return;
+            return 1;
         }
 
         PortalHierarchy hierarchy = _world.Hierarchy;
@@ -1659,7 +1923,7 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             source.DownwardCustomizations.Add(cached);
             source.NextDownwardLevel--;
-            return;
+            return 1;
         }
 
         if (source.RestrictedSearch == null)
@@ -1671,7 +1935,7 @@ public static partial class FlowFieldCrowdMovementSystem
             if (!source.RestrictedInputCollectionActive)
             {
                 BeginRestrictedInputCollection(source);
-                return;
+                return 1;
             }
             if (source.RestrictedSourceCollectionCursor < containingCluster.BoundaryNodes.Length)
             {
@@ -1680,7 +1944,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     ? source.HierarchyPolicy.SearchState.ContainsSettled(node)
                     : previousCustomization != null && previousCustomization.ContainsSettled(node);
                 if (!settled)
-                    return;
+                    return 1;
                 bool hasCost = usePolicySources
                     ? source.HierarchyPolicy.SearchState.TryGetCost(node, out long cost)
                     : previousCustomization.TryGetCost(node, out cost);
@@ -1688,7 +1952,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     throw new InvalidOperationException("Navigation downward customization settled source has no cost.");
                 source.RestrictedSourceNodes.Add(node);
                 source.RestrictedSourceCosts.Add(cost);
-                return;
+                return 1;
             }
 
             if (levelIndex == 0)
@@ -1699,7 +1963,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     int portalId = portals[source.RestrictedTargetCollectionCursor++];
                     source.RestrictedTargetNodes.Add(
                         EncodePortalNode(source.Demand.StartSectorId, portalId));
-                    return;
+                    return 1;
                 }
             }
             else
@@ -1711,7 +1975,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 {
                     source.RestrictedTargetNodes.Add(
                         childCluster.BoundaryNodes[source.RestrictedTargetCollectionCursor++]);
-                    return;
+                    return 1;
                 }
             }
             if (source.RestrictedSourceNodes.Count == 0)
@@ -1728,10 +1992,14 @@ public static partial class FlowFieldCrowdMovementSystem
                 source.RestrictedTargetNodes.ToArray());
             source.RestrictedSearch.MaterializeResultOnComplete = false;
             EndRestrictedInputCollection(source);
-            return;
+            return 1;
         }
-        if (!AdvanceIncrementalRestrictedPortalSearchOneOperation(source.RestrictedSearch))
-            return;
+        int operationCount = AdvanceIncrementalRestrictedPortalSearchSlice(
+            source.RestrictedSearch,
+            operationCapacity,
+            out bool complete);
+        if (!complete)
+            return operationCount;
         FlowPathKernelSearchState searchState = source.RestrictedSearch.KernelState
             ?? throw new InvalidOperationException("Completed downward customization has no kernel authority.");
         source.RestrictedSearch.KernelState = null;
@@ -1752,12 +2020,14 @@ public static partial class FlowFieldCrowdMovementSystem
             _perf.HierarchyDownwardCustomizationExpansions + created.ExpansionCount);
         source.DownwardCustomizations.Add(created);
         source.NextDownwardLevel--;
+        return operationCount;
     }
 
-    private static void AdvanceNavigationL0Policy(
+    private static int AdvanceNavigationL0Policy(
         NavigationPathRequestJob job,
         NavigationPathSourceJob source,
-        ref bool policyMutationStarted)
+        ref bool policyMutationStarted,
+        int operationCapacity)
     {
         if (source.ReversePolicyExpansion == null)
         {
@@ -1774,269 +2044,237 @@ public static partial class FlowFieldCrowdMovementSystem
                     : IncrementalReversePolicyExpansionStage.CollectTargets
             };
             _perf.SectorCorridorPolicyQueries++;
-            return;
+            return 1;
         }
 
-        AdvanceReversePolicyExpansionOneOperation(job, source, ref policyMutationStarted);
+        int operationCount = AdvanceReversePolicyExpansionSlice(
+            job,
+            source,
+            ref policyMutationStarted,
+            operationCapacity);
         if (source.ReversePolicyExpansion.Stage == IncrementalReversePolicyExpansionStage.Complete)
         {
             source.ReversePolicyExpansion = null;
             source.Stage = NavigationPathSourceStage.MaterializeRoute;
         }
+        return operationCount;
     }
 
-    private static void AdvanceReversePolicyExpansionOneOperation(
+    private static int AdvanceReversePolicyExpansionSlice(
         NavigationPathRequestJob job,
         NavigationPathSourceJob source,
-        ref bool policyMutationStarted)
+        ref bool policyMutationStarted,
+        int operationCapacity)
     {
         IncrementalReversePolicyExpansion expansion = source.ReversePolicyExpansion
             ?? throw new InvalidOperationException("Navigation reverse policy expansion state is missing.");
-        switch (expansion.Stage)
-        {
-            case IncrementalReversePolicyExpansionStage.InitializeGoal:
-                AdvanceL0GoalInitializationOneOperation(job, expansion, ref policyMutationStarted);
-                return;
-            case IncrementalReversePolicyExpansionStage.CollectTargets:
-                AdvanceReversePolicyTargetCollectionOneOperation(job, source, expansion);
-                return;
-            case IncrementalReversePolicyExpansionStage.Pop:
-                AdvanceReversePolicyPopOneOperation(job, source, expansion, ref policyMutationStarted);
-                return;
-            case IncrementalReversePolicyExpansionStage.Edges:
-                AdvanceReversePolicyEdgeOneOperation(job, source, expansion, ref policyMutationStarted);
-                return;
-            case IncrementalReversePolicyExpansionStage.Crossing:
-                AdvanceReversePolicyCrossingOneOperation(job, source, expansion, ref policyMutationStarted);
-                return;
-            case IncrementalReversePolicyExpansionStage.Complete:
-                return;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(expansion.Stage), expansion.Stage, "Unknown reverse policy expansion stage.");
-        }
-    }
+        if (operationCapacity <= 0)
+            throw new ArgumentOutOfRangeException(nameof(operationCapacity));
 
-    private static void AdvanceL0GoalInitializationOneOperation(
-        NavigationPathRequestJob job,
-        IncrementalReversePolicyExpansion expansion,
-        ref bool policyMutationStarted)
-    {
-        SectorData goalSector = _world.Sectors[job.Key.GoalSectorId];
-        if (expansion.GoalPortalCursor >= goalSector.PortalIds.Count)
+        int operationCount = 0;
+        while (operationCount < operationCapacity)
         {
-            if (job.Policy.SearchState.OpenCount == 0)
+            switch (expansion.Stage)
             {
-                throw new InvalidOperationException(
-                    $"Navigation L0 policy goal sector has no reachable portal sector={job.Key.GoalSectorId}.");
-            }
-            expansion.Stage = IncrementalReversePolicyExpansionStage.CollectTargets;
-            return;
-        }
-
-        int portalId = goalSector.PortalIds[expansion.GoalPortalCursor++];
-        long goalCost = ResolveDeterministicGoalSectorPortalAccessCost(
-            goalSector,
-            job.Key.GoalSectorId,
-            portalId,
-            job.Policy.GoalCellIndex % _world.Width,
-            job.Policy.GoalCellIndex / _world.Width);
-        if (goalCost == long.MaxValue)
-            return;
-        BeginHashedPortalHierarchyPolicyMutation(job.Policy, ref policyMutationStarted);
-        int goalNode = EncodePortalNode(job.Key.GoalSectorId, portalId);
-        job.Policy.SearchState.AddSource(goalNode, goalCost);
-    }
-
-    private static void AdvanceReversePolicyTargetCollectionOneOperation(
-        NavigationPathRequestJob job,
-        NavigationPathSourceJob source,
-        IncrementalReversePolicyExpansion expansion)
-    {
-        if (expansion.Hierarchy)
-        {
-            int[] boundaries = expansion.HierarchyTargetCluster.BoundaryNodes;
-            if (expansion.TargetCursor < boundaries.Length)
-            {
-                int node = boundaries[expansion.TargetCursor++];
-                expansion.HasAccessibleTarget = true;
-                if (!source.HierarchyPolicy.SearchState.ContainsSettled(node))
-                    expansion.PendingTargetNodes.Add(node);
-                return;
-            }
-        }
-        else
-        {
-            List<int> portals = expansion.L0TargetSector.PortalIds;
-            if (expansion.TargetCursor < portals.Count)
-            {
-                int portalId = portals[expansion.TargetCursor++];
-                long accessCost = ResolveDeterministicPortalAccessCost(
-                    expansion.L0TargetSector,
-                    source.Demand.StartSectorId,
-                    portalId,
-                    source.Demand.StartX,
-                    source.Demand.StartY);
-                if (accessCost != long.MaxValue)
+                case IncrementalReversePolicyExpansionStage.InitializeGoal:
                 {
-                    expansion.HasAccessibleTarget = true;
-                    int node = EncodePortalNode(source.Demand.StartSectorId, portalId);
-                    if (!job.Policy.SearchState.ContainsSettled(node))
-                        expansion.PendingTargetNodes.Add(node);
+                    SectorData goalSector = _world.Sectors[job.Key.GoalSectorId];
+                    FlowPathKernelSearchState searchState = job.Policy.SearchState;
+                    searchState.BeginCommandSlice();
+                    int commandCount = 0;
+                    while (operationCount < operationCapacity
+                           && expansion.GoalPortalCursor < goalSector.PortalIds.Count)
+                    {
+                        int portalId = goalSector.PortalIds[expansion.GoalPortalCursor++];
+                        long goalCost = ResolveDeterministicGoalSectorPortalAccessCost(
+                            goalSector,
+                            job.Key.GoalSectorId,
+                            portalId,
+                            job.Policy.GoalCellIndex % _world.Width,
+                            job.Policy.GoalCellIndex / _world.Width);
+                        if (goalCost != long.MaxValue)
+                        {
+                            searchState.AppendAddSource(
+                                EncodePortalNode(job.Key.GoalSectorId, portalId),
+                                goalCost);
+                            commandCount++;
+                        }
+                        operationCount++;
+                    }
+                    if (commandCount > 0)
+                    {
+                        BeginHashedPortalHierarchyPolicyMutation(job.Policy, ref policyMutationStarted);
+                        int executed = ExecuteNavigationPathSearchCommandSlice(searchState, out _, out _);
+                        if (executed != commandCount)
+                        {
+                            throw new InvalidOperationException(
+                                $"Navigation goal source command count mismatch. queued={commandCount}, executed={executed}.");
+                        }
+                    }
+                    if (operationCount >= operationCapacity)
+                        continue;
+                    if (searchState.OpenCount == 0)
+                    {
+                        throw new InvalidOperationException(
+                            $"Navigation L0 policy goal sector has no reachable portal sector={job.Key.GoalSectorId}.");
+                    }
+                    expansion.Stage = IncrementalReversePolicyExpansionStage.CollectTargets;
+                    operationCount++;
+                    continue;
                 }
-                return;
+
+                case IncrementalReversePolicyExpansionStage.CollectTargets:
+                    while (operationCount < operationCapacity)
+                    {
+                        bool hasNext;
+                        if (expansion.Hierarchy)
+                        {
+                            int[] boundaries = expansion.HierarchyTargetCluster.BoundaryNodes;
+                            hasNext = expansion.TargetCursor < boundaries.Length;
+                            if (hasNext)
+                            {
+                                int node = boundaries[expansion.TargetCursor++];
+                                expansion.HasAccessibleTarget = true;
+                                if (!source.HierarchyPolicy.SearchState.ContainsSettled(node))
+                                    expansion.PendingTargetNodes.Add(node);
+                            }
+                        }
+                        else
+                        {
+                            List<int> portals = expansion.L0TargetSector.PortalIds;
+                            hasNext = expansion.TargetCursor < portals.Count;
+                            if (hasNext)
+                            {
+                                int portalId = portals[expansion.TargetCursor++];
+                                long accessCost = ResolveDeterministicPortalAccessCost(
+                                    expansion.L0TargetSector,
+                                    source.Demand.StartSectorId,
+                                    portalId,
+                                    source.Demand.StartX,
+                                    source.Demand.StartY);
+                                if (accessCost != long.MaxValue)
+                                {
+                                    expansion.HasAccessibleTarget = true;
+                                    int node = EncodePortalNode(source.Demand.StartSectorId, portalId);
+                                    FlowPathKernelSearchState policySearch = expansion.Hierarchy
+                                        ? source.HierarchyPolicy.SearchState
+                                        : job.Policy.SearchState;
+                                    if (!policySearch.ContainsSettled(node))
+                                        expansion.PendingTargetNodes.Add(node);
+                                }
+                            }
+                        }
+                        if (hasNext)
+                        {
+                            operationCount++;
+                            continue;
+                        }
+                        if (!expansion.HasAccessibleTarget)
+                        {
+                            throw new InvalidOperationException(
+                                "Navigation reverse policy source has no accessible portal target.");
+                        }
+                        expansion.Stage = expansion.PendingTargetNodes.Count == 0
+                            ? IncrementalReversePolicyExpansionStage.Complete
+                            : IncrementalReversePolicyExpansionStage.Pop;
+                        if (expansion.Stage == IncrementalReversePolicyExpansionStage.Pop)
+                        {
+                            FlowPathKernelSearchState targetSearch = expansion.Hierarchy
+                                ? source.HierarchyPolicy.SearchState
+                                : job.Policy.SearchState;
+                            ConfigureReversePolicyGraphTargets(expansion, targetSearch);
+                        }
+                        operationCount++;
+                        break;
+                    }
+                    continue;
+
+                case IncrementalReversePolicyExpansionStage.Pop:
+                case IncrementalReversePolicyExpansionStage.Edges:
+                case IncrementalReversePolicyExpansionStage.Crossing:
+                {
+                    FlowPathKernelSearchState searchState = expansion.Hierarchy
+                        ? source.HierarchyPolicy.SearchState
+                        : job.Policy.SearchState;
+                    BeginHashedPortalHierarchyPolicyMutation(job.Policy, ref policyMutationStarted);
+                    FlowPathKernelGraphIndex graph = ResolveFlowPathKernelSearchGraphIndex(
+                        _world,
+                        expansion.Hierarchy ? expansion.HierarchyLevel : null);
+                    FlowPathKernelGraphCursor cursor = new FlowPathKernelGraphCursor
+                    {
+                        Stage = expansion.Stage == IncrementalReversePolicyExpansionStage.Pop ? 0 : 1,
+                        CurrentNode = expansion.CurrentNode,
+                        CurrentCost = expansion.CurrentCost,
+                        EdgeCursor = expansion.EdgeCursor
+                    };
+                    FlowPathKernelGraphSliceResult slice = searchState.AdvanceGraphSlice(
+                        graph,
+                        reverse: true,
+                        _world.SectorCountX,
+                        0,
+                        0,
+                        0,
+                        0,
+                        cursor,
+                        operationCapacity - operationCount);
+                    if (slice.OperationCount <= 0)
+                        throw new InvalidOperationException("Navigation reverse policy graph slice consumed no operations.");
+                    RecordNavigationPathGraphSlice(slice.OperationCount);
+                    expansion.CurrentNode = slice.Cursor.CurrentNode;
+                    expansion.CurrentCost = slice.Cursor.CurrentCost;
+                    expansion.EdgeCursor = slice.Cursor.EdgeCursor;
+                    expansion.Stage = slice.Cursor.Stage == 0
+                        ? IncrementalReversePolicyExpansionStage.Pop
+                        : IncrementalReversePolicyExpansionStage.Edges;
+                    operationCount += slice.OperationCount;
+                    if (slice.StopReason == FlowPathKernelGraphSliceStopReason.TargetSettled)
+                    {
+                        expansion.PendingTargetNodes.Clear();
+                        expansion.Stage = IncrementalReversePolicyExpansionStage.Complete;
+                    }
+                    else if (slice.StopReason == FlowPathKernelGraphSliceStopReason.FrontierEmpty)
+                    {
+                        throw new InvalidOperationException(
+                            "Navigation reverse policy graph exhausted before reaching every source boundary.");
+                    }
+                    return operationCount;
+                }
+
+                case IncrementalReversePolicyExpansionStage.Complete:
+                    if (operationCount == 0)
+                        operationCount = 1;
+                    return operationCount;
+
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(expansion.Stage),
+                        expansion.Stage,
+                        "Unknown reverse policy expansion stage.");
             }
         }
-
-        if (!expansion.HasAccessibleTarget)
-            throw new InvalidOperationException("Navigation reverse policy source has no accessible portal target.");
-        expansion.Stage = expansion.PendingTargetNodes.Count == 0
-            ? IncrementalReversePolicyExpansionStage.Complete
-            : IncrementalReversePolicyExpansionStage.Pop;
+        return operationCount;
     }
 
-    private static void AdvanceReversePolicyPopOneOperation(
-        NavigationPathRequestJob job,
-        NavigationPathSourceJob source,
+    private static void ConfigureReversePolicyGraphTargets(
         IncrementalReversePolicyExpansion expansion,
-        ref bool policyMutationStarted)
+        FlowPathKernelSearchState searchState)
     {
-        FlowPathKernelSearchState searchState = expansion.Hierarchy
-            ? source.HierarchyPolicy.SearchState
-            : job.Policy.SearchState;
-        if (searchState.OpenCount == 0)
-            throw new InvalidOperationException("Navigation reverse policy exhausted before reaching every source boundary.");
-
-        BeginHashedPortalHierarchyPolicyMutation(job.Policy, ref policyMutationStarted);
-        FlowPathKernelPopStatus popStatus = searchState.PopOne(out FlowPathKernelSearchEntry item);
-        switch (popStatus)
-        {
-            case FlowPathKernelPopStatus.CostMismatch:
-            case FlowPathKernelPopStatus.AlreadySettled:
-            case FlowPathKernelPopStatus.Stale:
-                return;
-            case FlowPathKernelPopStatus.Settled:
-                break;
-            case FlowPathKernelPopStatus.Empty:
-                throw new InvalidOperationException("Navigation reverse policy kernel returned empty after a non-empty frontier check.");
-            case FlowPathKernelPopStatus.MissingCost:
-                throw new InvalidOperationException($"Navigation reverse policy kernel frontier has no cost node={item.Node}.");
-            default:
-                throw new ArgumentOutOfRangeException(nameof(popStatus), popStatus, "Unknown reverse policy kernel pop status.");
-        }
-
-        _perf.PathPortalGraphNodeExpansions++;
-        expansion.PendingTargetNodes.Remove(item.Node);
-        expansion.CompleteAfterCurrentExpansion = expansion.PendingTargetNodes.Count == 0;
-
-        expansion.CurrentNode = item.Node;
-        expansion.CurrentCost = item.Cost;
-        DecodePortalNode(item.Node, out expansion.CurrentSectorId, out expansion.CurrentPortalId);
-        expansion.EdgeCursor = 0;
-        if (expansion.Hierarchy)
-        {
-            int clusterId = ResolveHierarchyClusterId(_world, expansion.HierarchyLevel, expansion.CurrentSectorId);
-            PortalHierarchyCluster cluster = expansion.HierarchyLevel.Clusters[clusterId];
-            if (!cluster.IncomingEdgesByNode.TryGetValue(item.Node, out expansion.CurrentHierarchyEdges))
-                throw new InvalidOperationException("Navigation hierarchy reverse policy is missing an incoming edge list.");
-            expansion.Stage = IncrementalReversePolicyExpansionStage.Edges;
-        }
-        else
-        {
-            expansion.CurrentL0Edges = GetIncomingPortalTransitions(
-                _world.Sectors[expansion.CurrentSectorId],
-                expansion.CurrentPortalId);
-            expansion.Stage = IncrementalReversePolicyExpansionStage.Crossing;
-        }
+        expansion.GraphTargetScratch.Clear();
+        foreach (int node in expansion.PendingTargetNodes)
+            expansion.GraphTargetScratch.Add(node);
+        expansion.GraphTargetScratch.Sort();
+        searchState.SetGraphSliceTargets(expansion.GraphTargetScratch);
+        expansion.GraphTargetScratch.Clear();
     }
 
-    private static void AdvanceReversePolicyEdgeOneOperation(
+    private static int AdvanceNavigationPathSourceMaterialization(
         NavigationPathRequestJob job,
         NavigationPathSourceJob source,
-        IncrementalReversePolicyExpansion expansion,
-        ref bool policyMutationStarted)
+        ref bool policyMutationStarted,
+        int operationCapacity)
     {
-        int count = expansion.Hierarchy
-            ? expansion.CurrentHierarchyEdges?.Count ?? 0
-            : expansion.CurrentL0Edges?.Count ?? 0;
-        if (expansion.EdgeCursor >= count)
-        {
-            if (expansion.Hierarchy)
-            {
-                expansion.Stage = IncrementalReversePolicyExpansionStage.Crossing;
-            }
-            else
-            {
-                expansion.Stage = expansion.CompleteAfterCurrentExpansion
-                    ? IncrementalReversePolicyExpansionStage.Complete
-                    : IncrementalReversePolicyExpansionStage.Pop;
-            }
-            return;
-        }
-
-        BeginHashedPortalHierarchyPolicyMutation(job.Policy, ref policyMutationStarted);
-        _perf.PathPortalGraphOutgoingTransitionScans++;
-        _perf.PathPortalGraphOutgoingTransitionHits++;
-        if (expansion.Hierarchy)
-        {
-            PortalHierarchyEdge edge = expansion.CurrentHierarchyEdges[expansion.EdgeCursor++];
-            RelaxPortalHierarchyReversePolicyNode(
-                source.HierarchyPolicy,
-                edge.FromNode,
-                expansion.CurrentNode,
-                AddDeterministicPortalCosts(expansion.CurrentCost, edge.DeterministicCost));
-        }
-        else
-        {
-            PortalTransition transition = expansion.CurrentL0Edges[expansion.EdgeCursor++];
-            if (transition.ToPortalId != expansion.CurrentPortalId)
-                throw new InvalidOperationException("Navigation L0 reverse policy incoming index is inconsistent.");
-            AddSectorCorridorPolicyReverseEdge(
-                job.Policy,
-                EncodePortalNode(expansion.CurrentSectorId, transition.FromPortalId),
-                expansion.CurrentNode,
-                AddDeterministicPortalCosts(expansion.CurrentCost, transition.DeterministicCost));
-        }
-    }
-
-    private static void AdvanceReversePolicyCrossingOneOperation(
-        NavigationPathRequestJob job,
-        NavigationPathSourceJob source,
-        IncrementalReversePolicyExpansion expansion,
-        ref bool policyMutationStarted)
-    {
-        BeginHashedPortalHierarchyPolicyMutation(job.Policy, ref policyMutationStarted);
-        PortalData portal = GetPortalById(_world, expansion.CurrentPortalId);
-        int oppositeSectorId = GetOppositeSectorId(portal, expansion.CurrentSectorId);
-        if (expansion.Hierarchy)
-        {
-            int clusterId = ResolveHierarchyClusterId(_world, expansion.HierarchyLevel, expansion.CurrentSectorId);
-            if (ResolveHierarchyClusterId(_world, expansion.HierarchyLevel, oppositeSectorId) == clusterId)
-                throw new InvalidOperationException("Navigation hierarchy reverse policy boundary crosses inside one cluster.");
-            RelaxPortalHierarchyReversePolicyNode(
-                source.HierarchyPolicy,
-                EncodePortalNode(oppositeSectorId, expansion.CurrentPortalId),
-                expansion.CurrentNode,
-                AddDeterministicPortalCosts(expansion.CurrentCost, DeterministicPortalCrossingCost));
-            expansion.Stage = expansion.CompleteAfterCurrentExpansion
-                ? IncrementalReversePolicyExpansionStage.Complete
-                : IncrementalReversePolicyExpansionStage.Pop;
-        }
-        else
-        {
-            AddSectorCorridorPolicyReverseEdge(
-                job.Policy,
-                EncodePortalNode(oppositeSectorId, expansion.CurrentPortalId),
-                expansion.CurrentNode,
-                AddDeterministicPortalCosts(expansion.CurrentCost, DeterministicPortalCrossingCost));
-            expansion.Stage = IncrementalReversePolicyExpansionStage.Edges;
-        }
-    }
-
-    private static void AdvanceNavigationPathSourceMaterialization(
-        NavigationPathRequestJob job,
-        NavigationPathSourceJob source,
-        ref bool policyMutationStarted)
-    {
+        if (operationCapacity <= 0)
+            throw new ArgumentOutOfRangeException(nameof(operationCapacity));
         if (source.Materialization == null)
         {
             source.Materialization = new IncrementalRouteMaterialization
@@ -2048,43 +2286,49 @@ public static partial class FlowFieldCrowdMovementSystem
         IncrementalRouteMaterialization state = source.Materialization;
         TryMergeNavigationRouteIntoSharedSuffix(job, source, state);
         IncrementalRouteMaterializationStage operationStage = state.Stage;
-        RecordNavigationPathMaterializationOperation(operationStage);
         bool recordTiming = MainThreadFrameProfiler.LoggingEnabled;
         long startTicks = recordTiming ? Stopwatch.GetTimestamp() : 0L;
+        int operationCount;
         try
         {
             switch (operationStage)
             {
                 case IncrementalRouteMaterializationStage.Initialize:
                     InitializeNavigationRouteMaterialization(job, source, state);
-                    return;
+                    operationCount = 1;
+                    break;
                 case IncrementalRouteMaterializationStage.SelectStartPortal:
                     AdvanceNavigationRouteStartPortalSelection(job, source, state);
-                    return;
+                    operationCount = 1;
+                    break;
                 case IncrementalRouteMaterializationStage.ExpandDownward:
-                    AdvanceNavigationRouteDownwardExpansion(source, state);
-                    return;
+                    operationCount = AdvanceNavigationRouteDownwardExpansion(job, source, state, operationCapacity);
+                    break;
                 case IncrementalRouteMaterializationStage.ExpandPolicy:
-                    AdvanceNavigationRoutePolicyExpansion(job, source, state);
-                    return;
+                    operationCount = AdvanceNavigationRoutePolicyExpansion(job, source, state, operationCapacity);
+                    break;
                 case IncrementalRouteMaterializationStage.ExpandGoalConnector:
-                    AdvanceNavigationRouteGoalConnectorExpansion(source, state);
-                    return;
+                    operationCount = AdvanceNavigationRouteGoalConnectorExpansion(job, source, state, operationCapacity);
+                    break;
                 case IncrementalRouteMaterializationStage.ConvertRoute:
-                    AdvanceNavigationRouteConversion(job, source, state);
-                    return;
+                    operationCount = AdvanceNavigationRouteConversion(job, source, state, operationCapacity);
+                    break;
                 case IncrementalRouteMaterializationStage.PrepareImmutableRoute:
                     AdvanceNavigationImmutableRoutePreparation(source, state);
-                    return;
+                    operationCount = 1;
+                    break;
                 case IncrementalRouteMaterializationStage.HashRoute:
                     AdvanceNavigationRouteAuthorityHash(source, state);
-                    return;
+                    operationCount = 1;
+                    break;
                 case IncrementalRouteMaterializationStage.Publish:
                     PublishNavigationRouteMaterialization(job, source, state, ref policyMutationStarted);
-                    return;
+                    operationCount = 1;
+                    break;
                 case IncrementalRouteMaterializationStage.Complete:
                     CompleteNavigationLocalBinding(job, source);
-                    return;
+                    operationCount = 1;
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(state.Stage), state.Stage, "Unknown route materialization stage.");
             }
@@ -2095,6 +2339,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 operationStage,
                 recordTiming ? Stopwatch.GetTimestamp() - startTicks : 0L);
         }
+        RecordNavigationPathMaterializationOperation(operationStage, operationCount);
+        return operationCount;
     }
 
     private static void RecordNavigationPathMaterializationTicks(
@@ -2154,7 +2400,19 @@ public static partial class FlowFieldCrowdMovementSystem
 
         int mergeNode = state.RouteState.GetL0Node(state.RouteState.L0NodeCount - 1);
         if (!job.SharedRouteSuffixes.TryGetValue(mergeNode, out NavigationSharedRouteSuffix suffix))
+        {
+            if (job.SharedRouteMergeIndex.Contains(mergeNode))
+            {
+                throw new InvalidOperationException(
+                    $"Navigation shared route merge index has no authoritative suffix node={FormatRouteNode(mergeNode)}.");
+            }
             return;
+        }
+        if (!job.SharedRouteMergeIndex.Contains(mergeNode))
+        {
+            throw new InvalidOperationException(
+                $"Navigation shared route suffix has no kernel merge index node={FormatRouteNode(mergeNode)}.");
+        }
         DecodePortalNode(mergeNode, out int mergeSectorId, out _);
         if (suffix == null
             || suffix.MergeNode != mergeNode
@@ -2177,39 +2435,42 @@ public static partial class FlowFieldCrowdMovementSystem
     }
 
     private static void RecordNavigationPathMaterializationOperation(
-        IncrementalRouteMaterializationStage stage)
+        IncrementalRouteMaterializationStage stage,
+        int operationCount)
     {
+        if (operationCount <= 0)
+            throw new ArgumentOutOfRangeException(nameof(operationCount));
         switch (stage)
         {
             case IncrementalRouteMaterializationStage.Initialize:
-                _perf.NavigationPathMaterializeInitializeOperations++;
+                _perf.NavigationPathMaterializeInitializeOperations = checked(_perf.NavigationPathMaterializeInitializeOperations + operationCount);
                 return;
             case IncrementalRouteMaterializationStage.SelectStartPortal:
-                _perf.NavigationPathMaterializeStartPortalOperations++;
+                _perf.NavigationPathMaterializeStartPortalOperations = checked(_perf.NavigationPathMaterializeStartPortalOperations + operationCount);
                 return;
             case IncrementalRouteMaterializationStage.ExpandDownward:
-                _perf.NavigationPathMaterializeDownwardOperations++;
+                _perf.NavigationPathMaterializeDownwardOperations = checked(_perf.NavigationPathMaterializeDownwardOperations + operationCount);
                 return;
             case IncrementalRouteMaterializationStage.ExpandPolicy:
-                _perf.NavigationPathMaterializePolicyOperations++;
+                _perf.NavigationPathMaterializePolicyOperations = checked(_perf.NavigationPathMaterializePolicyOperations + operationCount);
                 return;
             case IncrementalRouteMaterializationStage.ExpandGoalConnector:
-                _perf.NavigationPathMaterializeGoalConnectorOperations++;
+                _perf.NavigationPathMaterializeGoalConnectorOperations = checked(_perf.NavigationPathMaterializeGoalConnectorOperations + operationCount);
                 return;
             case IncrementalRouteMaterializationStage.ConvertRoute:
-                _perf.NavigationPathMaterializeConversionOperations++;
+                _perf.NavigationPathMaterializeConversionOperations = checked(_perf.NavigationPathMaterializeConversionOperations + operationCount);
                 return;
             case IncrementalRouteMaterializationStage.PrepareImmutableRoute:
-                _perf.NavigationPathMaterializeImmutableCopyOperations++;
+                _perf.NavigationPathMaterializeImmutableCopyOperations = checked(_perf.NavigationPathMaterializeImmutableCopyOperations + operationCount);
                 return;
             case IncrementalRouteMaterializationStage.HashRoute:
-                _perf.NavigationPathMaterializeHashOperations++;
+                _perf.NavigationPathMaterializeHashOperations = checked(_perf.NavigationPathMaterializeHashOperations + operationCount);
                 return;
             case IncrementalRouteMaterializationStage.Publish:
-                _perf.NavigationPathMaterializePublishOperations++;
+                _perf.NavigationPathMaterializePublishOperations = checked(_perf.NavigationPathMaterializePublishOperations + operationCount);
                 return;
             case IncrementalRouteMaterializationStage.Complete:
-                _perf.NavigationPathLocalBindingOperations++;
+                _perf.NavigationPathLocalBindingOperations = checked(_perf.NavigationPathLocalBindingOperations + operationCount);
                 return;
             default:
                 throw new ArgumentOutOfRangeException(nameof(stage), stage, "Unknown route materialization stage.");
@@ -2379,19 +2640,18 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
-    private static void AdvanceNavigationRouteDownwardExpansion(
+    private static int AdvanceNavigationRouteDownwardExpansion(
+        NavigationPathRequestJob job,
         NavigationPathSourceJob source,
-        IncrementalRouteMaterialization state)
+        IncrementalRouteMaterialization state,
+        int operationCapacity)
     {
         if (state.RouteState.TaskCount > 0)
-        {
-            AdvanceRouteExpansionTaskOneOperation(state);
-            return;
-        }
+            return AdvanceRouteExpansionTaskSlice(job, state, operationCapacity);
         if (state.DownwardCustomizationIndex < 0)
         {
             state.Stage = IncrementalRouteMaterializationStage.ExpandPolicy;
-            return;
+            return 1;
         }
 
         PortalHierarchyDownwardCustomization customization =
@@ -2402,12 +2662,14 @@ public static partial class FlowFieldCrowdMovementSystem
             GetRouteBoundaryNode(state),
             customization.SourceLevelArrayIndex,
             RouteExpansionTaskType.TraverseDownwardPolicy);
+        return 1;
     }
 
-    private static void AdvanceNavigationRoutePolicyExpansion(
+    private static int AdvanceNavigationRoutePolicyExpansion(
         NavigationPathRequestJob job,
         NavigationPathSourceJob source,
-        IncrementalRouteMaterialization state)
+        IncrementalRouteMaterialization state,
+        int operationCapacity)
     {
         if (!state.PolicyExpansionScheduled)
         {
@@ -2423,21 +2685,21 @@ public static partial class FlowFieldCrowdMovementSystem
                     ? RouteExpansionTaskType.TraverseHierarchyPolicy
                     : RouteExpansionTaskType.TraverseL0Policy);
             state.PolicyExpansionScheduled = true;
-            return;
+            return 1;
         }
         if (state.RouteState.TaskCount > 0)
-        {
-            AdvanceRouteExpansionTaskOneOperation(state);
-            return;
-        }
+            return AdvanceRouteExpansionTaskSlice(job, state, operationCapacity);
         state.Stage = source.HierarchyLevelArrayIndex >= 0
             ? IncrementalRouteMaterializationStage.ExpandGoalConnector
             : IncrementalRouteMaterializationStage.ConvertRoute;
+        return 1;
     }
 
-    private static void AdvanceNavigationRouteGoalConnectorExpansion(
+    private static int AdvanceNavigationRouteGoalConnectorExpansion(
+        NavigationPathRequestJob job,
         NavigationPathSourceJob source,
-        IncrementalRouteMaterialization state)
+        IncrementalRouteMaterialization state,
+        int operationCapacity)
     {
         if (!state.GoalConnectorScheduled)
         {
@@ -2446,14 +2708,12 @@ public static partial class FlowFieldCrowdMovementSystem
                 source.HierarchyPolicy.GoalConnector,
                 GetRouteBoundaryNode(state));
             state.GoalConnectorScheduled = true;
-            return;
+            return 1;
         }
         if (state.RouteState.TaskCount > 0)
-        {
-            AdvanceRouteExpansionTaskOneOperation(state);
-            return;
-        }
+            return AdvanceRouteExpansionTaskSlice(job, state, operationCapacity);
         state.Stage = IncrementalRouteMaterializationStage.ConvertRoute;
+        return 1;
     }
 
     private static void ScheduleRoutePolicyTraversal(
@@ -2514,93 +2774,63 @@ public static partial class FlowFieldCrowdMovementSystem
             RouteExpansionTaskType.TraverseConnectorPolicy);
     }
 
-    private static void AdvanceRouteExpansionTaskOneOperation(IncrementalRouteMaterialization state)
+    private static int AdvanceRouteExpansionTaskSlice(
+        NavigationPathRequestJob job,
+        IncrementalRouteMaterialization state,
+        int operationCapacity)
     {
+        if (operationCapacity <= 0)
+            throw new ArgumentOutOfRangeException(nameof(operationCapacity));
         if (state.RouteState.TaskCount == 0)
             throw new InvalidOperationException("Navigation route expansion has no pending task.");
-        FlowPathKernelRouteTask task = state.RouteState.Peek();
-        RouteExpansionTaskType taskType = (RouteExpansionTaskType)task.Type;
-        switch (taskType)
-        {
-            case RouteExpansionTaskType.TraverseHierarchyPolicy:
-            case RouteExpansionTaskType.TraverseL0Policy:
-            case RouteExpansionTaskType.TraverseDownwardPolicy:
-            case RouteExpansionTaskType.TraverseConnectorPolicy:
-                AdvanceRoutePolicyTraversal(state, task, taskType);
-                return;
-            case RouteExpansionTaskType.TraverseArray:
-                state.RouteState.AdvanceWitnessTraversal(
-                    RequireRouteWitnessIndex(),
-                    (int)RouteExpansionTaskType.ExpandPair);
-                return;
-            case RouteExpansionTaskType.ExpandPair:
-            case RouteExpansionTaskType.ExpandHierarchyPolicyPair:
-                AdvanceRoutePairTask(state, task, taskType);
-                return;
-            case RouteExpansionTaskType.BeginConnector:
-                state.RouteState.Pop();
-                ScheduleRouteConnectorExpansion(
-                    state,
-                    ResolveRouteConnectorAuthority(state, task.AuthoritySlot),
-                    GetRouteBoundaryNode(state));
-                return;
-            case RouteExpansionTaskType.TraverseNext:
-            case RouteExpansionTaskType.FindHierarchyEdge:
-                throw new InvalidOperationException(
-                    $"Managed navigation route task type is forbidden in production: {taskType}.");
-            default:
-                throw new ArgumentOutOfRangeException(nameof(task.Type), task.Type, "Unknown route expansion task.");
-        }
-    }
 
-    private static void AdvanceRoutePolicyTraversal(
-        IncrementalRouteMaterialization state,
-        FlowPathKernelRouteTask task,
-        RouteExpansionTaskType taskType)
-    {
-        FlowPathKernelSearchState search = ResolveRouteSearchAuthority(state, task.AuthoritySlot);
-        state.RouteState.AdvanceTraversal(
+        FlowPathKernelRouteTask top = state.RouteState.Peek();
+        RouteExpansionTaskType topType = (RouteExpansionTaskType)top.Type;
+        if (topType == RouteExpansionTaskType.BeginConnector)
+        {
+            state.RouteState.Pop();
+            ScheduleRouteConnectorExpansion(
+                state,
+                ResolveRouteConnectorAuthority(state, top.AuthoritySlot),
+                GetRouteBoundaryNode(state));
+            return 1;
+        }
+        if (topType == RouteExpansionTaskType.TraverseNext
+            || topType == RouteExpansionTaskType.FindHierarchyEdge)
+        {
+            throw new InvalidOperationException(
+                $"Managed navigation route task type is forbidden in production: {topType}.");
+        }
+
+        int authoritySlot = state.RouteState.ResolvePendingSearchAuthoritySlot(
+            (int)RouteExpansionTaskType.TraverseHierarchyPolicy,
+            (int)RouteExpansionTaskType.TraverseL0Policy,
+            (int)RouteExpansionTaskType.TraverseDownwardPolicy,
+            (int)RouteExpansionTaskType.TraverseConnectorPolicy);
+        FlowPathKernelSearchState search = ResolveRouteSearchAuthority(state, authoritySlot);
+        FlowPathKernelRouteSliceResult result = state.RouteState.AdvanceSlice(
             search,
-            taskType == RouteExpansionTaskType.TraverseHierarchyPolicy
-                ? (int)RouteExpansionTaskType.ExpandHierarchyPolicyPair
-                : (int)RouteExpansionTaskType.ExpandPair,
-            search.PreviousCount);
-    }
-
-    private static void AdvanceRoutePairTask(
-        IncrementalRouteMaterialization state,
-        FlowPathKernelRouteTask task,
-        RouteExpansionTaskType taskType)
-    {
-        DecodePortalNode(task.FromNode, out int fromSectorId, out int fromPortalId);
-        DecodePortalNode(task.ToNode, out int toSectorId, out int toPortalId);
-        bool directPortalCrossing = fromPortalId == toPortalId
-                                    && GetOppositeSectorId(
-                                        GetPortalById(_world, fromPortalId),
-                                        fromSectorId) == toSectorId;
-
-        int edgeLevelIndex;
-        if (taskType == RouteExpansionTaskType.ExpandHierarchyPolicyPair)
-        {
-            edgeLevelIndex = task.LevelIndex;
-        }
-        else
-        {
-            edgeLevelIndex = task.LevelIndex <= 0 ? -1 : task.LevelIndex - 1;
-        }
-
-        int clusterId = -1;
-        if (!directPortalCrossing && edgeLevelIndex >= 0)
-        {
-            PortalHierarchyLevel edgeLevel = _world.Hierarchy.Levels[edgeLevelIndex];
-            clusterId = ResolveHierarchyClusterId(_world, edgeLevel, fromSectorId);
-        }
-        state.RouteState.AdvancePair(
             RequireRouteWitnessIndex(),
-            directPortalCrossing,
-            edgeLevelIndex,
-            clusterId,
-            (int)RouteExpansionTaskType.TraverseArray);
+            job.SharedRouteMergeIndex,
+            authoritySlot,
+            (int)RouteExpansionTaskType.TraverseHierarchyPolicy,
+            (int)RouteExpansionTaskType.TraverseL0Policy,
+            (int)RouteExpansionTaskType.TraverseDownwardPolicy,
+            (int)RouteExpansionTaskType.TraverseConnectorPolicy,
+            (int)RouteExpansionTaskType.ExpandHierarchyPolicyPair,
+            (int)RouteExpansionTaskType.ExpandPair,
+            (int)RouteExpansionTaskType.TraverseArray,
+            (int)RouteExpansionTaskType.BeginConnector,
+            operationCapacity);
+        _perf.NavigationPathRouteSlices = checked(_perf.NavigationPathRouteSlices + 1);
+        _perf.NavigationPathRouteSliceOperations = checked(
+            _perf.NavigationPathRouteSliceOperations + result.OperationCount);
+        if (result.OperationCount <= 0)
+        {
+            throw new InvalidOperationException(
+                $"Navigation route slice stopped without consuming work. reason={result.StopReason}, task={topType}.");
+        }
+        return result.OperationCount;
     }
 
     private static int RegisterRouteSearchAuthority(
@@ -2670,16 +2900,23 @@ public static partial class FlowFieldCrowdMovementSystem
         return witnessIndex;
     }
 
-    private static void AdvanceNavigationRouteConversion(
+    private static int AdvanceNavigationRouteConversion(
         NavigationPathRequestJob job,
         NavigationPathSourceJob source,
-        IncrementalRouteMaterialization state)
+        IncrementalRouteMaterialization state,
+        int operationCapacity)
     {
         NavigationPathDemand demand = source.Demand;
-        FlowPathKernelRouteConversionStatus conversionStatus =
-            state.RouteState.AdvanceConversion(demand.StartSectorId);
-        if (conversionStatus != FlowPathKernelRouteConversionStatus.Complete)
-            return;
+        FlowPathKernelRouteSliceResult slice = state.RouteState.AdvanceConversionSlice(
+            demand.StartSectorId,
+            operationCapacity);
+        _perf.NavigationPathRouteSlices = checked(_perf.NavigationPathRouteSlices + 1);
+        _perf.NavigationPathRouteSliceOperations = checked(
+            _perf.NavigationPathRouteSliceOperations + slice.OperationCount);
+        if (slice.OperationCount <= 0)
+            throw new InvalidOperationException("Navigation route conversion slice consumed no operations.");
+        if (slice.StopReason != FlowPathKernelRouteSliceStopReason.RouteComplete)
+            return slice.OperationCount;
 
         int expectedTerminalSectorId = job.Key.GoalSectorId;
         if (state.MergedSuffix != null)
@@ -2704,6 +2941,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"portalIds=[{FormatConvertedPortals(state.RouteState)}].");
         }
         state.Stage = IncrementalRouteMaterializationStage.PrepareImmutableRoute;
+        return slice.OperationCount;
     }
 
     private static string FormatRouteNodes(List<int> nodes)
@@ -2958,6 +3196,11 @@ public static partial class FlowFieldCrowdMovementSystem
         _perf.NavigationPathSharedSuffixCreates++;
         if (job.SharedRouteSuffixes.TryGetValue(node, out NavigationSharedRouteSuffix existing))
         {
+            if (!job.SharedRouteMergeIndex.Contains(node))
+            {
+                throw new InvalidOperationException(
+                    $"Navigation shared route merge index is missing an authoritative suffix node={FormatRouteNode(node)}.");
+            }
             int existingSectorCount = existing.SectorIds.Length - existing.SectorStartIndex;
             int suffixSectorCount = sectorIds.Length - sectorPathIndex;
             int existingPortalCount = existing.PortalIds.Length - existing.PortalStartIndex;
@@ -2976,6 +3219,11 @@ public static partial class FlowFieldCrowdMovementSystem
         else
         {
             job.SharedRouteSuffixes.Add(node, suffix);
+            if (!job.SharedRouteMergeIndex.Add(node))
+            {
+                throw new InvalidOperationException(
+                    $"Navigation shared route merge index contains a node without an authoritative suffix node={FormatRouteNode(node)}.");
+            }
             job.SharedRouteSuffixesAuthorityContentHash ^=
                 ComputeNavigationSharedRouteSuffixAuthorityToken(node, suffix);
         }
@@ -3079,6 +3327,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 source.Demand.Agent.NavState.HasPendingNavigationReplacement = false;
                 DisposeNavigationPathSourceTransientState(source);
             }
+            job.SharedRouteMergeIndex.Dispose();
         }
         NavigationPathRequestQueue.Clear();
         PendingNavigationPathRequests.Clear();
@@ -3185,8 +3434,13 @@ public static partial class FlowFieldCrowdMovementSystem
             diagnostics[i] =
                 $"logicPathTick logic={snapshot.Frame},queue={TicksToMs(snapshot.NavigationPathRequestQueueTicks):F3}ms," +
                 $"groups={snapshot.NavigationPathRequestGroups},sourceAdds={snapshot.NavigationPathRequestSourceAdds},operations={snapshot.NavigationPathRequestOperations}," +
+                $"searchSlices={snapshot.NavigationPathSearchCommandSlices}/{snapshot.NavigationPathSearchCommandOperations}," +
+                $"routeSlices={snapshot.NavigationPathRouteSlices}/{snapshot.NavigationPathRouteSliceOperations}," +
                 $"commits={snapshot.NavigationPathRequestCommits},sourceCommits={snapshot.NavigationPathSourceCommits}," +
-                $"runtime=[monoUsedDelta={snapshot.NavigationPathMonoUsedBytesDelta},gc={snapshot.NavigationPathGen0Collections}/{snapshot.NavigationPathGen1Collections}/{snapshot.NavigationPathGen2Collections}]," +
+                $"orchestration=[policyCommit={TicksToMs(snapshot.NavigationPathPolicyCommitTicks):F3}ms," +
+                $"budget={TicksToMs(snapshot.NavigationPathBudgetConsumeTicks):F3}ms," +
+                $"removal={TicksToMs(snapshot.NavigationPathRequestRemovalTicks):F3}ms]," +
+                $"runtime=[allocatedBytes={snapshot.NavigationPathAllocatedBytes},gc={snapshot.NavigationPathGen0Collections}/{snapshot.NavigationPathGen1Collections}/{snapshot.NavigationPathGen2Collections}]," +
                 $"creates=[policy={snapshot.NavigationPathPolicyCreates},search={snapshot.NavigationPathRestrictedSearchCreates}," +
                 $"hierarchy={snapshot.NavigationPathHierarchyPolicyCreates},materialization={snapshot.NavigationPathMaterializationCreates}," +
                 $"concat={snapshot.NavigationPathImmutableConcatCreates},suffix={snapshot.NavigationPathSharedSuffixCreates}]," +
@@ -3202,6 +3456,15 @@ public static partial class FlowFieldCrowdMovementSystem
     private static string BuildEditorNavigationPathStageDiagnostics(FlowPerfAccumulator perf)
     {
         return $"initialize={TicksToMs(perf.NavigationPathInitializeTicks):F3}ms/{perf.NavigationPathInitializeOperations}," +
+               $"initializeDetail=(sameSector={TicksToMs(perf.NavigationPathInitializeSameSectorTicks):F3}ms," +
+               $"policy={TicksToMs(perf.NavigationPathInitializePolicyTicks):F3}ms," +
+               $"policyStages=(lookup={TicksToMs(perf.NavigationPathInitializePolicyLookupTicks):F3}ms," +
+               $"anchor={TicksToMs(perf.NavigationPathInitializePolicyAnchorTicks):F3}ms," +
+               $"construct={TicksToMs(perf.NavigationPathInitializePolicyConstructTicks):F3}ms," +
+               $"authority={TicksToMs(perf.NavigationPathInitializePolicyAuthorityTicks):F3}ms," +
+               $"pin={TicksToMs(perf.NavigationPathInitializePolicyPinTicks):F3}ms)," +
+               $"hierarchyResolve={TicksToMs(perf.NavigationPathInitializeHierarchyResolveTicks):F3}ms," +
+               $"hierarchySelection={TicksToMs(perf.NavigationPathInitializeHierarchySelectionTicks):F3}ms)," +
                $"goalConnector={TicksToMs(perf.NavigationPathGoalConnectorTicks):F3}ms/{perf.NavigationPathGoalConnectorOperations}," +
                $"createHierarchy={TicksToMs(perf.NavigationPathCreateHierarchyTicks):F3}ms/{perf.NavigationPathCreateHierarchyOperations}," +
                $"expandHierarchy={TicksToMs(perf.NavigationPathExpandHierarchyTicks):F3}ms/{perf.NavigationPathExpandHierarchyOperations}," +
@@ -3229,6 +3492,56 @@ public static partial class FlowFieldCrowdMovementSystem
     public static int GetEditorTestPendingNavigationPathRequestCount()
     {
         return PendingNavigationPathRequests.Count;
+    }
+
+    public static void RunEditorTestDisconnectedRestrictedBoundarySearch(
+        int operationQuota,
+        out long reachableCost,
+        out bool unreachableSettled)
+    {
+        if (operationQuota <= 0)
+            throw new ArgumentOutOfRangeException(nameof(operationQuota));
+
+        const int sourceNode = 0;
+        const int reachableNode = 1;
+        const int unreachableNode = 2;
+        using var graph = new FlowPathKernelGraphIndex(new[]
+        {
+            new FlowPathKernelGraphEdge(sourceNode, reachableNode, 7L)
+        });
+        var world = new NavigationWorld
+        {
+            SectorCountX = 1,
+            Portals = new PortalData[2],
+            L0SearchGraphIndex = graph
+        };
+        IncrementalRestrictedPortalSearch search = CreateIncrementalRestrictedPortalSearch(
+            world,
+            null,
+            null,
+            new[] { sourceNode },
+            new[] { 0L },
+            reverse: false,
+            new[] { reachableNode, unreachableNode });
+        search.MaterializeResultOnComplete = false;
+        try
+        {
+            bool complete = false;
+            int guard = 0;
+            while (!complete)
+            {
+                if (++guard > 32)
+                    throw new InvalidOperationException("Disconnected restricted boundary search exceeded its slice bound.");
+                AdvanceIncrementalRestrictedPortalSearchSlice(search, operationQuota, out complete);
+            }
+            if (!search.KernelState.TryGetCost(reachableNode, out reachableCost))
+                throw new InvalidOperationException("Disconnected restricted boundary search did not settle its reachable target.");
+            unreachableSettled = search.KernelState.ContainsSettled(unreachableNode);
+        }
+        finally
+        {
+            search.KernelState.Dispose();
+        }
     }
 
     public static int GetEditorTestPendingNavigationPathSourceCount()
@@ -3350,6 +3663,18 @@ public static partial class FlowFieldCrowdMovementSystem
     public static int GetEditorTestFrameNavigationPathRequestOperationCount()
     {
         return _perf.NavigationPathRequestOperations;
+    }
+
+    public static void GetEditorTestFrameNavigationPathSliceCounts(
+        out int searchSlices,
+        out int searchOperations,
+        out int routeSlices,
+        out int routeOperations)
+    {
+        searchSlices = _perf.NavigationPathSearchCommandSlices;
+        searchOperations = _perf.NavigationPathSearchCommandOperations;
+        routeSlices = _perf.NavigationPathRouteSlices;
+        routeOperations = _perf.NavigationPathRouteSliceOperations;
     }
 
     public static void GetEditorTestFrameNavigationPathMaterializationOperationCounts(

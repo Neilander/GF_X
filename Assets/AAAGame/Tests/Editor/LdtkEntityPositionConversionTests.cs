@@ -13,6 +13,9 @@ public sealed class LdtkEntityPositionConversionTests
     private static readonly MethodInfo ConvertEntityMethod = typeof(LdtkToTileWorldCreatorImporterWindow).GetMethod(
         "TryConvertEntity",
         BindingFlags.NonPublic | BindingFlags.Static);
+    private static readonly MethodInfo GetBuildingEntityGridSizeMethod = typeof(LdtkToTileWorldCreatorImporterWindow).GetMethod(
+        "TryGetBuildingEntityGridSize",
+        BindingFlags.NonPublic | BindingFlags.Static);
     private static readonly Type EntityInstanceType = typeof(LdtkToTileWorldCreatorImporterWindow).GetNestedType(
         "LdtkEntityInstance",
         BindingFlags.NonPublic);
@@ -54,6 +57,45 @@ public sealed class LdtkEntityPositionConversionTests
         Assert.That(position.x, Is.EqualTo(expectedCellX * 1.4f).Within(0.0001f));
         Assert.That(position.y, Is.Zero);
         Assert.That(position.z, Is.EqualTo(expectedCellZ * 1.4f).Within(0.0001f));
+    }
+
+    [TestCase("Building22", 2)]
+    [TestCase("Building33", 3)]
+    [TestCase("Building44", 4)]
+    [TestCase("Building55", 5)]
+    public void BuildingEntityGridSize_RecognizesSupportedDefinitions(string identifier, int expectedGridSize)
+    {
+        Assert.That(GetBuildingEntityGridSizeMethod, Is.Not.Null);
+        object[] arguments = { identifier, 0 };
+
+        bool recognized = (bool)GetBuildingEntityGridSizeMethod.Invoke(null, arguments);
+
+        Assert.That(recognized, Is.True);
+        Assert.That((int)arguments[1], Is.EqualTo(expectedGridSize));
+    }
+
+    [Test]
+    public void ConvertBuilding55_RequiresFiveGridCellsAndPreservesGridCenter()
+    {
+        Assert.That(ConvertEntityMethod, Is.Not.Null);
+        object identifierField = CreateFieldInstance("Identifier", "Buil_Base_Lv1");
+        Array fields = Array.CreateInstance(FieldInstanceType, 1);
+        fields.SetValue(identifierField, 0);
+
+        object entity = Activator.CreateInstance(EntityInstanceType);
+        SetField(entity, "__identifier", "Building55");
+        SetField(entity, "__pivot", new[] { 0.5f, 0.5f });
+        SetField(entity, "width", 80);
+        SetField(entity, "height", 80);
+        SetField(entity, "px", new[] { 216, 136 });
+        SetField(entity, "fieldInstances", fields);
+
+        object[] arguments = { entity, 16, 1248, 1f, null };
+        bool converted = (bool)ConvertEntityMethod.Invoke(null, arguments);
+
+        Assert.That(converted, Is.True);
+        object pointData = arguments[4];
+        Assert.That((Vector3)GetField(pointData, "localPosition"), Is.EqualTo(new Vector3(13f, 0f, 69f)));
     }
 
     [Test]

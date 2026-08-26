@@ -36,7 +36,10 @@ public sealed class Fog3StageCheckpointTests
                 OverlayAlwaysOnTopShader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop"),
             };
             Fog3WorldOverlayView view = viewObject.AddComponent<Fog3WorldOverlayView>();
-            view.Build(terrain, settings, 0f, Physics.DefaultRaycastLayers, Vector3.zero, 0.5f);
+            view.Build(terrain, settings, 0f, Physics.DefaultRaycastLayers, Vector3.zero, 0.5f, 0.25f);
+            Assert.AreEqual(0.25f, view.VisibilityBoundaryFadeDistance);
+            Assert.AreEqual(0.25f, view.FogMaterial.GetFloat("_FogBoundaryFadeDistance"));
+            Assert.AreEqual(1f, view.FogMaterial.GetFloat("_FogCellSize"));
             var map = new Fog3MapData(terrain);
             view.Render(map, false);
 
@@ -64,6 +67,60 @@ public sealed class Fog3StageCheckpointTests
         finally
         {
             Object.DestroyImmediate(viewObject);
+        }
+    }
+
+    [TestCase(0f)]
+    [TestCase(0.55f)]
+    public void BoundaryFade_RendersOnlyInsideTheMoreTransparentCell(float transparentSideAlpha)
+    {
+        Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");
+        Assert.IsNotNull(shader);
+
+        Texture2D source = new Texture2D(2, 1, TextureFormat.RGBA32, false, true)
+        {
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        RenderTexture target = RenderTexture.GetTemporary(400, 8, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+        Material material = new Material(shader);
+        Texture2D readback = new Texture2D(400, 8, TextureFormat.RGBA32, false, true);
+        RenderTexture previous = RenderTexture.active;
+        try
+        {
+            source.SetPixels(new[]
+            {
+                new Color(1f, 1f, 1f, 1f),
+                new Color(1f, 1f, 1f, transparentSideAlpha),
+            });
+            source.Apply(false);
+            material.SetFloat("_FogCellSize", 1f);
+            material.SetFloat("_FogBoundaryFadeDistance", 0.25f);
+
+            RenderTexture.active = target;
+            GL.Clear(true, true, Color.clear);
+            Graphics.Blit(source, target, material);
+            readback.ReadPixels(new Rect(0f, 0f, target.width, target.height), 0, 0, false);
+            readback.Apply(false);
+
+            Assert.AreEqual(1f, readback.GetPixel(180, 4).r, 0.02f, "The darker cell must remain unchanged up to its edge.");
+            const int boundarySampleX = 200;
+            float boundarySampleLocalDistance = ((boundarySampleX + 0.5f) / target.width * 2f - 1f);
+            float expectedBoundaryAlpha = Mathf.Lerp(1f, transparentSideAlpha, boundarySampleLocalDistance / 0.25f);
+            Assert.AreEqual(expectedBoundaryAlpha, readback.GetPixel(boundarySampleX, 4).r, 0.02f, "The transition starts from the darker alpha on the transparent side.");
+
+            float expectedMidpointAlpha = Mathf.Lerp(1f, transparentSideAlpha, 0.5f);
+            Assert.AreEqual(expectedMidpointAlpha, readback.GetPixel(225, 4).r, 0.03f);
+            Assert.AreEqual(transparentSideAlpha, readback.GetPixel(251, 4).r, 0.03f, "The fade distance is measured inside the transparent cell.");
+            Assert.AreEqual(transparentSideAlpha, readback.GetPixel(320, 4).r, 0.02f);
+        }
+        finally
+        {
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            Object.DestroyImmediate(readback);
+            Object.DestroyImmediate(material);
+            Object.DestroyImmediate(source);
         }
     }
 
@@ -358,7 +415,7 @@ public sealed class Fog3StageCheckpointTests
                 OverlayAlwaysOnTopShader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop"),
             };
             Fog3WorldOverlayView view = viewObject.AddComponent<Fog3WorldOverlayView>();
-            view.Build(terrain, settings, 5f, Physics.DefaultRaycastLayers, Vector3.zero, 1f);
+            view.Build(terrain, settings, 5f, Physics.DefaultRaycastLayers, Vector3.zero, 1f, 0.25f);
 
             Mesh mesh = viewObject.transform.Find("FOG3_WorldOverlay").GetComponent<MeshFilter>().sharedMesh;
             Vector3[] vertices = mesh.vertices;
@@ -917,7 +974,7 @@ public sealed class Fog3StageCheckpointTests
             OverlayAlwaysOnTopShader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop"),
         };
         Fog3WorldOverlayView view = viewObject.AddComponent<Fog3WorldOverlayView>();
-        view.Build(terrain, settings, 5f, Physics.DefaultRaycastLayers, Vector3.zero, 1f);
+        view.Build(terrain, settings, 5f, Physics.DefaultRaycastLayers, Vector3.zero, 1f, 0.25f);
         return view;
     }
 

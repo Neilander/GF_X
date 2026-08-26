@@ -21,6 +21,7 @@ namespace AAAGame.MiniMap.FOG3
         private Bounds fogMeshBounds;
         private bool fogMeshUsesCameraProjectionGrid;
         private float visibilityFadeSpeed;
+        private float visibilityBoundaryFadeDistance;
         private bool visibilityFadeActive;
         private readonly RaycastHit[] projectionHeightHits = new RaycastHit[32];
         private readonly System.Collections.Generic.List<OutsideMaskQuad> outsideMaskQuads = new System.Collections.Generic.List<OutsideMaskQuad>();
@@ -39,6 +40,7 @@ namespace AAAGame.MiniMap.FOG3
         public int OutsideMaskQuadCount => outsideMaskQuads.Count;
         public bool FogMeshUsesCameraProjectionGrid => fogMeshUsesCameraProjectionGrid;
         public float VisibilityFadeSpeed => visibilityFadeSpeed;
+        public float VisibilityBoundaryFadeDistance => visibilityBoundaryFadeDistance;
 
         public void Build(
             Fog3TerrainInfo terrainInfo,
@@ -46,18 +48,29 @@ namespace AAAGame.MiniMap.FOG3
             float resolvedOverlayHeight,
             LayerMask resolvedHeightSampleMask,
             Vector3 worldOffset,
-            float resolvedVisibilityFadeSpeed)
+            float resolvedVisibilityFadeSpeed,
+            float resolvedVisibilityBoundaryFadeDistance)
         {
             if (terrainInfo == null)
                 throw new System.ArgumentNullException(nameof(terrainInfo));
             if (resolvedVisibilityFadeSpeed <= 0f || float.IsNaN(resolvedVisibilityFadeSpeed) || float.IsInfinity(resolvedVisibilityFadeSpeed))
                 throw new System.ArgumentOutOfRangeException(nameof(resolvedVisibilityFadeSpeed), "FOG3 visibility fade speed must be finite and positive.");
+            if (resolvedVisibilityBoundaryFadeDistance <= 0f
+                || resolvedVisibilityBoundaryFadeDistance > terrainInfo.CellSize
+                || float.IsNaN(resolvedVisibilityBoundaryFadeDistance)
+                || float.IsInfinity(resolvedVisibilityBoundaryFadeDistance))
+            {
+                throw new System.ArgumentOutOfRangeException(
+                    nameof(resolvedVisibilityBoundaryFadeDistance),
+                    $"FOG3 visibility boundary fade distance must be finite, positive, and no greater than cell size {terrainInfo.CellSize}.");
+            }
 
             this.terrainInfo = terrainInfo;
             settings = viewSettings ?? new Fog3ViewSettings();
             heightSampleMask = resolvedHeightSampleMask;
             overlayHeight = Mathf.Max(0f, resolvedOverlayHeight);
             visibilityFadeSpeed = resolvedVisibilityFadeSpeed;
+            visibilityBoundaryFadeDistance = resolvedVisibilityBoundaryFadeDistance;
             SetWorldOffset(terrainInfo, worldOffset);
             transform.rotation = Quaternion.identity;
             transform.localScale = Vector3.one;
@@ -342,6 +355,8 @@ namespace AAAGame.MiniMap.FOG3
 
             fogMaterial = CreateTransparentMaterial("FOG3_WorldOverlayMaterial", Color.white, 100);
             SetMainTexture(fogMaterial, fogTexture);
+            fogMaterial.SetFloat("_FogCellSize", terrainInfo.CellSize);
+            fogMaterial.SetFloat("_FogBoundaryFadeDistance", visibilityBoundaryFadeDistance);
             meshRenderer.sharedMaterial = fogMaterial;
             meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
             meshRenderer.receiveShadows = false;

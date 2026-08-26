@@ -38,6 +38,7 @@ namespace AAAGame.MiniMap.FOG3
         private const string UnitVisionRadiusConfigKey = "UnitVisionRadius";
         private const string BuildingVisionRadiusConfigKey = "BuildingVisionRadius";
         private const string VisionFadeSpeedConfigKey = "VisionFadeSpeed";
+        private const string VisionBoundaryFadeDistanceConfigKey = "VisionBoundaryFadeDistance";
 
         [Header("地形检测")]
         [Tooltip("地形检测和可行走区域配置。")]
@@ -879,7 +880,8 @@ namespace AAAGame.MiniMap.FOG3
                 currentOverlayHeight,
                 ResolveHeightSampleMask(),
                 currentOverlayWorldOffset,
-                ResolveVisibilityFadeSpeed());
+                ResolveVisibilityFadeSpeed(),
+                ResolveVisibilityBoundaryFadeDistance(terrainInfo));
             overlayView.Render(controller.MapData, logPerformanceDiagnostics);
         }
 
@@ -889,6 +891,23 @@ namespace AAAGame.MiniMap.FOG3
             if (speed <= 0f || float.IsNaN(speed) || float.IsInfinity(speed))
                 throw new InvalidOperationException($"FOG3 visibility fade speed must be finite and positive. value={speed}.");
             return speed;
+        }
+
+        private static float ResolveVisibilityBoundaryFadeDistance(Fog3TerrainInfo terrainInfo)
+        {
+            if (terrainInfo == null)
+                throw new ArgumentNullException(nameof(terrainInfo));
+
+            float distance = (float)FixedConfigReader.ReadRequiredPositiveFixedConfig(VisionBoundaryFadeDistanceConfigKey);
+            if (distance <= 0f || float.IsNaN(distance) || float.IsInfinity(distance))
+                throw new InvalidOperationException($"FOG3 visibility boundary fade distance must be finite and positive. value={distance}.");
+            if (distance > terrainInfo.CellSize)
+            {
+                throw new InvalidOperationException(
+                    $"FOG3 visibility boundary fade distance cannot exceed one fog cell. distance={distance}, cellSize={terrainInfo.CellSize}.");
+            }
+
+            return distance;
         }
 
         private LayerMask ResolveHeightSampleMask()
@@ -1156,7 +1175,8 @@ namespace AAAGame.MiniMap.FOG3
                 currentOverlayHeight,
                 ResolveHeightSampleMask(),
                 currentOverlayWorldOffset,
-                ResolveVisibilityFadeSpeed());
+                ResolveVisibilityFadeSpeed(),
+                ResolveVisibilityBoundaryFadeDistance(currentTerrainInfo));
             overlayView.Render(controller.MapData, logPerformanceDiagnostics);
 
             if (isCloudLayer)

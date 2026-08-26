@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1 &797019000687460699
+--- !u!1 &97035854905578372
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -8,8 +8,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 7256740891769104856}
-  - component: {fileID: 6858616836067020107}
+  - component: {fileID: 7985460552153622452}
+  - component: {fileID: 9183447882966173416}
   m_Layer: 12
   m_Name: _BuildingFootprint
   m_TagString: Untagged
@@ -17,13 +17,13 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &7256740891769104856
+--- !u!4 &7985460552153622452
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 797019000687460699}
+  m_GameObject: {fileID: 97035854905578372}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -32,13 +32,13 @@ Transform:
   m_Children: []
   m_Father: {fileID: 156642498457131979}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!65 &6858616836067020107
+--- !u!65 &9183447882966173416
 BoxCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 797019000687460699}
+  m_GameObject: {fileID: 97035854905578372}
   m_Material: {fileID: 0}
   m_IncludeLayers:
     serializedVersion: 2
@@ -116,7 +116,7 @@ Transform:
   m_Children:
   - {fileID: 7013402537817940598}
   - {fileID: 738238523873638053}
-  - {fileID: 7256740891769104856}
+  - {fileID: 7985460552153622452}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &126797463086480587

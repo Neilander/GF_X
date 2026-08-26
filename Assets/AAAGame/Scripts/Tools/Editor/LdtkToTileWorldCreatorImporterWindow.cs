@@ -3561,6 +3561,11 @@ namespace AAAGame.Tools.Editor
                 footprintGridSize = 4;
                 return true;
             }
+            if (string.Equals(entityType, "Building55", StringComparison.OrdinalIgnoreCase))
+            {
+                footprintGridSize = 5;
+                return true;
+            }
 
             footprintGridSize = 0;
             return false;
