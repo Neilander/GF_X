@@ -6,6 +6,22 @@ using System.IO.Compression;
 
 namespace AAAGame.MiniMap.FOG3
 {
+    public readonly struct Fog3VisibilityRowInterval
+    {
+        public Fog3VisibilityRowInterval(int y, int minimumX, int maximumX)
+        {
+            if (minimumX > maximumX)
+                throw new ArgumentOutOfRangeException(nameof(minimumX));
+            Y = y;
+            MinimumX = minimumX;
+            MaximumX = maximumX;
+        }
+
+        public int Y { get; }
+        public int MinimumX { get; }
+        public int MaximumX { get; }
+    }
+
     public sealed class Fog3ExplorationCheckpoint
     {
         private readonly byte[] compressedExploredBits;
@@ -87,73 +103,160 @@ namespace AAAGame.MiniMap.FOG3
         private readonly bool[] slopeMask;
         private readonly Fog3SlopeCellInfo[] slopeCells;
         private readonly float[] currentVisibility;
+        private readonly int[] visibilityCoverage;
+        private readonly int[] visibilityRowDifference;
+        private readonly bool[] dirtyVisibilityRows;
+        private readonly bool[] dirtyCellFlags;
+        private readonly System.Collections.Generic.List<int> dirtyCellIndices;
+        private readonly int[] fovVisitStamps;
         private readonly ulong terrainHash;
-        private readonly long cellSizeGridRaw;
+        private readonly long cellSizeXGridRaw;
+        private readonly long cellSizeYGridRaw;
+        private readonly long terrainCellSizeGridRaw;
         private readonly long originXGridRaw;
         private readonly long originZGridRaw;
+        private readonly long maximumXGridRaw;
+        private readonly long maximumZGridRaw;
+        private readonly float worldWidth;
+        private readonly float worldHeight;
         private int exploredCellCount;
         private ulong explorationXorDigest;
         private ulong explorationSumDigest;
         private ulong explorationVersion;
+        private ulong visibilityResetVersion;
         private ulong lastCheckpointExplorationVersion = ulong.MaxValue;
         private Fog3ExplorationCheckpoint lastExplorationCheckpoint;
+        private int nextFovVisitStamp = 1;
+        private int dirtyMinimumX;
+        private int dirtyMinimumY;
+        private int dirtyMaximumX = -1;
+        private int dirtyMaximumY = -1;
 
-        public Fog3MapData(Fog3TerrainInfo terrainInfo)
+        public event Action VisibilityReset;
+
+        public Fog3MapData(Fog3TerrainInfo terrainInfo, Fix64 logicCellSize)
         {
-            Width = terrainInfo.Width;
-            Height = terrainInfo.Height;
-            CellSize = terrainInfo.CellSize;
+            if (terrainInfo == null)
+                throw new ArgumentNullException(nameof(terrainInfo));
+            if (logicCellSize <= Fix64.Zero)
+                throw new ArgumentOutOfRangeException(nameof(logicCellSize), logicCellSize.RawValue, "FOG3 logic cell size must be positive.");
+
+            LogicCellSizeFixed = logicCellSize;
+            CellSizeX = (float)logicCellSize;
+            CellSizeY = (float)logicCellSize;
+            CellSize = (float)logicCellSize;
             WorldOrigin = terrainInfo.Origin;
-            cellSizeGridRaw = NavigationGridFixedMath.FloatToGridRaw(terrainInfo.CellSize);
+            cellSizeXGridRaw = NavigationGridFixedMath.Fix64ToGridRaw(logicCellSize);
+            cellSizeYGridRaw = cellSizeXGridRaw;
+            terrainCellSizeGridRaw = NavigationGridFixedMath.FloatToGridRaw(terrainInfo.CellSize);
             originXGridRaw = NavigationGridFixedMath.FloatToGridRaw(terrainInfo.Origin.x);
             originZGridRaw = NavigationGridFixedMath.FloatToGridRaw(terrainInfo.Origin.z);
-            if (cellSizeGridRaw <= 0)
+            if (cellSizeXGridRaw <= 0 || cellSizeYGridRaw <= 0 || terrainCellSizeGridRaw <= 0)
                 throw new System.InvalidOperationException("Fog3MapData grid cell size must be positive.");
 
-            int length = Width * Height;
+            long worldWidthGridRaw = checked((long)terrainInfo.Width * terrainCellSizeGridRaw);
+            long worldHeightGridRaw = checked((long)terrainInfo.Height * terrainCellSizeGridRaw);
+            Width = DividePositiveCeiling(worldWidthGridRaw, cellSizeXGridRaw);
+            Height = DividePositiveCeiling(worldHeightGridRaw, cellSizeYGridRaw);
+            maximumXGridRaw = checked(originXGridRaw + worldWidthGridRaw);
+            maximumZGridRaw = checked(originZGridRaw + worldHeightGridRaw);
+            worldWidth = terrainInfo.Width * terrainInfo.CellSize;
+            worldHeight = terrainInfo.Height * terrainInfo.CellSize;
+
+            int length = checked(Width * Height);
             explored = new bool[length];
             currentVisibility = new float[length];
+            visibilityCoverage = new int[length];
+            visibilityRowDifference = new int[checked((Width + 1) * Height)];
+            dirtyVisibilityRows = new bool[Height];
+            dirtyCellFlags = new bool[length];
+            dirtyCellIndices = new System.Collections.Generic.List<int>();
+            fovVisitStamps = new int[length];
             walkable = new bool[length];
             platformHeights = new int[length];
             slopeMask = new bool[length];
             slopeCells = new Fog3SlopeCellInfo[length];
-            System.Array.Copy(terrainInfo.WalkableMask, walkable, length);
-            System.Array.Copy(terrainInfo.PlatformHeights, platformHeights, length);
-            System.Array.Copy(terrainInfo.SlopeMask, slopeMask, length);
-            System.Array.Copy(terrainInfo.SlopeCells, slopeCells, length);
+            for (int y = 0; y < Height; y++)
+            {
+                long centerYRaw = ResolveCellCenterRaw(y, originZGridRaw, cellSizeYGridRaw, maximumZGridRaw);
+                int terrainY = Math.Min(
+                    terrainInfo.Height - 1,
+                    NavigationGridFixedMath.GridRawToCell(centerYRaw, originZGridRaw, terrainCellSizeGridRaw));
+                for (int x = 0; x < Width; x++)
+                {
+                    long centerXRaw = ResolveCellCenterRaw(x, originXGridRaw, cellSizeXGridRaw, maximumXGridRaw);
+                    int terrainX = Math.Min(
+                        terrainInfo.Width - 1,
+                        NavigationGridFixedMath.GridRawToCell(centerXRaw, originXGridRaw, terrainCellSizeGridRaw));
+                    int index = x + y * Width;
+                    int terrainIndex = terrainX + terrainY * terrainInfo.Width;
+                    walkable[index] = terrainInfo.WalkableMask[terrainIndex];
+                    platformHeights[index] = terrainInfo.PlatformHeights[terrainIndex];
+                    slopeMask[index] = terrainInfo.SlopeMask[terrainIndex];
+                    slopeCells[index] = terrainInfo.SlopeCells[terrainIndex];
+                }
+            }
             terrainHash = ComputeTerrainHash();
         }
 
         public int Width { get; }
         public int Height { get; }
         public float CellSize { get; }
+        public float CellSizeX { get; }
+        public float CellSizeY { get; }
+        public Fix64 LogicCellSizeFixed { get; }
         public Vector3 WorldOrigin { get; }
         public bool IsDirty { get; private set; }
         public int ExploredCellCount => exploredCellCount;
         public ulong ExplorationXorDigest => explorationXorDigest;
         public ulong ExplorationSumDigest => explorationSumDigest;
         public ulong TerrainHash => terrainHash;
+        public ulong ExplorationVersion => explorationVersion;
+        public ulong VisibilityResetVersion => visibilityResetVersion;
+        public int DirtyCellCount => dirtyCellIndices.Count;
+
+        public void GetDirtyCell(int dirtyIndex, out int x, out int y)
+        {
+            if ((uint)dirtyIndex >= (uint)dirtyCellIndices.Count)
+                throw new ArgumentOutOfRangeException(nameof(dirtyIndex));
+            int cellIndex = dirtyCellIndices[dirtyIndex];
+            x = cellIndex % Width;
+            y = cellIndex / Width;
+        }
+
+        public bool TryGetDirtyBounds(out int minimumX, out int minimumY, out int maximumX, out int maximumY)
+        {
+            minimumX = dirtyMinimumX;
+            minimumY = dirtyMinimumY;
+            maximumX = dirtyMaximumX;
+            maximumY = dirtyMaximumY;
+            return IsDirty;
+        }
 
         public Bounds Bounds
         {
             get
             {
-                Vector3 size = new Vector3(Width * CellSize, 0f, Height * CellSize);
+                Vector3 size = new Vector3(worldWidth, 0f, worldHeight);
                 return new Bounds(WorldOrigin + size * 0.5f, size);
             }
         }
 
         public void ClearCurrentVisibility()
         {
-            bool changed = false;
             for (int i = 0; i < currentVisibility.Length; i++)
             {
-                changed |= currentVisibility[i] > 0f;
+                if (currentVisibility[i] > 0f)
+                    MarkDirtyCell(i % Width, i / Width);
                 currentVisibility[i] = 0f;
+                visibilityCoverage[i] = 0;
             }
 
-            if (changed)
-                IsDirty = true;
+            Array.Clear(visibilityRowDifference, 0, visibilityRowDifference.Length);
+            Array.Clear(dirtyVisibilityRows, 0, dirtyVisibilityRows.Length);
+            visibilityResetVersion = checked(visibilityResetVersion + 1);
+            VisibilityReset?.Invoke();
+
         }
 
         public void MarkVisible(int x, int y)
@@ -166,7 +269,125 @@ namespace AAAGame.MiniMap.FOG3
                 return;
 
             currentVisibility[index] = 1f;
-            IsDirty = true;
+            MarkDirtyCell(x, y);
+        }
+
+        public void ChangeVisibilityCoverage(Fog3VisibilityRowInterval interval, int delta)
+        {
+            if (delta != -1 && delta != 1)
+                throw new ArgumentOutOfRangeException(nameof(delta), "Fog visibility coverage delta must be -1 or 1.");
+            if (!IsValidCell(interval.MinimumX, interval.Y) || !IsValidCell(interval.MaximumX, interval.Y))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(interval),
+                    $"Fog visibility interval y={interval.Y}, x={interval.MinimumX}..{interval.MaximumX} is outside {Width}x{Height}.");
+            }
+
+            int rowOffset = interval.Y * (Width + 1);
+            visibilityRowDifference[rowOffset + interval.MinimumX] = checked(
+                visibilityRowDifference[rowOffset + interval.MinimumX] + delta);
+            visibilityRowDifference[rowOffset + interval.MaximumX + 1] = checked(
+                visibilityRowDifference[rowOffset + interval.MaximumX + 1] - delta);
+            dirtyVisibilityRows[interval.Y] = true;
+        }
+
+        public void ResolveVisibilityCoverageChanges()
+        {
+            for (int y = 0; y < Height; y++)
+            {
+                if (!dirtyVisibilityRows[y])
+                    continue;
+
+                int rowDifferenceOffset = y * (Width + 1);
+                int cellOffset = y * Width;
+                int coverage = 0;
+                for (int x = 0; x < Width; x++)
+                {
+                    coverage = checked(coverage + visibilityRowDifference[rowDifferenceOffset + x]);
+                    if (coverage < 0)
+                    {
+                        throw new InvalidOperationException(
+                            $"Fog visibility coverage became negative at ({x},{y}). coverage={coverage}.");
+                    }
+
+                    int index = cellOffset + x;
+                    int previousCoverage = visibilityCoverage[index];
+                    visibilityCoverage[index] = coverage;
+                    if ((previousCoverage > 0) == (coverage > 0))
+                        continue;
+
+                    currentVisibility[index] = coverage > 0 ? 1f : 0f;
+                    MarkDirtyCell(x, y);
+                }
+
+                if (coverage + visibilityRowDifference[rowDifferenceOffset + Width] != 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Fog visibility row {y} has an unbalanced difference sum.");
+                }
+                dirtyVisibilityRows[y] = false;
+            }
+        }
+
+        public void CollectVisibleIntervals(
+            FixVector2 viewerPosition,
+            Fix64 radius,
+            int viewerHeight,
+            int? requiredHeight,
+            System.Collections.Generic.List<Fog3VisibilityRowInterval> intervals)
+        {
+            if (radius <= Fix64.Zero)
+                throw new ArgumentOutOfRangeException(nameof(radius));
+            if (viewerHeight < 0)
+                throw new ArgumentOutOfRangeException(nameof(viewerHeight));
+            if (requiredHeight.HasValue && requiredHeight.Value < 0)
+                throw new ArgumentOutOfRangeException(nameof(requiredHeight));
+            if (intervals == null)
+                throw new ArgumentNullException(nameof(intervals));
+            if (!WorldToGrid(viewerPosition, out int centerX, out int centerY))
+                throw new ArgumentOutOfRangeException(nameof(viewerPosition));
+
+            intervals.Clear();
+            int visitStamp = AcquireFovVisitStamp();
+            TryMarkFovCell(centerX, centerY, viewerPosition, radius * radius, requiredHeight, visitStamp);
+            int range = GetCellRangeForRadius(radius);
+            for (int octant = 0; octant < 8; octant++)
+            {
+                CastVisibilityOctant(
+                    centerX,
+                    centerY,
+                    1,
+                    Fix64.One,
+                    Fix64.Zero,
+                    range,
+                    viewerPosition,
+                    radius * radius,
+                    viewerHeight,
+                    requiredHeight,
+                    visitStamp,
+                    octant);
+            }
+
+            int minimumY = Math.Max(0, centerY - range);
+            int maximumY = Math.Min(Height - 1, centerY + range);
+            int minimumX = Math.Max(0, centerX - range);
+            int maximumX = Math.Min(Width - 1, centerX + range);
+            for (int y = minimumY; y <= maximumY; y++)
+            {
+                int x = minimumX;
+                while (x <= maximumX)
+                {
+                    while (x <= maximumX && fovVisitStamps[GetIndex(x, y)] != visitStamp)
+                        x++;
+                    if (x > maximumX)
+                        break;
+                    int intervalStart = x;
+                    while (x < maximumX && fovVisitStamps[GetIndex(x + 1, y)] == visitStamp)
+                        x++;
+                    intervals.Add(new Fog3VisibilityRowInterval(y, intervalStart, x));
+                    x++;
+                }
+            }
         }
 
         public void AddVisibility(int x, int y, float intensity)
@@ -182,10 +403,11 @@ namespace AAAGame.MiniMap.FOG3
             if (clamped <= 0f)
                 return;
 
-            if (clamped > currentVisibility[index])
-                currentVisibility[index] = clamped;
+            if (clamped <= currentVisibility[index])
+                return;
 
-            IsDirty = true;
+            currentVisibility[index] = clamped;
+            MarkDirtyCell(x, y);
         }
 
         public bool MarkExplored(int x, int y)
@@ -200,13 +422,20 @@ namespace AAAGame.MiniMap.FOG3
             explored[index] = true;
             AddExplorationDigest(index);
             explorationVersion = checked(explorationVersion + 1);
-            IsDirty = true;
+            MarkDirtyCell(x, y);
             return true;
         }
 
         public void MarkClean()
         {
+            for (int i = 0; i < dirtyCellIndices.Count; i++)
+                dirtyCellFlags[dirtyCellIndices[i]] = false;
             IsDirty = false;
+            dirtyMinimumX = 0;
+            dirtyMinimumY = 0;
+            dirtyMaximumX = -1;
+            dirtyMaximumY = -1;
+            dirtyCellIndices.Clear();
         }
 
         public void ResetExploration()
@@ -216,7 +445,13 @@ namespace AAAGame.MiniMap.FOG3
             {
                 explored[i] = false;
                 currentVisibility[i] = 0f;
+                visibilityCoverage[i] = 0;
             }
+
+            Array.Clear(visibilityRowDifference, 0, visibilityRowDifference.Length);
+            Array.Clear(dirtyVisibilityRows, 0, dirtyVisibilityRows.Length);
+            visibilityResetVersion = checked(visibilityResetVersion + 1);
+            VisibilityReset?.Invoke();
 
             exploredCellCount = 0;
             explorationXorDigest = 0;
@@ -224,7 +459,7 @@ namespace AAAGame.MiniMap.FOG3
             if (changed)
                 explorationVersion = checked(explorationVersion + 1);
 
-            IsDirty = true;
+            MarkAllDirty();
         }
 
         public Fog3ExplorationCheckpoint CaptureExplorationCheckpoint()
@@ -275,13 +510,14 @@ namespace AAAGame.MiniMap.FOG3
             {
                 explored[i] = (exploredBits[i >> 3] & (1 << (i & 7))) != 0;
                 currentVisibility[i] = 0f;
+                visibilityCoverage[i] = 0;
                 if (explored[i])
                     AddExplorationDigest(i);
             }
             explorationVersion = checked(explorationVersion + 1);
             lastExplorationCheckpoint = checkpoint;
             lastCheckpointExplorationVersion = explorationVersion;
-            IsDirty = true;
+            MarkAllDirty();
         }
 
         public Fog3CellState GetCellState(int x, int y)
@@ -346,17 +582,19 @@ namespace AAAGame.MiniMap.FOG3
                 return platformHeight;
 
             Fog3SlopeCellInfo slope = slopeCells[index];
-            long lowerXRaw = checked(originXGridRaw + checked((long)x * cellSizeGridRaw));
-            long lowerYRaw = checked(originZGridRaw + checked((long)y * cellSizeGridRaw));
+            int terrainX = NavigationGridFixedMath.WorldToGridCell(worldPosition.x, originXGridRaw, terrainCellSizeGridRaw);
+            int terrainY = NavigationGridFixedMath.WorldToGridCell(worldPosition.y, originZGridRaw, terrainCellSizeGridRaw);
+            long lowerXRaw = checked(originXGridRaw + checked((long)terrainX * terrainCellSizeGridRaw));
+            long lowerYRaw = checked(originZGridRaw + checked((long)terrainY * terrainCellSizeGridRaw));
             Fix64 progress = slope.DirectionX != 0
                 ? NavigationGridFixedMath.ResolveCellFraction(
                     NavigationGridFixedMath.Fix64ToGridRaw(worldPosition.x),
                     lowerXRaw,
-                    cellSizeGridRaw)
+                    terrainCellSizeGridRaw)
                 : NavigationGridFixedMath.ResolveCellFraction(
                     NavigationGridFixedMath.Fix64ToGridRaw(worldPosition.y),
                     lowerYRaw,
-                    cellSizeGridRaw);
+                    terrainCellSizeGridRaw);
             if (slope.DirectionX < 0 || slope.DirectionY < 0)
                 progress = Fix64.One - progress;
 
@@ -433,38 +671,60 @@ namespace AAAGame.MiniMap.FOG3
 
         public bool WorldToGrid(Vector3 worldPos, out int gridX, out int gridY)
         {
-            gridX = NavigationGridFixedMath.WorldToGridCell(worldPos.x, originXGridRaw, cellSizeGridRaw);
-            gridY = NavigationGridFixedMath.WorldToGridCell(worldPos.z, originZGridRaw, cellSizeGridRaw);
-            return IsValidCell(gridX, gridY);
+            long worldXGridRaw = NavigationGridFixedMath.FloatToGridRaw(worldPos.x);
+            long worldZGridRaw = NavigationGridFixedMath.FloatToGridRaw(worldPos.z);
+            gridX = NavigationGridFixedMath.GridRawToCell(worldXGridRaw, originXGridRaw, cellSizeXGridRaw);
+            gridY = NavigationGridFixedMath.GridRawToCell(worldZGridRaw, originZGridRaw, cellSizeYGridRaw);
+            return worldXGridRaw >= originXGridRaw
+                   && worldXGridRaw < maximumXGridRaw
+                   && worldZGridRaw >= originZGridRaw
+                   && worldZGridRaw < maximumZGridRaw
+                   && IsValidCell(gridX, gridY);
         }
 
         public bool WorldToGrid(FixVector2 worldPos, out int gridX, out int gridY)
         {
-            gridX = NavigationGridFixedMath.WorldToGridCell(worldPos.x, originXGridRaw, cellSizeGridRaw);
-            gridY = NavigationGridFixedMath.WorldToGridCell(worldPos.y, originZGridRaw, cellSizeGridRaw);
-            return IsValidCell(gridX, gridY);
+            long worldXGridRaw = NavigationGridFixedMath.Fix64ToGridRaw(worldPos.x);
+            long worldZGridRaw = NavigationGridFixedMath.Fix64ToGridRaw(worldPos.y);
+            gridX = NavigationGridFixedMath.GridRawToCell(worldXGridRaw, originXGridRaw, cellSizeXGridRaw);
+            gridY = NavigationGridFixedMath.GridRawToCell(worldZGridRaw, originZGridRaw, cellSizeYGridRaw);
+            return worldXGridRaw >= originXGridRaw
+                   && worldXGridRaw < maximumXGridRaw
+                   && worldZGridRaw >= originZGridRaw
+                   && worldZGridRaw < maximumZGridRaw
+                   && IsValidCell(gridX, gridY);
         }
 
         public Vector3 GridToWorldCenter(int gridX, int gridY)
         {
-            float worldX = WorldOrigin.x + (gridX + 0.5f) * CellSize;
-            float worldZ = WorldOrigin.z + (gridY + 0.5f) * CellSize;
-            return new Vector3(worldX, WorldOrigin.y, worldZ);
+            if (!IsValidCell(gridX, gridY))
+                throw new ArgumentOutOfRangeException(nameof(gridX), $"Fog cell ({gridX},{gridY}) is outside {Width}x{Height}.");
+
+            long centerXRaw = ResolveCellCenterRaw(gridX, originXGridRaw, cellSizeXGridRaw, maximumXGridRaw);
+            long centerZRaw = ResolveCellCenterRaw(gridY, originZGridRaw, cellSizeYGridRaw, maximumZGridRaw);
+            return new Vector3(
+                (float)NavigationGridFixedMath.GridRawToFix64(centerXRaw),
+                WorldOrigin.y,
+                (float)NavigationGridFixedMath.GridRawToFix64(centerZRaw));
         }
 
         public FixVector2 GetCellCenterFixed(int gridX, int gridY)
         {
-            return NavigationGridFixedMath.GridCellCenterFixed(
-                cellSizeGridRaw,
-                originXGridRaw,
-                originZGridRaw,
-                gridX,
-                gridY);
+            if (!IsValidCell(gridX, gridY))
+                throw new ArgumentOutOfRangeException(nameof(gridX), $"Fog cell ({gridX},{gridY}) is outside {Width}x{Height}.");
+
+            long centerXRaw = ResolveCellCenterRaw(gridX, originXGridRaw, cellSizeXGridRaw, maximumXGridRaw);
+            long centerYRaw = ResolveCellCenterRaw(gridY, originZGridRaw, cellSizeYGridRaw, maximumZGridRaw);
+            return new FixVector2(
+                NavigationGridFixedMath.GridRawToFix64(centerXRaw),
+                NavigationGridFixedMath.GridRawToFix64(centerYRaw));
         }
 
         public int GetCellRangeForRadius(Fix64 radius)
         {
-            return NavigationGridFixedMath.DivideCeilingByCellSize(radius, cellSizeGridRaw);
+            return Math.Max(
+                NavigationGridFixedMath.DivideCeilingByCellSize(radius, cellSizeXGridRaw),
+                NavigationGridFixedMath.DivideCeilingByCellSize(radius, cellSizeYGridRaw));
         }
 
         public Fog3CellState GetCellState(FixVector2 worldPos)
@@ -551,6 +811,190 @@ namespace AAAGame.MiniMap.FOG3
             return x + y * Width;
         }
 
+        private void MarkDirtyCell(int x, int y)
+        {
+            if (!IsValidCell(x, y))
+                throw new ArgumentOutOfRangeException(nameof(x), $"Fog dirty cell ({x},{y}) is outside {Width}x{Height}.");
+
+            if (!IsDirty)
+            {
+                dirtyMinimumX = x;
+                dirtyMaximumX = x;
+                dirtyMinimumY = y;
+                dirtyMaximumY = y;
+                IsDirty = true;
+            }
+            else
+            {
+                dirtyMinimumX = Math.Min(dirtyMinimumX, x);
+                dirtyMaximumX = Math.Max(dirtyMaximumX, x);
+                dirtyMinimumY = Math.Min(dirtyMinimumY, y);
+                dirtyMaximumY = Math.Max(dirtyMaximumY, y);
+            }
+            int index = GetIndex(x, y);
+            if (dirtyCellFlags[index])
+                return;
+            dirtyCellFlags[index] = true;
+            dirtyCellIndices.Add(index);
+        }
+
+        private void MarkAllDirty()
+        {
+            dirtyMinimumX = 0;
+            dirtyMinimumY = 0;
+            dirtyMaximumX = Width - 1;
+            dirtyMaximumY = Height - 1;
+            IsDirty = true;
+            Array.Clear(dirtyCellFlags, 0, dirtyCellFlags.Length);
+            dirtyCellIndices.Clear();
+            for (int i = 0; i < currentVisibility.Length; i++)
+            {
+                dirtyCellFlags[i] = true;
+                dirtyCellIndices.Add(i);
+            }
+        }
+
+        private int AcquireFovVisitStamp()
+        {
+            if (nextFovVisitStamp == int.MaxValue)
+            {
+                Array.Clear(fovVisitStamps, 0, fovVisitStamps.Length);
+                nextFovVisitStamp = 1;
+            }
+            return nextFovVisitStamp++;
+        }
+
+        private void CastVisibilityOctant(
+            int centerX,
+            int centerY,
+            int row,
+            Fix64 startSlope,
+            Fix64 endSlope,
+            int range,
+            FixVector2 viewerPosition,
+            Fix64 radiusSquared,
+            int viewerHeight,
+            int? requiredHeight,
+            int visitStamp,
+            int octant)
+        {
+            if (startSlope < endSlope)
+                return;
+
+            Fix64 half = Fix64.One / (Fix64)2;
+            Fix64 nextStartSlope = startSlope;
+            bool blocked = false;
+            for (int distance = row; distance <= range && !blocked; distance++)
+            {
+                int deltaY = -distance;
+                for (int deltaX = -distance; deltaX <= 0; deltaX++)
+                {
+                    ResolveOctantCell(centerX, centerY, deltaX, deltaY, octant, out int x, out int y);
+                    Fix64 leftSlope = ((Fix64)deltaX - half) / ((Fix64)deltaY + half);
+                    Fix64 rightSlope = ((Fix64)deltaX + half) / ((Fix64)deltaY - half);
+                    if (startSlope < rightSlope)
+                        continue;
+                    if (endSlope > leftSlope)
+                        break;
+
+                    bool opaque = !IsValidCell(x, y) || IsAboveViewerVisionHeight(x, y, viewerHeight);
+                    if (!opaque)
+                        TryMarkFovCell(x, y, viewerPosition, radiusSquared, requiredHeight, visitStamp);
+
+                    if (blocked)
+                    {
+                        if (opaque)
+                        {
+                            nextStartSlope = rightSlope;
+                            continue;
+                        }
+
+                        blocked = false;
+                        startSlope = nextStartSlope;
+                    }
+                    else if (opaque && distance < range)
+                    {
+                        blocked = true;
+                        CastVisibilityOctant(
+                            centerX,
+                            centerY,
+                            distance + 1,
+                            startSlope,
+                            leftSlope,
+                            range,
+                            viewerPosition,
+                            radiusSquared,
+                            viewerHeight,
+                            requiredHeight,
+                            visitStamp,
+                            octant);
+                        nextStartSlope = rightSlope;
+                    }
+                }
+            }
+        }
+
+        private void TryMarkFovCell(
+            int x,
+            int y,
+            FixVector2 viewerPosition,
+            Fix64 radiusSquared,
+            int? requiredHeight,
+            int visitStamp)
+        {
+            if (!IsValidCell(x, y) || !walkable[GetIndex(x, y)])
+                return;
+            if (requiredHeight.HasValue && platformHeights[GetIndex(x, y)] < 0)
+                return;
+            FixVector2 center = GetCellCenterFixed(x, y);
+            if (FixVector2.SqrMagnitude(center - viewerPosition) > radiusSquared)
+                return;
+            if (requiredHeight.HasValue && GetVisionHeight(center) != requiredHeight.Value)
+                return;
+            fovVisitStamps[GetIndex(x, y)] = visitStamp;
+        }
+
+        private static void ResolveOctantCell(
+            int centerX,
+            int centerY,
+            int deltaX,
+            int deltaY,
+            int octant,
+            out int x,
+            out int y)
+        {
+            switch (octant)
+            {
+                case 0: x = centerX + deltaX; y = centerY + deltaY; return;
+                case 1: x = centerX + deltaY; y = centerY + deltaX; return;
+                case 2: x = centerX - deltaY; y = centerY + deltaX; return;
+                case 3: x = centerX - deltaX; y = centerY + deltaY; return;
+                case 4: x = centerX - deltaX; y = centerY - deltaY; return;
+                case 5: x = centerX - deltaY; y = centerY - deltaX; return;
+                case 6: x = centerX + deltaY; y = centerY - deltaX; return;
+                case 7: x = centerX + deltaX; y = centerY - deltaY; return;
+                default: throw new ArgumentOutOfRangeException(nameof(octant));
+            }
+        }
+
+        private static int DividePositiveCeiling(long value, long divisor)
+        {
+            if (value <= 0)
+                throw new ArgumentOutOfRangeException(nameof(value));
+            if (divisor <= 0)
+                throw new ArgumentOutOfRangeException(nameof(divisor));
+            return checked((int)((value + divisor - 1L) / divisor));
+        }
+
+        private static long ResolveCellCenterRaw(int cell, long originRaw, long cellSizeRaw, long maximumRaw)
+        {
+            long lowerRaw = checked(originRaw + checked((long)cell * cellSizeRaw));
+            long upperRaw = Math.Min(checked(lowerRaw + cellSizeRaw), maximumRaw);
+            if (lowerRaw >= upperRaw)
+                throw new InvalidOperationException($"FOG3 cell {cell} lies outside its world bounds.");
+            return lowerRaw + (upperRaw - lowerRaw) / 2L;
+        }
+
         private ulong ComputeTerrainHash()
         {
             const ulong offset = 14695981039346656037UL;
@@ -558,7 +1002,8 @@ namespace AAAGame.MiniMap.FOG3
             ulong hash = offset;
             AddHash(ref hash, unchecked((ulong)Width), prime);
             AddHash(ref hash, unchecked((ulong)Height), prime);
-            AddHash(ref hash, unchecked((ulong)System.BitConverter.SingleToInt32Bits(CellSize)), prime);
+            AddHash(ref hash, unchecked((ulong)System.BitConverter.SingleToInt32Bits(CellSizeX)), prime);
+            AddHash(ref hash, unchecked((ulong)System.BitConverter.SingleToInt32Bits(CellSizeY)), prime);
             AddHash(ref hash, unchecked((ulong)System.BitConverter.SingleToInt32Bits(WorldOrigin.x)), prime);
             AddHash(ref hash, unchecked((ulong)System.BitConverter.SingleToInt32Bits(WorldOrigin.y)), prime);
             AddHash(ref hash, unchecked((ulong)System.BitConverter.SingleToInt32Bits(WorldOrigin.z)), prime);

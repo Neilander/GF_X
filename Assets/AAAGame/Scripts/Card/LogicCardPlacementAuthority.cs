@@ -22,6 +22,12 @@ namespace AAAGame.Card
         private const string BuildingVisionRadiusConfigKey = "BuildingVisionRadius";
         private const string EnemyStrongholdFriendlyUnitDeployRadiusConfigKey = "EnemyStrongholdFriendlyUnitDeployRadius";
         private static readonly List<LogicCombatShape> s_StaticForbiddenShapes = new();
+        private static readonly Dictionary<long, CachedVisibilitySource> s_VisibilitySources = new();
+        private static readonly HashSet<int> s_DirtyEntityIds = new();
+        private static readonly HashSet<int> s_SeenEntityIds = new();
+        private static readonly HashSet<long> s_SeenStationarySourceKeys = new();
+        private static readonly List<long> s_RemovedVisibilitySourceKeys = new();
+        private static readonly List<Fog3VisibilityRowInterval> s_GeometryIntervals = new();
         private static Fog3MapData s_MapData;
         private static Fix64 s_HeroVisionRadius;
         private static Fix64 s_UnitVisionRadius;
@@ -29,6 +35,48 @@ namespace AAAGame.Card
         private static Fix64 s_EnemyStrongholdFriendlyUnitDeployRadius;
         private static bool s_BlockHiddenRevealByEnemyStronghold;
         private static ulong s_StaticForbiddenHash;
+        private static ulong s_ObservedVisibilityResetVersion;
+        private static bool s_AllEntityVisibilityDirty;
+        private static bool s_StationaryVisibilityDirty;
+
+        private readonly struct VisibilitySourceState : IEquatable<VisibilitySourceState>
+        {
+            public VisibilitySourceState(
+                FixVector2 position,
+                Fix64 radius,
+                int viewerHeight,
+                int requiredHeight,
+                bool canExploreHiddenFog)
+            {
+                Position = position;
+                Radius = radius;
+                ViewerHeight = viewerHeight;
+                RequiredHeight = requiredHeight;
+                CanExploreHiddenFog = canExploreHiddenFog;
+            }
+
+            public FixVector2 Position { get; }
+            public Fix64 Radius { get; }
+            public int ViewerHeight { get; }
+            public int RequiredHeight { get; }
+            public bool CanExploreHiddenFog { get; }
+
+            public bool Equals(VisibilitySourceState other)
+            {
+                return Position.x == other.Position.x
+                       && Position.y == other.Position.y
+                       && Radius == other.Radius
+                       && ViewerHeight == other.ViewerHeight
+                       && RequiredHeight == other.RequiredHeight
+                       && CanExploreHiddenFog == other.CanExploreHiddenFog;
+            }
+        }
+
+        private sealed class CachedVisibilitySource
+        {
+            public VisibilitySourceState State;
+            public readonly List<Fog3VisibilityRowInterval> Intervals = new();
+        }
 
         public static bool IsActive { get; private set; }
         public static bool IsWorldBound => s_MapData != null;
@@ -112,47 +160,156 @@ namespace AAAGame.Card
                     $"LogicCardPlacementAuthority.ApplyFrame requires contiguous frames. previous={LastAppliedFrame}, current={frameId}.");
             }
 
-            RebuildVisibilityFromCurrentEntities();
+            ConsumeVisibilityDirty();
             LastAppliedFrame = frameId;
         }
 
-        private static void RebuildVisibilityFromCurrentEntities()
+        private static void ConsumeVisibilityDirty()
         {
-            s_MapData.ClearCurrentVisibility();
+            if (s_ObservedVisibilityResetVersion != s_MapData.VisibilityResetVersion)
+            {
+                s_VisibilitySources.Clear();
+                s_ObservedVisibilityResetVersion = s_MapData.VisibilityResetVersion;
+                s_AllEntityVisibilityDirty = true;
+                s_StationaryVisibilityDirty = true;
+            }
+
+            if (!s_AllEntityVisibilityDirty && s_DirtyEntityIds.Count == 0 && !s_StationaryVisibilityDirty)
+                return;
+
+            ulong explorationVersionBeforeUpdate = s_MapData.ExplorationVersion;
+            if (s_AllEntityVisibilityDirty)
+            {
+                SynchronizeAllEntityVisibilitySources();
+                s_AllEntityVisibilityDirty = false;
+                s_DirtyEntityIds.Clear();
+            }
+            else
+            {
+                SynchronizeDirtyEntityVisibilitySources();
+                s_DirtyEntityIds.Clear();
+            }
+
+            if (s_StationaryVisibilityDirty)
+            {
+                SynchronizeStationaryVisibilitySources();
+                s_StationaryVisibilityDirty = false;
+            }
+            if (s_MapData.ExplorationVersion != explorationVersionBeforeUpdate)
+                RefreshExplorationDependentVisibilitySources();
+            s_MapData.ResolveVisibilityCoverageChanges();
+        }
+
+        private static void SynchronizeAllEntityVisibilitySources()
+        {
             IList<IEntityContext> entities = EntityRegistry.AllEntities;
             bool hasGhostHero = HasPlayerGhostHero(entities);
+            s_SeenEntityIds.Clear();
             for (int i = 0; i < entities.Count; i++)
             {
-                IEntityContext entity = entities[i];
-                if (entity == null)
-                    throw new InvalidOperationException($"LogicCardPlacementAuthority found a null registry entity at index {i}.");
-                if (!TryGetRevealRadius(entity, out Fix64 radius))
-                    continue;
-                bool canExploreHiddenFog = CanExploreHiddenFog(entity, hasGhostHero);
-                AddActualVisibilityCircle(entity.PositionFixed, radius, canExploreHiddenFog);
-                AddSlopeUpperVisibility(entity, canExploreHiddenFog);
+                IEntityContext entity = entities[i]
+                    ?? throw new InvalidOperationException($"LogicCardPlacementAuthority found a null registry entity at index {i}.");
+                if (!entity.LogicEntityId.IsValid)
+                    throw new InvalidOperationException($"LogicCardPlacementAuthority found an invalid entity id at registry index {i}.");
+                s_SeenEntityIds.Add(entity.LogicEntityId.Value);
+                SynchronizeEntityVisibilitySource(entity, hasGhostHero);
             }
-            LogicFactionVisionService.VisitStationaryReveals(
-                SideType.PlayerSide,
-                AddDamageAlertVisibilityCircle);
-        }
 
-        private static void AddDamageAlertVisibilityCircle(FixVector2 position, Fix64 radius, int sourceHeight)
-        {
-            AddActualVisibilityCircle(position, radius, true, sourceHeight);
-        }
-
-        private static void AddSlopeUpperVisibility(IEntityContext entity, bool canExploreHiddenFog)
-        {
-            if (entity.IsLogicBuilding()
-                || !TryWorldToCell(entity.PositionFixed, out int x, out int y)
-                || !s_MapData.IsSlope(x, y))
+            s_RemovedVisibilitySourceKeys.Clear();
+            foreach (KeyValuePair<long, CachedVisibilitySource> pair in s_VisibilitySources)
             {
+                if (pair.Key >= 0 && !s_SeenEntityIds.Contains((int)(pair.Key >> 1)))
+                    s_RemovedVisibilitySourceKeys.Add(pair.Key);
+            }
+            RemoveVisibilitySources(s_RemovedVisibilitySourceKeys);
+        }
+
+        private static void SynchronizeDirtyEntityVisibilitySources()
+        {
+            bool hasGhostHero = HasPlayerGhostHero(EntityRegistry.AllEntities);
+            foreach (int entityId in s_DirtyEntityIds)
+            {
+                var logicEntityId = new LogicEntityId(entityId);
+                if (EntityRegistry.TryGet(logicEntityId, out IEntityContext entity))
+                    SynchronizeEntityVisibilitySource(entity, hasGhostHero);
+                else
+                    RemoveEntityVisibilitySources(entityId);
+            }
+        }
+
+        private static void SynchronizeEntityVisibilitySource(IEntityContext entity, bool hasGhostHero)
+        {
+            if (!TryGetRevealRadius(entity, out Fix64 radius))
+            {
+                RemoveEntityVisibilitySources(entity.LogicEntityId.Value);
                 return;
             }
-            Fix64 radius = ResolveVisionRadius(LogicFactionVisionService.SlopeUpperVisionRadiusConfigKey);
-            int upperHeight = s_MapData.GetVisionHeight(entity.PositionFixed) + 1;
-            AddActualVisibilityCircle(entity.PositionFixed, radius, canExploreHiddenFog, upperHeight);
+            UpdateEntityVisibilitySources(entity, radius, CanExploreHiddenFog(entity, hasGhostHero));
+        }
+
+        private static void SynchronizeStationaryVisibilitySources()
+        {
+            s_SeenStationarySourceKeys.Clear();
+            LogicFactionVisionService.VisitStationaryReveals(
+                SideType.PlayerSide,
+                UpdateDamageAlertVisibilitySource);
+            s_RemovedVisibilitySourceKeys.Clear();
+            foreach (KeyValuePair<long, CachedVisibilitySource> pair in s_VisibilitySources)
+            {
+                if (pair.Key < 0 && !s_SeenStationarySourceKeys.Contains(pair.Key))
+                    s_RemovedVisibilitySourceKeys.Add(pair.Key);
+            }
+            RemoveVisibilitySources(s_RemovedVisibilitySourceKeys);
+        }
+
+        private static void UpdateDamageAlertVisibilitySource(int revealId, FixVector2 position, Fix64 radius, int sourceHeight)
+        {
+            if (revealId <= 0)
+                throw new ArgumentOutOfRangeException(nameof(revealId));
+            long sourceKey = long.MinValue + revealId;
+            s_SeenStationarySourceKeys.Add(sourceKey);
+            UpdateVisibilitySource(
+                sourceKey,
+                CreateVisibilitySourceState(position, radius, sourceHeight, sourceHeight, true),
+                false);
+        }
+
+        private static void UpdateEntityVisibilitySources(
+            IEntityContext entity,
+            Fix64 radius,
+            bool canExploreHiddenFog)
+        {
+            if (!TryWorldToCell(entity.PositionFixed, out int x, out int y))
+            {
+                RemoveEntityVisibilitySources(entity.LogicEntityId.Value);
+                return;
+            }
+
+            long baseKey = checked((long)entity.LogicEntityId.Value << 1);
+            int viewerHeight = s_MapData.GetVisionHeight(entity.PositionFixed);
+            UpdateVisibilitySource(
+                baseKey,
+                CreateVisibilitySourceState(entity.PositionFixed, radius, viewerHeight, -1, canExploreHiddenFog),
+                false);
+
+            if (entity.IsLogicBuilding()
+                || !s_MapData.IsSlope(x, y))
+            {
+                long upperKey = baseKey | 1L;
+                if (s_VisibilitySources.TryGetValue(upperKey, out CachedVisibilitySource upperCached))
+                {
+                    ChangeVisibilityIntervals(upperCached.Intervals, -1);
+                    s_VisibilitySources.Remove(upperKey);
+                }
+                return;
+            }
+
+            Fix64 upperRadius = ResolveVisionRadius(LogicFactionVisionService.SlopeUpperVisionRadiusConfigKey);
+            int upperHeight = viewerHeight + 1;
+            UpdateVisibilitySource(
+                baseKey | 1L,
+                CreateVisibilitySourceState(entity.PositionFixed, upperRadius, upperHeight, upperHeight, canExploreHiddenFog),
+                false);
         }
 
         public static LogicCardPlacementInvalidReason Evaluate(
@@ -367,6 +524,12 @@ namespace AAAGame.Card
 
             s_MapData = mapData;
             LogicFactionVisionService.BindMap(mapData);
+            EntityRegistry.Registered += OnEntityRegistered;
+            EntityRegistry.Unregistered += OnEntityUnregistered;
+            LogicFactionVisionService.EntityVisibilityInputChanged += OnEntityVisibilityInputChanged;
+            LogicFactionVisionService.AllEntityVisibilityInputsChanged += OnAllEntityVisibilityInputsChanged;
+            LogicFactionVisionService.StationaryRevealsChanged += OnStationaryRevealsChanged;
+            s_MapData.VisibilityReset += OnVisibilityReset;
             s_HeroVisionRadius = heroVisionRadius;
             s_UnitVisionRadius = unitVisionRadius;
             s_BuildingVisionRadius = buildingVisionRadius;
@@ -377,9 +540,13 @@ namespace AAAGame.Card
                 s_StaticForbiddenShapes.Add(staticForbiddenShapes[i]);
             s_StaticForbiddenShapes.Sort(CompareShapes);
             s_StaticForbiddenHash = ComputeStaticForbiddenHash(s_StaticForbiddenShapes);
+            s_VisibilitySources.Clear();
+            s_ObservedVisibilityResetVersion = s_MapData.VisibilityResetVersion;
+            s_AllEntityVisibilityDirty = true;
+            s_StationaryVisibilityDirty = true;
             LastAppliedFrame = LogicTimeControlService.CurrentFrame;
             if (LastAppliedFrame != 0)
-                RebuildVisibilityFromCurrentEntities();
+                ConsumeVisibilityDirty();
         }
 
         private static Fix64 ResolveVisionRadius(string configKey)
@@ -426,53 +593,138 @@ namespace AAAGame.Card
             }
         }
 
-        private static void AddActualVisibilityCircle(
+        private static VisibilitySourceState CreateVisibilitySourceState(
             FixVector2 position,
             Fix64 radius,
-            bool canExploreHiddenFog,
-            int? requiredHeight = null)
+            int viewerHeight,
+            int requiredHeight,
+            bool canExploreHiddenFog)
         {
             if (radius <= Fix64.Zero)
                 throw new ArgumentOutOfRangeException(nameof(radius));
             if (!TryWorldToCell(position, out int centerX, out int centerY))
-                return;
+                throw new ArgumentOutOfRangeException(nameof(position), $"Fog visibility source {position} is outside the map.");
+            if (viewerHeight < 0)
+                throw new ArgumentOutOfRangeException(nameof(viewerHeight));
+            if (requiredHeight < -1)
+                throw new ArgumentOutOfRangeException(nameof(requiredHeight));
 
-            int viewerHeight = requiredHeight ?? s_MapData.GetVisionHeight(position);
-            int range = s_MapData.GetCellRangeForRadius(radius);
-            Fix64 radiusSquared = radius * radius;
-            for (int y = centerY - range; y <= centerY + range; y++)
+            return new VisibilitySourceState(
+                position,
+                radius,
+                viewerHeight,
+                requiredHeight,
+                canExploreHiddenFog);
+        }
+
+        private static void UpdateVisibilitySource(
+            long sourceKey,
+            VisibilitySourceState state,
+            bool forceRefresh)
+        {
+            if (!s_VisibilitySources.TryGetValue(sourceKey, out CachedVisibilitySource cached))
             {
-                for (int x = centerX - range; x <= centerX + range; x++)
+                cached = new CachedVisibilitySource();
+                s_VisibilitySources.Add(sourceKey, cached);
+            }
+            else if (!forceRefresh && cached.State.Equals(state))
+            {
+                return;
+            }
+
+            ChangeVisibilityIntervals(cached.Intervals, -1);
+            cached.Intervals.Clear();
+            s_MapData.CollectVisibleIntervals(
+                state.Position,
+                state.Radius,
+                state.ViewerHeight,
+                state.RequiredHeight >= 0 ? state.RequiredHeight : null,
+                s_GeometryIntervals);
+            FilterAndExploreVisibilityIntervals(state, cached.Intervals);
+            cached.State = state;
+            ChangeVisibilityIntervals(cached.Intervals, 1);
+        }
+
+        private static void FilterAndExploreVisibilityIntervals(
+            VisibilitySourceState state,
+            List<Fog3VisibilityRowInterval> destination)
+        {
+            if (!s_MapData.WorldToGrid(state.Position, out int sourceX, out int sourceY))
+                throw new InvalidOperationException($"Cached Fog visibility source {state.Position} is outside the map.");
+
+            for (int intervalIndex = 0; intervalIndex < s_GeometryIntervals.Count; intervalIndex++)
+            {
+                Fog3VisibilityRowInterval interval = s_GeometryIntervals[intervalIndex];
+                int visibleStart = -1;
+                for (int x = interval.MinimumX; x <= interval.MaximumX; x++)
                 {
-                    if (!s_MapData.IsWalkable(x, y))
-                        continue;
-                    FixVector2 cellCenter = s_MapData.GetCellCenterFixed(x, y);
-                    if (requiredHeight.HasValue)
+                    bool explored = s_MapData.IsExplored(x, interval.Y);
+                    bool include = explored;
+                    if (!explored && state.CanExploreHiddenFog)
                     {
-                        if (s_MapData.GetPlatformHeight(x, y) < 0)
-                            continue;
-                        if (s_MapData.GetVisionHeight(cellCenter) != requiredHeight.Value)
-                            continue;
-                    }
-                    if (FixVector2.SqrMagnitude(cellCenter - position) > radiusSquared)
-                        continue;
-                    if (s_MapData.IsVisionBlockedByHigherPlatform(centerX, centerY, viewerHeight, x, y))
-                        continue;
-
-                    bool targetExplored = s_MapData.IsExplored(x, y);
-                    if (!targetExplored && !canExploreHiddenFog)
-                        continue;
-                    if (!targetExplored
-                        && s_BlockHiddenRevealByEnemyStronghold
-                        && IsHiddenRevealBlockedByEnemyStronghold(centerX, centerY, x, y))
-                    {
-                        continue;
+                        include = !s_BlockHiddenRevealByEnemyStronghold
+                                  || !IsHiddenRevealBlockedByEnemyStronghold(sourceX, sourceY, x, interval.Y);
+                        if (include)
+                            s_MapData.MarkExplored(x, interval.Y);
                     }
 
-                    if (!targetExplored)
-                        s_MapData.MarkExplored(x, y);
-                    s_MapData.MarkVisible(x, y);
+                    if (include)
+                    {
+                        if (visibleStart < 0)
+                            visibleStart = x;
+                    }
+                    else if (visibleStart >= 0)
+                    {
+                        destination.Add(new Fog3VisibilityRowInterval(interval.Y, visibleStart, x - 1));
+                        visibleStart = -1;
+                    }
                 }
+
+                if (visibleStart >= 0)
+                {
+                    destination.Add(
+                        new Fog3VisibilityRowInterval(interval.Y, visibleStart, interval.MaximumX));
+                }
+            }
+        }
+
+        private static void ChangeVisibilityIntervals(
+            List<Fog3VisibilityRowInterval> intervals,
+            int delta)
+        {
+            for (int i = 0; i < intervals.Count; i++)
+                s_MapData.ChangeVisibilityCoverage(intervals[i], delta);
+        }
+
+        private static void RemoveEntityVisibilitySources(int entityId)
+        {
+            s_RemovedVisibilitySourceKeys.Clear();
+            long baseKey = checked((long)entityId << 1);
+            if (s_VisibilitySources.ContainsKey(baseKey))
+                s_RemovedVisibilitySourceKeys.Add(baseKey);
+            if (s_VisibilitySources.ContainsKey(baseKey | 1L))
+                s_RemovedVisibilitySourceKeys.Add(baseKey | 1L);
+            RemoveVisibilitySources(s_RemovedVisibilitySourceKeys);
+        }
+
+        private static void RemoveVisibilitySources(List<long> sourceKeys)
+        {
+            for (int i = 0; i < sourceKeys.Count; i++)
+            {
+                long sourceKey = sourceKeys[i];
+                CachedVisibilitySource cached = s_VisibilitySources[sourceKey];
+                ChangeVisibilityIntervals(cached.Intervals, -1);
+                s_VisibilitySources.Remove(sourceKey);
+            }
+        }
+
+        private static void RefreshExplorationDependentVisibilitySources()
+        {
+            foreach (KeyValuePair<long, CachedVisibilitySource> pair in s_VisibilitySources)
+            {
+                VisibilitySourceState state = pair.Value.State;
+                if (!state.CanExploreHiddenFog || s_BlockHiddenRevealByEnemyStronghold)
+                    UpdateVisibilitySource(pair.Key, state, true);
             }
         }
 
@@ -617,8 +869,52 @@ namespace AAAGame.Card
             return hasher.Hash;
         }
 
+        private static void OnEntityRegistered(IEntityContext entity)
+        {
+            if (entity == null)
+                throw new ArgumentNullException(nameof(entity));
+            OnEntityVisibilityInputChanged(entity.LogicEntityId);
+        }
+
+        private static void OnEntityUnregistered(IEntityContext entity)
+        {
+            if (entity == null)
+                throw new ArgumentNullException(nameof(entity));
+            OnEntityVisibilityInputChanged(entity.LogicEntityId);
+        }
+
+        private static void OnEntityVisibilityInputChanged(LogicEntityId entityId)
+        {
+            if (!entityId.IsValid)
+                throw new ArgumentException("Fog visibility dirty event requires a valid entity id.", nameof(entityId));
+            s_DirtyEntityIds.Add(entityId.Value);
+        }
+
+        private static void OnAllEntityVisibilityInputsChanged()
+        {
+            s_AllEntityVisibilityDirty = true;
+        }
+
+        private static void OnStationaryRevealsChanged()
+        {
+            s_StationaryVisibilityDirty = true;
+        }
+
+        private static void OnVisibilityReset()
+        {
+            s_AllEntityVisibilityDirty = true;
+            s_StationaryVisibilityDirty = true;
+        }
+
         private static void ClearWorld()
         {
+            EntityRegistry.Registered -= OnEntityRegistered;
+            EntityRegistry.Unregistered -= OnEntityUnregistered;
+            LogicFactionVisionService.EntityVisibilityInputChanged -= OnEntityVisibilityInputChanged;
+            LogicFactionVisionService.AllEntityVisibilityInputsChanged -= OnAllEntityVisibilityInputsChanged;
+            LogicFactionVisionService.StationaryRevealsChanged -= OnStationaryRevealsChanged;
+            if (s_MapData != null)
+                s_MapData.VisibilityReset -= OnVisibilityReset;
             s_MapData = null;
             LogicFactionVisionService.UnbindMap();
             s_HeroVisionRadius = Fix64.Zero;
@@ -627,7 +923,16 @@ namespace AAAGame.Card
             s_EnemyStrongholdFriendlyUnitDeployRadius = Fix64.Zero;
             s_BlockHiddenRevealByEnemyStronghold = false;
             s_StaticForbiddenHash = 0;
+            s_ObservedVisibilityResetVersion = 0;
             s_StaticForbiddenShapes.Clear();
+            s_VisibilitySources.Clear();
+            s_DirtyEntityIds.Clear();
+            s_SeenEntityIds.Clear();
+            s_SeenStationarySourceKeys.Clear();
+            s_RemovedVisibilitySourceKeys.Clear();
+            s_GeometryIntervals.Clear();
+            s_AllEntityVisibilityDirty = false;
+            s_StationaryVisibilityDirty = false;
             LastAppliedFrame = 0;
         }
 

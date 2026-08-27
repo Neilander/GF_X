@@ -158,6 +158,28 @@ public sealed class StartupLevelFlowTests
     }
 
     [Test]
+    public void EditorRuntimeLevelEntryLauncher_UsesLaunchAndPreparedCareerChainWithoutUiAutomation()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            Application.dataPath,
+            "AAAGame",
+            "Scripts",
+            "Editor",
+            "EditorRuntimeLevelEntryLauncher.cs"));
+
+        Assert.That(source, Does.Contain("Assets/AAAGame/Scene/Launch.unity"));
+        Assert.That(source, Does.Contain("EditorSceneManager.OpenScene"));
+        Assert.That(source, Does.Contain("EditorRuntimeLevelEntry.TryEnterWithDefaultCareer"));
+        Assert.That(source, Does.Contain("runtimeProcedure.IsEditorStressRuntimeReady"));
+        Assert.That(source, Does.Contain("Runtime level identifier cannot be empty."));
+        Assert.That(source, Does.Not.Contain("LevelSwitchUIForm"));
+        Assert.That(source, Does.Not.Contain("LvEnterDialog"));
+        Assert.That(source, Does.Not.Contain("SetForegroundWindow"));
+        Assert.That(source, Does.Not.Contain("SendKeys"));
+        Assert.That(source, Does.Not.Contain("mouse_event"));
+    }
+
+    [Test]
     public void LaunchStartup_PreloadsLevelEntryDialogBeforeRuntimeScene()
     {
         string scriptsRoot = Path.Combine(Application.dataPath, "AAAGame", "Scripts");

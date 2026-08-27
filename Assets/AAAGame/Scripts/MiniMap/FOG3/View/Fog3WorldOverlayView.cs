@@ -5,12 +5,24 @@ namespace AAAGame.MiniMap.FOG3
 {
     public sealed class Fog3WorldOverlayView : MonoBehaviour
     {
+        public const float MaximumBoundaryFadeCellRatio = 2f;
+        private const int BoundarySampleKernelRadiusInLogicCells = 8;
         private const string FogOverlayShaderAssetPath = "Assets/AAAGame/Scripts/MiniMap/FOG3/View/Fog3OverlayAlwaysOnTop.shader";
         private Texture2D fogTexture;
+        private RenderTexture fogPresentationTexture;
+        private Texture2D fogUploadTexture;
         private Color32[] pixels;
+        private Color[] presentationTransitions;
+        private Color[] uploadPixels;
         private Color32[] targetPixels;
+        private Fog3CellState[] targetStates;
+        private Fog3CellState[] presentationStates;
         private float[] currentAlphas;
         private float[] targetAlphas;
+        private float[] transitionStartAlphas;
+        private float[] transitionStartTimes;
+        private int logicWidth;
+        private int logicHeight;
         private Material fogMaterial;
         private Material outsideMaterial;
         private Fog3ViewSettings settings;
@@ -22,8 +34,13 @@ namespace AAAGame.MiniMap.FOG3
         private bool fogMeshUsesCameraProjectionGrid;
         private float visibilityFadeSpeed;
         private float visibilityBoundaryFadeDistance;
-        private bool visibilityFadeActive;
-        private readonly RaycastHit[] projectionHeightHits = new RaycastHit[32];
+        private Camera presentationCamera;
+        private Matrix4x4 presentationCameraViewProjection;
+        private Rect presentationCameraPixelRect;
+        private int cameraPresentationMinimumX;
+        private int cameraPresentationMinimumY;
+        private int cameraPresentationMaximumX = -1;
+        private int cameraPresentationMaximumY = -1;
         private readonly System.Collections.Generic.List<OutsideMaskQuad> outsideMaskQuads = new System.Collections.Generic.List<OutsideMaskQuad>();
 
         private struct OutsideMaskQuad
@@ -34,6 +51,7 @@ namespace AAAGame.MiniMap.FOG3
         }
 
         public Texture2D FogTexture => fogTexture;
+        public RenderTexture FogPresentationTexture => fogPresentationTexture;
         public Material FogMaterial => fogMaterial;
         public Material OutsideMaterial => outsideMaterial;
         public Bounds FogMeshBounds => fogMeshBounds;
@@ -44,6 +62,7 @@ namespace AAAGame.MiniMap.FOG3
 
         public void Build(
             Fog3TerrainInfo terrainInfo,
+            Fog3MapData mapData,
             Fog3ViewSettings viewSettings,
             float resolvedOverlayHeight,
             LayerMask resolvedHeightSampleMask,
@@ -53,20 +72,32 @@ namespace AAAGame.MiniMap.FOG3
         {
             if (terrainInfo == null)
                 throw new System.ArgumentNullException(nameof(terrainInfo));
+            if (mapData == null)
+                throw new System.ArgumentNullException(nameof(mapData));
+            if (mapData.WorldOrigin != terrainInfo.Origin
+                || Mathf.Abs(mapData.Bounds.size.x - terrainInfo.Bounds.size.x) > 0.001f
+                || Mathf.Abs(mapData.Bounds.size.z - terrainInfo.Bounds.size.z) > 0.001f)
+            {
+                throw new System.ArgumentException(
+                    $"FOG3 logic grid bounds must match terrain bounds. fog={mapData.Bounds}, terrain={terrainInfo.Bounds}.",
+                    nameof(mapData));
+            }
             if (resolvedVisibilityFadeSpeed <= 0f || float.IsNaN(resolvedVisibilityFadeSpeed) || float.IsInfinity(resolvedVisibilityFadeSpeed))
                 throw new System.ArgumentOutOfRangeException(nameof(resolvedVisibilityFadeSpeed), "FOG3 visibility fade speed must be finite and positive.");
             if (resolvedVisibilityBoundaryFadeDistance <= 0f
-                || resolvedVisibilityBoundaryFadeDistance > terrainInfo.CellSize
+                || resolvedVisibilityBoundaryFadeDistance > MaximumBoundaryFadeCellRatio
                 || float.IsNaN(resolvedVisibilityBoundaryFadeDistance)
                 || float.IsInfinity(resolvedVisibilityBoundaryFadeDistance))
             {
                 throw new System.ArgumentOutOfRangeException(
                     nameof(resolvedVisibilityBoundaryFadeDistance),
-                    $"FOG3 visibility boundary fade distance must be finite, positive, and no greater than cell size {terrainInfo.CellSize}.");
+                    $"FOG3 visibility boundary fade distance must be finite, positive, and no greater than {MaximumBoundaryFadeCellRatio} fog cells.");
             }
 
             this.terrainInfo = terrainInfo;
             settings = viewSettings ?? new Fog3ViewSettings();
+            if (settings.PresentationResolution <= 0)
+                throw new System.ArgumentOutOfRangeException(nameof(viewSettings), "FOG3 presentation resolution must be positive.");
             heightSampleMask = resolvedHeightSampleMask;
             overlayHeight = Mathf.Max(0f, resolvedOverlayHeight);
             visibilityFadeSpeed = resolvedVisibilityFadeSpeed;
@@ -77,15 +108,9 @@ namespace AAAGame.MiniMap.FOG3
 
             ClearChildren();
             ReleaseRuntimeResources();
-            CreateTexture(terrainInfo);
+            CreateTexture(mapData);
             CreateFogPlane(terrainInfo);
             CreateOutsideMask(terrainInfo);
-        }
-
-        private void Update()
-        {
-            if (visibilityFadeActive)
-                AdvanceVisibilityFade(Time.deltaTime);
         }
 
         public void SetWorldOffset(Fog3TerrainInfo terrainInfo, Vector3 worldOffset)
@@ -125,54 +150,98 @@ namespace AAAGame.MiniMap.FOG3
             return refreshed;
         }
 
+        public bool RefreshCameraPresentation(Camera camera)
+        {
+            if (camera == null)
+                throw new System.ArgumentNullException(nameof(camera));
+            if (terrainInfo == null || fogPresentationTexture == null)
+                throw new System.InvalidOperationException("FOG3 overlay must be built before refreshing camera presentation.");
+
+            Matrix4x4 viewProjection = camera.projectionMatrix * camera.worldToCameraMatrix;
+            if (ReferenceEquals(presentationCamera, camera)
+                && presentationCameraViewProjection == viewProjection
+                && presentationCameraPixelRect == camera.pixelRect)
+            {
+                return false;
+            }
+
+            presentationCamera = camera;
+            presentationCameraViewProjection = viewProjection;
+            presentationCameraPixelRect = camera.pixelRect;
+            ResolveCameraPresentationBounds(camera);
+            if (cameraPresentationMaximumX < cameraPresentationMinimumX)
+                return false;
+
+            UploadPresentationRectangle(
+                cameraPresentationMinimumX,
+                cameraPresentationMinimumY,
+                cameraPresentationMaximumX,
+                cameraPresentationMaximumY);
+            return true;
+        }
+
         public void Render(Fog3MapData mapData, bool logPerformanceDiagnostics)
         {
             if (mapData == null)
                 throw new System.ArgumentNullException(nameof(mapData));
-            if (fogTexture == null || pixels == null || targetPixels == null || currentAlphas == null || targetAlphas == null)
+            if (fogTexture == null || fogPresentationTexture == null || fogUploadTexture == null
+                || pixels == null || presentationTransitions == null || uploadPixels == null
+                || targetPixels == null || targetStates == null || presentationStates == null
+                || currentAlphas == null || targetAlphas == null
+                || transitionStartAlphas == null || transitionStartTimes == null)
                 throw new System.InvalidOperationException("FOG3 overlay must be built before rendering visibility.");
             if (mapData.Width != fogTexture.width || mapData.Height != fogTexture.height)
             {
                 throw new System.InvalidOperationException(
                     $"FOG3 overlay size mismatch. texture={fogTexture.width}x{fogTexture.height}, map={mapData.Width}x{mapData.Height}.");
             }
+            if (!mapData.TryGetDirtyBounds(out int minimumX, out int minimumY, out int maximumX, out int maximumY))
+                return;
 
             long renderStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             long fillStartTicks = renderStartTicks;
-            bool pixelsChanged = false;
-            visibilityFadeActive = false;
-            for (int y = 0; y < mapData.Height; y++)
+            float now = Time.time;
+            int changedMinimumX = mapData.Width;
+            int changedMinimumY = mapData.Height;
+            int changedMaximumX = -1;
+            int changedMaximumY = -1;
+            for (int dirtyIndex = 0; dirtyIndex < mapData.DirtyCellCount; dirtyIndex++)
             {
-                for (int x = 0; x < mapData.Width; x++)
-                {
-                    int index = x + y * mapData.Width;
-                    Color targetColor = GetTargetPixelColor(mapData, x, y);
-                    Color32 targetPixel = targetColor;
-                    targetPixels[index] = targetPixel;
-                    targetAlphas[index] = targetColor.a;
-                    visibilityFadeActive |= currentAlphas[index] != targetAlphas[index];
+                mapData.GetDirtyCell(dirtyIndex, out int x, out int y);
+                int index = x + y * mapData.Width;
+                Fog3CellState state = mapData.GetCellState(x, y);
+                if (targetStates[index] == state)
+                    continue;
 
-                    Color32 pixel = pixels[index];
-                    if (pixel.r == targetPixel.r && pixel.g == targetPixel.g && pixel.b == targetPixel.b)
-                        continue;
-
-                    pixel.r = targetPixel.r;
-                    pixel.g = targetPixel.g;
-                    pixel.b = targetPixel.b;
-                    pixels[index] = pixel;
-                    pixelsChanged = true;
-                }
+                Color targetColor = GetTargetPixelColor(state);
+                Color32 targetPixel = targetColor;
+                float currentAlpha = ResolveTransitionAlpha(index, now);
+                targetPixels[index] = targetPixel;
+                targetStates[index] = state;
+                transitionStartAlphas[index] = currentAlpha;
+                transitionStartTimes[index] = now;
+                currentAlphas[index] = currentAlpha;
+                targetAlphas[index] = targetColor.a;
+                targetPixel.a = (byte)Mathf.RoundToInt(currentAlpha * byte.MaxValue);
+                pixels[index] = targetPixel;
+                changedMinimumX = Mathf.Min(changedMinimumX, x);
+                changedMinimumY = Mathf.Min(changedMinimumY, y);
+                changedMaximumX = Mathf.Max(changedMaximumX, x);
+                changedMaximumY = Mathf.Max(changedMaximumY, y);
             }
 
             long fillTicks = System.Diagnostics.Stopwatch.GetTimestamp() - fillStartTicks;
             long setStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            if (pixelsChanged)
-                fogTexture.SetPixels32(pixels);
+            if (changedMaximumX >= changedMinimumX)
+            {
+                RefreshPresentationRegion(
+                    changedMinimumX,
+                    changedMinimumY,
+                    changedMaximumX,
+                    changedMaximumY,
+                    now);
+            }
             long setTicks = System.Diagnostics.Stopwatch.GetTimestamp() - setStartTicks;
-            long applyStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            if (pixelsChanged)
-                fogTexture.Apply(false);
-            long applyTicks = System.Diagnostics.Stopwatch.GetTimestamp() - applyStartTicks;
             long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - renderStartTicks;
             double elapsedMs = elapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             if (elapsedMs >= 30.0 || (logPerformanceDiagnostics && elapsedMs >= 4.0))
@@ -181,13 +250,15 @@ namespace AAAGame.MiniMap.FOG3
                     LogType.Log,
                     LogOption.NoStacktrace,
                     null,
-                    "[FOG3Perf] overlay total={0:F3}ms size={1}x{2} fill={3:F3}ms setPixels={4:F3}ms apply={5:F3}ms",
+                    "[FOG3Perf] overlay total={0:F3}ms dirtyCells={1} bounds=({2},{3})..({4},{5}) fill={6:F3}ms upload={7:F3}ms",
                     elapsedMs,
-                    mapData.Width,
-                    mapData.Height,
+                    mapData.DirtyCellCount,
+                    minimumX,
+                    minimumY,
+                    maximumX,
+                    maximumY,
                     fillTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
-                    setTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
-                    applyTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+                    setTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
             }
         }
 
@@ -195,14 +266,14 @@ namespace AAAGame.MiniMap.FOG3
         {
             if (deltaTime < 0f || float.IsNaN(deltaTime) || float.IsInfinity(deltaTime))
                 throw new System.ArgumentOutOfRangeException(nameof(deltaTime), "FOG3 visibility fade delta time must be finite and non-negative.");
-            if (!visibilityFadeActive || deltaTime <= 0f)
+            if (deltaTime <= 0f)
                 return false;
-            if (fogTexture == null || pixels == null || targetPixels == null || currentAlphas == null || targetAlphas == null)
+            if (fogTexture == null || pixels == null || targetPixels == null
+                || currentAlphas == null || targetAlphas == null)
                 throw new System.InvalidOperationException("FOG3 overlay must be built before advancing visibility fade.");
 
             float maxDelta = visibilityFadeSpeed * deltaTime;
             bool pixelsChanged = false;
-            bool remainsActive = false;
             for (int i = 0; i < currentAlphas.Length; i++)
             {
                 float current = currentAlphas[i];
@@ -212,20 +283,25 @@ namespace AAAGame.MiniMap.FOG3
 
                 float next = Mathf.MoveTowards(current, target, maxDelta);
                 currentAlphas[i] = next;
+                transitionStartAlphas[i] = next;
+                transitionStartTimes[i] = Time.time;
                 Color32 pixel = targetPixels[i];
                 pixel.a = (byte)Mathf.RoundToInt(next * byte.MaxValue);
                 pixels[i] = pixel;
                 pixelsChanged = true;
-                remainsActive |= next != target;
             }
 
-            visibilityFadeActive = remainsActive;
             if (!pixelsChanged)
                 return false;
 
-            fogTexture.SetPixels32(pixels);
-            fogTexture.Apply(false);
             return true;
+        }
+
+        public float GetCurrentAlphaForDiagnostics(int x, int y)
+        {
+            if ((uint)x >= (uint)logicWidth || (uint)y >= (uint)logicHeight)
+                throw new System.ArgumentOutOfRangeException(nameof(x));
+            return ResolveTransitionAlpha(x + y * logicWidth, Time.time);
         }
 
         public void GetTextureDiagnostics(
@@ -260,9 +336,11 @@ namespace AAAGame.MiniMap.FOG3
             long sumG = 0;
             long sumB = 0;
             long sumA = 0;
+            float now = Time.time;
             for (int i = 0; i < pixels.Length; i++)
             {
                 Color32 pixel = pixels[i];
+                pixel.a = (byte)Mathf.RoundToInt(ResolveTransitionAlpha(i, now) * byte.MaxValue);
                 sumR += pixel.r;
                 sumG += pixel.g;
                 sumB += pixel.b;
@@ -287,9 +365,8 @@ namespace AAAGame.MiniMap.FOG3
             averageA = sumA / divisor;
         }
 
-        private Color GetTargetPixelColor(Fog3MapData mapData, int x, int y)
+        private Color GetTargetPixelColor(Fog3CellState state)
         {
-            Fog3CellState state = mapData.GetCellState(x, y);
             switch (state)
             {
                 case Fog3CellState.Visible:
@@ -303,36 +380,283 @@ namespace AAAGame.MiniMap.FOG3
             }
         }
 
-        private void CreateTexture(Fog3TerrainInfo terrainInfo)
+        private void CreateTexture(Fog3MapData mapData)
         {
-            int width = terrainInfo.Width;
-            int height = terrainInfo.Height;
+            int width = mapData.Width;
+            int height = mapData.Height;
+            logicWidth = width;
+            logicHeight = height;
+            int presentationWidth;
+            int presentationHeight;
+            if (width >= height)
+            {
+                presentationWidth = settings.PresentationResolution;
+                presentationHeight = Mathf.Max(1, Mathf.RoundToInt(settings.PresentationResolution * (float)height / width));
+            }
+            else
+            {
+                presentationHeight = settings.PresentationResolution;
+                presentationWidth = Mathf.Max(1, Mathf.RoundToInt(settings.PresentationResolution * (float)width / height));
+            }
             fogTexture = new Texture2D(width, height, TextureFormat.RGBA32, false, true)
             {
                 wrapMode = TextureWrapMode.Clamp,
-                filterMode = settings.TextureFilterMode
+                filterMode = FilterMode.Bilinear
+            };
+            fogPresentationTexture = new RenderTexture(
+                presentationWidth,
+                presentationHeight,
+                0,
+                RenderTextureFormat.ARGBFloat,
+                RenderTextureReadWrite.Linear)
+            {
+                name = "FOG3_PresentationTexture",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Point,
+                useMipMap = false,
+                autoGenerateMips = false
+            };
+            if (!fogPresentationTexture.Create())
+                throw new System.InvalidOperationException("FOG3 presentation RenderTexture creation failed.");
+            fogUploadTexture = new Texture2D(1, 1, TextureFormat.RGBAFloat, false, true)
+            {
+                name = "FOG3_DirtyUploadTile",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Point
             };
             int cellCount = checked(width * height);
             pixels = new Color32[cellCount];
+            int presentationCellCount = checked(presentationWidth * presentationHeight);
+            presentationTransitions = new Color[presentationCellCount];
+            uploadPixels = new Color[presentationCellCount];
             targetPixels = new Color32[cellCount];
+            targetStates = new Fog3CellState[cellCount];
+            presentationStates = new Fog3CellState[presentationCellCount];
             currentAlphas = new float[cellCount];
             targetAlphas = new float[cellCount];
+            transitionStartAlphas = new float[cellCount];
+            transitionStartTimes = new float[cellCount];
+            float now = Time.time;
             for (int y = 0; y < height; y++)
             {
                 for (int x = 0; x < width; x++)
                 {
                     int index = x + y * width;
-                    Color initialColor = terrainInfo.IsWalkable(x, y) ? settings.HiddenColor : settings.OutsideColor;
+                    Fog3CellState initialState = mapData.GetCellState(x, y);
+                    Color initialColor = GetTargetPixelColor(initialState);
+                    Color32 initialPixel = initialColor;
                     pixels[index] = initialColor;
                     targetPixels[index] = initialColor;
+                    targetStates[index] = initialState;
                     currentAlphas[index] = initialColor.a;
                     targetAlphas[index] = initialColor.a;
+                    transitionStartAlphas[index] = initialColor.a;
+                    transitionStartTimes[index] = now;
                 }
             }
 
             fogTexture.SetPixels32(pixels);
             fogTexture.Apply(false);
-            visibilityFadeActive = false;
+            for (int y = 0; y < presentationHeight; y++)
+            {
+                int logicY = PresentationToLogic(y, presentationHeight, logicHeight);
+                for (int x = 0; x < presentationWidth; x++)
+                {
+                    int logicX = PresentationToLogic(x, presentationWidth, logicWidth);
+                    int logicIndex = logicX + logicY * logicWidth;
+                    int presentationIndex = x + y * presentationWidth;
+                    Fog3CellState state = targetStates[logicIndex];
+                    float alpha = targetAlphas[logicIndex];
+                    presentationStates[presentationIndex] = state;
+                    presentationTransitions[presentationIndex] = PackPresentationTransition(alpha, state, alpha, now);
+                }
+            }
+        }
+
+        private void RefreshPresentationRegion(
+            int logicMinimumX,
+            int logicMinimumY,
+            int logicMaximumX,
+            int logicMaximumY,
+            float now)
+        {
+            int presentationWidth = fogPresentationTexture.width;
+            int presentationHeight = fogPresentationTexture.height;
+            int minimumX = Mathf.Max(0, Mathf.FloorToInt(logicMinimumX * (float)presentationWidth / logicWidth) - 1);
+            int minimumY = Mathf.Max(0, Mathf.FloorToInt(logicMinimumY * (float)presentationHeight / logicHeight) - 1);
+            int maximumX = Mathf.Min(presentationWidth - 1, Mathf.CeilToInt((logicMaximumX + 1) * (float)presentationWidth / logicWidth) + 1);
+            int maximumY = Mathf.Min(presentationHeight - 1, Mathf.CeilToInt((logicMaximumY + 1) * (float)presentationHeight / logicHeight) + 1);
+            int changedMinimumX = presentationWidth;
+            int changedMinimumY = presentationHeight;
+            int changedMaximumX = -1;
+            int changedMaximumY = -1;
+
+            for (int y = minimumY; y <= maximumY; y++)
+            {
+                int logicY = PresentationToLogic(y, presentationHeight, logicHeight);
+                for (int x = minimumX; x <= maximumX; x++)
+                {
+                    int logicX = PresentationToLogic(x, presentationWidth, logicWidth);
+                    int logicIndex = logicX + logicY * logicWidth;
+                    int presentationIndex = x + y * presentationWidth;
+                    Fog3CellState state = targetStates[logicIndex];
+                    if (presentationStates[presentationIndex] == state)
+                        continue;
+
+                    Color previous = presentationTransitions[presentationIndex];
+                    float currentAlpha = ResolvePackedTransitionAlpha(previous, now);
+                    presentationStates[presentationIndex] = state;
+                    presentationTransitions[presentationIndex] = PackPresentationTransition(
+                        targetAlphas[logicIndex],
+                        state,
+                        currentAlpha,
+                        now);
+                    changedMinimumX = Mathf.Min(changedMinimumX, x);
+                    changedMinimumY = Mathf.Min(changedMinimumY, y);
+                    changedMaximumX = Mathf.Max(changedMaximumX, x);
+                    changedMaximumY = Mathf.Max(changedMaximumY, y);
+                }
+            }
+
+            if (changedMaximumX < changedMinimumX || cameraPresentationMaximumX < cameraPresentationMinimumX)
+                return;
+
+            changedMinimumX = Mathf.Max(changedMinimumX, cameraPresentationMinimumX);
+            changedMinimumY = Mathf.Max(changedMinimumY, cameraPresentationMinimumY);
+            changedMaximumX = Mathf.Min(changedMaximumX, cameraPresentationMaximumX);
+            changedMaximumY = Mathf.Min(changedMaximumY, cameraPresentationMaximumY);
+            if (changedMaximumX >= changedMinimumX && changedMaximumY >= changedMinimumY)
+                UploadPresentationRectangle(changedMinimumX, changedMinimumY, changedMaximumX, changedMaximumY);
+        }
+
+        private void ResolveCameraPresentationBounds(Camera camera)
+        {
+            float fogWorldY = transform.TransformPoint(new Vector3(0f, overlayHeight, 0f)).y;
+            var plane = new Plane(Vector3.up, new Vector3(0f, fogWorldY, 0f));
+            float minimumWorldX = float.PositiveInfinity;
+            float minimumWorldZ = float.PositiveInfinity;
+            float maximumWorldX = float.NegativeInfinity;
+            float maximumWorldZ = float.NegativeInfinity;
+            for (int corner = 0; corner < 4; corner++)
+            {
+                float viewportX = (corner & 1) == 0 ? 0f : 1f;
+                float viewportY = (corner & 2) == 0 ? 0f : 1f;
+                Ray ray = camera.ViewportPointToRay(new Vector3(viewportX, viewportY, 0f));
+                if (!plane.Raycast(ray, out float distance) || distance < 0f)
+                {
+                    SetFullCameraPresentationBounds();
+                    return;
+                }
+
+                Vector3 point = ray.GetPoint(distance);
+                minimumWorldX = Mathf.Min(minimumWorldX, point.x);
+                minimumWorldZ = Mathf.Min(minimumWorldZ, point.z);
+                maximumWorldX = Mathf.Max(maximumWorldX, point.x);
+                maximumWorldZ = Mathf.Max(maximumWorldZ, point.z);
+            }
+
+            Bounds mapBounds = terrainInfo.Bounds;
+            float minimumNormalizedX = (minimumWorldX - mapBounds.min.x) / mapBounds.size.x;
+            float minimumNormalizedY = (minimumWorldZ - mapBounds.min.z) / mapBounds.size.z;
+            float maximumNormalizedX = (maximumWorldX - mapBounds.min.x) / mapBounds.size.x;
+            float maximumNormalizedY = (maximumWorldZ - mapBounds.min.z) / mapBounds.size.z;
+            int paddingX = Mathf.CeilToInt(
+                BoundarySampleKernelRadiusInLogicCells * (float)fogPresentationTexture.width / logicWidth);
+            int paddingY = Mathf.CeilToInt(
+                BoundarySampleKernelRadiusInLogicCells * (float)fogPresentationTexture.height / logicHeight);
+            cameraPresentationMinimumX = Mathf.Clamp(
+                Mathf.FloorToInt(minimumNormalizedX * fogPresentationTexture.width) - paddingX,
+                0,
+                fogPresentationTexture.width - 1);
+            cameraPresentationMinimumY = Mathf.Clamp(
+                Mathf.FloorToInt(minimumNormalizedY * fogPresentationTexture.height) - paddingY,
+                0,
+                fogPresentationTexture.height - 1);
+            cameraPresentationMaximumX = Mathf.Clamp(
+                Mathf.CeilToInt(maximumNormalizedX * fogPresentationTexture.width) + paddingX,
+                0,
+                fogPresentationTexture.width - 1);
+            cameraPresentationMaximumY = Mathf.Clamp(
+                Mathf.CeilToInt(maximumNormalizedY * fogPresentationTexture.height) + paddingY,
+                0,
+                fogPresentationTexture.height - 1);
+
+            if (maximumNormalizedX < 0f || minimumNormalizedX > 1f
+                || maximumNormalizedY < 0f || minimumNormalizedY > 1f)
+            {
+                cameraPresentationMinimumX = 0;
+                cameraPresentationMinimumY = 0;
+                cameraPresentationMaximumX = -1;
+                cameraPresentationMaximumY = -1;
+            }
+        }
+
+        private void SetFullCameraPresentationBounds()
+        {
+            cameraPresentationMinimumX = 0;
+            cameraPresentationMinimumY = 0;
+            cameraPresentationMaximumX = fogPresentationTexture.width - 1;
+            cameraPresentationMaximumY = fogPresentationTexture.height - 1;
+        }
+
+        private void UploadPresentationRectangle(int minimumX, int minimumY, int maximumX, int maximumY)
+        {
+            int presentationWidth = fogPresentationTexture.width;
+            int dirtyWidth = maximumX - minimumX + 1;
+            int dirtyHeight = maximumY - minimumY + 1;
+            for (int y = 0; y < dirtyHeight; y++)
+            {
+                int sourceOffset = minimumX + (minimumY + y) * presentationWidth;
+                System.Array.Copy(presentationTransitions, sourceOffset, uploadPixels, y * dirtyWidth, dirtyWidth);
+            }
+
+            if (fogUploadTexture.width != dirtyWidth || fogUploadTexture.height != dirtyHeight)
+                fogUploadTexture.Reinitialize(dirtyWidth, dirtyHeight, TextureFormat.RGBAFloat, false);
+            fogUploadTexture.SetPixelData(uploadPixels, 0, 0);
+            fogUploadTexture.Apply(false, false);
+            Graphics.CopyTexture(
+                fogUploadTexture,
+                0,
+                0,
+                0,
+                0,
+                dirtyWidth,
+                dirtyHeight,
+                fogPresentationTexture,
+                0,
+                0,
+                minimumX,
+                minimumY);
+        }
+
+        private float ResolveTransitionAlpha(int index, float now)
+        {
+            return Mathf.MoveTowards(
+                transitionStartAlphas[index],
+                targetAlphas[index],
+                visibilityFadeSpeed * Mathf.Max(0f, now - transitionStartTimes[index]));
+        }
+
+        private float ResolvePackedTransitionAlpha(Color transition, float now)
+        {
+            return Mathf.MoveTowards(
+                transition.b,
+                transition.r,
+                visibilityFadeSpeed * Mathf.Max(0f, now - transition.a));
+        }
+
+        private static Color PackPresentationTransition(
+            float targetAlpha,
+            Fog3CellState state,
+            float startAlpha,
+            float startTime)
+        {
+            return new Color(targetAlpha, (byte)state / 255f, startAlpha, startTime);
+        }
+
+        private static int PresentationToLogic(int coordinate, int presentationSize, int logicSize)
+        {
+            return Mathf.Min(logicSize - 1, (int)(((long)coordinate * 2 + 1) * logicSize / (presentationSize * 2L)));
         }
 
         private void CreateFogPlane(Fog3TerrainInfo terrainInfo)
@@ -354,9 +678,21 @@ namespace AAAGame.MiniMap.FOG3
                 meshFilter.sharedMesh = CreateQuadMesh(fogMeshBounds, overlayHeight, "FOG3_WorldOverlayMesh");
 
             fogMaterial = CreateTransparentMaterial("FOG3_WorldOverlayMaterial", Color.white, 100);
-            SetMainTexture(fogMaterial, fogTexture);
-            fogMaterial.SetFloat("_FogCellSize", terrainInfo.CellSize);
+            SetMainTexture(fogMaterial, fogPresentationTexture);
             fogMaterial.SetFloat("_FogBoundaryFadeDistance", visibilityBoundaryFadeDistance);
+            fogMaterial.SetFloat("_FogFadeSpeed", visibilityFadeSpeed);
+            fogMaterial.SetFloat("_FogUsesTimedTransitions", 1f);
+            fogMaterial.SetColor("_FogHiddenColor", settings.HiddenColor);
+            fogMaterial.SetColor("_FogExploredColor", settings.ExploredColor);
+            fogMaterial.SetColor("_FogVisibleColor", settings.VisibleColor);
+            fogMaterial.SetColor("_FogOutsideColor", settings.OutsideColor);
+            fogMaterial.SetVector(
+                "_FogPresentationTexelScale",
+                new Vector4(
+                    (float)fogPresentationTexture.width / logicWidth,
+                    (float)fogPresentationTexture.height / logicHeight,
+                    0f,
+                    0f));
             meshRenderer.sharedMaterial = fogMaterial;
             meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
             meshRenderer.receiveShadows = false;
@@ -814,6 +1150,7 @@ namespace AAAGame.MiniMap.FOG3
                         flatSourceLocalY,
                         uvMaxX,
                         uvMaxY);
+
                 }
             }
         }
@@ -879,35 +1216,13 @@ namespace AAAGame.MiniMap.FOG3
             float startHeight = Mathf.Max(1f, settings.HeightSampleStartHeight);
             float maxDistance = Mathf.Max(startHeight + 1f, settings.HeightSampleMaxDistance);
             Vector3 rayOrigin = new Vector3(worldX, terrainInfo.Origin.y + startHeight, worldZ);
-            int hitCount = Physics.RaycastNonAlloc(
-                rayOrigin,
-                Vector3.down,
-                projectionHeightHits,
-                maxDistance,
-                heightSampleMask,
-                QueryTriggerInteraction.Ignore);
-            if (hitCount == projectionHeightHits.Length)
-            {
-                throw new System.InvalidOperationException(
-                    $"FOG3 terrain projection hit buffer overflowed at ({worldX:F2}, {worldZ:F2}). capacity={projectionHeightHits.Length}.");
-            }
-
-            int closestTerrainHit = -1;
-            float closestDistance = float.PositiveInfinity;
-            for (int i = 0; i < hitCount; i++)
-            {
-                RaycastHit hit = projectionHeightHits[i];
-                UnityGameFramework.Runtime.EntityLogic entity = hit.collider.GetComponentInParent<UnityGameFramework.Runtime.EntityLogic>();
-                if (entity != null && entity is not LevelEntity)
-                    continue;
-                if (hit.distance >= closestDistance)
-                    continue;
-
-                closestTerrainHit = i;
-                closestDistance = hit.distance;
-            }
-
-            if (closestTerrainHit < 0)
+            if (!Physics.Raycast(
+                    rayOrigin,
+                    Vector3.down,
+                    out RaycastHit hit,
+                    maxDistance,
+                    heightSampleMask,
+                    QueryTriggerInteraction.Ignore))
             {
                 if (terrainInfo.BackgroundFogCoverWorldY.HasValue)
                     return terrainInfo.BackgroundFogCoverWorldY.Value;
@@ -916,7 +1231,7 @@ namespace AAAGame.MiniMap.FOG3
                     $"FOG3 terrain projection found no terrain surface at ({worldX:F2}, {worldZ:F2}). source={terrainInfo.SourceName}.");
             }
 
-            return projectionHeightHits[closestTerrainHit].point.y;
+            return hit.point.y;
         }
 
         private void CreateOutsideQuad(string objectName, Vector3 min, Vector3 max, float y)
@@ -1134,15 +1449,42 @@ namespace AAAGame.MiniMap.FOG3
         private void ReleaseRuntimeResources()
         {
             pixels = null;
+            presentationTransitions = null;
+            uploadPixels = null;
             targetPixels = null;
+            targetStates = null;
+            presentationStates = null;
             currentAlphas = null;
             targetAlphas = null;
-            visibilityFadeActive = false;
+            transitionStartAlphas = null;
+            transitionStartTimes = null;
+            logicWidth = 0;
+            logicHeight = 0;
+            presentationCamera = null;
+            presentationCameraViewProjection = default;
+            presentationCameraPixelRect = default;
+            cameraPresentationMinimumX = 0;
+            cameraPresentationMinimumY = 0;
+            cameraPresentationMaximumX = -1;
+            cameraPresentationMaximumY = -1;
 
             if (fogTexture != null)
             {
                 DestroyUnityObjectSafe(fogTexture);
                 fogTexture = null;
+            }
+
+            if (fogPresentationTexture != null)
+            {
+                fogPresentationTexture.Release();
+                DestroyUnityObjectSafe(fogPresentationTexture);
+                fogPresentationTexture = null;
+            }
+
+            if (fogUploadTexture != null)
+            {
+                DestroyUnityObjectSafe(fogUploadTexture);
+                fogUploadTexture = null;
             }
 
             if (fogMaterial != null)

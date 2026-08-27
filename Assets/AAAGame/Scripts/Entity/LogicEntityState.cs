@@ -514,6 +514,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, ISkill
 
         IsGhostState = enabled;
         Alive = true;
+        LogicFactionVisionService.MarkAllEntityVisibilityDirty();
         m_TargetingComp.CurrentTarget = null;
         if (enabled)
         {
@@ -556,8 +557,11 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, ISkill
             throw new InvalidOperationException($"LogicEntityState.RestoreBuildingToFullHealth failed: entity {EntityId.Value} is not a building.");
 
         bool wasDisabled = IsDisabled;
+        bool wasAlive = Alive;
         IsDisabled = false;
         Alive = true;
+        if (!wasAlive)
+            LogicFactionVisionService.MarkEntityVisibilityDirty(EntityId);
         RestoreHealthToFull();
         if (m_CombatCapabilitiesLockedForDisabled)
         {
@@ -585,6 +589,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, ISkill
         m_OwnerFactionId = ownerFactionId;
         Side = side;
         if (oldOwnerFactionId != ownerFactionId)
+            LogicFactionVisionService.MarkEntityVisibilityDirty(EntityId);
+        if (oldOwnerFactionId != ownerFactionId)
         {
             if (LogicWallRuntime.TryGetBranch(EntityId, out _))
                 LogicWallRuntime.UpdateBranchOwner(EntityId, ownerFactionId);
@@ -610,6 +616,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, ISkill
         if (oldSide == side)
             return;
         Side = side;
+        LogicFactionVisionService.MarkAllEntityVisibilityDirty();
         FlowFieldCrowdMovementSystem.SetAgentSide(EntityId.Value, side);
         if (m_Brain is IBrainSideChangeHandler sideChangeHandler)
             sideChangeHandler.OnSideChanged(this, oldSide, side);
@@ -624,7 +631,10 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, ISkill
             throw new InvalidOperationException($"LogicEntityState.TeleportTo requires an active living entity. entity={EntityId.Value}.");
 
         m_MoveComp.StopMove();
+        if (Position == destination)
+            return;
         Position = destination;
+        LogicFactionVisionService.MarkEntityVisibilityDirty(EntityId);
     }
 
     public void SetAtkComp(IAtkComp atkComp) => m_AtkComp = atkComp ?? throw new ArgumentNullException(nameof(atkComp));
@@ -953,6 +963,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, ISkill
                 FixVector2 displacement = resolved - frameStartPosition;
                 UpdateForwardForMoveCommit();
                 Position = resolved;
+                if (frameStartPosition != resolved)
+                    LogicFactionVisionService.MarkEntityVisibilityDirty(EntityId);
                 m_MoveComp.CommitResolvedDisplacement(displacement);
                 m_MoveExecutor.CommitPreparedLogicFrame(LogicFrameRuntime.CurrentFrame);
                 break;
@@ -1098,6 +1110,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, ISkill
         ClampHealthToZero();
         IsDisabled = true;
         Alive = false;
+        LogicFactionVisionService.MarkEntityVisibilityDirty(EntityId);
         m_TargetingComp.CurrentTarget = null;
         LockComp(m_AtkComp, DisabledCapabilityLocker);
         LockComp(m_TargetingComp, DisabledCapabilityLocker);
@@ -1145,6 +1158,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, ISkill
     {
         ClampHealthToZero();
         Alive = false;
+        LogicFactionVisionService.MarkEntityVisibilityDirty(EntityId);
         m_DurationMoveEffectComp.StopAllMove();
         LogicProductionConditionState.RecordUnitDeath(this);
         LogicUnitDeathEventService.Publish(this);
@@ -1156,12 +1170,15 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, ISkill
 
     private void RestoreHealthToFull()
     {
+        bool wasAlive = Alive;
         CreaturePropertyManager properties = RequireProperties();
         Fix64 max = properties.GetProperty(CreatureMainProperty.Health);
         Fix64 delta = max - HealthValue;
         if (delta != Fix64.Zero)
             ModifyHealth(delta);
         Alive = true;
+        if (!wasAlive)
+            LogicFactionVisionService.MarkEntityVisibilityDirty(EntityId);
     }
 
     private Fix64 ModifyHealth(Fix64 delta)

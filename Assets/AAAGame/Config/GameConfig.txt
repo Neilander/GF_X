@@ -72,4 +72,5 @@
 	EnemyDefensePreExpectedDailyIncrementIncreasePerDay1BaseResourceEquivalent	出怪预期日前每日新增量固定再增加的Day1初始资源等价量比例；第d日增量=Day2增量+本值*(d-2)	0.6
 	EnemyDefensePostExpectedDailyIncrementMultiplier	防御出怪预期日后下一日增量乘以前一日增量的倍率	0.7
 	EnemySquadResourceEquivalentMaximumResolvedUnitCount	单个敌方小队允许求解的最大单位数，仅作明确数据上限	100
-	VisionBoundaryFadeDistance	视野边界向较透明侧延伸的过渡距离（世界单位）	0.5
+	VisionBoundaryFadeDistance	视野边界向较透明侧延伸的过渡距离（Fog逻辑格）	2
+	FogLogicCellSize	Fog逻辑格边长（世界单位）	0.1

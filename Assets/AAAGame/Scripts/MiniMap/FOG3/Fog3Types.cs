@@ -66,6 +66,10 @@ namespace AAAGame.MiniMap.FOG3
     [Serializable]
     public sealed class Fog3ViewSettings
     {
+        [Header("表现粒度")]
+        [Tooltip("FOG3 表现纹理长边分辨率。与逻辑Fog网格和地块网格独立，数值越大边界越细腻。")]
+        public int PresentationResolution = 1024;
+
         [Header("表面模式")]
         [Tooltip("云层迷雾适合 RTS 斜视角摄像机，推荐优先使用。")]
         public Fog3OverlaySurfaceMode SurfaceMode = Fog3OverlaySurfaceMode.CloudLayer;
@@ -133,7 +137,5 @@ namespace AAAGame.MiniMap.FOG3
         public Color VisibleColor = new Color(0f, 0f, 0f, 0f);
         [Tooltip("可行走 TileWorld 区域外侧的颜色。")]
         public Color OutsideColor = new Color(0f, 0f, 0f, 1f);
-        [Tooltip("迷雾可见性贴图使用的过滤模式。")]
-        public FilterMode TextureFilterMode = FilterMode.Bilinear;
     }
 }

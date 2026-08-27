@@ -27,8 +27,11 @@ public class SimEntityContext : IEntityContext, ITargetable
         get => _positionFixed;
         set
         {
+            if (_positionFixed == value)
+                return;
             _positionFixed = value;
             _position = new Vector3((float)value.x, _position.y, (float)value.y);
+            LogicFactionVisionService.MarkEntityVisibilityDirty(LogicEntityId);
         }
     }
     public FixVector2 ForwardFixed
@@ -55,6 +58,7 @@ public class SimEntityContext : IEntityContext, ITargetable
 
             _position = value;
             _positionFixed = new FixVector2((Fix64)value.x, (Fix64)value.z);
+            LogicFactionVisionService.MarkEntityVisibilityDirty(LogicEntityId);
         }
     }
     public Quaternion Rotation { get; set; } = Quaternion.identity;

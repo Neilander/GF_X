@@ -84,7 +84,7 @@ public sealed class StageCheckpointServiceTests
             1f,
             Vector3.zero,
             new[] { true, true, true, true },
-            "StageCheckpointServiceTests"));
+            "StageCheckpointServiceTests"), Fix64.One);
         fog.MarkExplored(0, 0);
         fog.AddVisibility(0, 0, 1f);
         SetPhase(GamePhase.BuildBeforeInvade);
@@ -142,7 +142,7 @@ public sealed class StageCheckpointServiceTests
             1f,
             Vector3.zero,
             new[] { true, true, true, true },
-            "StageCheckpointServiceTests"));
+            "StageCheckpointServiceTests"), Fix64.One);
         SetPhase(GamePhase.BuildBeforeInvade);
         CreatePendingBuilding(
             "building-checkpoint-restore",
@@ -167,7 +167,7 @@ public sealed class StageCheckpointServiceTests
             1f,
             Vector3.zero,
             new[] { true, true, false, true },
-            "StageCheckpointServiceTests.Incompatible"));
+            "StageCheckpointServiceTests.Incompatible"), Fix64.One);
         Assert.Throws<System.InvalidOperationException>(() => StageCheckpointService.PrepareRestore(1, incompatibleFog));
 
         StageCheckpointService.EndSession();

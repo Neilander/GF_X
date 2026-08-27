@@ -19,19 +19,21 @@ public static class LogicFactionVisionService
 
     private readonly struct StationaryReveal
     {
-        public StationaryReveal(SideType side, FixVector2 position, int height, Fix64 remaining)
+        public StationaryReveal(int id, SideType side, FixVector2 position, int height, Fix64 remaining)
         {
+            Id = id;
             Side = side;
             Position = position;
             Height = height;
             Remaining = remaining;
         }
 
+        public int Id { get; }
         public SideType Side { get; }
         public FixVector2 Position { get; }
         public int Height { get; }
         public Fix64 Remaining { get; }
-        public StationaryReveal WithRemaining(Fix64 remaining) => new StationaryReveal(Side, Position, Height, remaining);
+        public StationaryReveal WithRemaining(Fix64 remaining) => new StationaryReveal(Id, Side, Position, Height, remaining);
     }
 
     private static readonly List<StationaryReveal> s_StationaryReveals = new List<StationaryReveal>();
@@ -39,11 +41,29 @@ public static class LogicFactionVisionService
     private static readonly Dictionary<int, bool> s_EnemyVisibilityCache = new Dictionary<int, bool>();
     private static Fog3MapData s_MapData;
     private static bool s_TargetingPhaseCacheActive;
+    private static int s_NextStationaryRevealId = 1;
+
+    public static event Action<LogicEntityId> EntityVisibilityInputChanged;
+    public static event Action AllEntityVisibilityInputsChanged;
+    public static event Action StationaryRevealsChanged;
+
+    public static void MarkEntityVisibilityDirty(LogicEntityId entityId)
+    {
+        if (!entityId.IsValid)
+            throw new ArgumentException("Visibility dirty notification requires a valid entity id.", nameof(entityId));
+        EntityVisibilityInputChanged?.Invoke(entityId);
+    }
+
+    public static void MarkAllEntityVisibilityDirty()
+    {
+        AllEntityVisibilityInputsChanged?.Invoke();
+    }
 
     public static void BindMap(Fog3MapData mapData)
     {
         s_MapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
         s_StationaryReveals.Clear();
+        s_NextStationaryRevealId = 1;
         ClearTargetingPhaseCache();
     }
 
@@ -51,6 +71,7 @@ public static class LogicFactionVisionService
     {
         s_MapData = null;
         s_StationaryReveals.Clear();
+        s_NextStationaryRevealId = 1;
         ClearTargetingPhaseCache();
     }
 
@@ -80,7 +101,10 @@ public static class LogicFactionVisionService
         {
             Fix64 remaining = s_StationaryReveals[i].Remaining - deltaTime;
             if (remaining <= Fix64.Zero)
+            {
                 s_StationaryReveals.RemoveAt(i);
+                StationaryRevealsChanged?.Invoke();
+            }
             else
                 s_StationaryReveals[i] = s_StationaryReveals[i].WithRemaining(remaining);
         }
@@ -91,10 +115,12 @@ public static class LogicFactionVisionService
         if (receivingSide != SideType.PlayerSide && receivingSide != SideType.EnemySide)
             throw new ArgumentOutOfRangeException(nameof(receivingSide), receivingSide, "Damage reveal requires a combat side.");
         s_StationaryReveals.Add(new StationaryReveal(
+            s_NextStationaryRevealId++,
             receivingSide,
             sourcePosition,
             ResolveHeight(sourcePosition),
             ReadPositiveConfig(DamageAlertVisionDurationConfigKey)));
+        StationaryRevealsChanged?.Invoke();
     }
 
     public static void HandleSuccessfulDamage(IEntityContext victim, IEntityContext attacker)
@@ -170,7 +196,7 @@ public static class LogicFactionVisionService
 
     public static void VisitStationaryReveals(
         SideType side,
-        Action<FixVector2, Fix64, int> visitor)
+        Action<int, FixVector2, Fix64, int> visitor)
     {
         if (visitor == null)
             throw new ArgumentNullException(nameof(visitor));
@@ -179,7 +205,7 @@ public static class LogicFactionVisionService
         {
             StationaryReveal reveal = s_StationaryReveals[i];
             if (reveal.Side == side)
-                visitor(reveal.Position, radius, reveal.Height);
+                visitor(reveal.Id, reveal.Position, radius, reveal.Height);
         }
     }
 
@@ -276,6 +302,7 @@ public static class LogicFactionVisionService
         for (int i = 0; i < s_StationaryReveals.Count; i++)
         {
             StationaryReveal reveal = s_StationaryReveals[i];
+            hasher.Add(reveal.Id);
             hasher.Add((int)reveal.Side);
             hasher.Add(reveal.Position.x.RawValue);
             hasher.Add(reveal.Position.y.RawValue);

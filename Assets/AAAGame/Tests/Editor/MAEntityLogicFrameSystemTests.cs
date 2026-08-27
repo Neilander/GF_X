@@ -16,7 +16,7 @@ public class MAEntityLogicFrameSystemTests
             worldSize,
             new Vector3(-worldSize * 0.5f, 0f, -worldSize * 0.5f),
             new[] { true },
-            "MAEntityLogicFrameSystemTests.VisibleFog"));
+            "MAEntityLogicFrameSystemTests.VisibleFog"), (Fix64)worldSize);
 
         LogicTimeControlService.BeginTimeline();
         LogicCardPlacementAuthority.BeginTimeline();
@@ -1871,7 +1871,7 @@ public class MAEntityLogicFrameSystemTests
                 1f,
                 Vector3.zero,
                 walkable,
-                "MAEntityLogicFrameSystemTests.NonVisibleMove")),
+                "MAEntityLogicFrameSystemTests.NonVisibleMove"), Fix64.One),
             new LogicCombatShape[0],
             Fix64.One,
             Fix64.One,

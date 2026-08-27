@@ -494,7 +494,7 @@ public sealed class LogicPresentationBoundaryTests
             1f,
             Vector3.zero,
             new[] { true },
-            "FogBoundRetirementTest"));
+            "FogBoundRetirementTest"), Fix64.One);
         typeof(Fog3Manager).GetField("controller", BindingFlags.Instance | BindingFlags.NonPublic)
             ?.SetValue(manager, controller);
         typeof(Fog3Manager).GetField("isInitialized", BindingFlags.Instance | BindingFlags.NonPublic)

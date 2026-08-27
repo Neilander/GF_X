@@ -582,7 +582,7 @@ public sealed class LogicMovementRegionConstraintServiceTests
             1f,
             Vector3.zero,
             walkable,
-            "LogicMovementRegionConstraintServiceTests"));
+            "LogicMovementRegionConstraintServiceTests"), Fix64.One);
     }
 
     private sealed class SimHeroEntityContext : SimEntityContext, IHeroLogicContext

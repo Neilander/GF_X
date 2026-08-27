@@ -37,13 +37,6 @@ namespace AAAGame.MiniMap.FOG3.Editor
             "固定世界平面"
         };
 
-        private static readonly string[] TextureFilterNames =
-        {
-            "点过滤",
-            "双线性",
-            "三线性"
-        };
-
         private bool terrainFoldout = true;
         private bool visionFoldout = true;
         private bool viewFoldout = true;
@@ -185,7 +178,6 @@ namespace AAAGame.MiniMap.FOG3.Editor
                 EditorGUILayout.PropertyField(viewSettings.FindPropertyRelative("ExploredColor"), new GUIContent("已探索颜色"));
                 EditorGUILayout.PropertyField(viewSettings.FindPropertyRelative("VisibleColor"), new GUIContent("当前可见颜色"));
                 EditorGUILayout.PropertyField(viewSettings.FindPropertyRelative("OutsideColor"), new GUIContent("地图外颜色"));
-                DrawEnumDropdown(viewSettings.FindPropertyRelative("TextureFilterMode"), "贴图过滤模式", TextureFilterNames);
                 EditorGUI.indentLevel--;
             }
             EditorGUILayout.EndFoldoutHeaderGroup();

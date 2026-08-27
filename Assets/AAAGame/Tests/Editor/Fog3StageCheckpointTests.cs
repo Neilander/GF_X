@@ -14,6 +14,74 @@ public sealed class Fog3StageCheckpointTests
     }
 
     [Test]
+    public void LogicGrid_UsesFixedPointOneWorldUnitCells()
+    {
+        Fix64 logicCellSize = (Fix64)0.1f;
+        Fog3MapData coarseTerrainMap = new Fog3MapData(CreateFlatTerrain(8, 4, 1f), logicCellSize);
+        Fog3MapData fineTerrainMap = new Fog3MapData(CreateFlatTerrain(16, 8, 0.5f), logicCellSize);
+        Fog3MapData scaledWorldMap = new Fog3MapData(CreateFlatTerrain(8, 4, 0.2f), logicCellSize);
+
+        Assert.AreEqual(80, coarseTerrainMap.Width);
+        Assert.AreEqual(40, coarseTerrainMap.Height);
+        Assert.AreEqual(coarseTerrainMap.Width, fineTerrainMap.Width);
+        Assert.AreEqual(coarseTerrainMap.Height, fineTerrainMap.Height);
+        Assert.AreEqual((float)logicCellSize, coarseTerrainMap.CellSizeX, 0.000001f);
+        Assert.AreEqual((float)logicCellSize, coarseTerrainMap.CellSizeY, 0.000001f);
+        Assert.AreEqual(16, scaledWorldMap.Width);
+        Assert.AreEqual(8, scaledWorldMap.Height);
+        Assert.AreEqual(1.6f, scaledWorldMap.Bounds.size.x, 0.000001f);
+        Assert.AreEqual(0.8f, scaledWorldMap.Bounds.size.z, 0.000001f);
+    }
+
+    [Test]
+    public void LogicGrid_DirtyBoundsTrackOnlyChangedCellsAndClearAfterPublish()
+    {
+        Fog3MapData map = new Fog3MapData(CreateFlatTerrain(8, 4, 1f), (Fix64)0.1f);
+
+        Assert.IsFalse(map.TryGetDirtyBounds(out _, out _, out _, out _));
+        map.MarkExplored(2, 3);
+        Assert.IsTrue(map.TryGetDirtyBounds(out int minimumX, out int minimumY, out int maximumX, out int maximumY));
+        Assert.AreEqual(2, minimumX);
+        Assert.AreEqual(3, minimumY);
+        Assert.AreEqual(2, maximumX);
+        Assert.AreEqual(3, maximumY);
+
+        map.MarkClean();
+
+        Assert.IsFalse(map.TryGetDirtyBounds(out _, out _, out _, out _));
+    }
+
+    [Test]
+    public void WorldOverlay_TextureUsesLogicGridResolutionInsteadOfTerrainGridResolution()
+    {
+        GameObject viewObject = new GameObject("Fog3IndependentLogicGridView");
+        try
+        {
+            Fog3TerrainInfo terrain = CreateFlatTerrain(8, 4, 1f);
+            Fog3MapData map = new Fog3MapData(terrain, (Fix64)0.1f);
+            var settings = new Fog3ViewSettings
+            {
+                SurfaceMode = Fog3OverlaySurfaceMode.FlatWorldPlane,
+                OutsideMaskPadding = 0f,
+                OverlayAlwaysOnTopShader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop"),
+            };
+            Fog3WorldOverlayView view = viewObject.AddComponent<Fog3WorldOverlayView>();
+
+            view.Build(terrain, map, settings, 0f, Physics.DefaultRaycastLayers, Vector3.zero, 1f, 2f);
+
+            Assert.AreEqual(80, view.FogTexture.width);
+            Assert.AreEqual(40, view.FogTexture.height);
+            Assert.IsFalse(view.FogMaterial.HasProperty("_FogCellSize"));
+            Assert.AreEqual(8f, view.FogMeshBounds.size.x, 0.000001f);
+            Assert.AreEqual(4f, view.FogMeshBounds.size.z, 0.000001f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(viewObject);
+        }
+    }
+
+    [Test]
     public void WorldOverlay_ChangesLogicalVisibilityImmediatelyAndFadesAlphaTowardTargets()
     {
         GameObject viewObject = new GameObject("Fog3VisibilityFadeTestView");
@@ -36,33 +104,32 @@ public sealed class Fog3StageCheckpointTests
                 OverlayAlwaysOnTopShader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop"),
             };
             Fog3WorldOverlayView view = viewObject.AddComponent<Fog3WorldOverlayView>();
-            view.Build(terrain, settings, 0f, Physics.DefaultRaycastLayers, Vector3.zero, 0.5f, 0.25f);
+            var map = new Fog3MapData(terrain, (Fix64)0.1f);
+            view.Build(terrain, map, settings, 0f, Physics.DefaultRaycastLayers, Vector3.zero, 0.5f, 0.25f);
             Assert.AreEqual(0.25f, view.VisibilityBoundaryFadeDistance);
             Assert.AreEqual(0.25f, view.FogMaterial.GetFloat("_FogBoundaryFadeDistance"));
-            Assert.AreEqual(1f, view.FogMaterial.GetFloat("_FogCellSize"));
-            var map = new Fog3MapData(terrain);
             view.Render(map, false);
 
             map.MarkExplored(0, 0);
             map.MarkVisible(0, 0);
             view.Render(map, false);
             Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
-            Assert.AreEqual(1f, view.FogTexture.GetPixel(0, 0).a, 1f / 255f);
+            Assert.AreEqual(1f, view.GetCurrentAlphaForDiagnostics(0, 0), 1f / 255f);
 
             Assert.IsTrue(view.AdvanceVisibilityFade(0.5f));
-            Assert.AreEqual(0.75f, view.FogTexture.GetPixel(0, 0).a, 1f / 255f);
+            Assert.AreEqual(0.75f, view.GetCurrentAlphaForDiagnostics(0, 0), 1f / 255f);
             Assert.IsTrue(view.AdvanceVisibilityFade(1.5f));
-            Assert.AreEqual(0f, view.FogTexture.GetPixel(0, 0).a, 1f / 255f);
+            Assert.AreEqual(0f, view.GetCurrentAlphaForDiagnostics(0, 0), 1f / 255f);
 
             map.ClearCurrentVisibility();
             view.Render(map, false);
             Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(0, 0));
-            Assert.AreEqual(0f, view.FogTexture.GetPixel(0, 0).a, 1f / 255f);
+            Assert.AreEqual(0f, view.GetCurrentAlphaForDiagnostics(0, 0), 1f / 255f);
 
             Assert.IsTrue(view.AdvanceVisibilityFade(0.5f));
-            Assert.AreEqual(0.25f, view.FogTexture.GetPixel(0, 0).a, 1f / 255f);
+            Assert.AreEqual(0.25f, view.GetCurrentAlphaForDiagnostics(0, 0), 1f / 255f);
             Assert.IsTrue(view.AdvanceVisibilityFade(0.6f));
-            Assert.AreEqual(0.55f, view.FogTexture.GetPixel(0, 0).a, 1f / 255f);
+            Assert.AreEqual(0.55f, view.GetCurrentAlphaForDiagnostics(0, 0), 1f / 255f);
         }
         finally
         {
@@ -94,7 +161,6 @@ public sealed class Fog3StageCheckpointTests
                 new Color(1f, 1f, 1f, transparentSideAlpha),
             });
             source.Apply(false);
-            material.SetFloat("_FogCellSize", 1f);
             material.SetFloat("_FogBoundaryFadeDistance", 0.25f);
 
             RenderTexture.active = target;
@@ -105,14 +171,436 @@ public sealed class Fog3StageCheckpointTests
 
             Assert.AreEqual(1f, readback.GetPixel(180, 4).r, 0.02f, "The darker cell must remain unchanged up to its edge.");
             const int boundarySampleX = 200;
-            float boundarySampleLocalDistance = ((boundarySampleX + 0.5f) / target.width * 2f - 1f);
-            float expectedBoundaryAlpha = Mathf.Lerp(1f, transparentSideAlpha, boundarySampleLocalDistance / 0.25f);
-            Assert.AreEqual(expectedBoundaryAlpha, readback.GetPixel(boundarySampleX, 4).r, 0.02f, "The transition starts from the darker alpha on the transparent side.");
-
-            float expectedMidpointAlpha = Mathf.Lerp(1f, transparentSideAlpha, 0.5f);
-            Assert.AreEqual(expectedMidpointAlpha, readback.GetPixel(225, 4).r, 0.03f);
+            float boundaryAlpha = readback.GetPixel(boundarySampleX, 4).r;
+            float midpointAlpha = readback.GetPixel(225, 4).r;
+            Assert.AreEqual(1f, boundaryAlpha, 0.03f, "The transition starts from the darker alpha on the transparent side.");
+            Assert.Greater(boundaryAlpha, midpointAlpha);
+            Assert.Greater(midpointAlpha, transparentSideAlpha + 0.05f);
             Assert.AreEqual(transparentSideAlpha, readback.GetPixel(251, 4).r, 0.03f, "The fade distance is measured inside the transparent cell.");
             Assert.AreEqual(transparentSideAlpha, readback.GetPixel(320, 4).r, 0.02f);
+        }
+        finally
+        {
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            Object.DestroyImmediate(readback);
+            Object.DestroyImmediate(material);
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [Test]
+    public void BoundaryFade_SupportsTwoCellDistance()
+    {
+        Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");
+        Assert.IsNotNull(shader);
+
+        Texture2D source = new Texture2D(4, 1, TextureFormat.RGBA32, false, true)
+        {
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        RenderTexture target = RenderTexture.GetTemporary(800, 8, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+        Material material = new Material(shader);
+        Texture2D readback = new Texture2D(800, 8, TextureFormat.RGBA32, false, true);
+        RenderTexture previous = RenderTexture.active;
+        try
+        {
+            source.SetPixels(new[]
+            {
+                Color.white,
+                new Color(1f, 1f, 1f, 0f),
+                new Color(1f, 1f, 1f, 0f),
+                new Color(1f, 1f, 1f, 0f),
+            });
+            source.Apply(false);
+            material.SetFloat("_FogBoundaryFadeDistance", 2f);
+
+            RenderTexture.active = target;
+            GL.Clear(true, true, Color.clear);
+            Graphics.Blit(source, target, material);
+            readback.ReadPixels(new Rect(0f, 0f, target.width, target.height), 0, 0, false);
+            readback.Apply(false);
+
+            Assert.AreEqual(1f, readback.GetPixel(180, 4).r, 0.02f, "The darker cell must remain unchanged.");
+            float boundaryAlpha = readback.GetPixel(200, 4).r;
+            float oneCellAlpha = readback.GetPixel(400, 4).r;
+            float twoCellAlpha = readback.GetPixel(600, 4).r;
+            Assert.AreEqual(1f, boundaryAlpha, 0.03f, "The transition must start from the darker alpha.");
+            Assert.Greater(oneCellAlpha, 0.05f, "The second transparent cell must participate in a two-cell fade.");
+            Assert.Less(oneCellAlpha, boundaryAlpha);
+            Assert.AreEqual(0f, twoCellAlpha, 0.03f, "The configured fade endpoint must return to the transparent alpha.");
+        }
+        finally
+        {
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            Object.DestroyImmediate(readback);
+            Object.DestroyImmediate(material);
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [Test]
+    public void BoundaryFade_KeepsTransientCircularRevealContourSmooth()
+    {
+        Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");
+        Assert.IsNotNull(shader);
+
+        const int sourceSize = 256;
+        const int renderedPixelsPerCell = 4;
+        const int renderSize = sourceSize * renderedPixelsPerCell;
+        const float transientVisibleAlpha = 0.72f;
+        Texture2D source = new Texture2D(sourceSize, sourceSize, TextureFormat.RGBA32, false, true)
+        {
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        Color[] sourcePixels = new Color[sourceSize * sourceSize];
+        Vector2 sourceCenter = new Vector2(127.5f, 127.5f);
+        for (int y = 0; y < sourceSize; y++)
+        {
+            for (int x = 0; x < sourceSize; x++)
+            {
+                float alpha = Vector2.Distance(new Vector2(x, y), sourceCenter) <= 72f
+                    ? transientVisibleAlpha
+                    : 1f;
+                sourcePixels[x + y * sourceSize] = new Color(1f, 1f, 1f, alpha);
+            }
+        }
+
+        source.SetPixels(sourcePixels);
+        source.Apply(false);
+
+        RenderTexture target = RenderTexture.GetTemporary(renderSize, renderSize, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+        Material material = new Material(shader);
+        Texture2D readback = new Texture2D(renderSize, renderSize, TextureFormat.RGBA32, false, true);
+        RenderTexture previous = RenderTexture.active;
+        try
+        {
+            material.SetFloat("_FogBoundaryFadeDistance", 2f);
+
+            RenderTexture.active = target;
+            GL.Clear(true, true, Color.clear);
+            Graphics.Blit(source, target, material);
+            readback.ReadPixels(new Rect(0f, 0f, renderSize, renderSize), 0, 0, false);
+            readback.Apply(false);
+
+            float renderedCenter = (renderSize - 1) * 0.5f;
+            float[] contourLevels = { 0.1f, 0.5f, 0.9f };
+            foreach (float contourLevel in contourLevels)
+            {
+                float contourThreshold = Mathf.Lerp(transientVisibleAlpha, 1f, contourLevel);
+                float minimumRadius = float.PositiveInfinity;
+                float maximumRadius = 0f;
+                for (int angleDegrees = 0; angleDegrees < 360; angleDegrees++)
+                {
+                    float angleRadians = angleDegrees * Mathf.Deg2Rad;
+                    float directionX = Mathf.Cos(angleRadians);
+                    float directionY = Mathf.Sin(angleRadians);
+                    float contourRadius = -1f;
+                    for (float radius = 0f; radius < 76f * renderedPixelsPerCell; radius += 0.25f)
+                    {
+                        int sampleX = Mathf.RoundToInt(renderedCenter + directionX * radius);
+                        int sampleY = Mathf.RoundToInt(renderedCenter + directionY * radius);
+                        if (readback.GetPixel(sampleX, sampleY).r < contourThreshold)
+                            continue;
+
+                        contourRadius = radius;
+                        break;
+                    }
+
+                    Assert.GreaterOrEqual(
+                        contourRadius,
+                        0f,
+                        $"No transient reveal contour found at level {contourLevel} and angle {angleDegrees}.");
+                    minimumRadius = Mathf.Min(minimumRadius, contourRadius);
+                    maximumRadius = Mathf.Max(maximumRadius, contourRadius);
+                }
+
+                float normalizedMapRipple = (maximumRadius - minimumRadius) / renderSize;
+                Assert.Less(
+                    normalizedMapRipple,
+                    1f / sourceSize,
+                    $"The {contourLevel:P0} contour of a revealing circular sight area must not ripple by one independently configured fog cell.");
+            }
+        }
+        finally
+        {
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            Object.DestroyImmediate(readback);
+            Object.DestroyImmediate(material);
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [Test]
+    public void BoundaryFade_DoesNotInterpretHistoricalAlphaAsTargetStateBoundary()
+    {
+        Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");
+        Assert.IsNotNull(shader);
+
+        const int sourceWidth = 32;
+        const int renderedPixelsPerCell = 100;
+        const int renderWidth = sourceWidth * renderedPixelsPerCell;
+        const float leftCurrentAlpha = 0.2f;
+        const float rightCurrentAlpha = 0.8f;
+        Texture2D source = new Texture2D(sourceWidth, 1, TextureFormat.RGBA32, false, true)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        Color32[] sourcePixels = new Color32[sourceWidth];
+        for (int x = 0; x < sourceWidth; x++)
+        {
+            byte currentAlpha = (byte)Mathf.RoundToInt(
+                (x < sourceWidth / 2 ? leftCurrentAlpha : rightCurrentAlpha) * byte.MaxValue);
+            sourcePixels[x] = new Color32(0, (byte)Fog3CellState.Visible, 0, currentAlpha);
+        }
+
+        source.SetPixels32(sourcePixels);
+        source.Apply(false);
+
+        RenderTexture target = RenderTexture.GetTemporary(renderWidth, 8, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+        Material material = new Material(shader);
+        Texture2D readback = new Texture2D(renderWidth, 8, TextureFormat.RGBA32, false, true);
+        RenderTexture previous = RenderTexture.active;
+        try
+        {
+            material.SetFloat("_FogBoundaryFadeDistance", 2f);
+            material.SetColor("_FogVisibleColor", Color.white);
+
+            RenderTexture.active = target;
+            GL.Clear(true, true, Color.clear);
+            Graphics.Blit(source, target, material);
+            readback.ReadPixels(new Rect(0f, 0f, target.width, target.height), 0, 0, false);
+            readback.Apply(false);
+
+            int boundaryX = renderWidth / 2;
+            for (int offset = 25; offset <= 175; offset += 25)
+            {
+                float leftAlpha = readback.GetPixel(boundaryX - offset, 4).r;
+                float rightAlpha = readback.GetPixel(boundaryX + offset - 1, 4).r;
+                Assert.AreEqual(
+                    leftCurrentAlpha + rightCurrentAlpha,
+                    leftAlpha + rightAlpha,
+                    0.04f,
+                    $"Historical alpha must be filtered symmetrically when target state is uniform. offset={offset}.");
+            }
+        }
+        finally
+        {
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            Object.DestroyImmediate(readback);
+            Object.DestroyImmediate(material);
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [Test]
+    public void BoundaryFade_PackedPresentationTextureKeepsTransientCircularRevealSmooth()
+    {
+        Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");
+        Assert.IsNotNull(shader);
+
+        const int sourceSize = 64;
+        const int renderedPixelsPerCell = 8;
+        const int renderSize = sourceSize * renderedPixelsPerCell;
+        const float transientVisibleAlpha = 0.72f;
+        Texture2D source = new Texture2D(sourceSize, sourceSize, TextureFormat.RGBA32, false, true)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        Color32[] sourcePixels = new Color32[sourceSize * sourceSize];
+        Vector2 sourceCenter = new Vector2(31.5f, 31.5f);
+        for (int y = 0; y < sourceSize; y++)
+        {
+            for (int x = 0; x < sourceSize; x++)
+            {
+                bool visible = Vector2.Distance(new Vector2(x, y), sourceCenter) <= 18f;
+                byte targetAlpha = visible ? (byte)0 : byte.MaxValue;
+                byte currentAlpha = visible
+                    ? (byte)Mathf.RoundToInt(transientVisibleAlpha * byte.MaxValue)
+                    : byte.MaxValue;
+                sourcePixels[x + y * sourceSize] = new Color32(
+                    targetAlpha,
+                    (byte)(visible ? Fog3CellState.Visible : Fog3CellState.Hidden),
+                    0,
+                    currentAlpha);
+            }
+        }
+
+        source.SetPixels32(sourcePixels);
+        source.Apply(false);
+        RenderTexture target = RenderTexture.GetTemporary(renderSize, renderSize, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+        Material material = new Material(shader);
+        Texture2D readback = new Texture2D(renderSize, renderSize, TextureFormat.RGBA32, false, true);
+        RenderTexture previous = RenderTexture.active;
+        try
+        {
+            material.SetFloat("_FogBoundaryFadeDistance", 2f);
+            material.SetColor("_FogHiddenColor", Color.white);
+            material.SetColor("_FogVisibleColor", Color.white);
+
+            RenderTexture.active = target;
+            GL.Clear(true, true, Color.clear);
+            Graphics.Blit(source, target, material);
+            readback.ReadPixels(new Rect(0f, 0f, target.width, target.height), 0, 0, false);
+            readback.Apply(false);
+
+            float renderedCenter = (renderSize - 1) * 0.5f;
+            float[] contourLevels = { 0.1f, 0.5f, 0.9f };
+            foreach (float contourLevel in contourLevels)
+            {
+                float contourThreshold = Mathf.Lerp(transientVisibleAlpha, 1f, contourLevel);
+                float minimumRadius = float.PositiveInfinity;
+                float maximumRadius = 0f;
+                for (int angleDegrees = 0; angleDegrees < 360; angleDegrees++)
+                {
+                    float angleRadians = angleDegrees * Mathf.Deg2Rad;
+                    float directionX = Mathf.Cos(angleRadians);
+                    float directionY = Mathf.Sin(angleRadians);
+                    float contourRadius = -1f;
+                    for (float radius = 0f; radius < 24f * renderedPixelsPerCell; radius += 0.25f)
+                    {
+                        int sampleX = Mathf.Clamp(Mathf.RoundToInt(renderedCenter + directionX * radius), 0, renderSize - 1);
+                        int sampleY = Mathf.Clamp(Mathf.RoundToInt(renderedCenter + directionY * radius), 0, renderSize - 1);
+                        if (readback.GetPixel(sampleX, sampleY).r < contourThreshold)
+                            continue;
+
+                        contourRadius = radius;
+                        break;
+                    }
+
+                    Assert.GreaterOrEqual(contourRadius, 0f, $"No packed contour at level {contourLevel:P0}, angle {angleDegrees}.");
+                    minimumRadius = Mathf.Min(minimumRadius, contourRadius);
+                    maximumRadius = Mathf.Max(maximumRadius, contourRadius);
+                }
+
+                Assert.Less(
+                    (maximumRadius - minimumRadius) / renderSize,
+                    1f / sourceSize,
+                    $"Packed presentation contour ripples by a full logic cell at level {contourLevel:P0}.");
+            }
+        }
+        finally
+        {
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            Object.DestroyImmediate(readback);
+            Object.DestroyImmediate(material);
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [Test]
+    public void WorldOverlay_AcceptsTwoCellBoundaryFadeDistance()
+    {
+        GameObject viewObject = new GameObject("Fog3TwoCellBoundaryFadeTestView");
+        try
+        {
+            var terrain = new Fog3TerrainInfo(1, 1, 1f, Vector3.zero, new[] { true }, "TwoCellBoundaryFadeTest");
+            var settings = new Fog3ViewSettings
+            {
+                SurfaceMode = Fog3OverlaySurfaceMode.FlatWorldPlane,
+                OutsideMaskPadding = 0f,
+                OverlayAlwaysOnTopShader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop"),
+            };
+            Fog3WorldOverlayView view = viewObject.AddComponent<Fog3WorldOverlayView>();
+            view.Build(terrain, new Fog3MapData(terrain, (Fix64)0.1f), settings, 0f, Physics.DefaultRaycastLayers, Vector3.zero, 1f, 2f);
+
+            Assert.AreEqual(2f, view.VisibilityBoundaryFadeDistance);
+            Assert.AreEqual(2f, view.FogMaterial.GetFloat("_FogBoundaryFadeDistance"));
+        }
+        finally
+        {
+            Object.DestroyImmediate(viewObject);
+        }
+    }
+
+    [Test]
+    public void BoundaryFade_ReconstructsDiagonalContourWithoutCellSizedSteps()
+    {
+        Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");
+        Assert.IsNotNull(shader);
+
+        const int sourceSize = 8;
+        Texture2D source = new Texture2D(sourceSize, sourceSize, TextureFormat.RGBA32, false, true)
+        {
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        Color[] sourcePixels = new Color[sourceSize * sourceSize];
+        for (int y = 0; y < sourceSize; y++)
+        {
+            for (int x = 0; x < sourceSize; x++)
+            {
+                float alpha = x + y < sourceSize - 1 ? 1f : 0f;
+                sourcePixels[x + y * sourceSize] = new Color(1f, 1f, 1f, alpha);
+            }
+        }
+
+        source.SetPixels(sourcePixels);
+        source.Apply(false);
+
+        RenderTexture target = RenderTexture.GetTemporary(512, 512, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+        Material material = new Material(shader);
+        Texture2D readback = new Texture2D(512, 512, TextureFormat.RGBA32, false, true);
+        RenderTexture previous = RenderTexture.active;
+        try
+        {
+            material.SetFloat("_FogBoundaryFadeDistance", 2f);
+
+            RenderTexture.active = target;
+            GL.Clear(true, true, Color.clear);
+            Graphics.Blit(source, target, material);
+            readback.ReadPixels(new Rect(0f, 0f, target.width, target.height), 0, 0, false);
+            readback.Apply(false);
+
+            int previousContourX = -1;
+            int currentRunLength = 0;
+            int longestRunLength = 0;
+            int maximumRowJump = 0;
+            for (int y = 192; y <= 320; y++)
+            {
+                int contourX = -1;
+                for (int x = 0; x < target.width; x++)
+                {
+                    if (readback.GetPixel(x, y).r < 0.5f)
+                    {
+                        contourX = x;
+                        break;
+                    }
+                }
+
+                Assert.GreaterOrEqual(contourX, 0, $"No half-alpha contour found on row {y}.");
+                if (contourX == previousContourX)
+                {
+                    currentRunLength++;
+                }
+                else
+                {
+                    currentRunLength = 1;
+                    if (previousContourX >= 0)
+                        maximumRowJump = Mathf.Max(maximumRowJump, Mathf.Abs(contourX - previousContourX));
+                }
+
+                longestRunLength = Mathf.Max(longestRunLength, currentRunLength);
+                previousContourX = contourX;
+            }
+
+            const int renderedPixelsPerCell = 512 / sourceSize;
+            Assert.Less(
+                longestRunLength,
+                renderedPixelsPerCell / 4,
+                "The diagonal half-alpha contour must move continuously instead of holding for a visible fraction of a cell.");
+            Assert.Less(
+                maximumRowJump,
+                renderedPixelsPerCell / 4,
+                "The diagonal half-alpha contour must not jump across a visible fraction of a cell between adjacent rows.");
         }
         finally
         {
@@ -391,8 +879,10 @@ public sealed class Fog3StageCheckpointTests
 
             lowGround.transform.position = new Vector3(0.5f, -0.5f, 0.5f);
             lowGround.transform.localScale = new Vector3(0.99f, 1f, 0.99f);
+            lowGround.layer = LayerMask.NameToLayer("Ground");
             highGround.transform.position = new Vector3(1.5f, 1.5f, 0.5f);
             highGround.transform.localScale = new Vector3(0.99f, 1f, 0.99f);
+            highGround.layer = LayerMask.NameToLayer("Ground");
             entityRoot.AddComponent<ProjectionOccluderEntity>();
             entityCollider.transform.SetParent(entityRoot.transform);
             entityCollider.transform.position = new Vector3(0.5f, 2f, 0.5f);
@@ -415,7 +905,7 @@ public sealed class Fog3StageCheckpointTests
                 OverlayAlwaysOnTopShader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop"),
             };
             Fog3WorldOverlayView view = viewObject.AddComponent<Fog3WorldOverlayView>();
-            view.Build(terrain, settings, 5f, Physics.DefaultRaycastLayers, Vector3.zero, 1f, 0.25f);
+            view.Build(terrain, new Fog3MapData(terrain, (Fix64)0.1f), settings, 5f, LayerMask.GetMask("Ground"), Vector3.zero, 1f, 0.25f);
 
             Mesh mesh = viewObject.transform.Find("FOG3_WorldOverlay").GetComponent<MeshFilter>().sharedMesh;
             Vector3[] vertices = mesh.vertices;
@@ -441,6 +931,7 @@ public sealed class Fog3StageCheckpointTests
                     camera.WorldToScreenPoint(view.transform.TransformPoint(vertices[6])),
                     camera.WorldToScreenPoint(new Vector3(2f, 2f, 0f))),
                 0.001f);
+
         }
         finally
         {
@@ -487,7 +978,7 @@ public sealed class Fog3StageCheckpointTests
         try
         {
             var controller = new Fog3Controller();
-            controller.Initialize(CreateTerrainInfo(new[] { true, true, true, true, true, true }));
+            controller.Initialize(CreateTerrainInfo(new[] { true, true, true, true, true, true }), (Fix64)0.1f);
             Fog3MapData initializedMap = controller.MapData;
             Fog3Manager manager = managerObject.AddComponent<Fog3Manager>();
             typeof(Fog3Manager).GetField("controller", BindingFlags.Instance | BindingFlags.NonPublic)
@@ -522,7 +1013,7 @@ public sealed class Fog3StageCheckpointTests
         try
         {
             var controller = new Fog3Controller();
-            controller.Initialize(CreateTerrainInfo(new[] { true, true, true, true, true, true }));
+            controller.Initialize(CreateTerrainInfo(new[] { true, true, true, true, true, true }), (Fix64)0.1f);
             Fog3Manager manager = managerObject.AddComponent<Fog3Manager>();
             typeof(Fog3Manager).GetField("controller", BindingFlags.Instance | BindingFlags.NonPublic)
                 .SetValue(manager, controller);
@@ -592,7 +1083,7 @@ public sealed class Fog3StageCheckpointTests
             0.09f,
             new Vector3(10.08f, 0f, 5.04f),
             new[] { true, true, true, true },
-            "FixedWorldToGridBoundary"));
+            "FixedWorldToGridBoundary"), (Fix64)0.1f);
         FixVector2 logicPosition = new FixVector2(
             Fix64.FromRaw(42025),
             (Fix64)5.04f);
@@ -603,7 +1094,7 @@ public sealed class Fog3StageCheckpointTests
 
         Assert.IsTrue(map.WorldToGrid(logicPosition, out int logicX, out int logicY));
         Assert.IsTrue(map.WorldToGrid(presentationPosition, out int presentationX, out int presentationY));
-        Assert.AreEqual(2, presentationX, "Authored float grid boundary fixture changed.");
+        Assert.AreEqual(1, presentationX, "Fixed 0.1-world-unit Fog boundary fixture changed.");
         Assert.AreEqual(presentationX, logicX);
         Assert.AreEqual(presentationY, logicY);
     }
@@ -617,7 +1108,7 @@ public sealed class Fog3StageCheckpointTests
             0.09f,
             Vector3.zero,
             new[] { true, true, true, true },
-            "WorldToGridNegativeOffset"));
+            "WorldToGridNegativeOffset"), (Fix64)0.1f);
         FixVector2 logicPosition = new FixVector2(Fix64.FromRaw(-1), Fix64.Zero);
         Vector3 presentationPosition = new Vector3((float)logicPosition.x, 0f, 0f);
 
@@ -633,7 +1124,7 @@ public sealed class Fog3StageCheckpointTests
     public void Controller_PublishesAuthoritativeVisibilityWithoutRecalculatingIt()
     {
         var controller = new Fog3Controller();
-        controller.Initialize(CreateTerrainInfo(new[] { true, true, true, true, true, true }));
+        controller.Initialize(CreateTerrainInfo(new[] { true, true, true, true, true, true }), (Fix64)0.1f);
         controller.MapData.MarkVisible(1, 0);
         int publishedCount = 0;
         controller.VisibilityUpdated += map =>
@@ -665,7 +1156,7 @@ public sealed class Fog3StageCheckpointTests
             };
             EntityRegistry.Register(entity);
 
-            Fog3MapData map = new Fog3MapData(CreateTerrainInfo(new[] { true, true, true, true, true, true }));
+            Fog3MapData map = new Fog3MapData(CreateTerrainInfo(new[] { true, true, true, true, true, true }), (Fix64)0.1f);
             LogicCardPlacementAuthority.BindWorldForTests(
                 map,
                 System.Array.Empty<LogicCombatShape>(),
@@ -675,15 +1166,18 @@ public sealed class Fog3StageCheckpointTests
             LogicTimeControlService.BeginFrame(1);
             LogicCardPlacementAuthority.ApplyFrame(1);
 
-            Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
-            Assert.AreEqual(Fog3CellState.Hidden, map.GetCellState(2, 0));
+            Assert.IsTrue(map.WorldToGrid(entity.PositionFixed, out int firstX, out int firstY));
+            Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(firstX, firstY));
+            Assert.IsTrue(map.WorldToGrid(new FixVector2((Fix64)2.5f, (Fix64)0.5f), out int untouchedX, out int untouchedY));
+            Assert.AreEqual(Fog3CellState.Hidden, map.GetCellState(untouchedX, untouchedY));
 
             entity.PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f);
             LogicTimeControlService.BeginFrame(2);
             LogicCardPlacementAuthority.ApplyFrame(2);
 
-            Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(0, 0));
-            Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(1, 0));
+            Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(firstX, firstY));
+            Assert.IsTrue(map.WorldToGrid(entity.PositionFixed, out int secondX, out int secondY));
+            Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(secondX, secondY));
         }
         finally
         {
@@ -703,7 +1197,7 @@ public sealed class Fog3StageCheckpointTests
         try
         {
             var controller = new Fog3Controller();
-            controller.Initialize(CreateTerrainInfo(new[] { true, true, true, true, true, true }));
+            controller.Initialize(CreateTerrainInfo(new[] { true, true, true, true, true, true }), (Fix64)0.1f);
             Fog3Manager manager = managerObject.AddComponent<Fog3Manager>();
             typeof(Fog3Manager).GetField("controller", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(manager, controller);
             typeof(Fog3Manager).GetField("isInitialized", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(manager, true);
@@ -753,10 +1247,10 @@ public sealed class Fog3StageCheckpointTests
         var map = new Fog3MapData(new Fog3TerrainInfo(
             width,
             height,
-            1f,
+            0.1f,
             Vector3.zero,
             walkable,
-            "SparseCheckpointTest"));
+            "SparseCheckpointTest"), (Fix64)0.1f);
         map.MarkExplored(1, 1);
         map.MarkExplored(width - 2, height - 2);
 
@@ -773,6 +1267,25 @@ public sealed class Fog3StageCheckpointTests
         map.ResetExploration();
         map.RestoreExplorationCheckpoint(changed);
         Assert.IsTrue(map.IsExplored(2, 2));
+    }
+
+    [Test]
+    public void LogicGrid_ClipsTheLastCellToTerrainBounds()
+    {
+        var map = new Fog3MapData(new Fog3TerrainInfo(
+            4,
+            1,
+            0.09f,
+            new Vector3(10.08f, 0f, 5.04f),
+            new[] { true, true, true, true },
+            "ClippedLogicCellTest"), (Fix64)0.1f);
+
+        Assert.AreEqual(4, map.Width);
+        Assert.AreEqual(0.36f, map.Bounds.size.x, 0.000001f);
+        Assert.IsTrue(map.WorldToGrid(new Vector3(10.439f, 0f, 5.04f), out int insideX, out _));
+        Assert.AreEqual(3, insideX);
+        Assert.IsFalse(map.WorldToGrid(new Vector3(10.441f, 0f, 5.04f), out _, out _));
+        Assert.Less(map.GridToWorldCenter(3, 0).x, map.Bounds.max.x);
     }
 
     [Test]
@@ -960,7 +1473,7 @@ public sealed class Fog3StageCheckpointTests
 
     private static Fog3MapData CreateMap(bool[] walkable)
     {
-        return new Fog3MapData(CreateTerrainInfo(walkable));
+        return new Fog3MapData(CreateTerrainInfo(walkable), (Fix64)0.1f);
     }
 
     private static Fog3WorldOverlayView BuildTerrainConformingView(GameObject viewObject, Fog3TerrainInfo terrain)
@@ -974,7 +1487,7 @@ public sealed class Fog3StageCheckpointTests
             OverlayAlwaysOnTopShader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop"),
         };
         Fog3WorldOverlayView view = viewObject.AddComponent<Fog3WorldOverlayView>();
-        view.Build(terrain, settings, 5f, Physics.DefaultRaycastLayers, Vector3.zero, 1f, 0.25f);
+        view.Build(terrain, new Fog3MapData(terrain, (Fix64)0.1f), settings, 5f, Physics.DefaultRaycastLayers, Vector3.zero, 1f, 0.25f);
         return view;
     }
 
@@ -987,5 +1500,13 @@ public sealed class Fog3StageCheckpointTests
             Vector3.zero,
             walkable,
             "StageCheckpointTest");
+    }
+
+    private static Fog3TerrainInfo CreateFlatTerrain(int width, int height, float cellSize)
+    {
+        bool[] walkable = new bool[checked(width * height)];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        return new Fog3TerrainInfo(width, height, cellSize, Vector3.zero, walkable, "IndependentFogGridTest");
     }
 }

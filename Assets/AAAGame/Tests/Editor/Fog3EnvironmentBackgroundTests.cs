@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using AAAGame.MiniMap.FOG3;
 using AAAGame.Tools.Editor;
 using NUnit.Framework;
@@ -73,7 +73,6 @@ public sealed class Fog3EnvironmentBackgroundTests
             -3.7f,
             -2.1f,
             "Test");
-
         try
         {
             SetField(view, "settings", new Fog3ViewSettings());
@@ -111,6 +110,7 @@ public sealed class Fog3EnvironmentBackgroundTests
             -3.7f,
             -2.1f,
             "Test");
+        var map = new Fog3MapData(terrain, (Fix64)0.1f);
 
         try
         {
@@ -121,7 +121,7 @@ public sealed class Fog3EnvironmentBackgroundTests
                     "Assets/AAAGame/Scripts/MiniMap/FOG3/View/Fog3OverlayAlwaysOnTop.shader"),
             };
             Assert.That(settings.OverlayAlwaysOnTopShader, Is.Not.Null);
-            view.Build(terrain, settings, 1f, (LayerMask)0, Vector3.zero, 10f, 0.25f);
+            view.Build(terrain, map, settings, 1f, (LayerMask)0, Vector3.zero, 10f, 0.25f);
 
             Assert.That(view.FogTexture.GetPixel(0, 0), Is.EqualTo(settings.OutsideColor));
             Assert.That(view.OutsideMaskQuadCount, Is.EqualTo(4));
@@ -182,12 +182,12 @@ public sealed class Fog3EnvironmentBackgroundTests
             0f,
             0f,
             "Expanded water test");
-        var map = new Fog3MapData(terrain);
+        var map = new Fog3MapData(terrain, (Fix64)0.1f);
         map.MarkVisible(0, 0);
 
         Assert.That(map.GetCellState(0, 0), Is.EqualTo(Fog3CellState.Visible));
         Assert.That(map.GetCellState(3, 0), Is.EqualTo(Fog3CellState.Hidden));
-        Assert.That(map.GetCellState(4, 0), Is.EqualTo(Fog3CellState.Outside));
+        Assert.That(map.GetCellState(40, 0), Is.EqualTo(Fog3CellState.Outside));
     }
 
     private static void SetField(object target, string name, object value)

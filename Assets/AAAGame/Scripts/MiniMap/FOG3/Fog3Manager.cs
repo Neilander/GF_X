@@ -37,6 +37,7 @@ namespace AAAGame.MiniMap.FOG3
         private const string HeroVisionRadiusConfigKey = "HeroVisionRadius";
         private const string UnitVisionRadiusConfigKey = "UnitVisionRadius";
         private const string BuildingVisionRadiusConfigKey = "BuildingVisionRadius";
+        private const string FogLogicCellSizeConfigKey = "FogLogicCellSize";
         private const string VisionFadeSpeedConfigKey = "VisionFadeSpeed";
         private const string VisionBoundaryFadeDistanceConfigKey = "VisionBoundaryFadeDistance";
 
@@ -492,6 +493,7 @@ namespace AAAGame.MiniMap.FOG3
                 }
 
                 RefreshCloudOverlayForCameraIfNeeded();
+                RefreshOverlayPresentationForCamera();
             }
             finally
             {
@@ -528,14 +530,17 @@ namespace AAAGame.MiniMap.FOG3
             currentTerrainInfo = terrainInfo;
             HasPresentedLogicFrameVisibility = false;
             controller.VisibilityUpdated -= OnVisibilityUpdated;
-            controller.Initialize(terrainInfo);
+            controller.Initialize(terrainInfo, ResolveFogLogicCellSize());
             controller.VisibilityUpdated += OnVisibilityUpdated;
 
             if (createWorldOverlay)
                 EnsureOverlayView(terrainInfo);
 
             isInitialized = true;
-            Log.Info($"[FOG3] Initialized from {terrainInfo.SourceName}: {terrainInfo.Width}x{terrainInfo.Height}, cell={terrainInfo.CellSize}");
+            Log.Info(
+                $"[FOG3] Initialized from {terrainInfo.SourceName}: " +
+                $"terrain={terrainInfo.Width}x{terrainInfo.Height}, terrainCell={terrainInfo.CellSize}, " +
+                $"fog={controller.MapData.Width}x{controller.MapData.Height}, fogCell=({controller.MapData.CellSizeX},{controller.MapData.CellSizeY})");
         }
 
         public void RebuildTerrain()
@@ -876,12 +881,13 @@ namespace AAAGame.MiniMap.FOG3
             currentOverlayWorldOffset = ResolveOverlayWorldOffset(terrainInfo, currentOverlayHeight);
             overlayView.Build(
                 terrainInfo,
+                controller.MapData,
                 viewSettings,
                 currentOverlayHeight,
                 ResolveHeightSampleMask(),
                 currentOverlayWorldOffset,
                 ResolveVisibilityFadeSpeed(),
-                ResolveVisibilityBoundaryFadeDistance(terrainInfo));
+                ResolveVisibilityBoundaryFadeDistance());
             overlayView.Render(controller.MapData, logPerformanceDiagnostics);
         }
 
@@ -893,18 +899,21 @@ namespace AAAGame.MiniMap.FOG3
             return speed;
         }
 
-        private static float ResolveVisibilityBoundaryFadeDistance(Fog3TerrainInfo terrainInfo)
+        private static Fix64 ResolveFogLogicCellSize()
         {
-            if (terrainInfo == null)
-                throw new ArgumentNullException(nameof(terrainInfo));
+            return FixedConfigReader.ReadRequiredPositiveFixedConfig(FogLogicCellSizeConfigKey);
+        }
+
+        private static float ResolveVisibilityBoundaryFadeDistance()
+        {
 
             float distance = (float)FixedConfigReader.ReadRequiredPositiveFixedConfig(VisionBoundaryFadeDistanceConfigKey);
             if (distance <= 0f || float.IsNaN(distance) || float.IsInfinity(distance))
                 throw new InvalidOperationException($"FOG3 visibility boundary fade distance must be finite and positive. value={distance}.");
-            if (distance > terrainInfo.CellSize)
+            if (distance > Fog3WorldOverlayView.MaximumBoundaryFadeCellRatio)
             {
                 throw new InvalidOperationException(
-                    $"FOG3 visibility boundary fade distance cannot exceed one fog cell. distance={distance}, cellSize={terrainInfo.CellSize}.");
+                    $"FOG3 visibility boundary fade distance cannot exceed {Fog3WorldOverlayView.MaximumBoundaryFadeCellRatio} fog texels. distance={distance}.");
             }
 
             return distance;
@@ -918,7 +927,10 @@ namespace AAAGame.MiniMap.FOG3
             if (terrainSettings.GroundMask.value != 0)
                 return terrainSettings.GroundMask;
 
-            return Physics.DefaultRaycastLayers;
+            int groundMask = LayerMask.GetMask("Ground");
+            if (groundMask == 0)
+                throw new InvalidOperationException("FOG3 height sampling requires the Ground layer.");
+            return groundMask;
         }
 
         private Vector3 ResolveOverlayWorldOffset(Fog3TerrainInfo terrainInfo, float overlayLocalHeight)
@@ -1171,12 +1183,13 @@ namespace AAAGame.MiniMap.FOG3
             currentOverlayWorldOffset = nextOverlayWorldOffset;
             overlayView.Build(
                 currentTerrainInfo,
+                controller.MapData,
                 viewSettings,
                 currentOverlayHeight,
                 ResolveHeightSampleMask(),
                 currentOverlayWorldOffset,
                 ResolveVisibilityFadeSpeed(),
-                ResolveVisibilityBoundaryFadeDistance(currentTerrainInfo));
+                ResolveVisibilityBoundaryFadeDistance());
             overlayView.Render(controller.MapData, logPerformanceDiagnostics);
 
             if (isCloudLayer)
@@ -1200,6 +1213,16 @@ namespace AAAGame.MiniMap.FOG3
 
             cloudHeightRefreshTimer = 0f;
             RefreshOverlayHeightIfNeeded();
+        }
+
+        private void RefreshOverlayPresentationForCamera()
+        {
+            if (!isInitialized || overlayView == null)
+                return;
+            if (!TryGetReferenceCamera(out Camera referenceCamera))
+                return;
+
+            overlayView.RefreshCameraPresentation(referenceCamera);
         }
 
         private static bool TryGetReferenceCamera(out Camera referenceCamera)

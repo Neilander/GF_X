@@ -14,9 +14,9 @@ namespace AAAGame.MiniMap.FOG3
         public Fog3MapData MapData { get; private set; }
         public int RevealerCount => revealers.Count;
 
-        public void Initialize(Fog3TerrainInfo terrainInfo)
+        public void Initialize(Fog3TerrainInfo terrainInfo, Fix64 logicCellSize)
         {
-            MapData = new Fog3MapData(terrainInfo);
+            MapData = new Fog3MapData(terrainInfo, logicCellSize);
             revealers.Clear();
             nextRevealerId = 1;
         }

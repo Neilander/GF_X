@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -79,6 +79,27 @@ public sealed class LogicCardPlacementAuthorityTests
         Assert.AreEqual(
             LogicCardPlacementInvalidReason.None,
             LogicCardPlacementAuthority.Evaluate(hero.PositionFixed, Fix64.Zero, GamePhase.Invade));
+    }
+
+    [Test]
+    public void ApplyFrame_WithoutVisibilityDirty_DoesNotRecomputeEntityFov()
+    {
+        Fog3MapData map = CreateMap(5, 5);
+        Bind(map, Array.Empty<LogicCombatShape>(), Fix64.One);
+        EntityRegistry.Register(new SimEntityContext
+        {
+            PositionFixed = new FixVector2((Fix64)2.5f, (Fix64)2.5f),
+            Side = SideType.PlayerSide,
+        });
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicCardPlacementAuthority.ApplyFrame(1);
+        int visitStampAfterDirtyFrame = GetNextFovVisitStamp(map);
+
+        LogicTimeControlService.BeginFrame(2);
+        LogicCardPlacementAuthority.ApplyFrame(2);
+
+        Assert.AreEqual(visitStampAfterDirtyFrame, GetNextFovVisitStamp(map));
     }
 
     [Test]
@@ -561,7 +582,7 @@ public sealed class LogicCardPlacementAuthorityTests
             1f,
             Vector3.zero,
             new[] { true, true, true },
-            "BuildPhaseExplorationTest"));
+            "BuildPhaseExplorationTest"), Fix64.One);
         Fog3MapData map = controller.MapData;
         Bind(map, Array.Empty<LogicCombatShape>(), Fix64.FromRaw(2007));
         var revealer = new SimEntityContext
@@ -1013,6 +1034,13 @@ public sealed class LogicCardPlacementAuthorityTests
             visionRadius);
     }
 
+    private static int GetNextFovVisitStamp(Fog3MapData map)
+    {
+        return (int)typeof(Fog3MapData)
+            .GetField("nextFovVisitStamp", BindingFlags.Instance | BindingFlags.NonPublic)
+            .GetValue(map);
+    }
+
     private static void InitializeStrongholdMap(IReadOnlyList<LogicStrongholdCellDefinition> cells)
     {
         LogicStrongholdMap.Initialize(
@@ -1034,7 +1062,7 @@ public sealed class LogicCardPlacementAuthorityTests
             1f,
             Vector3.zero,
             walkable,
-            "LogicCardPlacementAuthorityTests"));
+            "LogicCardPlacementAuthorityTests"), Fix64.One);
     }
 
     private static Fog3MapData CreateHeightMap(
@@ -1065,7 +1093,7 @@ public sealed class LogicCardPlacementAuthorityTests
             platformHeights,
             slopeMask,
             slopeCells,
-            "LogicCardPlacementHeightTests"));
+            "LogicCardPlacementHeightTests"), Fix64.One);
     }
 
     private static void MarkAllExplored(Fog3MapData map)

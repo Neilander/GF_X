@@ -1841,7 +1841,7 @@ public class SteeringMovementTests
             heights,
             slopes,
             slopeCells,
-            "SlopeUpperVisionTest"));
+            "SlopeUpperVisionTest"), Fix64.One);
     }
 
     private SimHeroContext MakeHero(Vector3 position, SideType side)
