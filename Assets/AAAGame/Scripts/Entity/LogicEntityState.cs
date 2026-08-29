@@ -964,7 +964,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, ISkill
                 UpdateForwardForMoveCommit();
                 Position = resolved;
                 if (frameStartPosition != resolved)
-                    LogicFactionVisionService.MarkEntityVisibilityDirty(EntityId);
+                    LogicFactionVisionService.MarkEntityVisibilityDirty(EntityId, true);
                 m_MoveComp.CommitResolvedDisplacement(displacement);
                 m_MoveExecutor.CommitPreparedLogicFrame(LogicFrameRuntime.CurrentFrame);
                 break;

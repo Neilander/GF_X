@@ -74,13 +74,10 @@ namespace AAAGame.MiniMap
         private bool fogSyncReadyLogged;
         private bool fogSyncMissingLogged;
         private int terrainMapLevelEntityId;
+        private bool terrainMapFillsContainer;
         private bool cameraFrameStyleApplied;
         private TileWorldCreatorManager terrainMapTileWorldCreatorManager;
         private bool terrainMapBuildEventSubscribed;
-        private bool terrainMapUseCenteredGrid;
-        private int terrainGridWidth;
-        private int terrainGridHeight;
-        private float terrainCellSize = 1f;
         private RectTransform minimapContent;
         private readonly List<TeleportationMarker> teleportationMarkers = new List<TeleportationMarker>();
         private int teleportationMarkerLevelEntityId;
@@ -178,11 +175,8 @@ namespace AAAGame.MiniMap
 
             UnsubscribeTerrainBuildEvent();
             terrainMapLevelEntityId = 0;
+            terrainMapFillsContainer = false;
             cameraFrameStyleApplied = false;
-            terrainMapUseCenteredGrid = false;
-            terrainGridWidth = 0;
-            terrainGridHeight = 0;
-            terrainCellSize = 1f;
             ClearTeleportationMarkers();
             isLargeMap = false;
             teleportationPointClicked = null;
@@ -211,7 +205,9 @@ namespace AAAGame.MiniMap
 
         public void RefreshLayout()
         {
-            UpdateMinimapContentLayout();
+            terrainMapLevelEntityId = 0;
+            TryBuildTerrainMap(true);
+            RefreshMinimapFogOverlay(true, 0f);
             RefreshTeleportationMarkerStates();
             UpdateCameraViewFrame();
         }
@@ -309,14 +305,16 @@ namespace AAAGame.MiniMap
                 return;
 
             MinimapConfig config = minimapManager.Config;
-            float worldWidth = terrainGridWidth > 0 ? terrainGridWidth : Mathf.Max(0.01f, config.WorldMaxX - config.WorldMinX);
-            float worldHeight = terrainGridHeight > 0 ? terrainGridHeight : Mathf.Max(0.01f, config.WorldMaxZ - config.WorldMinZ);
+            float worldWidth = Mathf.Max(0.01f, config.WorldMaxX - config.WorldMinX);
+            float worldHeight = Mathf.Max(0.01f, config.WorldMaxZ - config.WorldMinZ);
             float mapAspect = worldWidth / worldHeight;
             float boundsAspect = boundsWidth / boundsHeight;
 
-            Vector2 contentSize = boundsAspect >= mapAspect
-                ? new Vector2(boundsHeight * mapAspect, boundsHeight)
-                : new Vector2(boundsWidth, boundsWidth / mapAspect);
+            Vector2 contentSize = terrainMapFillsContainer
+                ? new Vector2(boundsWidth, boundsHeight)
+                : boundsAspect >= mapAspect
+                    ? new Vector2(boundsHeight * mapAspect, boundsHeight)
+                    : new Vector2(boundsWidth, boundsWidth / mapAspect);
 
             minimapContent.sizeDelta = contentSize;
             minimapContent.anchoredPosition = Vector2.zero;
@@ -633,23 +631,36 @@ namespace AAAGame.MiniMap
                 DisableFogOverlay();
                 return;
             }
+            if (terrainMapTexture == null)
+            {
+                DisableFogOverlay();
+                return;
+            }
 
             EnsureFogMapImage();
-            EnsureFogMapTexture(fogMapData.Width, fogMapData.Height);
+            int width = terrainMapTexture.width;
+            int height = terrainMapTexture.height;
+            EnsureFogMapTexture(width, height);
 
             Color32 hiddenColor = minimapHiddenFogColor;
             Color32 exploredColor = minimapExploredFogColor;
             Color32 outsideColor = minimapOutsideFogColor;
             Color32 visibleColor = new Color32(0, 0, 0, 0);
 
-            int width = fogMapData.Width;
-            int height = fogMapData.Height;
+            MinimapConfig config = minimapManager.Config;
             for (int y = 0; y < height; y++)
             {
                 int rowIndex = y * width;
+                float worldZ = Mathf.Lerp(config.WorldMinZ, config.WorldMaxZ, (y + 0.5f) / height);
                 for (int x = 0; x < width; x++)
                 {
-                    Fog3CellState cellState = fogMapData.GetCellState(x, y);
+                    float worldX = Mathf.Lerp(config.WorldMinX, config.WorldMaxX, (x + 0.5f) / width);
+                    Fog3CellState cellState = fogMapData.WorldToGrid(
+                        new Vector3(worldX, fogMapData.WorldOrigin.y, worldZ),
+                        out int fogX,
+                        out int fogY)
+                        ? fogMapData.GetCellState(fogX, fogY)
+                        : Fog3CellState.Outside;
                     switch (cellState)
                     {
                         case Fog3CellState.Visible:
@@ -897,57 +908,12 @@ namespace AAAGame.MiniMap
 
         private Vector2 WorldToMinimapPosition(Vector3 worldPos)
         {
-            if (TryWorldToMinimapByTileGrid(worldPos, out Vector2 minimapPosByGrid))
-            {
-                return minimapPosByGrid;
-            }
-
             if (minimapManager == null) return Vector2.zero;
             MinimapConfig cfg = minimapManager.Config;
             Vector2 mapSize = GetMinimapRenderSize();
             float nx = Mathf.InverseLerp(cfg.WorldMinX, cfg.WorldMaxX, worldPos.x);
             float nz = Mathf.InverseLerp(cfg.WorldMinZ, cfg.WorldMaxZ, worldPos.z);
             return new Vector2((nx - 0.5f) * mapSize.x, (nz - 0.5f) * mapSize.y);
-        }
-
-        private bool TryWorldToMinimapByTileGrid(Vector3 worldPos, out Vector2 minimapPos)
-        {
-            minimapPos = Vector2.zero;
-
-            TileWorldCreatorManager twcManager = terrainMapTileWorldCreatorManager;
-            if (twcManager == null)
-            {
-                LevelEntity levelEntity = LevelEntity.ActiveLevelEntity;
-                if (levelEntity != null)
-                {
-                    twcManager = levelEntity.GetComponentInChildren<TileWorldCreatorManager>();
-                }
-            }
-
-            if (twcManager == null || twcManager.configuration == null)
-            {
-                return false;
-            }
-
-            int width = terrainGridWidth > 0 ? terrainGridWidth : Mathf.Max(1, twcManager.configuration.width);
-            int height = terrainGridHeight > 0 ? terrainGridHeight : Mathf.Max(1, twcManager.configuration.height);
-            float cellSize = terrainCellSize > 0f ? terrainCellSize : Mathf.Max(0.01f, twcManager.configuration.cellSize);
-
-            Vector3 localPos = twcManager.transform.InverseTransformPoint(worldPos);
-            float gridX = localPos.x / cellSize;
-            float gridY = localPos.z / cellSize;
-
-            if (terrainMapUseCenteredGrid)
-            {
-                gridX += width * 0.5f;
-                gridY += height * 0.5f;
-            }
-
-            float nx = gridX / Mathf.Max(1f, width);
-            float ny = gridY / Mathf.Max(1f, height);
-            Vector2 mapSize = GetMinimapRenderSize();
-            minimapPos = new Vector2((nx - 0.5f) * mapSize.x, (ny - 0.5f) * mapSize.y);
-            return true;
         }
 
         private Vector2 GetMinimapRenderSize()
@@ -1194,21 +1160,22 @@ namespace AAAGame.MiniMap
             EnsureTerrainBuildEventSubscription(tileWorldCreatorManager);
 
             MinimapTerrainMapBuildResult terrainMapBuildResult = MinimapTerrainMapBuilder.Build(
-                tileWorldCreatorManager.configuration,
+                tileWorldCreatorManager,
                 terrainTextureMaxSize,
                 groundLayerKeyword,
                 waterLayerKeyword,
                 minimapManager.PlaneLayerColor,
                 minimapManager.WaterLayerColor,
-                new Color32(0, 0, 0, 255));
+                new Color32(0, 0, 0, 255),
+                minimapManager.TerrainPaddingCells,
+                GetMinimapContainerAspect());
             if (terrainMapBuildResult == null)
             {
                 return;
             }
 
-            terrainGridWidth = terrainMapBuildResult.GridWidth;
-            terrainGridHeight = terrainMapBuildResult.GridHeight;
-            terrainCellSize = terrainMapBuildResult.CellSize;
+            terrainMapFillsContainer = terrainMapBuildResult.Bounds.HasEnvironmentBackground;
+            minimapManager.ApplyTerrainBounds(terrainMapBuildResult.Bounds);
             UpdateMinimapContentLayout();
 
             EnsureTerrainMapImage();
@@ -1219,14 +1186,26 @@ namespace AAAGame.MiniMap
                 terrainMapTexture = null;
             }
             terrainMapTexture = terrainMapBuildResult.Texture;
-            terrainMapUseCenteredGrid = terrainMapBuildResult.UseCenteredGrid;
-
             terrainMapImage.texture = terrainMapTexture;
             terrainMapImage.color = Color.white;
             terrainMapImage.raycastTarget = false;
             UpdateOverlaySiblingOrder();
 
             terrainMapLevelEntityId = terrainMapBuildResult.IsTerrainReady ? levelEntityId : 0;
+        }
+
+        private float GetMinimapContainerAspect()
+        {
+            if (minimapContainer == null)
+                throw new InvalidOperationException("Minimap terrain build requires a minimap container.");
+
+            Rect rect = minimapContainer.rect;
+            float width = Mathf.Abs(rect.width);
+            float height = Mathf.Abs(rect.height);
+            if (width <= 0.01f || height <= 0.01f)
+                throw new InvalidOperationException("Minimap container must have a positive layout size before terrain build.");
+
+            return width / height;
         }
 
         private void EnsureTerrainMapImage()

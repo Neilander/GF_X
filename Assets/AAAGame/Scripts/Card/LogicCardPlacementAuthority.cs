@@ -24,10 +24,12 @@ namespace AAAGame.Card
         private static readonly List<LogicCombatShape> s_StaticForbiddenShapes = new();
         private static readonly Dictionary<long, CachedVisibilitySource> s_VisibilitySources = new();
         private static readonly HashSet<int> s_DirtyEntityIds = new();
+        private static readonly HashSet<int> s_ContinuouslyMovedEntityIds = new();
         private static readonly HashSet<int> s_SeenEntityIds = new();
         private static readonly HashSet<long> s_SeenStationarySourceKeys = new();
         private static readonly List<long> s_RemovedVisibilitySourceKeys = new();
         private static readonly List<Fog3VisibilityRowInterval> s_GeometryIntervals = new();
+        private static readonly List<Fog3VisibilityRowInterval> s_NextVisibilityIntervals = new();
         private static Fog3MapData s_MapData;
         private static Fix64 s_HeroVisionRadius;
         private static Fix64 s_UnitVisionRadius;
@@ -76,6 +78,8 @@ namespace AAAGame.Card
         {
             public VisibilitySourceState State;
             public readonly List<Fog3VisibilityRowInterval> Intervals = new();
+            public double SnapshotLogicTime;
+            public bool HasState;
         }
 
         public static bool IsActive { get; private set; }
@@ -183,11 +187,13 @@ namespace AAAGame.Card
                 SynchronizeAllEntityVisibilitySources();
                 s_AllEntityVisibilityDirty = false;
                 s_DirtyEntityIds.Clear();
+                s_ContinuouslyMovedEntityIds.Clear();
             }
             else
             {
                 SynchronizeDirtyEntityVisibilitySources();
                 s_DirtyEntityIds.Clear();
+                s_ContinuouslyMovedEntityIds.Clear();
             }
 
             if (s_StationaryVisibilityDirty)
@@ -197,7 +203,7 @@ namespace AAAGame.Card
             }
             if (s_MapData.ExplorationVersion != explorationVersionBeforeUpdate)
                 RefreshExplorationDependentVisibilitySources();
-            s_MapData.ResolveVisibilityCoverageChanges();
+            s_MapData.ResolveVisibilityCoverageChanges(ResolveCurrentVisibilitySourceLogicTime());
         }
 
         private static void SynchronizeAllEntityVisibilitySources()
@@ -212,7 +218,7 @@ namespace AAAGame.Card
                 if (!entity.LogicEntityId.IsValid)
                     throw new InvalidOperationException($"LogicCardPlacementAuthority found an invalid entity id at registry index {i}.");
                 s_SeenEntityIds.Add(entity.LogicEntityId.Value);
-                SynchronizeEntityVisibilitySource(entity, hasGhostHero);
+                SynchronizeEntityVisibilitySource(entity, hasGhostHero, false);
             }
 
             s_RemovedVisibilitySourceKeys.Clear();
@@ -231,20 +237,30 @@ namespace AAAGame.Card
             {
                 var logicEntityId = new LogicEntityId(entityId);
                 if (EntityRegistry.TryGet(logicEntityId, out IEntityContext entity))
-                    SynchronizeEntityVisibilitySource(entity, hasGhostHero);
+                    SynchronizeEntityVisibilitySource(
+                        entity,
+                        hasGhostHero,
+                        s_ContinuouslyMovedEntityIds.Contains(entityId));
                 else
                     RemoveEntityVisibilitySources(entityId);
             }
         }
 
-        private static void SynchronizeEntityVisibilitySource(IEntityContext entity, bool hasGhostHero)
+        private static void SynchronizeEntityVisibilitySource(
+            IEntityContext entity,
+            bool hasGhostHero,
+            bool continuousMovement)
         {
             if (!TryGetRevealRadius(entity, out Fix64 radius))
             {
                 RemoveEntityVisibilitySources(entity.LogicEntityId.Value);
                 return;
             }
-            UpdateEntityVisibilitySources(entity, radius, CanExploreHiddenFog(entity, hasGhostHero));
+            UpdateEntityVisibilitySources(
+                entity,
+                radius,
+                CanExploreHiddenFog(entity, hasGhostHero),
+                continuousMovement);
         }
 
         private static void SynchronizeStationaryVisibilitySources()
@@ -277,7 +293,8 @@ namespace AAAGame.Card
         private static void UpdateEntityVisibilitySources(
             IEntityContext entity,
             Fix64 radius,
-            bool canExploreHiddenFog)
+            bool canExploreHiddenFog,
+            bool continuousMovement)
         {
             if (!TryWorldToCell(entity.PositionFixed, out int x, out int y))
             {
@@ -290,7 +307,8 @@ namespace AAAGame.Card
             UpdateVisibilitySource(
                 baseKey,
                 CreateVisibilitySourceState(entity.PositionFixed, radius, viewerHeight, -1, canExploreHiddenFog),
-                false);
+                false,
+                continuousMovement);
 
             if (entity.IsLogicBuilding()
                 || !s_MapData.IsSlope(x, y))
@@ -309,7 +327,8 @@ namespace AAAGame.Card
             UpdateVisibilitySource(
                 baseKey | 1L,
                 CreateVisibilitySourceState(entity.PositionFixed, upperRadius, upperHeight, upperHeight, canExploreHiddenFog),
-                false);
+                false,
+                continuousMovement);
         }
 
         public static LogicCardPlacementInvalidReason Evaluate(
@@ -620,7 +639,8 @@ namespace AAAGame.Card
         private static void UpdateVisibilitySource(
             long sourceKey,
             VisibilitySourceState state,
-            bool forceRefresh)
+            bool forceRefresh,
+            bool continuousMovement = false)
         {
             if (!s_VisibilitySources.TryGetValue(sourceKey, out CachedVisibilitySource cached))
             {
@@ -632,17 +652,181 @@ namespace AAAGame.Card
                 return;
             }
 
-            ChangeVisibilityIntervals(cached.Intervals, -1);
-            cached.Intervals.Clear();
+            s_NextVisibilityIntervals.Clear();
             s_MapData.CollectVisibleIntervals(
                 state.Position,
                 state.Radius,
                 state.ViewerHeight,
                 state.RequiredHeight >= 0 ? state.RequiredHeight : null,
                 s_GeometryIntervals);
-            FilterAndExploreVisibilityIntervals(state, cached.Intervals);
+            FilterAndExploreVisibilityIntervals(state, s_NextVisibilityIntervals);
+            double currentSnapshotLogicTime = ResolveCurrentVisibilitySourceLogicTime();
+            if (continuousMovement
+                && cached.HasState
+                && cached.State.Position != state.Position
+                && cached.State.Radius == state.Radius
+                && cached.State.ViewerHeight == state.ViewerHeight
+                && cached.State.RequiredHeight == state.RequiredHeight
+                && cached.State.CanExploreHiddenFog == state.CanExploreHiddenFog)
+            {
+                RecordMovingVisibilityTransitionTimes(
+                    cached.Intervals,
+                    s_NextVisibilityIntervals,
+                    cached.State,
+                    state,
+                    currentSnapshotLogicTime - 1d / LogicFrameRuntime.FrameRate,
+                    currentSnapshotLogicTime);
+            }
+
+            ChangeVisibilityIntervals(cached.Intervals, -1);
+            ChangeVisibilityIntervals(s_NextVisibilityIntervals, 1);
+            cached.Intervals.Clear();
+            cached.Intervals.AddRange(s_NextVisibilityIntervals);
+            s_NextVisibilityIntervals.Clear();
             cached.State = state;
-            ChangeVisibilityIntervals(cached.Intervals, 1);
+            cached.SnapshotLogicTime = currentSnapshotLogicTime;
+            cached.HasState = true;
+        }
+
+        private static double ResolveCurrentVisibilitySourceLogicTime()
+        {
+            return LogicTimeControlService.CurrentFrame / (double)LogicFrameRuntime.FrameRate;
+        }
+
+        private static void RecordMovingVisibilityTransitionTimes(
+            List<Fog3VisibilityRowInterval> previousIntervals,
+            List<Fog3VisibilityRowInterval> currentIntervals,
+            VisibilitySourceState previousState,
+            VisibilitySourceState currentState,
+            double previousLogicTime,
+            double currentLogicTime)
+        {
+            RecordIntervalDifferenceTransitionTimes(
+                currentIntervals,
+                previousIntervals,
+                previousState.Position,
+                currentState.Position,
+                currentState.Radius,
+                true,
+                previousLogicTime,
+                currentLogicTime);
+            RecordIntervalDifferenceTransitionTimes(
+                previousIntervals,
+                currentIntervals,
+                previousState.Position,
+                currentState.Position,
+                currentState.Radius,
+                false,
+                previousLogicTime,
+                currentLogicTime);
+        }
+
+        private static void RecordIntervalDifferenceTransitionTimes(
+            List<Fog3VisibilityRowInterval> source,
+            List<Fog3VisibilityRowInterval> exclusion,
+            FixVector2 previousPosition,
+            FixVector2 currentPosition,
+            Fix64 radius,
+            bool becomingVisible,
+            double previousLogicTime,
+            double currentLogicTime)
+        {
+            int exclusionIndex = 0;
+            for (int sourceIndex = 0; sourceIndex < source.Count; sourceIndex++)
+            {
+                Fog3VisibilityRowInterval interval = source[sourceIndex];
+                int cursor = interval.MinimumX;
+                while (exclusionIndex < exclusion.Count
+                       && (exclusion[exclusionIndex].Y < interval.Y
+                           || (exclusion[exclusionIndex].Y == interval.Y
+                               && exclusion[exclusionIndex].MaximumX < cursor)))
+                {
+                    exclusionIndex++;
+                }
+
+                int candidateIndex = exclusionIndex;
+                while (candidateIndex < exclusion.Count
+                       && exclusion[candidateIndex].Y == interval.Y
+                       && exclusion[candidateIndex].MinimumX <= interval.MaximumX)
+                {
+                    Fog3VisibilityRowInterval covered = exclusion[candidateIndex];
+                    if (covered.MinimumX > cursor)
+                    {
+                        RecordVisibilityTransitionSegment(
+                            cursor,
+                            System.Math.Min(interval.MaximumX, covered.MinimumX - 1),
+                            interval.Y,
+                            previousPosition,
+                            currentPosition,
+                            radius,
+                            becomingVisible,
+                            previousLogicTime,
+                            currentLogicTime);
+                    }
+                    cursor = System.Math.Max(cursor, covered.MaximumX + 1);
+                    if (cursor > interval.MaximumX)
+                        break;
+                    candidateIndex++;
+                }
+
+                if (cursor <= interval.MaximumX)
+                {
+                    RecordVisibilityTransitionSegment(
+                        cursor,
+                        interval.MaximumX,
+                        interval.Y,
+                        previousPosition,
+                        currentPosition,
+                        radius,
+                        becomingVisible,
+                        previousLogicTime,
+                        currentLogicTime);
+                }
+            }
+        }
+
+        private static void RecordVisibilityTransitionSegment(
+            int minimumX,
+            int maximumX,
+            int y,
+            FixVector2 previousPosition,
+            FixVector2 currentPosition,
+            Fix64 radius,
+            bool becomingVisible,
+            double previousLogicTime,
+            double currentLogicTime)
+        {
+            double startX = (double)previousPosition.x;
+            double startY = (double)previousPosition.y;
+            double deltaX = (double)(currentPosition.x - previousPosition.x);
+            double deltaY = (double)(currentPosition.y - previousPosition.y);
+            double squaredDisplacement = deltaX * deltaX + deltaY * deltaY;
+            double radiusValue = (double)radius;
+            double squaredRadius = radiusValue * radiusValue;
+            for (int x = minimumX; x <= maximumX; x++)
+            {
+                FixVector2 cellCenter = s_MapData.GetCellCenterFixed(x, y);
+                double offsetX = (double)cellCenter.x - startX;
+                double offsetY = (double)cellCenter.y - startY;
+                double projection = offsetX * deltaX + offsetY * deltaY;
+                double discriminant = projection * projection
+                                      - squaredDisplacement * (offsetX * offsetX + offsetY * offsetY - squaredRadius);
+                if (discriminant < 0d)
+                    continue;
+
+                double root = System.Math.Sqrt(discriminant);
+                double fraction = becomingVisible
+                    ? (projection - root) / squaredDisplacement
+                    : (projection + root) / squaredDisplacement;
+                if (fraction < 0d || fraction > 1d)
+                    continue;
+
+                s_MapData.RecordVisibilityChangeLogicTimeCandidate(
+                    x,
+                    y,
+                    becomingVisible,
+                    previousLogicTime + (currentLogicTime - previousLogicTime) * fraction);
+            }
         }
 
         private static void FilterAndExploreVisibilityIntervals(
@@ -873,21 +1057,25 @@ namespace AAAGame.Card
         {
             if (entity == null)
                 throw new ArgumentNullException(nameof(entity));
-            OnEntityVisibilityInputChanged(entity.LogicEntityId);
+            OnEntityVisibilityInputChanged(entity.LogicEntityId, false);
         }
 
         private static void OnEntityUnregistered(IEntityContext entity)
         {
             if (entity == null)
                 throw new ArgumentNullException(nameof(entity));
-            OnEntityVisibilityInputChanged(entity.LogicEntityId);
+            OnEntityVisibilityInputChanged(entity.LogicEntityId, false);
         }
 
-        private static void OnEntityVisibilityInputChanged(LogicEntityId entityId)
+        private static void OnEntityVisibilityInputChanged(LogicEntityId entityId, bool continuousMovement)
         {
             if (!entityId.IsValid)
                 throw new ArgumentException("Fog visibility dirty event requires a valid entity id.", nameof(entityId));
             s_DirtyEntityIds.Add(entityId.Value);
+            if (continuousMovement)
+                s_ContinuouslyMovedEntityIds.Add(entityId.Value);
+            else
+                s_ContinuouslyMovedEntityIds.Remove(entityId.Value);
         }
 
         private static void OnAllEntityVisibilityInputsChanged()
@@ -927,10 +1115,12 @@ namespace AAAGame.Card
             s_StaticForbiddenShapes.Clear();
             s_VisibilitySources.Clear();
             s_DirtyEntityIds.Clear();
+            s_ContinuouslyMovedEntityIds.Clear();
             s_SeenEntityIds.Clear();
             s_SeenStationarySourceKeys.Clear();
             s_RemovedVisibilitySourceKeys.Clear();
             s_GeometryIntervals.Clear();
+            s_NextVisibilityIntervals.Clear();
             s_AllEntityVisibilityDirty = false;
             s_StationaryVisibilityDirty = false;
             LastAppliedFrame = 0;

@@ -12,6 +12,7 @@ namespace AAAGame.MiniMap.Editor
 
         private TileWorldCreatorManager tileWorldCreatorManager;
         private int textureMaxSize = 1024;
+        private int terrainPaddingCells = 8;
         private string groundLayerKeyword = "Plane";
         private string waterLayerKeyword = "Water";
         private Color groundLayerColor = new Color(0.42f, 0.45f, 0.33f, 1f);
@@ -65,6 +66,7 @@ namespace AAAGame.MiniMap.Editor
             EditorGUILayout.LabelField("导出设置", EditorStyles.boldLabel);
 
             textureMaxSize = EditorGUILayout.IntSlider("最大尺寸", textureMaxSize, 64, 4096);
+            terrainPaddingCells = EditorGUILayout.IntSlider("地图外延格数", terrainPaddingCells, 0, 64);
             groundLayerKeyword = EditorGUILayout.TextField("地面层关键字", groundLayerKeyword);
             waterLayerKeyword = EditorGUILayout.TextField("水域层关键字", waterLayerKeyword);
             groundLayerColor = EditorGUILayout.ColorField("地面颜色", groundLayerColor);
@@ -99,13 +101,14 @@ namespace AAAGame.MiniMap.Editor
             }
 
             MinimapTerrainMapBuildResult result = MinimapTerrainMapBuilder.Build(
-                tileWorldCreatorManager.configuration,
+                tileWorldCreatorManager,
                 textureMaxSize,
                 groundLayerKeyword,
                 waterLayerKeyword,
                 groundLayerColor,
                 waterLayerColor,
-                (Color32)backgroundColor);
+                (Color32)backgroundColor,
+                terrainPaddingCells);
             if (result == null || result.Texture == null)
             {
                 EditorUtility.DisplayDialog("导出失败", "地形纹理构建失败。", "确定");
@@ -145,7 +148,7 @@ namespace AAAGame.MiniMap.Editor
             File.WriteAllBytes(fullSavePath, exportTexture.EncodeToPNG());
             if (exportInfoText)
             {
-                WriteInfoFile(fullSavePath, result, tileWorldCreatorManager);
+                WriteInfoFile(fullSavePath, result);
             }
 
             DestroyImmediate(result.Texture);
@@ -180,11 +183,8 @@ namespace AAAGame.MiniMap.Editor
             return target;
         }
 
-        private static void WriteInfoFile(string pngFullPath, MinimapTerrainMapBuildResult result, TileWorldCreatorManager manager)
+        private static void WriteInfoFile(string pngFullPath, MinimapTerrainMapBuildResult result)
         {
-            Vector3 origin = manager.transform.position;
-            float worldWidth = result.GridWidth * result.CellSize;
-            float worldHeight = result.GridHeight * result.CellSize;
             string infoPath = Path.ChangeExtension(pngFullPath, ".txt");
 
             string infoText =
@@ -192,10 +192,13 @@ namespace AAAGame.MiniMap.Editor
                 $"GridWidth: {result.GridWidth}\n" +
                 $"GridHeight: {result.GridHeight}\n" +
                 $"CellSize: {result.CellSize:F4}\n" +
-                $"WorldMinX: {origin.x:F4}\n" +
-                $"WorldMinZ: {origin.z:F4}\n" +
-                $"WorldMaxX: {origin.x + worldWidth:F4}\n" +
-                $"WorldMaxZ: {origin.z + worldHeight:F4}\n" +
+                $"WorldMinX: {result.Bounds.WorldMinX:F4}\n" +
+                $"WorldMinZ: {result.Bounds.WorldMinZ:F4}\n" +
+                $"WorldMaxX: {result.Bounds.WorldMaxX:F4}\n" +
+                $"WorldMaxZ: {result.Bounds.WorldMaxZ:F4}\n" +
+                $"TerrainOffsetX: {result.Bounds.TerrainOffsetX}\n" +
+                $"TerrainOffsetY: {result.Bounds.TerrainOffsetY}\n" +
+                $"HasEnvironmentBackground: {result.Bounds.HasEnvironmentBackground}\n" +
                 $"UseCenteredGrid: {result.UseCenteredGrid}\n" +
                 $"PaintedCount: {result.PaintedCount}\n" +
                 $"GroundPaintedCount: {result.GroundPaintedCount}\n" +

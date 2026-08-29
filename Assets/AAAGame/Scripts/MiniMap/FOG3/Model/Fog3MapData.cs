@@ -108,6 +108,9 @@ namespace AAAGame.MiniMap.FOG3
         private readonly bool[] dirtyVisibilityRows;
         private readonly bool[] dirtyCellFlags;
         private readonly System.Collections.Generic.List<int> dirtyCellIndices;
+        private readonly System.Collections.Generic.Dictionary<int, PendingVisibilityChangeTime>
+            pendingVisibilityChangeTimes;
+        private readonly System.Collections.Generic.Dictionary<int, double> dirtyVisibilityChangeLogicTimes;
         private readonly int[] fovVisitStamps;
         private readonly ulong terrainHash;
         private readonly long cellSizeXGridRaw;
@@ -131,6 +134,13 @@ namespace AAAGame.MiniMap.FOG3
         private int dirtyMinimumY;
         private int dirtyMaximumX = -1;
         private int dirtyMaximumY = -1;
+
+        private struct PendingVisibilityChangeTime
+        {
+            public byte Kinds;
+            public double EnterLogicTime;
+            public double ExitLogicTime;
+        }
 
         public event Action VisibilityReset;
 
@@ -171,6 +181,8 @@ namespace AAAGame.MiniMap.FOG3
             dirtyVisibilityRows = new bool[Height];
             dirtyCellFlags = new bool[length];
             dirtyCellIndices = new System.Collections.Generic.List<int>();
+            pendingVisibilityChangeTimes = new System.Collections.Generic.Dictionary<int, PendingVisibilityChangeTime>();
+            dirtyVisibilityChangeLogicTimes = new System.Collections.Generic.Dictionary<int, double>();
             fovVisitStamps = new int[length];
             walkable = new bool[length];
             platformHeights = new int[length];
@@ -213,6 +225,7 @@ namespace AAAGame.MiniMap.FOG3
         public ulong TerrainHash => terrainHash;
         public ulong ExplorationVersion => explorationVersion;
         public ulong VisibilityResetVersion => visibilityResetVersion;
+        public double VisibilityResolutionLogicTime { get; private set; }
         public int DirtyCellCount => dirtyCellIndices.Count;
 
         public void GetDirtyCell(int dirtyIndex, out int x, out int y)
@@ -254,6 +267,8 @@ namespace AAAGame.MiniMap.FOG3
 
             Array.Clear(visibilityRowDifference, 0, visibilityRowDifference.Length);
             Array.Clear(dirtyVisibilityRows, 0, dirtyVisibilityRows.Length);
+            pendingVisibilityChangeTimes.Clear();
+            dirtyVisibilityChangeLogicTimes.Clear();
             visibilityResetVersion = checked(visibilityResetVersion + 1);
             VisibilityReset?.Invoke();
 
@@ -291,8 +306,45 @@ namespace AAAGame.MiniMap.FOG3
             dirtyVisibilityRows[interval.Y] = true;
         }
 
-        public void ResolveVisibilityCoverageChanges()
+        public void RecordVisibilityChangeLogicTimeCandidate(
+            int x,
+            int y,
+            bool becomingVisible,
+            double logicTime)
         {
+            if (!IsValidCell(x, y))
+                throw new ArgumentOutOfRangeException(nameof(x), $"Fog visibility timing cell ({x},{y}) is outside {Width}x{Height}.");
+            if (double.IsNaN(logicTime) || double.IsInfinity(logicTime) || logicTime < 0d)
+                throw new ArgumentOutOfRangeException(nameof(logicTime), "Fog visibility logic time must be finite and non-negative.");
+
+            int index = GetIndex(x, y);
+            pendingVisibilityChangeTimes.TryGetValue(index, out PendingVisibilityChangeTime pending);
+            byte previousKinds = pending.Kinds;
+            byte kind = becomingVisible ? (byte)1 : (byte)2;
+            pending.Kinds = (byte)(previousKinds | kind);
+            if (becomingVisible)
+            {
+                if ((previousKinds & kind) == 0 || logicTime < pending.EnterLogicTime)
+                    pending.EnterLogicTime = logicTime;
+            }
+            else if ((previousKinds & kind) == 0 || logicTime > pending.ExitLogicTime)
+            {
+                pending.ExitLogicTime = logicTime;
+            }
+            pendingVisibilityChangeTimes[index] = pending;
+        }
+
+        public bool TryGetDirtyVisibilityChangeLogicTime(int x, int y, out double logicTime)
+        {
+            if (!IsValidCell(x, y))
+                throw new ArgumentOutOfRangeException(nameof(x), $"Fog visibility timing cell ({x},{y}) is outside {Width}x{Height}.");
+            return dirtyVisibilityChangeLogicTimes.TryGetValue(GetIndex(x, y), out logicTime);
+        }
+
+        public void ResolveVisibilityCoverageChanges(double logicTime)
+        {
+            if (double.IsNaN(logicTime) || double.IsInfinity(logicTime) || logicTime < 0d)
+                throw new ArgumentOutOfRangeException(nameof(logicTime), "Fog visibility resolution logic time must be finite and non-negative.");
             for (int y = 0; y < Height; y++)
             {
                 if (!dirtyVisibilityRows[y])
@@ -318,6 +370,18 @@ namespace AAAGame.MiniMap.FOG3
 
                     currentVisibility[index] = coverage > 0 ? 1f : 0f;
                     MarkDirtyCell(x, y);
+                    if (pendingVisibilityChangeTimes.TryGetValue(index, out PendingVisibilityChangeTime pending)
+                        && coverage > 0
+                        && (pending.Kinds & 1) != 0)
+                    {
+                        dirtyVisibilityChangeLogicTimes[index] = pending.EnterLogicTime;
+                    }
+                    else if (pendingVisibilityChangeTimes.TryGetValue(index, out pending)
+                             && coverage == 0
+                             && (pending.Kinds & 2) != 0)
+                    {
+                        dirtyVisibilityChangeLogicTimes[index] = pending.ExitLogicTime;
+                    }
                 }
 
                 if (coverage + visibilityRowDifference[rowDifferenceOffset + Width] != 0)
@@ -327,6 +391,9 @@ namespace AAAGame.MiniMap.FOG3
                 }
                 dirtyVisibilityRows[y] = false;
             }
+
+            pendingVisibilityChangeTimes.Clear();
+            VisibilityResolutionLogicTime = logicTime;
         }
 
         public void CollectVisibleIntervals(
@@ -429,13 +496,17 @@ namespace AAAGame.MiniMap.FOG3
         public void MarkClean()
         {
             for (int i = 0; i < dirtyCellIndices.Count; i++)
-                dirtyCellFlags[dirtyCellIndices[i]] = false;
+            {
+                int index = dirtyCellIndices[i];
+                dirtyCellFlags[index] = false;
+            }
             IsDirty = false;
             dirtyMinimumX = 0;
             dirtyMinimumY = 0;
             dirtyMaximumX = -1;
             dirtyMaximumY = -1;
             dirtyCellIndices.Clear();
+            dirtyVisibilityChangeLogicTimes.Clear();
         }
 
         public void ResetExploration()
@@ -847,6 +918,7 @@ namespace AAAGame.MiniMap.FOG3
             IsDirty = true;
             Array.Clear(dirtyCellFlags, 0, dirtyCellFlags.Length);
             dirtyCellIndices.Clear();
+            dirtyVisibilityChangeLogicTimes.Clear();
             for (int i = 0; i < currentVisibility.Length; i++)
             {
                 dirtyCellFlags[i] = true;

@@ -190,6 +190,66 @@ public sealed class Fog3StageCheckpointTests
     }
 
     [Test]
+    public void TimedTransition_PreservesSubFrameStartTimesInPresentationTexture()
+    {
+        Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");
+        Assert.IsNotNull(shader);
+
+        const int sourceWidth = 3;
+        const int renderedPixelsPerCell = 64;
+        Texture2D source = new Texture2D(sourceWidth, 1, TextureFormat.RGBAFloat, false, true)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        float now = Time.time;
+        source.SetPixels(new[]
+        {
+            new Color(0f, (byte)Fog3CellState.Visible / 255f, 1f, now - 0.01f),
+            new Color(0f, (byte)Fog3CellState.Visible / 255f, 1f, now - 0.025f),
+            new Color(0f, (byte)Fog3CellState.Visible / 255f, 1f, now - 0.04f),
+        });
+        source.Apply(false);
+
+        RenderTexture target = RenderTexture.GetTemporary(
+            sourceWidth * renderedPixelsPerCell,
+            8,
+            0,
+            RenderTextureFormat.ARGBFloat,
+            RenderTextureReadWrite.Linear);
+        Material material = new Material(shader);
+        Texture2D readback = new Texture2D(target.width, target.height, TextureFormat.RGBAFloat, false, true);
+        RenderTexture previous = RenderTexture.active;
+        try
+        {
+            material.SetFloat("_FogBoundaryFadeDistance", 0.25f);
+            material.SetFloat("_FogFadeSpeed", 1f);
+            material.SetFloat("_FogUsesTimedTransitions", 1f);
+            material.SetColor("_FogVisibleColor", Color.white);
+
+            RenderTexture.active = target;
+            GL.Clear(true, true, Color.clear);
+            Graphics.Blit(source, target, material);
+            readback.ReadPixels(new Rect(0f, 0f, target.width, target.height), 0, 0, false);
+            readback.Apply(false);
+
+            float newestAlpha = readback.GetPixel(renderedPixelsPerCell / 2, 4).r;
+            float middleAlpha = readback.GetPixel(renderedPixelsPerCell + renderedPixelsPerCell / 2, 4).r;
+            float oldestAlpha = readback.GetPixel(renderedPixelsPerCell * 2 + renderedPixelsPerCell / 2, 4).r;
+            Assert.Greater(newestAlpha - middleAlpha, 0.008f, "The first two sub-frame start times collapsed to one GPU value.");
+            Assert.Greater(middleAlpha - oldestAlpha, 0.008f, "The last two sub-frame start times collapsed to one GPU value.");
+        }
+        finally
+        {
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            Object.DestroyImmediate(readback);
+            Object.DestroyImmediate(material);
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [Test]
     public void BoundaryFade_SupportsTwoCellDistance()
     {
         Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");

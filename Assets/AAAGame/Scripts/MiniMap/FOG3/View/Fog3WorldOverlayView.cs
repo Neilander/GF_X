@@ -5,8 +5,6 @@ namespace AAAGame.MiniMap.FOG3
 {
     public sealed class Fog3WorldOverlayView : MonoBehaviour
     {
-        public const float MaximumBoundaryFadeCellRatio = 2f;
-        private const int BoundarySampleKernelRadiusInLogicCells = 8;
         private const string FogOverlayShaderAssetPath = "Assets/AAAGame/Scripts/MiniMap/FOG3/View/Fog3OverlayAlwaysOnTop.shader";
         private Texture2D fogTexture;
         private RenderTexture fogPresentationTexture;
@@ -41,6 +39,9 @@ namespace AAAGame.MiniMap.FOG3
         private int cameraPresentationMinimumY;
         private int cameraPresentationMaximumX = -1;
         private int cameraPresentationMaximumY = -1;
+        private double previousVisibilityResolutionLogicTime;
+        private float previousVisibilityPresentationTime;
+        private bool hasPreviousVisibilityPresentationTime;
         private readonly System.Collections.Generic.List<OutsideMaskQuad> outsideMaskQuads = new System.Collections.Generic.List<OutsideMaskQuad>();
 
         private struct OutsideMaskQuad
@@ -85,13 +86,12 @@ namespace AAAGame.MiniMap.FOG3
             if (resolvedVisibilityFadeSpeed <= 0f || float.IsNaN(resolvedVisibilityFadeSpeed) || float.IsInfinity(resolvedVisibilityFadeSpeed))
                 throw new System.ArgumentOutOfRangeException(nameof(resolvedVisibilityFadeSpeed), "FOG3 visibility fade speed must be finite and positive.");
             if (resolvedVisibilityBoundaryFadeDistance <= 0f
-                || resolvedVisibilityBoundaryFadeDistance > MaximumBoundaryFadeCellRatio
                 || float.IsNaN(resolvedVisibilityBoundaryFadeDistance)
                 || float.IsInfinity(resolvedVisibilityBoundaryFadeDistance))
             {
                 throw new System.ArgumentOutOfRangeException(
                     nameof(resolvedVisibilityBoundaryFadeDistance),
-                    $"FOG3 visibility boundary fade distance must be finite, positive, and no greater than {MaximumBoundaryFadeCellRatio} fog cells.");
+                    "FOG3 visibility boundary fade distance must be finite and positive world units.");
             }
 
             this.terrainInfo = terrainInfo;
@@ -201,6 +201,7 @@ namespace AAAGame.MiniMap.FOG3
             long renderStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             long fillStartTicks = renderStartTicks;
             float now = Time.time;
+            double visibilityResolutionLogicTime = mapData.VisibilityResolutionLogicTime;
             int changedMinimumX = mapData.Width;
             int changedMinimumY = mapData.Height;
             int changedMaximumX = -1;
@@ -215,11 +216,17 @@ namespace AAAGame.MiniMap.FOG3
 
                 Color targetColor = GetTargetPixelColor(state);
                 Color32 targetPixel = targetColor;
-                float currentAlpha = ResolveTransitionAlpha(index, now);
+                float transitionTime = ResolveVisibilityTransitionTime(
+                    mapData,
+                    x,
+                    y,
+                    visibilityResolutionLogicTime,
+                    now);
+                float currentAlpha = ResolveTransitionAlpha(index, transitionTime);
                 targetPixels[index] = targetPixel;
                 targetStates[index] = state;
                 transitionStartAlphas[index] = currentAlpha;
-                transitionStartTimes[index] = now;
+                transitionStartTimes[index] = transitionTime;
                 currentAlphas[index] = currentAlpha;
                 targetAlphas[index] = targetColor.a;
                 targetPixel.a = (byte)Mathf.RoundToInt(currentAlpha * byte.MaxValue);
@@ -238,11 +245,13 @@ namespace AAAGame.MiniMap.FOG3
                     changedMinimumX,
                     changedMinimumY,
                     changedMaximumX,
-                    changedMaximumY,
-                    now);
+                    changedMaximumY);
             }
             long setTicks = System.Diagnostics.Stopwatch.GetTimestamp() - setStartTicks;
             long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - renderStartTicks;
+            previousVisibilityResolutionLogicTime = visibilityResolutionLogicTime;
+            previousVisibilityPresentationTime = now;
+            hasPreviousVisibilityPresentationTime = true;
             double elapsedMs = elapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             if (elapsedMs >= 30.0 || (logPerformanceDiagnostics && elapsedMs >= 4.0))
             {
@@ -260,6 +269,25 @@ namespace AAAGame.MiniMap.FOG3
                     fillTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
                     setTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
             }
+        }
+
+        private float ResolveVisibilityTransitionTime(
+            Fog3MapData mapData,
+            int x,
+            int y,
+            double visibilityResolutionLogicTime,
+            float now)
+        {
+            if (!hasPreviousVisibilityPresentationTime
+                || visibilityResolutionLogicTime <= previousVisibilityResolutionLogicTime
+                || !mapData.TryGetDirtyVisibilityChangeLogicTime(x, y, out double changeLogicTime))
+            {
+                return now;
+            }
+
+            double fraction = (changeLogicTime - previousVisibilityResolutionLogicTime)
+                              / (visibilityResolutionLogicTime - previousVisibilityResolutionLogicTime);
+            return Mathf.Lerp(previousVisibilityPresentationTime, now, Mathf.Clamp01((float)fraction));
         }
 
         public bool AdvanceVisibilityFade(float deltaTime)
@@ -477,8 +505,7 @@ namespace AAAGame.MiniMap.FOG3
             int logicMinimumX,
             int logicMinimumY,
             int logicMaximumX,
-            int logicMaximumY,
-            float now)
+            int logicMaximumY)
         {
             int presentationWidth = fogPresentationTexture.width;
             int presentationHeight = fogPresentationTexture.height;
@@ -504,13 +531,14 @@ namespace AAAGame.MiniMap.FOG3
                         continue;
 
                     Color previous = presentationTransitions[presentationIndex];
-                    float currentAlpha = ResolvePackedTransitionAlpha(previous, now);
+                    float transitionTime = transitionStartTimes[logicIndex];
+                    float currentAlpha = ResolvePackedTransitionAlpha(previous, transitionTime);
                     presentationStates[presentationIndex] = state;
                     presentationTransitions[presentationIndex] = PackPresentationTransition(
                         targetAlphas[logicIndex],
                         state,
                         currentAlpha,
-                        now);
+                        transitionTime);
                     changedMinimumX = Mathf.Min(changedMinimumX, x);
                     changedMinimumY = Mathf.Min(changedMinimumY, y);
                     changedMaximumX = Mathf.Max(changedMaximumX, x);
@@ -561,9 +589,9 @@ namespace AAAGame.MiniMap.FOG3
             float maximumNormalizedX = (maximumWorldX - mapBounds.min.x) / mapBounds.size.x;
             float maximumNormalizedY = (maximumWorldZ - mapBounds.min.z) / mapBounds.size.z;
             int paddingX = Mathf.CeilToInt(
-                BoundarySampleKernelRadiusInLogicCells * (float)fogPresentationTexture.width / logicWidth);
+                visibilityBoundaryFadeDistance * (float)fogPresentationTexture.width / mapBounds.size.x);
             int paddingY = Mathf.CeilToInt(
-                BoundarySampleKernelRadiusInLogicCells * (float)fogPresentationTexture.height / logicHeight);
+                visibilityBoundaryFadeDistance * (float)fogPresentationTexture.height / mapBounds.size.z);
             cameraPresentationMinimumX = Mathf.Clamp(
                 Mathf.FloorToInt(minimumNormalizedX * fogPresentationTexture.width) - paddingX,
                 0,
@@ -680,6 +708,9 @@ namespace AAAGame.MiniMap.FOG3
             fogMaterial = CreateTransparentMaterial("FOG3_WorldOverlayMaterial", Color.white, 100);
             SetMainTexture(fogMaterial, fogPresentationTexture);
             fogMaterial.SetFloat("_FogBoundaryFadeDistance", visibilityBoundaryFadeDistance);
+            fogMaterial.SetVector(
+                "_FogWorldSize",
+                new Vector4(terrainInfo.Bounds.size.x, terrainInfo.Bounds.size.z, 0f, 0f));
             fogMaterial.SetFloat("_FogFadeSpeed", visibilityFadeSpeed);
             fogMaterial.SetFloat("_FogUsesTimedTransitions", 1f);
             fogMaterial.SetColor("_FogHiddenColor", settings.HiddenColor);
@@ -1467,6 +1498,9 @@ namespace AAAGame.MiniMap.FOG3
             cameraPresentationMinimumY = 0;
             cameraPresentationMaximumX = -1;
             cameraPresentationMaximumY = -1;
+            previousVisibilityResolutionLogicTime = 0d;
+            previousVisibilityPresentationTime = 0f;
+            hasPreviousVisibilityPresentationTime = false;
 
             if (fogTexture != null)
             {

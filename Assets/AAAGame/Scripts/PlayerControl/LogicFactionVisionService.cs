@@ -43,15 +43,15 @@ public static class LogicFactionVisionService
     private static bool s_TargetingPhaseCacheActive;
     private static int s_NextStationaryRevealId = 1;
 
-    public static event Action<LogicEntityId> EntityVisibilityInputChanged;
+    public static event Action<LogicEntityId, bool> EntityVisibilityInputChanged;
     public static event Action AllEntityVisibilityInputsChanged;
     public static event Action StationaryRevealsChanged;
 
-    public static void MarkEntityVisibilityDirty(LogicEntityId entityId)
+    public static void MarkEntityVisibilityDirty(LogicEntityId entityId, bool continuousMovement = false)
     {
         if (!entityId.IsValid)
             throw new ArgumentException("Visibility dirty notification requires a valid entity id.", nameof(entityId));
-        EntityVisibilityInputChanged?.Invoke(entityId);
+        EntityVisibilityInputChanged?.Invoke(entityId, continuousMovement);
     }
 
     public static void MarkAllEntityVisibilityDirty()

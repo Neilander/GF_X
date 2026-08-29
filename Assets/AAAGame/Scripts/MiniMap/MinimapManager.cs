@@ -16,6 +16,7 @@ namespace AAAGame.MiniMap
         [SerializeField] private MinimapConfig config = new MinimapConfig();
         [SerializeField] private Color waterLayerColor = new Color(0.14f, 0.36f, 0.52f, 1f);
         [SerializeField] private Color planeLayerColor = new Color(0.42f, 0.45f, 0.33f, 1f);
+        [SerializeField, Min(0)] private int terrainPaddingCells = 8;
         [SerializeField] private bool enableUnitLifecycleLogs;
 
         private Dictionary<int, MinimapUnitData> units = new Dictionary<int, MinimapUnitData>();
@@ -26,6 +27,7 @@ namespace AAAGame.MiniMap
         public MinimapConfig Config => config;
         public Color WaterLayerColor => waterLayerColor;
         public Color PlaneLayerColor => planeLayerColor;
+        public int TerrainPaddingCells => terrainPaddingCells;
         public bool EnableUnitLifecycleLogs => enableUnitLifecycleLogs;
 
         // C# 委托事件 - 数据变化时触发
@@ -120,22 +122,37 @@ namespace AAAGame.MiniMap
                 return;
             }
 
-            var twcConfig = tileWorldCreatorManager.configuration;
-            float cellSize = Mathf.Max(0.01f, twcConfig.cellSize);
-            float worldWidth = Mathf.Max(1f, twcConfig.width * cellSize);
-            float worldHeight = Mathf.Max(1f, twcConfig.height * cellSize);
-            Vector3 origin = tileWorldCreatorManager.transform.position;
-
-            config.WorldMinX = origin.x;
-            config.WorldMaxX = origin.x + worldWidth;
-            config.WorldMinZ = origin.z;
-            config.WorldMaxZ = origin.z + worldHeight;
+            MinimapTerrainBounds bounds = MinimapTerrainMapBuilder.ResolveBounds(
+                tileWorldCreatorManager,
+                terrainPaddingCells);
+            ApplyTerrainBounds(bounds);
 
             syncedLevelEntityId = levelId;
             if (enableUnitLifecycleLogs)
             {
-                Log.Info("[MinimapManager] Synced bounds from TileWorldCreator: width={0:F2}, height={1:F2}, origin={2}", worldWidth, worldHeight, origin);
+                Log.Info(
+                    "[MinimapManager] Synced terrain bounds: min=({0:F2},{1:F2}), max=({2:F2},{3:F2}), environmentBackground={4}",
+                    bounds.WorldMinX,
+                    bounds.WorldMinZ,
+                    bounds.WorldMaxX,
+                    bounds.WorldMaxZ,
+                    bounds.HasEnvironmentBackground);
             }
+        }
+
+        public void ApplyTerrainBounds(MinimapTerrainBounds bounds)
+        {
+            if (bounds == null)
+                throw new ArgumentNullException(nameof(bounds));
+
+            config.WorldMinX = bounds.WorldMinX;
+            config.WorldMaxX = bounds.WorldMaxX;
+            config.WorldMinZ = bounds.WorldMinZ;
+            config.WorldMaxZ = bounds.WorldMaxZ;
+
+            LevelEntity levelEntity = LevelEntity.ActiveLevelEntity;
+            if (levelEntity != null)
+                syncedLevelEntityId = levelEntity.GetInstanceID();
         }
     }
 }

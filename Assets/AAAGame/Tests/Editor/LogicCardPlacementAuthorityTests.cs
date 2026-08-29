@@ -237,6 +237,59 @@ public sealed class LogicCardPlacementAuthorityTests
     }
 
     [Test]
+    public void ContinuousMovement_RecordsSubframeCircleCrossingTimesForPresentation()
+    {
+        Fog3MapData map = CreateMap(6, 1);
+        Bind(map, Array.Empty<LogicCombatShape>(), Fix64.One);
+        var player = new SimEntityContext
+        {
+            PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f),
+            Side = SideType.PlayerSide,
+        };
+        EntityRegistry.Register(player);
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicCardPlacementAuthority.ApplyFrame(1);
+        map.MarkClean();
+
+        player.PositionFixed = new FixVector2((Fix64)3.5f, (Fix64)0.5f);
+        LogicFactionVisionService.MarkEntityVisibilityDirty(player.LogicEntityId, true);
+        LogicTimeControlService.BeginFrame(2);
+        LogicCardPlacementAuthority.ApplyFrame(2);
+
+        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(3, 0));
+        Assert.IsTrue(map.TryGetDirtyVisibilityChangeLogicTime(3, 0, out double enterLogicTime));
+        Assert.AreEqual(1.5d / LogicFrameRuntime.FrameRate, enterLogicTime, 0.0001d);
+        Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(1, 0));
+        Assert.IsTrue(map.TryGetDirtyVisibilityChangeLogicTime(1, 0, out double exitLogicTime));
+        Assert.AreEqual(1.5d / LogicFrameRuntime.FrameRate, exitLogicTime, 0.0001d);
+    }
+
+    [Test]
+    public void DiscretePositionChange_DoesNotInventAContinuousVisibilityTrajectory()
+    {
+        Fog3MapData map = CreateMap(6, 1);
+        Bind(map, Array.Empty<LogicCombatShape>(), Fix64.One);
+        var player = new SimEntityContext
+        {
+            PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f),
+            Side = SideType.PlayerSide,
+        };
+        EntityRegistry.Register(player);
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicCardPlacementAuthority.ApplyFrame(1);
+        map.MarkClean();
+
+        player.PositionFixed = new FixVector2((Fix64)3.5f, (Fix64)0.5f);
+        LogicTimeControlService.BeginFrame(2);
+        LogicCardPlacementAuthority.ApplyFrame(2);
+
+        Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(3, 0));
+        Assert.IsFalse(map.TryGetDirtyVisibilityChangeLogicTime(3, 0, out _));
+    }
+
+    [Test]
     public void HigherPlatform_BlocksLowerViewerExplorationAndVisibility()
     {
         Fog3MapData map = CreateHeightMap(5, 1, new[] { 0, 0, 1, 0, 0 }, new bool[5]);

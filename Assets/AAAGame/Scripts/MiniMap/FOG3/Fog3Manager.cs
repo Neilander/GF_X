@@ -906,16 +906,9 @@ namespace AAAGame.MiniMap.FOG3
 
         private static float ResolveVisibilityBoundaryFadeDistance()
         {
-
             float distance = (float)FixedConfigReader.ReadRequiredPositiveFixedConfig(VisionBoundaryFadeDistanceConfigKey);
             if (distance <= 0f || float.IsNaN(distance) || float.IsInfinity(distance))
                 throw new InvalidOperationException($"FOG3 visibility boundary fade distance must be finite and positive. value={distance}.");
-            if (distance > Fog3WorldOverlayView.MaximumBoundaryFadeCellRatio)
-            {
-                throw new InvalidOperationException(
-                    $"FOG3 visibility boundary fade distance cannot exceed {Fog3WorldOverlayView.MaximumBoundaryFadeCellRatio} fog texels. distance={distance}.");
-            }
-
             return distance;
         }
 
