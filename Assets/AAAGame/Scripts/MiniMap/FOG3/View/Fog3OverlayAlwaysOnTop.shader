@@ -73,6 +73,7 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
                 float4 _FogWorldSize;
                 float _FogFadeSpeed;
                 float _FogUsesTimedTransitions;
+                float _FogSpatialTargetsReady;
             CBUFFER_END
 
             float4 SampleFogCell(float2 cell)
@@ -91,6 +92,13 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
             float UnpackTargetAlpha(float4 sample)
             {
                 return IsPackedFogSample(sample) ? sample.r : sample.a;
+            }
+
+            float SampleTargetAlphaDiscrete(float2 uv)
+            {
+                float2 size = _MainTex_TexelSize.zw;
+                float2 cell = min(floor(clamp(uv, 0.0, 1.0) * size), size - 1.0);
+                return UnpackTargetAlpha(SampleFogCell(cell));
             }
 
             float ResolveCurrentAlpha(float4 sample)
@@ -330,6 +338,27 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
                 return lerp(lerp(a00, a10, fraction.x), lerp(a01, a11, fraction.x), fraction.y);
             }
 
+            float SampleCurrentAlphaContinuous(float2 uv)
+            {
+                float2 size = _MainTex_TexelSize.zw;
+                float2 position = clamp(uv, 0.0, 1.0) * size - 0.5;
+                float2 baseCell = floor(position);
+                float2 fraction = frac(position);
+                float a00 = ResolveCurrentAlpha(SampleFogCell(baseCell));
+                float a10 = ResolveCurrentAlpha(SampleFogCell(baseCell + float2(1.0, 0.0)));
+                float a01 = ResolveCurrentAlpha(SampleFogCell(baseCell + float2(0.0, 1.0)));
+                float a11 = ResolveCurrentAlpha(SampleFogCell(baseCell + float2(1.0, 1.0)));
+                return lerp(lerp(a00, a10, fraction.x), lerp(a01, a11, fraction.x), fraction.y);
+            }
+
+            float ResolveSpatialPresentationAlpha(float2 uv, float centerTargetAlpha, float centerCurrentAlpha)
+            {
+                float continuousTargetAlpha = SampleTargetAlphaContinuous(uv);
+                if (continuousTargetAlpha <= centerTargetAlpha + 1.0 / 255.0)
+                    return centerCurrentAlpha;
+                return SampleCurrentAlphaContinuous(uv);
+            }
+
             float MoveTowardAlpha(float startAlpha, float targetAlpha, float elapsed)
             {
                 float delta = _FogFadeSpeed * max(0.0, elapsed);
@@ -420,12 +449,14 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
                 float2 cell = min(floor(gridPosition), textureSize - 1.0);
                 float4 packedFog = SampleFogCell(cell);
                 float4 color = ResolveFogColor(packedFog);
-                color.a = ResolveBoundaryAlpha(
-                    input.uv,
-                    UnpackTargetAlpha(packedFog),
-                    ResolveCurrentAlpha(packedFog),
-                    IsPackedFogSample(packedFog) ? packedFog.b : packedFog.a,
-                    IsPackedFogSample(packedFog) ? packedFog.a : 0.0);
+                color.a = _FogSpatialTargetsReady > 0.5
+                    ? ResolveSpatialPresentationAlpha(input.uv, UnpackTargetAlpha(packedFog), ResolveCurrentAlpha(packedFog))
+                    : ResolveBoundaryAlpha(
+                        input.uv,
+                        UnpackTargetAlpha(packedFog),
+                        ResolveCurrentAlpha(packedFog),
+                        IsPackedFogSample(packedFog) ? packedFog.b : packedFog.a,
+                        IsPackedFogSample(packedFog) ? packedFog.a : 0.0);
                 return color * _Color * input.color;
             }
             ENDHLSL
@@ -467,6 +498,7 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
             float4 _FogWorldSize;
             float _FogFadeSpeed;
             float _FogUsesTimedTransitions;
+            float _FogSpatialTargetsReady;
 
             float4 SampleFogCell(float2 cell)
             {
@@ -484,6 +516,13 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
             float UnpackTargetAlpha(float4 sample)
             {
                 return IsPackedFogSample(sample) ? sample.r : sample.a;
+            }
+
+            float SampleTargetAlphaDiscrete(float2 uv)
+            {
+                float2 size = _MainTex_TexelSize.zw;
+                float2 cell = min(floor(clamp(uv, 0.0, 1.0) * size), size - 1.0);
+                return UnpackTargetAlpha(SampleFogCell(cell));
             }
 
             float ResolveCurrentAlpha(float4 sample)
@@ -640,6 +679,27 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
                 return lerp(lerp(a00, a10, fraction.x), lerp(a01, a11, fraction.x), fraction.y);
             }
 
+            float SampleCurrentAlphaContinuous(float2 uv)
+            {
+                float2 size = _MainTex_TexelSize.zw;
+                float2 position = clamp(uv, 0.0, 1.0) * size - 0.5;
+                float2 baseCell = floor(position);
+                float2 fraction = frac(position);
+                float a00 = ResolveCurrentAlpha(SampleFogCell(baseCell));
+                float a10 = ResolveCurrentAlpha(SampleFogCell(baseCell + float2(1.0, 0.0)));
+                float a01 = ResolveCurrentAlpha(SampleFogCell(baseCell + float2(0.0, 1.0)));
+                float a11 = ResolveCurrentAlpha(SampleFogCell(baseCell + float2(1.0, 1.0)));
+                return lerp(lerp(a00, a10, fraction.x), lerp(a01, a11, fraction.x), fraction.y);
+            }
+
+            float ResolveSpatialPresentationAlpha(float2 uv, float centerTargetAlpha, float centerCurrentAlpha)
+            {
+                float continuousTargetAlpha = SampleTargetAlphaContinuous(uv);
+                if (continuousTargetAlpha <= centerTargetAlpha + 1.0 / 255.0)
+                    return centerCurrentAlpha;
+                return SampleCurrentAlphaContinuous(uv);
+            }
+
             float MoveTowardAlpha(float startAlpha, float targetAlpha, float elapsed)
             {
                 float delta = _FogFadeSpeed * max(0.0, elapsed);
@@ -740,12 +800,14 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
                 float2 cell = min(floor(gridPosition), textureSize - 1.0);
                 float4 packedFog = SampleFogCell(cell);
                 float4 color = ResolveFogColor(packedFog);
-                color.a = ResolveBoundaryAlpha(
-                    input.uv,
-                    UnpackTargetAlpha(packedFog),
-                    ResolveCurrentAlpha(packedFog),
-                    IsPackedFogSample(packedFog) ? packedFog.b : packedFog.a,
-                    IsPackedFogSample(packedFog) ? packedFog.a : 0.0);
+                color.a = _FogSpatialTargetsReady > 0.5
+                    ? ResolveSpatialPresentationAlpha(input.uv, UnpackTargetAlpha(packedFog), ResolveCurrentAlpha(packedFog))
+                    : ResolveBoundaryAlpha(
+                        input.uv,
+                        UnpackTargetAlpha(packedFog),
+                        ResolveCurrentAlpha(packedFog),
+                        IsPackedFogSample(packedFog) ? packedFog.b : packedFog.a,
+                        IsPackedFogSample(packedFog) ? packedFog.a : 0.0);
                 return color * _Color;
             }
             ENDCG

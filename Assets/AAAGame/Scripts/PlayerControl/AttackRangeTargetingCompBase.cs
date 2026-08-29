@@ -11,6 +11,7 @@ public abstract class AttackRangeTargetingCompBase : TargetingCompBase, ITargeti
 
     protected abstract bool SupportsOwner(IEntityContext owner);
     protected abstract string OwnerKind { get; }
+    protected virtual bool PropagatesAggroCandidate => false;
 
     public void Init(IEntityContext ctx)
     {
@@ -35,6 +36,7 @@ public abstract class AttackRangeTargetingCompBase : TargetingCompBase, ITargeti
             throw new ArgumentOutOfRangeException(nameof(deltaTime));
 
         Fix64 attackRange = GetRequiredAttackRange(m_Context);
+        bool hadAggroCandidate = CurrentTarget != null;
         bool requiresImmediateScan = false;
         if (CurrentTarget != null
             && (!CurrentTarget.IsRegisteredInLogicWorld()
@@ -50,6 +52,8 @@ public abstract class AttackRangeTargetingCompBase : TargetingCompBase, ITargeti
 
         m_ScanTimer = Fix64.Zero;
         CurrentTarget = FindBestTarget(attackRange);
+        if (PropagatesAggroCandidate && !hadAggroCandidate && CurrentTarget != null)
+            LogicFactionVisionService.HandleAggroAcquired(m_Context, CurrentTarget);
     }
 
     private IEntityContext FindBestTarget(Fix64 attackRange)

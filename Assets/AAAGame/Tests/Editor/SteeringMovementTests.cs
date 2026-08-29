@@ -921,6 +921,38 @@ public class SteeringMovementTests
     }
 
     [Test]
+    public void BuildingAggroAcquisition_PropagatesCandidateToNearbyFriendlyUnit()
+    {
+        ConfigureOpenNavigationGrid(64, 16, new Vector3(-24f, 0f, -8f));
+        SimBuildingContext tower = MakeBuilding(Vector3.zero, SideType.EnemySide);
+        tower.SetOwnerFaction(EntitySideHelper.EnemyFactionId);
+        tower.WeaponComp = CreateTestWeaponComp((Fix64)6);
+        SimEntityContext ally = MakeSoldier(new Vector3(12f, 0f, 0f), SideType.EnemySide);
+        SimEntityContext target = MakeSoldier(new Vector3(-5.5f, 0f, 0f), SideType.PlayerSide);
+        var towerTargeting = new BuildingTargetingComp();
+        towerTargeting.Init(tower);
+        tower.TargetComp = towerTargeting;
+        var allyTargeting = new CharacterTargetingComp();
+        allyTargeting.Init(ally);
+        ally.TargetComp = allyTargeting;
+        EntityRegistry.Register(tower);
+        EntityRegistry.Register(ally);
+        EntityRegistry.Register(target);
+
+        Assert.IsTrue(
+            ally.LogicFrameDistanceToTargetSurfaceFixed(target)
+            > LogicFactionVisionService.ReadWorldDistance(LogicFactionVisionService.MinimumAggroCandidateRangeConfigKey),
+            "Test setup requires the target to remain outside the ally's ordinary candidate range.");
+
+        towerTargeting.UpdateTargeting((Fix64)0.2f);
+        allyTargeting.UpdateTargeting((Fix64)0.01f);
+
+        Assert.AreSame(target, towerTargeting.CurrentTarget);
+        Assert.AreSame(target, allyTargeting.CurrentTarget,
+            "A building that acquires aggro must broadcast the candidate once to nearby friendly units without candidates.");
+    }
+
+    [Test]
     public void MeatRackTargeting_ChoosesFarthestTargetAfterTauntAndRange()
     {
         SimBuildingContext rack = MakeBuilding(Vector3.zero, SideType.PlayerSide, "Buil_MeatRack_Lv1");

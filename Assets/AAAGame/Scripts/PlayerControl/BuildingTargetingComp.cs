@@ -6,4 +6,5 @@ public class BuildingTargetingComp : AttackRangeTargetingCompBase
     }
 
     protected override string OwnerKind => "building";
+    protected override bool PropagatesAggroCandidate => true;
 }

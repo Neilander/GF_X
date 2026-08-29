@@ -9,6 +9,7 @@ namespace AAAGame.MiniMap.FOG3
         private Texture2D fogTexture;
         private RenderTexture fogPresentationTexture;
         private Texture2D fogUploadTexture;
+        private Texture2D fogUploadTextureAlternate;
         private Color32[] pixels;
         private Color[] presentationTransitions;
         private Color[] uploadPixels;
@@ -17,8 +18,18 @@ namespace AAAGame.MiniMap.FOG3
         private Fog3CellState[] presentationStates;
         private float[] currentAlphas;
         private float[] targetAlphas;
+        private float[] presentationSpatialTargets;
+        private float[] presentationDistanceAny;
+        private float[] presentationDistanceOpaque;
+        private float[] presentationDistanceScratch;
+        private float[] distanceLineInput;
+        private float[] distanceLineOutput;
+        private int[] distanceEnvelopeSites;
+        private float[] distanceEnvelopeIntersections;
         private float[] transitionStartAlphas;
         private float[] transitionStartTimes;
+        private int[] presentationToLogicX;
+        private int[] presentationToLogicY;
         private int logicWidth;
         private int logicHeight;
         private Material fogMaterial;
@@ -42,6 +53,7 @@ namespace AAAGame.MiniMap.FOG3
         private double previousVisibilityResolutionLogicTime;
         private float previousVisibilityPresentationTime;
         private bool hasPreviousVisibilityPresentationTime;
+        private bool presentationSpatialTargetsInitialized;
         private readonly System.Collections.Generic.List<OutsideMaskQuad> outsideMaskQuads = new System.Collections.Generic.List<OutsideMaskQuad>();
 
         private struct OutsideMaskQuad
@@ -165,6 +177,10 @@ namespace AAAGame.MiniMap.FOG3
                 return false;
             }
 
+            int previousMinimumX = cameraPresentationMinimumX;
+            int previousMinimumY = cameraPresentationMinimumY;
+            int previousMaximumX = cameraPresentationMaximumX;
+            int previousMaximumY = cameraPresentationMaximumY;
             presentationCamera = camera;
             presentationCameraViewProjection = viewProjection;
             presentationCameraPixelRect = camera.pixelRect;
@@ -172,12 +188,74 @@ namespace AAAGame.MiniMap.FOG3
             if (cameraPresentationMaximumX < cameraPresentationMinimumX)
                 return false;
 
-            UploadPresentationRectangle(
+            UploadNewCameraCoverage(
+                previousMinimumX,
+                previousMinimumY,
+                previousMaximumX,
+                previousMaximumY);
+            return true;
+        }
+
+        private void UploadNewCameraCoverage(
+            int previousMinimumX,
+            int previousMinimumY,
+            int previousMaximumX,
+            int previousMaximumY)
+        {
+            if (previousMaximumX < previousMinimumX || previousMaximumY < previousMinimumY)
+            {
+                UploadPresentationRectangle(
+                    cameraPresentationMinimumX,
+                    cameraPresentationMinimumY,
+                    cameraPresentationMaximumX,
+                    cameraPresentationMaximumY);
+                return;
+            }
+
+            int overlapMinimumX = Mathf.Max(previousMinimumX, cameraPresentationMinimumX);
+            int overlapMinimumY = Mathf.Max(previousMinimumY, cameraPresentationMinimumY);
+            int overlapMaximumX = Mathf.Min(previousMaximumX, cameraPresentationMaximumX);
+            int overlapMaximumY = Mathf.Min(previousMaximumY, cameraPresentationMaximumY);
+            if (overlapMaximumX < overlapMinimumX || overlapMaximumY < overlapMinimumY)
+            {
+                UploadPresentationRectangle(
+                    cameraPresentationMinimumX,
+                    cameraPresentationMinimumY,
+                    cameraPresentationMaximumX,
+                    cameraPresentationMaximumY);
+                return;
+            }
+
+            UploadPresentationRectangleIfValid(
                 cameraPresentationMinimumX,
+                cameraPresentationMinimumY,
+                overlapMinimumX - 1,
+                cameraPresentationMaximumY);
+            UploadPresentationRectangleIfValid(
+                overlapMaximumX + 1,
                 cameraPresentationMinimumY,
                 cameraPresentationMaximumX,
                 cameraPresentationMaximumY);
-            return true;
+            UploadPresentationRectangleIfValid(
+                overlapMinimumX,
+                cameraPresentationMinimumY,
+                overlapMaximumX,
+                overlapMinimumY - 1);
+            UploadPresentationRectangleIfValid(
+                overlapMinimumX,
+                overlapMaximumY + 1,
+                overlapMaximumX,
+                cameraPresentationMaximumY);
+        }
+
+        private void UploadPresentationRectangleIfValid(
+            int minimumX,
+            int minimumY,
+            int maximumX,
+            int maximumY)
+        {
+            if (maximumX >= minimumX && maximumY >= minimumY)
+                UploadPresentationRectangle(minimumX, minimumY, maximumX, maximumY);
         }
 
         public void Render(Fog3MapData mapData, bool logPerformanceDiagnostics)
@@ -185,17 +263,21 @@ namespace AAAGame.MiniMap.FOG3
             if (mapData == null)
                 throw new System.ArgumentNullException(nameof(mapData));
             if (fogTexture == null || fogPresentationTexture == null || fogUploadTexture == null
+                || fogUploadTextureAlternate == null
                 || pixels == null || presentationTransitions == null || uploadPixels == null
                 || targetPixels == null || targetStates == null || presentationStates == null
-                || currentAlphas == null || targetAlphas == null
-                || transitionStartAlphas == null || transitionStartTimes == null)
+                || currentAlphas == null || targetAlphas == null || presentationSpatialTargets == null
+                || presentationDistanceAny == null || presentationDistanceOpaque == null
+                || transitionStartAlphas == null || transitionStartTimes == null
+                || presentationToLogicX == null || presentationToLogicY == null)
                 throw new System.InvalidOperationException("FOG3 overlay must be built before rendering visibility.");
             if (mapData.Width != fogTexture.width || mapData.Height != fogTexture.height)
             {
                 throw new System.InvalidOperationException(
                     $"FOG3 overlay size mismatch. texture={fogTexture.width}x{fogTexture.height}, map={mapData.Width}x{mapData.Height}.");
             }
-            if (!mapData.TryGetDirtyBounds(out int minimumX, out int minimumY, out int maximumX, out int maximumY))
+            bool hasDirty = mapData.TryGetDirtyBounds(out int minimumX, out int minimumY, out int maximumX, out int maximumY);
+            if (!hasDirty && presentationSpatialTargetsInitialized)
                 return;
 
             long renderStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -206,6 +288,7 @@ namespace AAAGame.MiniMap.FOG3
             int changedMinimumY = mapData.Height;
             int changedMaximumX = -1;
             int changedMaximumY = -1;
+            bool targetStatesChanged = false;
             for (int dirtyIndex = 0; dirtyIndex < mapData.DirtyCellCount; dirtyIndex++)
             {
                 mapData.GetDirtyCell(dirtyIndex, out int x, out int y);
@@ -229,6 +312,7 @@ namespace AAAGame.MiniMap.FOG3
                 transitionStartTimes[index] = transitionTime;
                 currentAlphas[index] = currentAlpha;
                 targetAlphas[index] = targetColor.a;
+                targetStatesChanged = true;
                 targetPixel.a = (byte)Mathf.RoundToInt(currentAlpha * byte.MaxValue);
                 pixels[index] = targetPixel;
                 changedMinimumX = Mathf.Min(changedMinimumX, x);
@@ -239,13 +323,22 @@ namespace AAAGame.MiniMap.FOG3
 
             long fillTicks = System.Diagnostics.Stopwatch.GetTimestamp() - fillStartTicks;
             long setStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            if (changedMaximumX >= changedMinimumX)
+            if (targetStatesChanged || !presentationSpatialTargetsInitialized)
             {
+                if (!presentationSpatialTargetsInitialized)
+                    RebuildPresentationSpatialTargets();
+                else
+                    RebuildPresentationSpatialTargetsRegion(
+                        changedMinimumX,
+                        changedMinimumY,
+                        changedMaximumX,
+                        changedMaximumY);
                 RefreshPresentationRegion(
-                    changedMinimumX,
-                    changedMinimumY,
-                    changedMaximumX,
-                    changedMaximumY);
+                    targetStatesChanged && presentationSpatialTargetsInitialized ? changedMinimumX : 0,
+                    targetStatesChanged && presentationSpatialTargetsInitialized ? changedMinimumY : 0,
+                    targetStatesChanged && presentationSpatialTargetsInitialized ? changedMaximumX : mapData.Width - 1,
+                    targetStatesChanged && presentationSpatialTargetsInitialized ? changedMaximumY : mapData.Height - 1);
+                presentationSpatialTargetsInitialized = true;
             }
             long setTicks = System.Diagnostics.Stopwatch.GetTimestamp() - setStartTicks;
             long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - renderStartTicks;
@@ -268,6 +361,159 @@ namespace AAAGame.MiniMap.FOG3
                     maximumY,
                     fillTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
                     setTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+            }
+        }
+
+        private void RebuildPresentationSpatialTargetsRegion(
+            int logicMinimumX,
+            int logicMinimumY,
+            int logicMaximumX,
+            int logicMaximumY)
+        {
+            if (logicMaximumX < logicMinimumX || logicMaximumY < logicMinimumY)
+                return;
+
+            int presentationWidth = fogPresentationTexture.width;
+            int presentationHeight = fogPresentationTexture.height;
+            int paddingX = Mathf.CeilToInt(visibilityBoundaryFadeDistance * presentationWidth / terrainInfo.Bounds.size.x) + 1;
+            int paddingY = Mathf.CeilToInt(visibilityBoundaryFadeDistance * presentationHeight / terrainInfo.Bounds.size.z) + 1;
+            int minimumX = Mathf.Max(0, Mathf.FloorToInt(logicMinimumX * (float)presentationWidth / logicWidth) - paddingX);
+            int minimumY = Mathf.Max(0, Mathf.FloorToInt(logicMinimumY * (float)presentationHeight / logicHeight) - paddingY);
+            int maximumX = Mathf.Min(presentationWidth - 1, Mathf.CeilToInt((logicMaximumX + 1) * (float)presentationWidth / logicWidth) + paddingX);
+            int maximumY = Mathf.Min(presentationHeight - 1, Mathf.CeilToInt((logicMaximumY + 1) * (float)presentationHeight / logicHeight) + paddingY);
+
+            int regionWidth = maximumX - minimumX + 1;
+            int regionHeight = maximumY - minimumY + 1;
+            if ((long)regionWidth * regionHeight * 4L > (long)presentationWidth * presentationHeight)
+            {
+                RebuildPresentationSpatialTargets();
+                return;
+            }
+
+            float worldStepX = terrainInfo.Bounds.size.x / presentationWidth;
+            float worldStepY = terrainInfo.Bounds.size.z / presentationHeight;
+            const float epsilon = 1f / 255f;
+            const float infinity = 1e20f;
+            BuildPresentationDistanceFieldRegion(
+                0f,
+                minimumX,
+                minimumY,
+                maximumX,
+                maximumY,
+                presentationDistanceAny,
+                worldStepX,
+                worldStepY);
+            BuildPresentationDistanceFieldRegion(
+                0.55f,
+                minimumX,
+                minimumY,
+                maximumX,
+                maximumY,
+                presentationDistanceOpaque,
+                worldStepX,
+                worldStepY);
+
+            for (int y = minimumY; y <= maximumY; y++)
+            {
+                int logicY = presentationToLogicY[y];
+                for (int x = minimumX; x <= maximumX; x++)
+                {
+                    int logicX = presentationToLogicX[x];
+                    float centerAlpha = targetAlphas[logicX + logicY * logicWidth];
+                    int presentationIndex = x + y * presentationWidth;
+                    if (centerAlpha >= 1f - epsilon || visibilityBoundaryFadeDistance <= 0f)
+                    {
+                        presentationSpatialTargets[presentationIndex] = centerAlpha;
+                        continue;
+                    }
+
+                    float distanceSquared = centerAlpha < 0.5f
+                        ? presentationDistanceAny[presentationIndex]
+                        : presentationDistanceOpaque[presentationIndex];
+                    if (distanceSquared >= infinity * 0.5f)
+                    {
+                        presentationSpatialTargets[presentationIndex] = centerAlpha;
+                        continue;
+                    }
+
+                    float boundaryAlpha = centerAlpha < 0.5f
+                        && presentationDistanceOpaque[presentationIndex]
+                           <= presentationDistanceAny[presentationIndex] + 0.0001f
+                        ? 1f
+                        : centerAlpha < 0.5f ? 0.55f : 1f;
+                    presentationSpatialTargets[presentationIndex] = Mathf.Lerp(
+                        centerAlpha,
+                        boundaryAlpha,
+                        Mathf.Clamp01(1f - Mathf.Sqrt(distanceSquared) / visibilityBoundaryFadeDistance));
+                }
+            }
+        }
+
+        private void BuildPresentationDistanceFieldRegion(
+            float sourceThreshold,
+            int targetMinimumX,
+            int targetMinimumY,
+            int targetMaximumX,
+            int targetMaximumY,
+            float[] output,
+            float worldStepX,
+            float worldStepY)
+        {
+            int presentationWidth = fogPresentationTexture.width;
+            int presentationHeight = fogPresentationTexture.height;
+            int sourceRadiusX = Mathf.CeilToInt(visibilityBoundaryFadeDistance / worldStepX) + 1;
+            int sourceRadiusY = Mathf.CeilToInt(visibilityBoundaryFadeDistance / worldStepY) + 1;
+            int sourceMinimumX = Mathf.Max(0, targetMinimumX - sourceRadiusX);
+            int sourceMinimumY = Mathf.Max(0, targetMinimumY - sourceRadiusY);
+            int sourceMaximumX = Mathf.Min(presentationWidth - 1, targetMaximumX + sourceRadiusX);
+            int sourceMaximumY = Mathf.Min(presentationHeight - 1, targetMaximumY + sourceRadiusY);
+            int sourceWidth = sourceMaximumX - sourceMinimumX + 1;
+            int sourceHeight = sourceMaximumY - sourceMinimumY + 1;
+            const float infinity = 1e20f;
+            const float epsilon = 1f / 255f;
+
+            for (int y = sourceMinimumY; y <= sourceMaximumY; y++)
+            {
+                int sourceLogicY = presentationToLogicY[y];
+                for (int x = 0; x < sourceWidth; x++)
+                {
+                    int sourcePresentationX = sourceMinimumX + x;
+                    int sourceLogicX = presentationToLogicX[sourcePresentationX];
+                    float sourceAlpha = targetAlphas[sourceLogicX + sourceLogicY * logicWidth];
+                    distanceLineInput[x] = sourceAlpha > sourceThreshold + epsilon ? 0f : infinity;
+                }
+
+                DistanceTransform1D(
+                    distanceLineInput,
+                    distanceLineOutput,
+                    sourceWidth,
+                    worldStepX,
+                    distanceEnvelopeSites,
+                    distanceEnvelopeIntersections);
+                System.Array.Copy(
+                    distanceLineOutput,
+                    0,
+                    presentationDistanceScratch,
+                    sourceMinimumX + y * presentationWidth,
+                    sourceWidth);
+            }
+
+            for (int x = sourceMinimumX; x <= sourceMaximumX; x++)
+            {
+                for (int y = 0; y < sourceHeight; y++)
+                    distanceLineInput[y] = presentationDistanceScratch[x + (sourceMinimumY + y) * presentationWidth];
+
+                DistanceTransform1D(
+                    distanceLineInput,
+                    distanceLineOutput,
+                    sourceHeight,
+                    worldStepY,
+                    distanceEnvelopeSites,
+                    distanceEnvelopeIntersections);
+                int outputMinimumY = Mathf.Max(targetMinimumY, sourceMinimumY);
+                int outputMaximumY = Mathf.Min(targetMaximumY, sourceMaximumY);
+                for (int y = outputMinimumY; y <= outputMaximumY; y++)
+                    output[x + y * presentationWidth] = distanceLineOutput[y - sourceMinimumY];
             }
         }
 
@@ -452,11 +698,32 @@ namespace AAAGame.MiniMap.FOG3
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = FilterMode.Point
             };
+            fogUploadTextureAlternate = new Texture2D(1, 1, TextureFormat.RGBAFloat, false, true)
+            {
+                name = "FOG3_DirtyUploadTile_Alternate",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Point
+            };
             int cellCount = checked(width * height);
             pixels = new Color32[cellCount];
             int presentationCellCount = checked(presentationWidth * presentationHeight);
+            presentationToLogicX = new int[presentationWidth];
+            presentationToLogicY = new int[presentationHeight];
+            for (int x = 0; x < presentationWidth; x++)
+                presentationToLogicX[x] = PresentationToLogic(x, presentationWidth, logicWidth);
+            for (int y = 0; y < presentationHeight; y++)
+                presentationToLogicY[y] = PresentationToLogic(y, presentationHeight, logicHeight);
             presentationTransitions = new Color[presentationCellCount];
             uploadPixels = new Color[presentationCellCount];
+            presentationSpatialTargets = new float[presentationCellCount];
+            presentationDistanceAny = new float[presentationCellCount];
+            presentationDistanceOpaque = new float[presentationCellCount];
+            presentationDistanceScratch = new float[presentationCellCount];
+            int distanceLineLength = Mathf.Max(presentationWidth, presentationHeight);
+            distanceLineInput = new float[distanceLineLength];
+            distanceLineOutput = new float[distanceLineLength];
+            distanceEnvelopeSites = new int[distanceLineLength];
+            distanceEnvelopeIntersections = new float[distanceLineLength + 1];
             targetPixels = new Color32[cellCount];
             targetStates = new Fog3CellState[cellCount];
             presentationStates = new Fog3CellState[presentationCellCount];
@@ -483,18 +750,20 @@ namespace AAAGame.MiniMap.FOG3
                 }
             }
 
+            RebuildPresentationSpatialTargets();
+            presentationSpatialTargetsInitialized = true;
             fogTexture.SetPixels32(pixels);
             fogTexture.Apply(false);
             for (int y = 0; y < presentationHeight; y++)
             {
-                int logicY = PresentationToLogic(y, presentationHeight, logicHeight);
+                int logicY = presentationToLogicY[y];
                 for (int x = 0; x < presentationWidth; x++)
                 {
-                    int logicX = PresentationToLogic(x, presentationWidth, logicWidth);
+                    int logicX = presentationToLogicX[x];
                     int logicIndex = logicX + logicY * logicWidth;
                     int presentationIndex = x + y * presentationWidth;
                     Fog3CellState state = targetStates[logicIndex];
-                    float alpha = targetAlphas[logicIndex];
+                    float alpha = presentationSpatialTargets[presentationIndex];
                     presentationStates[presentationIndex] = state;
                     presentationTransitions[presentationIndex] = PackPresentationTransition(alpha, state, alpha, now);
                 }
@@ -517,28 +786,38 @@ namespace AAAGame.MiniMap.FOG3
             int changedMinimumY = presentationHeight;
             int changedMaximumX = -1;
             int changedMaximumY = -1;
+            float now = Time.time;
 
-            for (int y = minimumY; y <= maximumY; y++)
+            int paddingX = Mathf.CeilToInt(visibilityBoundaryFadeDistance * fogPresentationTexture.width / terrainInfo.Bounds.size.x) + 1;
+            int paddingY = Mathf.CeilToInt(visibilityBoundaryFadeDistance * fogPresentationTexture.height / terrainInfo.Bounds.size.z) + 1;
+            int minimumPresentationX = Mathf.Max(0, Mathf.FloorToInt(logicMinimumX * (float)presentationWidth / logicWidth) - paddingX);
+            int minimumPresentationY = Mathf.Max(0, Mathf.FloorToInt(logicMinimumY * (float)presentationHeight / logicHeight) - paddingY);
+            int maximumPresentationX = Mathf.Min(presentationWidth - 1, Mathf.CeilToInt((logicMaximumX + 1) * (float)presentationWidth / logicWidth) + paddingX);
+            int maximumPresentationY = Mathf.Min(presentationHeight - 1, Mathf.CeilToInt((logicMaximumY + 1) * (float)presentationHeight / logicHeight) + paddingY);
+
+            for (int y = minimumPresentationY; y <= maximumPresentationY; y++)
             {
-                int logicY = PresentationToLogic(y, presentationHeight, logicHeight);
-                for (int x = minimumX; x <= maximumX; x++)
+                int logicY = presentationToLogicY[y];
+                for (int x = minimumPresentationX; x <= maximumPresentationX; x++)
                 {
-                    int logicX = PresentationToLogic(x, presentationWidth, logicWidth);
+                    int logicX = presentationToLogicX[x];
                     int logicIndex = logicX + logicY * logicWidth;
                     int presentationIndex = x + y * presentationWidth;
                     Fog3CellState state = targetStates[logicIndex];
-                    if (presentationStates[presentationIndex] == state)
+                    float spatialTargetAlpha = presentationSpatialTargets[presentationIndex];
+                    Color previous = presentationTransitions[presentationIndex];
+                    bool stateChanged = presentationStates[presentationIndex] != state;
+                    bool targetChanged = Mathf.Abs(previous.r - spatialTargetAlpha) > (1f / 255f);
+                    if (!stateChanged && !targetChanged)
                         continue;
 
-                    Color previous = presentationTransitions[presentationIndex];
-                    float transitionTime = transitionStartTimes[logicIndex];
-                    float currentAlpha = ResolvePackedTransitionAlpha(previous, transitionTime);
+                    float previousCurrentAlpha = ResolvePackedTransitionAlpha(previous, now);
                     presentationStates[presentationIndex] = state;
                     presentationTransitions[presentationIndex] = PackPresentationTransition(
-                        targetAlphas[logicIndex],
+                        spatialTargetAlpha,
                         state,
-                        currentAlpha,
-                        transitionTime);
+                        previousCurrentAlpha,
+                        now);
                     changedMinimumX = Mathf.Min(changedMinimumX, x);
                     changedMinimumY = Mathf.Min(changedMinimumY, y);
                     changedMaximumX = Mathf.Max(changedMaximumX, x);
@@ -555,6 +834,184 @@ namespace AAAGame.MiniMap.FOG3
             changedMaximumY = Mathf.Min(changedMaximumY, cameraPresentationMaximumY);
             if (changedMaximumX >= changedMinimumX && changedMaximumY >= changedMinimumY)
                 UploadPresentationRectangle(changedMinimumX, changedMinimumY, changedMaximumX, changedMaximumY);
+        }
+
+        private void RebuildPresentationSpatialTargets()
+        {
+            int presentationWidth = fogPresentationTexture.width;
+            int presentationHeight = fogPresentationTexture.height;
+            float worldStepX = terrainInfo.Bounds.size.x / presentationWidth;
+            float worldStepY = terrainInfo.Bounds.size.z / presentationHeight;
+            const float infinity = 1e20f;
+            const float epsilon = 1f / 255f;
+            bool requiresAnyDistance = false;
+            bool requiresOpaqueDistance = false;
+            for (int i = 0; i < targetAlphas.Length; i++)
+            {
+                float alpha = targetAlphas[i];
+                if (alpha < 0.5f)
+                    requiresAnyDistance = true;
+                else if (alpha < 1f - epsilon)
+                    requiresOpaqueDistance = true;
+
+                if (requiresAnyDistance && requiresOpaqueDistance)
+                    break;
+            }
+
+            if (requiresAnyDistance)
+                BuildPresentationDistanceField(0f, presentationDistanceAny, presentationDistanceScratch, distanceLineInput, distanceLineOutput, distanceEnvelopeSites, distanceEnvelopeIntersections, worldStepX, worldStepY);
+            else
+                FillDistanceFieldWithInfinity(presentationDistanceAny);
+            if (requiresOpaqueDistance)
+                BuildPresentationDistanceField(0.55f, presentationDistanceOpaque, presentationDistanceScratch, distanceLineInput, distanceLineOutput, distanceEnvelopeSites, distanceEnvelopeIntersections, worldStepX, worldStepY);
+            else
+                FillDistanceFieldWithInfinity(presentationDistanceOpaque);
+
+            for (int y = 0; y < presentationHeight; y++)
+            {
+                for (int x = 0; x < presentationWidth; x++)
+                {
+                    int index = x + y * presentationWidth;
+                    int logicX = presentationToLogicX[x];
+                    int logicY = presentationToLogicY[y];
+                    float centerAlpha = targetAlphas[logicX + logicY * logicWidth];
+                    if (centerAlpha >= 1f - epsilon || visibilityBoundaryFadeDistance <= 0f)
+                    {
+                        presentationSpatialTargets[index] = centerAlpha;
+                        continue;
+                    }
+
+                    float distanceSquared = centerAlpha < 0.5f ? presentationDistanceAny[index] : presentationDistanceOpaque[index];
+                    if (distanceSquared >= infinity * 0.5f)
+                    {
+                        presentationSpatialTargets[index] = centerAlpha;
+                        continue;
+                    }
+
+                    float boundaryAlpha = centerAlpha < 0.5f
+                        && presentationDistanceOpaque[index] <= presentationDistanceAny[index] + 0.0001f
+                        ? 1f
+                        : centerAlpha < 0.5f ? 0.55f : 1f;
+                    float distance = Mathf.Sqrt(distanceSquared);
+                    presentationSpatialTargets[index] = Mathf.Lerp(
+                        centerAlpha,
+                        boundaryAlpha,
+                        Mathf.Clamp01(1f - distance / visibilityBoundaryFadeDistance));
+                }
+            }
+        }
+
+        private static void FillDistanceFieldWithInfinity(float[] distanceField)
+        {
+            const float infinity = 1e20f;
+            for (int i = 0; i < distanceField.Length; i++)
+                distanceField[i] = infinity;
+        }
+
+        private void BuildPresentationDistanceField(
+            float sourceThreshold,
+            float[] output,
+            float[] scratch,
+            float[] lineInput,
+            float[] lineOutput,
+            int[] envelopeSites,
+            float[] envelopeIntersections,
+            float worldStepX,
+            float worldStepY)
+        {
+            int width = fogPresentationTexture.width;
+            int height = fogPresentationTexture.height;
+            const float infinity = 1e20f;
+            const float epsilon = 1f / 255f;
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int logicX = presentationToLogicX[x];
+                    int logicY = presentationToLogicY[y];
+                    lineInput[x] = targetAlphas[logicX + logicY * logicWidth] > sourceThreshold + epsilon ? 0f : infinity;
+                }
+                DistanceTransform1D(lineInput, lineOutput, width, worldStepX, envelopeSites, envelopeIntersections);
+                System.Array.Copy(lineOutput, 0, scratch, y * width, width);
+            }
+
+            for (int x = 0; x < width; x++)
+            {
+                for (int y = 0; y < height; y++)
+                    lineInput[y] = scratch[x + y * width];
+                DistanceTransform1D(lineInput, lineOutput, height, worldStepY, envelopeSites, envelopeIntersections);
+                for (int y = 0; y < height; y++)
+                    output[x + y * width] = lineOutput[y];
+            }
+        }
+
+        private static void DistanceTransform1D(
+            float[] input,
+            float[] output,
+            int length,
+            float spacing,
+            int[] envelopeSites,
+            float[] envelopeIntersections)
+        {
+            const float infinity = 1e20f;
+            int firstFinite = -1;
+            for (int i = 0; i < length; i++)
+            {
+                if (input[i] < infinity * 0.5f)
+                {
+                    firstFinite = i;
+                    break;
+                }
+            }
+            if (firstFinite < 0)
+            {
+                for (int i = 0; i < length; i++)
+                    output[i] = infinity;
+                return;
+            }
+
+            int envelopeCount = 0;
+            envelopeSites[0] = firstFinite;
+            envelopeIntersections[0] = float.NegativeInfinity;
+            envelopeIntersections[1] = float.PositiveInfinity;
+            for (int q = firstFinite + 1; q < length; q++)
+            {
+                if (input[q] >= infinity * 0.5f)
+                    continue;
+                float qPosition = q * spacing;
+                float intersection;
+                while (true)
+                {
+                    int site = envelopeSites[envelopeCount];
+                    float sitePosition = site * spacing;
+                    float numerator = (input[q] + qPosition * qPosition) - (input[site] + sitePosition * sitePosition);
+                    float denominator = 2f * (qPosition - sitePosition);
+                    intersection = numerator / denominator;
+                    if (intersection > envelopeIntersections[envelopeCount])
+                        break;
+                    if (envelopeCount == 0)
+                        break;
+                    envelopeCount--;
+                }
+
+                if (intersection <= envelopeIntersections[envelopeCount])
+                    continue;
+                envelopeCount++;
+                envelopeSites[envelopeCount] = q;
+                envelopeIntersections[envelopeCount] = intersection;
+                envelopeIntersections[envelopeCount + 1] = float.PositiveInfinity;
+            }
+
+            envelopeCount = 0;
+            for (int q = 0; q < length; q++)
+            {
+                float position = q * spacing;
+                while (envelopeIntersections[envelopeCount + 1] < position)
+                    envelopeCount++;
+                int site = envelopeSites[envelopeCount];
+                float delta = position - site * spacing;
+                output[q] = input[site] >= infinity * 0.5f ? infinity : delta * delta + input[site];
+            }
         }
 
         private void ResolveCameraPresentationBounds(Camera camera)
@@ -632,18 +1089,19 @@ namespace AAAGame.MiniMap.FOG3
             int presentationWidth = fogPresentationTexture.width;
             int dirtyWidth = maximumX - minimumX + 1;
             int dirtyHeight = maximumY - minimumY + 1;
+            Texture2D uploadTexture = SelectFogUploadTexture(dirtyWidth, dirtyHeight);
+            EnsureFogUploadTextureSize(uploadTexture, dirtyWidth, dirtyHeight);
+            int uploadWidth = uploadTexture.width;
             for (int y = 0; y < dirtyHeight; y++)
             {
                 int sourceOffset = minimumX + (minimumY + y) * presentationWidth;
-                System.Array.Copy(presentationTransitions, sourceOffset, uploadPixels, y * dirtyWidth, dirtyWidth);
+                System.Array.Copy(presentationTransitions, sourceOffset, uploadPixels, y * uploadWidth, dirtyWidth);
             }
 
-            if (fogUploadTexture.width != dirtyWidth || fogUploadTexture.height != dirtyHeight)
-                fogUploadTexture.Reinitialize(dirtyWidth, dirtyHeight, TextureFormat.RGBAFloat, false);
-            fogUploadTexture.SetPixelData(uploadPixels, 0, 0);
-            fogUploadTexture.Apply(false, false);
+            uploadTexture.SetPixelData(uploadPixels, 0, 0);
+            uploadTexture.Apply(false, false);
             Graphics.CopyTexture(
-                fogUploadTexture,
+                uploadTexture,
                 0,
                 0,
                 0,
@@ -655,6 +1113,23 @@ namespace AAAGame.MiniMap.FOG3
                 0,
                 minimumX,
                 minimumY);
+        }
+
+        private Texture2D SelectFogUploadTexture(int requiredWidth, int requiredHeight)
+        {
+            return requiredWidth >= requiredHeight ? fogUploadTexture : fogUploadTextureAlternate;
+        }
+
+        private static void EnsureFogUploadTextureSize(Texture2D uploadTexture, int requiredWidth, int requiredHeight)
+        {
+            if (requiredWidth <= 0 || requiredHeight <= 0)
+                throw new System.ArgumentOutOfRangeException(nameof(requiredWidth), "FOG3 upload rectangle must be positive.");
+            if (uploadTexture == null)
+                throw new System.InvalidOperationException("FOG3 upload texture is not initialized.");
+            if (uploadTexture.width == requiredWidth && uploadTexture.height == requiredHeight)
+                return;
+
+            uploadTexture.Reinitialize(requiredWidth, requiredHeight, TextureFormat.RGBAFloat, false);
         }
 
         private float ResolveTransitionAlpha(int index, float now)
@@ -713,6 +1188,7 @@ namespace AAAGame.MiniMap.FOG3
                 new Vector4(terrainInfo.Bounds.size.x, terrainInfo.Bounds.size.z, 0f, 0f));
             fogMaterial.SetFloat("_FogFadeSpeed", visibilityFadeSpeed);
             fogMaterial.SetFloat("_FogUsesTimedTransitions", 1f);
+            fogMaterial.SetFloat("_FogSpatialTargetsReady", 1f);
             fogMaterial.SetColor("_FogHiddenColor", settings.HiddenColor);
             fogMaterial.SetColor("_FogExploredColor", settings.ExploredColor);
             fogMaterial.SetColor("_FogVisibleColor", settings.VisibleColor);
@@ -1487,8 +1963,18 @@ namespace AAAGame.MiniMap.FOG3
             presentationStates = null;
             currentAlphas = null;
             targetAlphas = null;
+            presentationSpatialTargets = null;
+            presentationDistanceAny = null;
+            presentationDistanceOpaque = null;
+            presentationDistanceScratch = null;
+            distanceLineInput = null;
+            distanceLineOutput = null;
+            distanceEnvelopeSites = null;
+            distanceEnvelopeIntersections = null;
             transitionStartAlphas = null;
             transitionStartTimes = null;
+            presentationToLogicX = null;
+            presentationToLogicY = null;
             logicWidth = 0;
             logicHeight = 0;
             presentationCamera = null;
@@ -1501,6 +1987,7 @@ namespace AAAGame.MiniMap.FOG3
             previousVisibilityResolutionLogicTime = 0d;
             previousVisibilityPresentationTime = 0f;
             hasPreviousVisibilityPresentationTime = false;
+            presentationSpatialTargetsInitialized = false;
 
             if (fogTexture != null)
             {
@@ -1519,6 +2006,12 @@ namespace AAAGame.MiniMap.FOG3
             {
                 DestroyUnityObjectSafe(fogUploadTexture);
                 fogUploadTexture = null;
+            }
+
+            if (fogUploadTextureAlternate != null)
+            {
+                DestroyUnityObjectSafe(fogUploadTextureAlternate);
+                fogUploadTextureAlternate = null;
             }
 
             if (fogMaterial != null)
