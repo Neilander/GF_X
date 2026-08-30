@@ -164,9 +164,44 @@ public class PhaseManager : GameFrameworkComponent
 
     public static void SwitchToPhase(GamePhase phase)
     {
-        if (phase == GamePhase.Invade || phase == GamePhase.Defend)
-            FlowFieldCrowdMovementSystem.RequireRuntimeNavigationReady($"phase-submit-{phase}");
-        LogicPhaseCommandService.Submit(phase);
+        Log.Info(
+            "[PhaseSwitch] Request phase={0}, current={1}, frame={2}, pending={3}",
+            phase,
+            CurrentPhase,
+            LogicTimeControlService.CurrentFrame,
+            LogicPhaseCommandService.PendingCount);
+        if (LogicPhaseCommandService.TryGetPendingPhase(out GamePhase pendingPhase))
+        {
+            if (pendingPhase == phase)
+            {
+                Log.Warning(
+                    "[PhaseSwitch] Request already pending; no duplicate command submitted. phase={0}, frame={1}",
+                    phase,
+                    LogicTimeControlService.CurrentFrame);
+                return;
+            }
+            throw new InvalidOperationException(
+                $"PhaseManager.SwitchToPhase failed: another phase command is pending. pending={pendingPhase}, requested={phase}.");
+        }
+
+        if ((phase == GamePhase.Invade || phase == GamePhase.Defend)
+            && !FlowFieldCrowdMovementSystem.IsRuntimeNavigationReadyForPhaseCommand())
+        {
+            LogicPhaseCommand command = LogicPhaseCommandService.ScheduleForNextFrame(phase);
+            Log.Warning(
+                "[PhaseSwitch] Navigation barrier deferred phase command. phase={0}, sequence={1}, effectiveFrame={2}, navigation={3}",
+                phase,
+                command.Sequence,
+                command.EffectiveFrame,
+                FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics());
+            return;
+        }
+        LogicPhaseCommand commandSubmitted = LogicPhaseCommandService.Submit(phase);
+        Log.Info(
+            "[PhaseSwitch] Command submitted. phase={0}, sequence={1}, effectiveFrame={2}",
+            phase,
+            commandSubmitted.Sequence,
+            commandSubmitted.EffectiveFrame);
     }
 
     public static void InitializePhaseAuthorityOnGameStart(GamePhase phase)

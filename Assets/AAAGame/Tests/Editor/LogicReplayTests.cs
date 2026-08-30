@@ -213,10 +213,10 @@ public sealed class LogicReplayTests
     }
 
     [Test]
-    public void ProtocolV117_CrossPlatformDeterminismCorpus_IsStable()
+    public void ProtocolV118_CrossPlatformDeterminismCorpus_IsStable()
     {
         LogicTimeControlService.EndTimeline();
-        LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV117();
+        LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV118();
         LogicTimeControlService.BeginTimeline();
 
         Assert.AreEqual(LogicDeterminismCorpus.GoldenProtocolVersion, result.ProtocolVersion);
@@ -226,7 +226,7 @@ public sealed class LogicReplayTests
     [Test]
     public void CrossPlatformDeterminismCorpus_RejectsActiveTimeline()
     {
-        Assert.Throws<System.InvalidOperationException>(() => LogicDeterminismCorpus.EvaluateV117());
+        Assert.Throws<System.InvalidOperationException>(() => LogicDeterminismCorpus.EvaluateV118());
     }
 
     [Test]

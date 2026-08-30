@@ -1678,7 +1678,7 @@
 			"identifier": "Lv3",
 			"iid": "8c774fa2-21a0-11f1-9c16-0b75036ff1ed",
 			"uid": 0,
-			"worldX": 2880,
+			"worldX": 2448,
 			"worldY": 0,
 			"worldDepth": 0,
 			"pxWid": 2080,
@@ -1698,7 +1698,7 @@
 				"params": ["CoastalCity"]
 			}] }],
 			"layerInstances": null,
-			"__neighbours": []
+			"__neighbours": [{ "levelIid": "8684dc60-48b0-11f1-9656-8bb06757e875", "dir": "w" }]
 		},
 		{
 			"identifier": "Lv3_Backup",
@@ -1730,8 +1730,8 @@
 			"identifier": "Lv2",
 			"iid": "8684dc60-48b0-11f1-9656-8bb06757e875",
 			"uid": 25,
-			"worldX": 1312,
-			"worldY": 64,
+			"worldX": 1136,
+			"worldY": 0,
 			"worldDepth": 0,
 			"pxWid": 1312,
 			"pxHei": 960,
@@ -1750,7 +1750,7 @@
 				"params": ["CoastalCity"]
 			}] }],
 			"layerInstances": null,
-			"__neighbours": []
+			"__neighbours": [ { "levelIid": "8c774fa2-21a0-11f1-9c16-0b75036ff1ed", "dir": "e" }, { "levelIid": "ef816340-48b0-11f1-bab9-837fb0260b2c", "dir": "n" }, { "levelIid": "3b31da10-48b0-11f1-9e84-db94604cbb12", "dir": "w" } ]
 		},
 		{
 			"identifier": "Lv2_Backup",
@@ -1802,7 +1802,7 @@
 				"params": ["CoastalCity"]
 			}] }],
 			"layerInstances": null,
-			"__neighbours": [{ "levelIid": "3b31da10-48b0-11f1-9e84-db94604cbb12", "dir": "s" }]
+			"__neighbours": [ { "levelIid": "8684dc60-48b0-11f1-9656-8bb06757e875", "dir": "s" }, { "levelIid": "3b31da10-48b0-11f1-9e84-db94604cbb12", "dir": "s" } ]
 		},
 		{
 			"identifier": "Lv1",
@@ -1811,8 +1811,8 @@
 			"worldX": 0,
 			"worldY": 0,
 			"worldDepth": 0,
-			"pxWid": 1216,
-			"pxHei": 1248,
+			"pxWid": 1136,
+			"pxHei": 1072,
 			"__bgColor": "#696A79",
 			"bgColor": null,
 			"useAutoIdentifier": false,
@@ -1828,7 +1828,7 @@
 				"params": ["CoastalCity"]
 			}] }],
 			"layerInstances": null,
-			"__neighbours": [{ "levelIid": "ef816340-48b0-11f1-bab9-837fb0260b2c", "dir": "n" }]
+			"__neighbours": [ { "levelIid": "8684dc60-48b0-11f1-9656-8bb06757e875", "dir": "e" }, { "levelIid": "ef816340-48b0-11f1-bab9-837fb0260b2c", "dir": "n" } ]
 		},
 		{
 			"identifier": "Lv1_Backup",

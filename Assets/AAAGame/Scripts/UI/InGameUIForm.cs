@@ -284,8 +284,16 @@ public partial class InGameUIForm : UIFormBase
 
     private void SwitchPhase()
     {
+        Log.Info(
+            "[PhaseSwitch] Hold completed. phase={0}, frame={1}, buttonInteractable={2}",
+            (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase),
+            LogicTimeControlService.IsActive ? LogicTimeControlService.CurrentFrame : 0UL,
+            varPhaseBg != null && varPhaseBg.interactable);
         if (!IsPhaseSwitchAllowedByPhase())
         {
+            Log.Warning(
+                "[PhaseSwitch] Hold rejected by phase/tutorial gate. phase={0}",
+                (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase));
             return;
         }
 

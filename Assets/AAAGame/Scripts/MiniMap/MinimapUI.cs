@@ -447,8 +447,7 @@ namespace AAAGame.MiniMap
         private static bool IsPriorityMarker(MinimapUnitData unit)
         {
             return unit.UnitType == MinimapUnitType.Objective
-                || (unit.UnitType == MinimapUnitType.Building
-                    && unit.IconPrefabName == MinimapUnitData.TargetLocationIconName);
+                || unit.UnitType == MinimapUnitType.LevelTarget;
         }
 
         private void CreateUnitVisual(MinimapUnitData unit)
@@ -500,7 +499,7 @@ namespace AAAGame.MiniMap
 
         private GameObject CreateBuildingVisual(MinimapUnitData unit, RectTransform content)
         {
-            bool isTargetLocationIcon = unit.IconPrefabName == MinimapUnitData.TargetLocationIconName;
+            bool isTargetLocationIcon = unit.UnitType == MinimapUnitType.LevelTarget;
             bool isObjectiveIcon = unit.UnitType == MinimapUnitType.Objective;
             GameObject visualObj = null;
 
@@ -555,7 +554,7 @@ namespace AAAGame.MiniMap
             {
                 markerGraphic.color = unit.UnitType == MinimapUnitType.Objective
                     ? Color.green
-                    : unit.IconPrefabName == MinimapUnitData.TargetLocationIconName
+                    : unit.UnitType == MinimapUnitType.LevelTarget
                         ? Color.red
                         : minimapManager.Config.GetSoldierColor(unit.Side);
             }

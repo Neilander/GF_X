@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using UnityGameFramework.Runtime;
 
 public readonly struct LogicPhaseCommand
 {
@@ -29,7 +30,10 @@ public static class LogicPhaseCommandService
     private static readonly ReadOnlyCollection<LogicPhaseCommand> s_ReadOnlyHistory = s_History.AsReadOnly();
     private static readonly List<LogicPhaseCommand> s_Pending = new List<LogicPhaseCommand>();
     private static readonly List<LogicPhaseCommand> s_Due = new List<LogicPhaseCommand>();
+    private static readonly HashSet<ulong> s_NavigationDeferredSequences = new HashSet<ulong>();
+    private static readonly HashSet<ulong> s_AppliedSequences = new HashSet<ulong>();
     private static ulong s_LastSequence;
+    private static ulong s_LastNavigationBarrierLogFrame = ulong.MaxValue;
 
     public static bool IsActive { get; private set; }
     public static bool IsInitialized { get; private set; }
@@ -41,6 +45,24 @@ public static class LogicPhaseCommandService
     public static IReadOnlyList<LogicPhaseCommand> History => s_ReadOnlyHistory;
     public static event Action<LogicPhaseCommand> CommandRecorded;
     public static event Action<GamePhase, GamePhase> PhaseApplied;
+
+    public static bool TryGetPendingPhase(out GamePhase phase)
+    {
+        EnsureReady();
+        if (s_Pending.Count == 0)
+        {
+            phase = default;
+            return false;
+        }
+
+        phase = s_Pending[0].Phase;
+        for (int i = 1; i < s_Pending.Count; i++)
+        {
+            if (s_Pending[i].Phase != phase)
+                throw new InvalidOperationException("LogicPhaseCommandService has multiple different pending phase commands.");
+        }
+        return true;
+    }
 
     public static GamePhase GetRequiredCurrentPhase()
     {
@@ -203,17 +225,28 @@ public static class LogicPhaseCommandService
 
     public static void ApplyFrame(ulong frameId)
     {
-        ApplyFrame(frameId, s_RuntimeSink);
+        ApplyFrame(frameId, s_RuntimeSink, FlowFieldCrowdMovementSystem.IsRuntimeNavigationReadyForPhaseCommand);
     }
 
 #if UNITY_EDITOR
     public static void ApplyFrameForTests(ulong frameId, Action<LogicPhaseCommand> sink)
     {
-        ApplyFrame(frameId, sink);
+        ApplyFrame(frameId, sink, null);
+    }
+
+    public static void ApplyFrameForTests(
+        ulong frameId,
+        Action<LogicPhaseCommand> sink,
+        Func<bool> navigationReady)
+    {
+        ApplyFrame(frameId, sink, navigationReady ?? throw new ArgumentNullException(nameof(navigationReady)));
     }
 #endif
 
-    private static void ApplyFrame(ulong frameId, Action<LogicPhaseCommand> sink)
+    private static void ApplyFrame(
+        ulong frameId,
+        Action<LogicPhaseCommand> sink,
+        Func<bool> navigationReady)
     {
         EnsureReady();
         if (sink == null)
@@ -230,15 +263,19 @@ public static class LogicPhaseCommandService
         try
         {
             s_Due.Clear();
+            s_AppliedSequences.Clear();
             for (int i = 0; i < s_Pending.Count; i++)
             {
                 LogicPhaseCommand command = s_Pending[i];
-                if (command.EffectiveFrame < frameId)
+                bool navigationDeferred = s_NavigationDeferredSequences.Contains(command.Sequence);
+                bool blockedByNavigationBarrier = HasNavigationDeferredBarrierBefore(command.Sequence);
+                if (command.EffectiveFrame < frameId && !navigationDeferred && !blockedByNavigationBarrier)
                 {
                     throw new InvalidOperationException(
                         $"LogicPhaseCommandService.ApplyFrame failed: command missed its frame. sequence={command.Sequence}, effective={command.EffectiveFrame}, current={frameId}.");
                 }
-                if (command.EffectiveFrame == frameId)
+                if (command.EffectiveFrame <= frameId
+                    && (command.EffectiveFrame == frameId || navigationDeferred || blockedByNavigationBarrier))
                     s_Due.Add(command);
             }
 
@@ -246,6 +283,25 @@ public static class LogicPhaseCommandService
             for (int i = 0; i < s_Due.Count; i++)
             {
                 LogicPhaseCommand command = s_Due[i];
+                if (navigationReady != null
+                    && IsBattlePhase(command.Phase)
+                    && !navigationReady())
+                {
+                    s_NavigationDeferredSequences.Add(command.Sequence);
+                    if (s_LastNavigationBarrierLogFrame != frameId)
+                    {
+                        s_LastNavigationBarrierLogFrame = frameId;
+                        Log.Warning(
+                            "[PhaseNavigation] Phase command is pending until navigation settles. frame={0}, sequence={1}, phase={2}, pending={3}, navigation={4}",
+                            frameId,
+                            command.Sequence,
+                            command.Phase,
+                            s_Pending.Count,
+                            FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics());
+                    }
+                    break;
+                }
+
                 GamePhase oldPhase = CurrentPhase;
                 CurrentPhase = command.Phase;
                 try
@@ -259,11 +315,13 @@ public static class LogicPhaseCommandService
                 }
                 if (oldPhase != CurrentPhase)
                     PhaseApplied?.Invoke(oldPhase, CurrentPhase);
+                s_AppliedSequences.Add(command.Sequence);
+                s_NavigationDeferredSequences.Remove(command.Sequence);
             }
 
             for (int i = s_Pending.Count - 1; i >= 0; i--)
             {
-                if (s_Pending[i].EffectiveFrame == frameId)
+                if (s_AppliedSequences.Contains(s_Pending[i].Sequence))
                     s_Pending.RemoveAt(i);
             }
             LastAppliedFrame = frameId;
@@ -272,7 +330,23 @@ public static class LogicPhaseCommandService
         {
             IsApplyingFrame = false;
             s_Due.Clear();
+            s_AppliedSequences.Clear();
         }
+    }
+
+    private static bool IsBattlePhase(GamePhase phase)
+    {
+        return phase == GamePhase.Invade || phase == GamePhase.Defend;
+    }
+
+    private static bool HasNavigationDeferredBarrierBefore(ulong sequence)
+    {
+        foreach (ulong deferredSequence in s_NavigationDeferredSequences)
+        {
+            if (deferredSequence < sequence)
+                return true;
+        }
+        return false;
     }
 
     private static void ApplyScheduledPhase(LogicPhaseCommand command)
@@ -306,6 +380,7 @@ public static class LogicPhaseCommandService
             throw new InvalidOperationException($"LogicPhaseCommandService.ResetFrameTimeline failed: {s_Pending.Count} pending commands remain.");
 
         LastAppliedFrame = 0;
+        s_LastNavigationBarrierLogFrame = ulong.MaxValue;
         IsWorldTransitionActive = false;
     }
 
@@ -325,6 +400,7 @@ public static class LogicPhaseCommandService
             hasher.Add(command.EffectiveFrame);
             hasher.Add(command.Sequence);
             hasher.Add((int)command.Phase);
+            hasher.Add(s_NavigationDeferredSequences.Contains(command.Sequence));
         }
     }
 
@@ -360,5 +436,8 @@ public static class LogicPhaseCommandService
         s_History.Clear();
         s_Pending.Clear();
         s_Due.Clear();
+        s_NavigationDeferredSequences.Clear();
+        s_AppliedSequences.Clear();
+        s_LastNavigationBarrierLogFrame = ulong.MaxValue;
     }
 }

@@ -101,6 +101,7 @@ namespace AAAGame.MiniMap.FOG3
         private float currentOverlayHeight;
         private float nextInitializeRetryTime;
         private bool missingTerrainLogged;
+        private bool missingRuntimeConfigLogged;
         private bool visibilityRefreshPending;
         private int pendingVisibilityRefreshRequestCount;
         private float cloudHeightRefreshTimer;
@@ -395,10 +396,12 @@ namespace AAAGame.MiniMap.FOG3
         private void Start()
         {
             TrySubscribeEvents();
-            if (CanInitializeForCurrentScene())
+            if (CanInitializeForCurrentScene() && IsRuntimeConfigReady())
                 TryInitializeOrSchedule("FOG3 manager started");
             else
-                Log.Info($"[FOG3] Waiting for gameplay scene '{gameplaySceneName}' before terrain detection.");
+                Log.Info(IsRuntimeConfigReady()
+                    ? $"[FOG3] Waiting for gameplay scene '{gameplaySceneName}' before terrain detection."
+                    : "[FOG3] Waiting for GF.Config before terrain detection.");
         }
 
         private void OnEnable()
@@ -441,6 +444,20 @@ namespace AAAGame.MiniMap.FOG3
 
                 if (!CanInitializeForCurrentScene())
                     return;
+
+                if (!IsRuntimeConfigReady())
+                {
+                    if (!missingRuntimeConfigLogged)
+                    {
+                        missingRuntimeConfigLogged = true;
+                        Log.Info("[FOG3] Waiting for GF.Config before initializing the logic fog grid.");
+                    }
+
+                    nextInitializeRetryTime = Time.unscaledTime + Mathf.Max(0.02f, terrainRetryInterval);
+                    return;
+                }
+
+                missingRuntimeConfigLogged = false;
 
                 if (!isInitialized && sceneRebuildCoroutine != null)
                     return;
@@ -753,6 +770,11 @@ namespace AAAGame.MiniMap.FOG3
             return false;
         }
 
+        private static bool IsRuntimeConfigReady()
+        {
+            return GF.Config != null;
+        }
+
         private bool IsGameplaySceneName(string sceneName)
         {
             if (!waitForGameplayScene || string.IsNullOrEmpty(gameplaySceneName))
@@ -797,7 +819,9 @@ namespace AAAGame.MiniMap.FOG3
                 return;
             }
 
-            if (fastRebuildOnGameplaySceneAvailable && CanInitializeForCurrentScene())
+            if (fastRebuildOnGameplaySceneAvailable
+                && CanInitializeForCurrentScene()
+                && IsRuntimeConfigReady())
             {
                 RebuildTerrain();
                 if (isInitialized)
@@ -826,7 +850,7 @@ namespace AAAGame.MiniMap.FOG3
                 yield return new WaitForSecondsRealtime(sceneRebuildDelay);
 
             sceneRebuildCoroutine = null;
-            if (isInitialized || !CanInitializeForCurrentScene())
+            if (isInitialized || !CanInitializeForCurrentScene() || !IsRuntimeConfigReady())
                 yield break;
 
             RebuildTerrain();

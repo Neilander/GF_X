@@ -56,6 +56,27 @@ public sealed class LogicGameEndServiceTests
     }
 
     [Test]
+    public void TargetMarkerSnapshot_BelongsToConditionServiceAndExcludesCapturedTargets()
+    {
+        LogicEntityState enemyTarget = CreateBuilding("target-marker-enemy", EntitySideHelper.EnemyFactionId, true);
+        LogicEntityState playerTarget = CreateBuilding("target-marker-player", EntitySideHelper.PlayerFactionId, true);
+        LogicGameEndService.Initialize(CreateDefendLevel());
+        LogicGameEndService.RegisterInitialConditionBuilding(enemyTarget.BuildingInstanceId, enemyTarget.OwnerFactionId);
+        LogicGameEndService.RegisterInitialConditionBuilding(playerTarget.BuildingInstanceId, playerTarget.OwnerFactionId);
+        PublishEntities();
+
+        IReadOnlyList<ConditionTargetMarkerState> initialMarkers = LogicGameEndService.GetTargetMarkerSnapshot();
+        Assert.AreEqual(1, initialMarkers.Count);
+        Assert.AreEqual(enemyTarget.BuildingInstanceId, initialMarkers[0].MarkerId);
+        Assert.AreEqual(enemyTarget.PositionFixed, initialMarkers[0].Position);
+
+        enemyTarget.SetOwnerFaction(EntitySideHelper.PlayerFactionId);
+        LogicGameEndService.ResolveCapturedEnemyTarget(enemyTarget);
+
+        Assert.AreEqual(0, LogicGameEndService.GetTargetMarkerSnapshot().Count);
+    }
+
+    [Test]
     public void GameEnd_InterruptsAttacksAndStopsMovementBeforePublishingResult()
     {
         LogicEntityState target = CreateBuilding("target-enemy", EntitySideHelper.EnemyFactionId, true);

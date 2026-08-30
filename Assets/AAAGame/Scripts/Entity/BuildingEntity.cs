@@ -408,8 +408,7 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
             }
         }
 
-        string iconPrefabName = IsGameEndConditionBuilding ? MinimapUnitData.TargetLocationIconName : null;
-        _minimapReportComponent.Initialize(Side, MinimapUnitType.Building, iconPrefabName);
+        _minimapReportComponent.Initialize(Side, MinimapUnitType.Building);
         UpdateMinimapReportVisibility();
     }
 
@@ -420,10 +419,8 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
             return;
         }
 
-        bool visible = !_stealthMinimapHidden
-            && !IsLv0Building()
-            && (!IsGameEndConditionBuilding || OwnerFactionID != EntitySideHelper.PlayerFactionId);
-        _minimapReportComponent.SetVisible(visible);
+        bool buildingVisible = !_stealthMinimapHidden && !IsLv0Building();
+        _minimapReportComponent.SetVisible(buildingVisible);
     }
 
     protected override void SetUpHurtBox()

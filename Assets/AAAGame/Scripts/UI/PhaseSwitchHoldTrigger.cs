@@ -63,6 +63,7 @@ public sealed class PhaseSwitchHoldTrigger : MonoBehaviour, IPointerDownHandler,
             return;
 
         m_LockedUntilReleased = true;
+        Log.Info("[PhaseSwitch] Hold trigger completed. button={0}", m_Button.name);
         m_Completed.Invoke();
     }
 

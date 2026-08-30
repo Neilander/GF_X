@@ -10,7 +10,8 @@ namespace AAAGame.MiniMap
     {
         Soldier,    // 士兵 - 显示为正方形小点
         Building,   // 建筑 - 显示为自定义图标
-        Objective   // 行动目标 - 始终显示为绿色标志
+        Objective,  // 行动目标 - 始终显示为绿色标志
+        LevelTarget // 关卡条件目标 - 显示为红色目标标点
     }
 
     /// <summary>

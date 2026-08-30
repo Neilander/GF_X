@@ -11,8 +11,8 @@
 	"identifier": "Lv2",
 	"iid": "8684dc60-48b0-11f1-9656-8bb06757e875",
 	"uid": 25,
-	"worldX": 1312,
-	"worldY": 64,
+	"worldX": 1136,
+	"worldY": 0,
 	"worldDepth": 0,
 	"pxWid": 1312,
 	"pxHei": 960,
@@ -78,8 +78,8 @@
 						}] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 68, "realEditorValues": [] }
 					],
-					"__worldX": 1528,
-					"__worldY": 200
+					"__worldX": 1352,
+					"__worldY": 136
 				},
 				{
 					"__identifier": "Building55",
@@ -104,8 +104,8 @@
 						}] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 68, "realEditorValues": [] }
 					],
-					"__worldX": 2392,
-					"__worldY": 200
+					"__worldX": 2216,
+					"__worldY": 136
 				},
 				{
 					"__identifier": "Building22",
@@ -127,8 +127,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 1520,
-					"__worldY": 272
+					"__worldX": 1344,
+					"__worldY": 208
 				},
 				{
 					"__identifier": "Building22",
@@ -150,8 +150,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 1600,
-					"__worldY": 192
+					"__worldX": 1424,
+					"__worldY": 128
 				},
 				{
 					"__identifier": "Building33",
@@ -173,8 +173,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
-					"__worldX": 1560,
-					"__worldY": 360
+					"__worldX": 1384,
+					"__worldY": 296
 				},
 				{
 					"__identifier": "Building33",
@@ -196,8 +196,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
-					"__worldX": 1688,
-					"__worldY": 248
+					"__worldX": 1512,
+					"__worldY": 184
 				},
 				{
 					"__identifier": "Building22",
@@ -219,8 +219,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 1584,
-					"__worldY": 928
+					"__worldX": 1408,
+					"__worldY": 864
 				},
 				{
 					"__identifier": "Building33",
@@ -242,8 +242,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
-					"__worldX": 2488,
-					"__worldY": 920
+					"__worldX": 2312,
+					"__worldY": 856
 				},
 				{
 					"__identifier": "Building22",
@@ -265,8 +265,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 2336,
-					"__worldY": 880
+					"__worldX": 2160,
+					"__worldY": 816
 				},
 				{
 					"__identifier": "Soldier",
@@ -285,11 +285,11 @@
 							"id": "V_String",
 							"params": ["Unit_CanMaker"]
 						}] },
-						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 3.458, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [3.458333] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 3, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [3] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.75, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.75] }] }
 					],
-					"__worldX": 1544,
-					"__worldY": 888
+					"__worldX": 1368,
+					"__worldY": 824
 				},
 				{
 					"__identifier": "Soldier",
@@ -308,11 +308,11 @@
 							"id": "V_String",
 							"params": ["Unit_CanMaker"]
 						}] },
-						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 3.458, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [3.458333] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [4] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.75, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.75] }] }
 					],
-					"__worldX": 1480,
-					"__worldY": 904
+					"__worldX": 1304,
+					"__worldY": 840
 				},
 				{
 					"__identifier": "Soldier",
@@ -331,11 +331,11 @@
 							"id": "V_String",
 							"params": ["Unit_Brat"]
 						}] },
-						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 6.45, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [6.45] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [6] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.85, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.85] }] }
 					],
-					"__worldX": 2376,
-					"__worldY": 872
+					"__worldX": 2200,
+					"__worldY": 808
 				},
 				{
 					"__identifier": "Hero",
@@ -350,8 +350,8 @@
 					"defUid": 14,
 					"px": [296,216],
 					"fieldInstances": [],
-					"__worldX": 1608,
-					"__worldY": 280
+					"__worldX": 1432,
+					"__worldY": 216
 				},
 				{
 					"__identifier": "Teleportation",
@@ -369,8 +369,8 @@
 						{ "__identifier": "ID", "__type": "Int", "__value": 0, "__tile": null, "defUid": 58, "realEditorValues": [{ "id": "V_Int", "params": [0] }] },
 						{ "__identifier": "Weight", "__type": "Float", "__value": 3, "__tile": null, "defUid": 59, "realEditorValues": [{ "id": "V_Float", "params": [3] }] }
 					],
-					"__worldX": 1512,
-					"__worldY": 856
+					"__worldX": 1336,
+					"__worldY": 792
 				},
 				{
 					"__identifier": "Teleportation",
@@ -388,8 +388,8 @@
 						{ "__identifier": "ID", "__type": "Int", "__value": 1, "__tile": null, "defUid": 58, "realEditorValues": [{ "id": "V_Int", "params": [1] }] },
 						{ "__identifier": "Weight", "__type": "Float", "__value": 0, "__tile": null, "defUid": 59, "realEditorValues": [{ "id": "V_Float", "params": [0] }] }
 					],
-					"__worldX": 1608,
-					"__worldY": 280
+					"__worldX": 1432,
+					"__worldY": 216
 				},
 				{
 					"__identifier": "Teleportation",
@@ -407,8 +407,8 @@
 						{ "__identifier": "ID", "__type": "Int", "__value": 2, "__tile": null, "defUid": 58, "realEditorValues": [{ "id": "V_Int", "params": [2] }] },
 						{ "__identifier": "Weight", "__type": "Float", "__value": 10, "__tile": null, "defUid": 59, "realEditorValues": [{ "id": "V_Float", "params": [10] }] }
 					],
-					"__worldX": 2312,
-					"__worldY": 280
+					"__worldX": 2136,
+					"__worldY": 216
 				},
 				{
 					"__identifier": "Teleportation",
@@ -426,8 +426,8 @@
 						{ "__identifier": "ID", "__type": "Int", "__value": 3, "__tile": null, "defUid": 58, "realEditorValues": [{ "id": "V_Int", "params": [3] }] },
 						{ "__identifier": "Weight", "__type": "Float", "__value": 7, "__tile": null, "defUid": 59, "realEditorValues": [{ "id": "V_Float", "params": [7] }] }
 					],
-					"__worldX": 2408,
-					"__worldY": 856
+					"__worldX": 2232,
+					"__worldY": 792
 				},
 				{
 					"__identifier": "Building22",
@@ -449,8 +449,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 1616,
-					"__worldY": 368
+					"__worldX": 1440,
+					"__worldY": 304
 				},
 				{
 					"__identifier": "Building22",
@@ -472,8 +472,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 1696,
-					"__worldY": 304
+					"__worldX": 1520,
+					"__worldY": 240
 				},
 				{
 					"__identifier": "Building55",
@@ -495,8 +495,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 67, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 68, "realEditorValues": [] }
 					],
-					"__worldX": 1960,
-					"__worldY": 696
+					"__worldX": 1784,
+					"__worldY": 632
 				},
 				{
 					"__identifier": "Building33",
@@ -518,8 +518,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
-					"__worldX": 1880,
-					"__worldY": 520
+					"__worldX": 1704,
+					"__worldY": 456
 				},
 				{
 					"__identifier": "Building33",
@@ -541,8 +541,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
-					"__worldX": 2040,
-					"__worldY": 520
+					"__worldX": 1864,
+					"__worldY": 456
 				},
 				{
 					"__identifier": "Building22",
@@ -564,8 +564,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 1888,
-					"__worldY": 720
+					"__worldX": 1712,
+					"__worldY": 656
 				},
 				{
 					"__identifier": "Soldier",
@@ -584,11 +584,11 @@
 							"id": "V_String",
 							"params": ["Unit_HiredBodyguard"]
 						}] },
-						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 5.188, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5.1875] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.8, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.8] }] }
 					],
-					"__worldX": 1912,
-					"__worldY": 600
+					"__worldX": 1736,
+					"__worldY": 536
 				},
 				{
 					"__identifier": "Soldier",
@@ -607,11 +607,11 @@
 							"id": "V_String",
 							"params": ["Unit_CanMaker"]
 						}] },
-						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 5.375, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5.375] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.75, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.75] }] }
 					],
-					"__worldX": 1976,
-					"__worldY": 568
+					"__worldX": 1800,
+					"__worldY": 504
 				},
 				{
 					"__identifier": "Soldier",
@@ -630,11 +630,11 @@
 							"id": "V_String",
 							"params": ["Unit_CanMaker"]
 						}] },
-						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 5.375, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5.375] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.75, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.75] }] }
 					],
-					"__worldX": 1944,
-					"__worldY": 632
+					"__worldX": 1768,
+					"__worldY": 568
 				},
 				{
 					"__identifier": "Teleportation",
@@ -652,8 +652,8 @@
 						{ "__identifier": "ID", "__type": "Int", "__value": 4, "__tile": null, "defUid": 58, "realEditorValues": [{ "id": "V_Int", "params": [4] }] },
 						{ "__identifier": "Weight", "__type": "Float", "__value": 7, "__tile": null, "defUid": 59, "realEditorValues": [{ "id": "V_Float", "params": [7] }] }
 					],
-					"__worldX": 1976,
-					"__worldY": 616
+					"__worldX": 1800,
+					"__worldY": 552
 				},
 				{
 					"__identifier": "Building33",
@@ -675,8 +675,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
-					"__worldX": 2488,
-					"__worldY": 856
+					"__worldX": 2312,
+					"__worldY": 792
 				},
 				{
 					"__identifier": "Building22",
@@ -698,8 +698,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 2336,
-					"__worldY": 928
+					"__worldX": 2160,
+					"__worldY": 864
 				},
 				{
 					"__identifier": "Building22",
@@ -721,8 +721,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 1984,
-					"__worldY": 528
+					"__worldX": 1808,
+					"__worldY": 464
 				},
 				{
 					"__identifier": "Building22",
@@ -744,8 +744,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 2032,
-					"__worldY": 720
+					"__worldX": 1856,
+					"__worldY": 656
 				},
 				{
 					"__identifier": "Building22",
@@ -767,8 +767,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 1584,
-					"__worldY": 864
+					"__worldX": 1408,
+					"__worldY": 800
 				},
 				{
 					"__identifier": "Building22",
@@ -790,8 +790,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 1936,
-					"__worldY": 528
+					"__worldX": 1760,
+					"__worldY": 464
 				},
 				{
 					"__identifier": "Building33",
@@ -813,8 +813,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
-					"__worldX": 1432,
-					"__worldY": 888
+					"__worldX": 1256,
+					"__worldY": 824
 				},
 				{
 					"__identifier": "Soldier",
@@ -833,11 +833,11 @@
 							"id": "V_String",
 							"params": ["Unit_Brat"]
 						}] },
-						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 6.45, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [6.45] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [6] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.85, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.85] }] }
 					],
-					"__worldX": 2408,
-					"__worldY": 920
+					"__worldX": 2232,
+					"__worldY": 856
 				},
 				{
 					"__identifier": "Soldier",
@@ -856,11 +856,11 @@
 							"id": "V_String",
 							"params": ["Unit_Brat"]
 						}] },
-						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 6.45, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [6.45] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [6] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.85, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.85] }] }
 					],
-					"__worldX": 2440,
-					"__worldY": 872
+					"__worldX": 2264,
+					"__worldY": 808
 				},
 				{
 					"__identifier": "Soldier",
@@ -879,11 +879,11 @@
 							"id": "V_String",
 							"params": ["Unit_HiredBodyguard"]
 						}] },
-						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 8.063, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [8.0625] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 8, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [8] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.8, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.8] }] }
 					],
-					"__worldX": 2264,
-					"__worldY": 264
+					"__worldX": 2088,
+					"__worldY": 200
 				},
 				{
 					"__identifier": "Soldier",
@@ -902,11 +902,11 @@
 							"id": "V_String",
 							"params": ["Unit_Brat"]
 						}] },
-						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 6.45, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [6.45] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [6] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.85, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.85] }] }
 					],
-					"__worldX": 2344,
-					"__worldY": 248
+					"__worldX": 2168,
+					"__worldY": 184
 				},
 				{
 					"__identifier": "Soldier",
@@ -925,11 +925,11 @@
 							"id": "V_String",
 							"params": ["Unit_CanMaker"]
 						}] },
-						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 5.375, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5.375] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [6] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.75, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.75] }] }
 					],
-					"__worldX": 2312,
-					"__worldY": 216
+					"__worldX": 2136,
+					"__worldY": 152
 				},
 				{
 					"__identifier": "Soldier",
@@ -948,11 +948,11 @@
 							"id": "V_String",
 							"params": ["Unit_HiredBodyguard"]
 						}] },
-						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 8.063, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [8.0625] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 8, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [8] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.8, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.8] }] }
 					],
-					"__worldX": 2312,
-					"__worldY": 312
+					"__worldX": 2136,
+					"__worldY": 248
 				},
 				{
 					"__identifier": "Soldier",
@@ -971,11 +971,11 @@
 							"id": "V_String",
 							"params": ["Unit_Brat"]
 						}] },
-						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 6.45, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [6.45] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [6] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.85, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.85] }] }
 					],
-					"__worldX": 2360,
-					"__worldY": 280
+					"__worldX": 2184,
+					"__worldY": 216
 				},
 				{
 					"__identifier": "Soldier",
@@ -994,11 +994,11 @@
 							"id": "V_String",
 							"params": ["Unit_CanMaker"]
 						}] },
-						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 5.375, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [5.375] }] },
+						{ "__identifier": "ResourceEquivalent", "__type": "Float", "__value": 6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Float", "params": [6] }] },
 						{ "__identifier": "CountGrowthWeight", "__type": "Float", "__value": 0.75, "__tile": null, "defUid": 64, "realEditorValues": [{ "id": "V_Float", "params": [0.75] }] }
 					],
-					"__worldX": 2280,
-					"__worldY": 200
+					"__worldX": 2104,
+					"__worldY": 136
 				},
 				{
 					"__identifier": "Building22",
@@ -1020,8 +1020,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 2224,
-					"__worldY": 256
+					"__worldX": 2048,
+					"__worldY": 192
 				},
 				{
 					"__identifier": "Building22",
@@ -1043,8 +1043,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 2416,
-					"__worldY": 272
+					"__worldX": 2240,
+					"__worldY": 208
 				},
 				{
 					"__identifier": "Building33",
@@ -1066,8 +1066,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
-					"__worldX": 2408,
-					"__worldY": 360
+					"__worldX": 2232,
+					"__worldY": 296
 				},
 				{
 					"__identifier": "Building33",
@@ -1089,8 +1089,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
 					],
-					"__worldX": 2232,
-					"__worldY": 184
+					"__worldX": 2056,
+					"__worldY": 120
 				},
 				{
 					"__identifier": "Building22",
@@ -1112,8 +1112,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
-					"__worldX": 2336,
-					"__worldY": 368
+					"__worldX": 2160,
+					"__worldY": 304
 				}
 			]
 		},
@@ -4087,5 +4087,5 @@
 			"entityInstances": []
 		}
 	],
-	"__neighbours": []
+	"__neighbours": [ { "levelIid": "8c774fa2-21a0-11f1-9c16-0b75036ff1ed", "dir": "e" }, { "levelIid": "ef816340-48b0-11f1-bab9-837fb0260b2c", "dir": "n" }, { "levelIid": "3b31da10-48b0-11f1-9e84-db94604cbb12", "dir": "w" } ]
 }

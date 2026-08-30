@@ -787,7 +787,6 @@ namespace AAAGame.MiniMap.FOG3
             int changedMaximumX = -1;
             int changedMaximumY = -1;
             float now = Time.time;
-
             int paddingX = Mathf.CeilToInt(visibilityBoundaryFadeDistance * fogPresentationTexture.width / terrainInfo.Bounds.size.x) + 1;
             int paddingY = Mathf.CeilToInt(visibilityBoundaryFadeDistance * fogPresentationTexture.height / terrainInfo.Bounds.size.z) + 1;
             int minimumPresentationX = Mathf.Max(0, Mathf.FloorToInt(logicMinimumX * (float)presentationWidth / logicWidth) - paddingX);
@@ -805,19 +804,19 @@ namespace AAAGame.MiniMap.FOG3
                     int presentationIndex = x + y * presentationWidth;
                     Fog3CellState state = targetStates[logicIndex];
                     float spatialTargetAlpha = presentationSpatialTargets[presentationIndex];
-                    Color previous = presentationTransitions[presentationIndex];
                     bool stateChanged = presentationStates[presentationIndex] != state;
-                    bool targetChanged = Mathf.Abs(previous.r - spatialTargetAlpha) > (1f / 255f);
+                    // The presentation texture is ARGBFloat; an 8-bit threshold leaves
+                    // small moving-boundary changes on their old transition clocks.
+                    bool targetChanged = Mathf.Abs(presentationTransitions[presentationIndex].r - spatialTargetAlpha) > 0.000001f;
                     if (!stateChanged && !targetChanged)
                         continue;
 
-                    float previousCurrentAlpha = ResolvePackedTransitionAlpha(previous, now);
                     presentationStates[presentationIndex] = state;
                     presentationTransitions[presentationIndex] = PackPresentationTransition(
                         spatialTargetAlpha,
                         state,
-                        previousCurrentAlpha,
-                        now);
+                        transitionStartAlphas[logicIndex],
+                        transitionStartTimes[logicIndex]);
                     changedMinimumX = Mathf.Min(changedMinimumX, x);
                     changedMinimumY = Mathf.Min(changedMinimumY, y);
                     changedMaximumX = Mathf.Max(changedMaximumX, x);
@@ -1140,14 +1139,6 @@ namespace AAAGame.MiniMap.FOG3
                 visibilityFadeSpeed * Mathf.Max(0f, now - transitionStartTimes[index]));
         }
 
-        private float ResolvePackedTransitionAlpha(Color transition, float now)
-        {
-            return Mathf.MoveTowards(
-                transition.b,
-                transition.r,
-                visibilityFadeSpeed * Mathf.Max(0f, now - transition.a));
-        }
-
         private static Color PackPresentationTransition(
             float targetAlpha,
             Fog3CellState state,
@@ -1188,7 +1179,6 @@ namespace AAAGame.MiniMap.FOG3
                 new Vector4(terrainInfo.Bounds.size.x, terrainInfo.Bounds.size.z, 0f, 0f));
             fogMaterial.SetFloat("_FogFadeSpeed", visibilityFadeSpeed);
             fogMaterial.SetFloat("_FogUsesTimedTransitions", 1f);
-            fogMaterial.SetFloat("_FogSpatialTargetsReady", 1f);
             fogMaterial.SetColor("_FogHiddenColor", settings.HiddenColor);
             fogMaterial.SetColor("_FogExploredColor", settings.ExploredColor);
             fogMaterial.SetColor("_FogVisibleColor", settings.VisibleColor);

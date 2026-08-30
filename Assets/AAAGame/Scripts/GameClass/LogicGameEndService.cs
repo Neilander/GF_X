@@ -36,9 +36,24 @@ public readonly struct LogicGameEndResult
         new LogicGameEndResult(false, objectiveIdentifier);
 }
 
+public readonly struct ConditionTargetMarkerState
+{
+    public ConditionTargetMarkerState(string markerId, FixVector2 position)
+    {
+        if (string.IsNullOrWhiteSpace(markerId))
+            throw new ArgumentException("Condition target marker id is required.", nameof(markerId));
+        MarkerId = markerId;
+        Position = position;
+    }
+
+    public string MarkerId { get; }
+    public FixVector2 Position { get; }
+}
+
 public static class LogicGameEndService
 {
     public static event System.Action PlayerConditionTargetsChanged;
+    public static event System.Action TargetMarkersChanged;
     private sealed class RuntimeObjective
     {
         public LevelObjectiveDefinition Definition;
@@ -51,6 +66,7 @@ public static class LogicGameEndService
     private static readonly Dictionary<string, IBuildingLogicContext> s_ResolvedTargets = new(StringComparer.Ordinal);
     private static readonly List<RuntimeObjective> s_Objectives = new();
     private static readonly List<LevelObjectiveState> s_ObjectiveSnapshot = new();
+    private static readonly List<ConditionTargetMarkerState> s_TargetMarkerSnapshot = new();
     private static string s_CurrentLevelIdentifier;
 
     public static event Action<LogicGameEndResult> GameEnded;
@@ -128,6 +144,30 @@ public static class LogicGameEndService
         return s_ObjectiveSnapshot;
     }
 
+    public static IReadOnlyList<ConditionTargetMarkerState> GetTargetMarkerSnapshot()
+    {
+        EnsureInitialized();
+        ResolveTargets();
+        s_TargetMarkerSnapshot.Clear();
+        s_SortedTargetIds.Clear();
+        foreach (string targetId in s_EnemyTargetBuildingInstanceIds)
+            s_SortedTargetIds.Add(targetId);
+        s_SortedTargetIds.Sort(StringComparer.Ordinal);
+
+        for (int i = 0; i < s_SortedTargetIds.Count; i++)
+        {
+            string targetId = s_SortedTargetIds[i];
+            if (!s_ResolvedTargets.TryGetValue(targetId, out IBuildingLogicContext target))
+                throw new InvalidOperationException($"Cannot resolve condition target marker '{targetId}'.");
+            if (target.OwnerFactionId == EntitySideHelper.PlayerFactionId)
+                continue;
+
+            s_TargetMarkerSnapshot.Add(new ConditionTargetMarkerState(targetId, target.PositionFixed));
+        }
+
+        return s_TargetMarkerSnapshot;
+    }
+
     public static int GetCompletedOptionalExperience()
     {
         EnsureInitialized();
@@ -159,6 +199,7 @@ public static class LogicGameEndService
         }
         else
             s_EnemyTargetBuildingInstanceIds.Add(buildingInstanceId);
+        TargetMarkersChanged?.Invoke();
     }
 
     public static bool TryGetNearestPlayerConditionBuilding(FixVector2 origin, out IBuildingLogicContext building)
@@ -218,6 +259,7 @@ public static class LogicGameEndService
         if (!s_EnemyTargetBuildingInstanceIds.Contains(building.BuildingInstanceId))
             throw new InvalidOperationException($"Condition building '{building.BuildingInstanceId}' was not registered as an enemy target.");
         building.SetGameEndConditionBuilding(false);
+        TargetMarkersChanged?.Invoke();
     }
 
     public static void CompleteScriptedObjective(string objectiveIdentifier)
@@ -628,11 +670,13 @@ public static class LogicGameEndService
         s_ResolvedTargets.Clear();
         s_Objectives.Clear();
         s_ObjectiveSnapshot.Clear();
+        s_TargetMarkerSnapshot.Clear();
         s_CurrentLevelIdentifier = null;
         IsInitialized = false;
         IsGameEnded = false;
         IsWin = false;
         LastAppliedFrame = 0;
         PlayerConditionTargetsChanged?.Invoke();
+        TargetMarkersChanged?.Invoke();
     }
 }

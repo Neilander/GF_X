@@ -152,6 +152,8 @@ public static partial class FlowFieldCrowdMovementSystem
 
         public bool HasDeterministicContentHash;
         public ulong DeterministicContentHash;
+        public bool HasImmutableContentHash;
+        public ulong ImmutableContentHash;
         public int Version;
         public int AgentTypeId;
         public int Width;
@@ -457,6 +459,14 @@ public static partial class FlowFieldCrowdMovementSystem
         public int UniformIslandId;
         public int[] LocalComponentIds;
         public int LocalComponentCount;
+        // Runtime island authority is sector-local components plus this compact
+        // component-to-global-island mapping. The full IslandIds array remains
+        // only as an export/legacy compatibility cache.
+        public int[] LocalComponentIslandIds;
+        public int[] LocalComponentSizes;
+        public int[] LocalComponentMinCellIndices;
+        public bool HasDeterministicContentHash;
+        public ulong DeterministicContentHash;
         public readonly List<int> PortalIds;
         public readonly List<PortalTransition> PortalTransitions;
         public readonly Dictionary<int, List<PortalTransition>> IncomingPortalTransitionsByToPortalId;
@@ -3003,6 +3013,7 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         job?.WorldHashBuildJob?.Dispose();
         ReturnPendingSectorPortalAccessIntegrations(job?.PendingPortalAccessEntries);
+        ReturnRuntimeDirtyIslandBuffers(job);
         NavigationWorld working = job?.WorkingWorld;
         if (working == null)
             return;
@@ -3018,6 +3029,25 @@ public static partial class FlowFieldCrowdMovementSystem
         ReturnWorldArrayIfOwned(working.IslandIds, null, null);
         ReturnByteArray(working.CostField);
         job.WorkingWorld = null;
+    }
+
+    private static void ReturnRuntimeDirtyIslandBuffers(RuntimeDirtyRebuildJob job)
+    {
+        if (job == null)
+            return;
+
+        ReturnWorldArrayIfOwned(job.IslandComponentOffsets, null, null);
+        ReturnWorldArrayIfOwned(job.IslandParents, null, null);
+        ReturnWorldArrayIfOwned(job.IslandComponentSizes, null, null);
+        ReturnWorldArrayIfOwned(job.IslandComponentMins, null, null);
+        ReturnWorldArrayIfOwned(job.IslandRootHeap, null, null);
+        ReturnWorldArrayIfOwned(job.IslandRootIds, null, null);
+        job.IslandComponentOffsets = null;
+        job.IslandParents = null;
+        job.IslandComponentSizes = null;
+        job.IslandComponentMins = null;
+        job.IslandRootHeap = null;
+        job.IslandRootIds = null;
     }
 
     private static bool TryGetTileIntegrationCost(FlowTileCacheEntry tile, int worldX, int worldY, out float cost)
@@ -3261,14 +3291,14 @@ public static partial class FlowFieldCrowdMovementSystem
         public bool ApplyingCircleObstacles = true;
         public int SectorCursor;
         public int CellCursor;
-        public Queue<int> IslandOpenQueue;
         public int IslandScanIndex;
         public int IslandCurrentId;
         public int IslandCurrentSize;
+        public Queue<int> IslandOpenQueue;
         public int IslandMainId;
         public int IslandMainSize;
-        public bool IslandBfsActive;
         public bool IslandInitialized;
+        public bool IslandBfsActive;
         public RuntimeDirtyPortalStage PortalStage;
         public bool PortalInitialized;
         public List<PortalData> PortalRebuiltPortals;
@@ -3376,6 +3406,19 @@ public static partial class FlowFieldCrowdMovementSystem
         Complete = 4
     }
 
+    private enum RuntimeDirtyIslandStage
+    {
+        RebuildDirtyComponents = 0,
+        PrepareComponentOffsets = 1,
+        InitializeComponentNodes = 2,
+        LinkSectorBoundaries = 3,
+        CollectIslandRoots = 4,
+        AssignIslandIds = 5,
+        AssignSectorMappings = 6,
+        UpdateCompatibilityCache = 7,
+        Complete = 8
+    }
+
     private sealed class RuntimeDirtyRebuildJob
     {
         public NavigationWorld TargetWorld;
@@ -3395,14 +3438,27 @@ public static partial class FlowFieldCrowdMovementSystem
         public int SectorCursor;
         public int ObstacleCursor;
         public bool ApplyingCircleObstacles = true;
-        public Queue<int> IslandOpenQueue;
-        public int IslandScanIndex;
-        public int IslandCurrentId;
-        public int IslandCurrentSize;
         public int IslandMainId;
         public int IslandMainSize;
-        public bool IslandBfsActive;
         public bool IslandInitialized;
+        public RuntimeDirtyIslandStage IslandStage;
+        public int[] IslandComponentOffsets;
+        public int[] IslandParents;
+        public int[] IslandComponentSizes;
+        public int[] IslandComponentMins;
+        public int[] IslandRootHeap;
+        public int[] IslandRootIds;
+        public int IslandComponentTotal;
+        public int IslandSectorCursor;
+        public int IslandComponentCursor;
+        public int IslandBoundaryCursor;
+        public int IslandNodeCursor;
+        public int IslandRootHeapCount;
+        public int IslandNextId;
+        public int IslandCompatibilitySectorCursor;
+        public int IslandCompatibilityCellCursor;
+        public int IslandUniformId;
+        public bool IslandUniformMixed;
         public RuntimeDirtyPortalStage PortalStage;
         public bool PortalInitialized;
         public HashSet<int> PortalTransitionDirtySectors;
@@ -4228,8 +4284,8 @@ public static partial class FlowFieldCrowdMovementSystem
             entries.Add(
                 $"agent={state.AgentTypeId},stage={job.Stage},portalStage={job.PortalStage}," +
                 $"sectorCursor={job.SectorCursor},cloneShellStage={job.CloneShellStage},cloneSectorCursor={job.CloneSectorCursor}," +
-                $"islandScanIndex={job.IslandScanIndex},islandBfs={job.IslandBfsActive}," +
-                $"islandQueue={job.IslandOpenQueue?.Count ?? 0},islandCurrentSize={job.IslandCurrentSize}," +
+                $"islandStage={job.IslandStage},islandSector={job.IslandSectorCursor},islandComponent={job.IslandComponentCursor}," +
+                $"islandBoundary={job.IslandBoundaryCursor},islandNode={job.IslandNodeCursor},islandRoots={job.IslandRootHeapCount}," +
                 $"portalSectorCursor={job.PortalSectorCursor},portalTransitionCursor={job.PortalTransitionCursor}," +
                 $"dirty={job.DirtySectorIds?.Count ?? 0},costDirty={job.CostDirtySectorIds?.Count ?? 0}," +
                 $"world={(world != null ? world.Width : 0)}x{(world != null ? world.Height : 0)}," +
@@ -4836,6 +4892,7 @@ public static partial class FlowFieldCrowdMovementSystem
         PruneIsolatedWalkableCells(world, "prebaked-import");
         world.BaseWalkableMask = (bool[])world.WalkableMask.Clone();
         world.BaseNeighborTraversalMask = (byte[])world.NeighborTraversalMask.Clone();
+        RebuildAllSectorLocalComponents(world);
 
         for (int i = 0; i < world.Portals.Length; i++)
         {
@@ -5405,6 +5462,34 @@ public static partial class FlowFieldCrowdMovementSystem
         return registeredAgentTypeIds.Count;
     }
 
+    public static bool IsRuntimeNavigationReadyForPhaseCommand()
+    {
+        if (_navigationWorkBudgetActive)
+            return false;
+
+        List<int> requiredAgentTypeIds = CollectNavigationWorldAgentTypes();
+        if (requiredAgentTypeIds.Count == 0 || WorldStates.Count == 0)
+            throw new InvalidOperationException("Phase navigation readiness failed: no required navigation worlds are registered.");
+        for (int i = 0; i < requiredAgentTypeIds.Count; i++)
+        {
+            int agentTypeId = requiredAgentTypeIds[i];
+            if (!WorldStates.TryGetValue(agentTypeId, out WorldRuntimeState requiredState) || requiredState == null)
+                throw new InvalidOperationException($"Phase navigation readiness failed: required world is missing. agentType={agentTypeId}.");
+        }
+
+        foreach (KeyValuePair<int, WorldRuntimeState> pair in WorldStates)
+        {
+            WorldRuntimeState state = pair.Value
+                ?? throw new InvalidOperationException($"Phase navigation readiness failed: world state is null. agentType={pair.Key}.");
+            if (state.World == null && state.BuildJob == null && !state.IsDirty)
+                throw new InvalidOperationException($"Phase navigation readiness failed: world is missing without a build job. agentType={pair.Key}.");
+            if (state.IsDirty || state.World == null || state.BuildJob != null
+                || state.DirtyRuntimeObstacleSectors.Count != 0 || state.RuntimeDirtyJob != null)
+                return false;
+        }
+        return true;
+    }
+
     public static bool HasActiveNavigationAgents()
     {
         foreach (AgentRuntimeData agent in Agents.Values)
@@ -5566,7 +5651,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     _editorSlowestRuntimeDirtyCallDiagnostics =
                         $"elapsedMs={TicksToMilliseconds(jobElapsedTicks):F3},agent={state.AgentTypeId}," +
                         $"stage={stageBefore}->{job.Stage},cloneShellStage={job.CloneShellStage},cloneSectorCursor={job.CloneSectorCursor}," +
-                        $"islandScanIndex={job.IslandScanIndex},islandCurrentSize={job.IslandCurrentSize}," +
+                        $"islandStage={job.IslandStage},islandSector={job.IslandSectorCursor},islandBoundary={job.IslandBoundaryCursor}," +
                         $"portalStage={job.PortalStage},portalSectorCursor={job.PortalSectorCursor}," +
                         BuildRuntimeDirtyStageAccumulatedTiming(job) + "," +
                         BuildRuntimeDirtyCommitTiming(job);
@@ -9386,7 +9471,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         if (found == null)
             throw new InvalidOperationException("GetEditorTestPendingRuntimeDirtyProgressSignature failed: no job is pending.");
-        return $"{found.Stage}:{found.CloneShellStage}:{found.CloneCellCursor}:{found.CloneSectorCursor}:{found.CloneShellInitialized}:{found.SectorCursor}:{found.ObstacleCursor}:{found.ApplyingCircleObstacles}:{found.IslandScanIndex}:{found.IslandCurrentId}:{found.IslandCurrentSize}:{found.PortalStage}:{found.PortalSectorCursor}:{found.PortalAddCursor}:{found.PortalTransitionCursor}:{found.PortalTransitionFromCursor}:{FormatPortalHierarchyBuildProgress(found.HierarchyBuildJob)}";
+        return $"{found.Stage}:{found.CloneShellStage}:{found.CloneCellCursor}:{found.CloneSectorCursor}:{found.CloneShellInitialized}:{found.SectorCursor}:{found.ObstacleCursor}:{found.ApplyingCircleObstacles}:{found.IslandStage}:{found.IslandSectorCursor}:{found.IslandComponentCursor}:{found.IslandBoundaryCursor}:{found.IslandNodeCursor}:{found.IslandRootHeapCount}:{found.PortalStage}:{found.PortalSectorCursor}:{found.PortalAddCursor}:{found.PortalTransitionCursor}:{found.PortalTransitionFromCursor}:{FormatPortalHierarchyBuildProgress(found.HierarchyBuildJob)}";
     }
 
     private static string FormatPortalHierarchyBuildProgress(PortalHierarchyBuildJob job)
@@ -9483,7 +9568,7 @@ public static partial class FlowFieldCrowdMovementSystem
         return found.WorldHashBuildJob.ProcessedTokenCount;
     }
 
-    public static int GetEditorTestPendingRuntimeDirtyIslandQueueCount()
+    public static bool HasEditorTestPendingRuntimeDirtyIslandComponentState()
     {
         RuntimeDirtyRebuildJob found = null;
         foreach (WorldRuntimeState state in WorldStates.Values)
@@ -9491,16 +9576,14 @@ public static partial class FlowFieldCrowdMovementSystem
             if (state?.RuntimeDirtyJob == null)
                 continue;
             if (found != null)
-                throw new InvalidOperationException("GetEditorTestPendingRuntimeDirtyIslandQueueCount failed: multiple jobs are pending.");
+                throw new InvalidOperationException("HasEditorTestPendingRuntimeDirtyIslandComponentState failed: multiple jobs are pending.");
             found = state.RuntimeDirtyJob;
         }
 
-        if (found == null)
-            throw new InvalidOperationException("GetEditorTestPendingRuntimeDirtyIslandQueueCount failed: no job is pending.");
-        return found.IslandOpenQueue?.Count ?? 0;
+        return found?.IslandParents != null && found.IslandComponentTotal > 0;
     }
 
-    public static void PerturbEditorTestPendingRuntimeDirtyIslandQueueOrder()
+    public static void PerturbEditorTestPendingRuntimeDirtyIslandComponentSize()
     {
         RuntimeDirtyRebuildJob found = null;
         foreach (WorldRuntimeState state in WorldStates.Values)
@@ -9508,19 +9591,14 @@ public static partial class FlowFieldCrowdMovementSystem
             if (state?.RuntimeDirtyJob == null)
                 continue;
             if (found != null)
-                throw new InvalidOperationException("PerturbEditorTestPendingRuntimeDirtyIslandQueueOrder failed: multiple jobs are pending.");
+                throw new InvalidOperationException("PerturbEditorTestPendingRuntimeDirtyIslandComponentSize failed: multiple jobs are pending.");
             found = state.RuntimeDirtyJob;
         }
 
-        if (found?.IslandOpenQueue == null || found.IslandOpenQueue.Count < 2)
-            throw new InvalidOperationException("PerturbEditorTestPendingRuntimeDirtyIslandQueueOrder failed: island queue needs at least two cells.");
+        if (found?.IslandComponentSizes == null || found.IslandComponentTotal <= 0)
+            throw new InvalidOperationException("PerturbEditorTestPendingRuntimeDirtyIslandComponentSize failed: component state is unavailable.");
 
-        int[] values = found.IslandOpenQueue.ToArray();
-        found.IslandOpenQueue.Clear();
-        found.IslandOpenQueue.Enqueue(values[1]);
-        found.IslandOpenQueue.Enqueue(values[0]);
-        for (int i = 2; i < values.Length; i++)
-            found.IslandOpenQueue.Enqueue(values[i]);
+        found.IslandComponentSizes[0] = checked(found.IslandComponentSizes[0] + 1);
     }
 
     public static int GetEditorTestPortalCount()
@@ -11332,10 +11410,7 @@ public static partial class FlowFieldCrowdMovementSystem
         islandCount = 0;
         if (_world == null || worldX < 0 || worldX >= _world.Width || worldY < 0 || worldY >= _world.Height)
             return false;
-        if (_world.IslandIds == null || _world.IslandIds.Length != _world.Width * _world.Height)
-            return false;
-
-        islandId = _world.IslandIds[_world.GetIndex(worldX, worldY)];
+        islandId = ResolveIslandId(_world, worldX, worldY);
         islandCount = _world.IslandCount;
         return true;
     }
@@ -11358,12 +11433,9 @@ public static partial class FlowFieldCrowdMovementSystem
         neighborTraversalMask = 0;
         if (_world == null || worldX < 0 || worldX >= _world.Width || worldY < 0 || worldY >= _world.Height)
             return false;
-        if (_world.IslandIds == null || _world.IslandIds.Length != _world.Width * _world.Height)
-            return false;
-
         int index = _world.GetIndex(worldX, worldY);
         walkable = _world.WalkableMask != null && index >= 0 && index < _world.WalkableMask.Length && _world.WalkableMask[index];
-        islandId = _world.IslandIds[index];
+        islandId = ResolveIslandId(_world, worldX, worldY);
         islandCount = _world.IslandCount;
         mainIslandId = _world.MainIslandId;
         mainIslandSize = _world.MainIslandSize;
@@ -18880,7 +18952,7 @@ public static partial class FlowFieldCrowdMovementSystem
         bool walkable = world.WalkableMask != null && world.WalkableMask.Length == world.Width * world.Height && world.WalkableMask[index];
         bool baseWalkable = world.BaseWalkableMask != null && world.BaseWalkableMask.Length == world.Width * world.Height && world.BaseWalkableMask[index];
         int cost = TryGetCostFieldValue(world, x, y, out byte resolvedCost) ? resolvedCost : -1;
-        int island = world.IslandIds != null && world.IslandIds.Length == world.Width * world.Height ? world.IslandIds[index] : -1;
+        int island = ResolveIslandId(world, x, y);
         string mask = world.NeighborTraversalMask != null && world.NeighborTraversalMask.Length == world.Width * world.Height
             ? world.NeighborTraversalMask[index].ToString("X2")
             : "NA";
@@ -22123,6 +22195,8 @@ public static partial class FlowFieldCrowdMovementSystem
                         CellSize = source.CellSize,
                         EncodedCenterClearance = source.EncodedCenterClearance,
                         Origin = source.Origin,
+                        HasImmutableContentHash = source.HasImmutableContentHash,
+                        ImmutableContentHash = source.ImmutableContentHash,
                         BaseWalkableMask = source.BaseWalkableMask,
                         BaseNeighborTraversalMask = source.BaseNeighborTraversalMask,
                         StaticCollisionVertices = source.StaticCollisionVertices,
@@ -22207,6 +22281,7 @@ public static partial class FlowFieldCrowdMovementSystem
             int copyCount = end - job.CloneCellCursor;
             Array.Copy(source.WalkableMask, job.CloneCellCursor, working.WalkableMask, job.CloneCellCursor, copyCount);
             Array.Copy(source.NeighborTraversalMask, job.CloneCellCursor, working.NeighborTraversalMask, job.CloneCellCursor, copyCount);
+            Array.Copy(source.IslandIds, job.CloneCellCursor, working.IslandIds, job.CloneCellCursor, copyCount);
             if (source.CostField != null)
             {
                 Array.Copy(source.CostField, job.CloneCellCursor, working.CostField, job.CloneCellCursor, copyCount);
@@ -22381,42 +22456,16 @@ public static partial class FlowFieldCrowdMovementSystem
     private static void ProcessRuntimeDirtyIslandField(RuntimeDirtyRebuildJob job, long deadlineTicks, bool forceComplete)
     {
         NavigationWorld world = job.WorkingWorld;
-        if (!job.IslandInitialized)
-        {
-            if (world.IslandIds == null || world.IslandIds.Length != world.Width * world.Height)
-                world.IslandIds = RentIntArray(world.Width * world.Height, clear: false);
+        if (world == null)
+            throw new InvalidOperationException("ProcessRuntimeDirtyIslandField failed: working world is null.");
 
-            Array.Clear(world.IslandIds, 0, world.IslandIds.Length);
-            world.IslandCount = 0;
-            world.MainIslandId = 0;
-            world.MainIslandSize = 0;
-            job.IslandOpenQueue = new Queue<int>(256);
-            job.IslandScanIndex = 0;
-            job.IslandCurrentId = 0;
-            job.IslandCurrentSize = 0;
-            job.IslandMainId = 0;
-            job.IslandMainSize = 0;
-            job.IslandBfsActive = false;
-            job.IslandInitialized = true;
-        }
-
-        AdvanceIslandFieldBuild(
-            world,
-            job.IslandOpenQueue,
-            ref job.IslandScanIndex,
-            ref job.IslandCurrentId,
-            ref job.IslandCurrentSize,
-            ref job.IslandMainId,
-            ref job.IslandMainSize,
-            ref job.IslandBfsActive,
-            deadlineTicks,
-            forceComplete,
-            out bool complete);
-        if (!complete)
+        AdvanceRuntimeSectorIslandConnectivity(job, deadlineTicks, forceComplete);
+        if (job.IslandStage != RuntimeDirtyIslandStage.Complete)
             return;
 
+        job.IslandInitialized = true;
         job.SectorCursor = 0;
-        job.Stage = RuntimeDirtyRebuildStage.SectorComponents;
+        job.Stage = RuntimeDirtyRebuildStage.PortalGraph;
     }
 
     private static void ProcessRuntimeDirtySectorComponents(RuntimeDirtyRebuildJob job, long deadlineTicks, bool forceComplete)
@@ -22430,16 +22479,9 @@ public static partial class FlowFieldCrowdMovementSystem
         if (dirtySectors == null)
             throw new InvalidOperationException("ProcessRuntimeDirtySectorComponents failed: dirty sectors are null.");
 
-        while (job.SectorCursor < world.Sectors.Length)
-        {
-            SectorData sector = world.Sectors[job.SectorCursor++];
-            RebuildSectorIslandMetadata(world, sector);
-            if (dirtySectors.Contains(sector.SectorId))
-                RebuildSectorLocalComponents(world, sector);
-            if (!forceComplete && IsBudgetExpired(deadlineTicks, 0))
-                return;
-        }
-
+        AdvanceRuntimeSectorIslandConnectivity(job, deadlineTicks, forceComplete);
+        if (job.IslandStage != RuntimeDirtyIslandStage.Complete)
+            return;
         LogIslandFieldDiagnostics(world, "runtime-dirty");
         job.SectorCursor = 0;
         job.Stage = RuntimeDirtyRebuildStage.PortalGraph;
@@ -22457,6 +22499,486 @@ public static partial class FlowFieldCrowdMovementSystem
             RebuildSectorIslandMetadata(world, world.Sectors[i]);
             RebuildSectorLocalComponents(world, world.Sectors[i]);
         }
+
+        RebuildSectorComponentIslandMappingsFromField(world);
+    }
+
+    private static void RebuildSectorComponentIslandMappingsFromField(NavigationWorld world)
+    {
+        if (world == null || world.Sectors == null || world.IslandIds == null)
+            throw new InvalidOperationException("RebuildSectorComponentIslandMappingsFromField failed: world data is incomplete.");
+
+        for (int sectorIndex = 0; sectorIndex < world.Sectors.Length; sectorIndex++)
+        {
+            SectorData sector = world.Sectors[sectorIndex];
+            EnsureSectorComponentStats(world, sector);
+            Array.Clear(sector.LocalComponentIslandIds, 0, sector.LocalComponentIslandIds.Length);
+            for (int localIndex = 0; localIndex < sector.LocalComponentIds.Length; localIndex++)
+            {
+                int componentId = sector.LocalComponentIds[localIndex];
+                if (componentId <= 0)
+                    continue;
+
+                int worldX = sector.StartX + localIndex % sector.Width;
+                int worldY = sector.StartY + localIndex / sector.Width;
+                int islandId = world.IslandIds[world.GetIndex(worldX, worldY)];
+                if (islandId <= 0)
+                    throw new InvalidOperationException(
+                        $"RebuildSectorComponentIslandMappingsFromField failed: walkable component has invalid island. sector={sector.SectorId} component={componentId} cell=({worldX},{worldY}) island={islandId}.");
+
+                int previous = sector.LocalComponentIslandIds[componentId];
+                if (previous != 0 && previous != islandId)
+                    throw new InvalidOperationException(
+                        $"RebuildSectorComponentIslandMappingsFromField failed: local component crosses islands. sector={sector.SectorId} component={componentId} previous={previous} current={islandId}.");
+                sector.LocalComponentIslandIds[componentId] = islandId;
+            }
+        }
+    }
+
+    private static void EnsureSectorComponentStats(NavigationWorld world, SectorData sector)
+    {
+        if (world == null)
+            throw new InvalidOperationException("EnsureSectorComponentStats failed: world is null.");
+        if (sector == null || sector.LocalComponentIds == null)
+            throw new InvalidOperationException("EnsureSectorComponentStats failed: sector components are missing.");
+
+        int componentCount = sector.LocalComponentCount;
+        if (componentCount < 0)
+            throw new InvalidOperationException($"EnsureSectorComponentStats failed: invalid component count sector={sector.SectorId} count={componentCount}.");
+
+        int requiredLength = componentCount + 1;
+        if (sector.LocalComponentIslandIds == null || sector.LocalComponentIslandIds.Length != requiredLength)
+            sector.LocalComponentIslandIds = new int[requiredLength];
+        if (sector.LocalComponentSizes == null || sector.LocalComponentSizes.Length != requiredLength)
+            sector.LocalComponentSizes = new int[requiredLength];
+        if (sector.LocalComponentMinCellIndices == null || sector.LocalComponentMinCellIndices.Length != requiredLength)
+            sector.LocalComponentMinCellIndices = new int[requiredLength];
+
+        Array.Clear(sector.LocalComponentSizes, 0, sector.LocalComponentSizes.Length);
+        for (int i = 0; i < sector.LocalComponentMinCellIndices.Length; i++)
+            sector.LocalComponentMinCellIndices[i] = int.MaxValue;
+
+        for (int localIndex = 0; localIndex < sector.LocalComponentIds.Length; localIndex++)
+        {
+            int componentId = sector.LocalComponentIds[localIndex];
+            if (componentId == 0)
+                continue;
+            if (componentId < 0 || componentId > componentCount)
+                throw new InvalidOperationException(
+                    $"EnsureSectorComponentStats failed: component id out of range. sector={sector.SectorId} component={componentId} count={componentCount}.");
+
+            int worldX = sector.StartX + localIndex % sector.Width;
+            int worldY = sector.StartY + localIndex / sector.Width;
+            sector.LocalComponentSizes[componentId]++;
+            int worldIndex = world.GetIndex(worldX, worldY);
+            if (worldIndex < sector.LocalComponentMinCellIndices[componentId])
+                sector.LocalComponentMinCellIndices[componentId] = worldIndex;
+        }
+    }
+
+    private static void AdvanceRuntimeSectorIslandConnectivity(
+        RuntimeDirtyRebuildJob job,
+        long deadlineTicks,
+        bool forceComplete)
+    {
+        NavigationWorld world = job?.WorkingWorld;
+        if (world == null || world.Sectors == null)
+            throw new InvalidOperationException("AdvanceRuntimeSectorIslandConnectivity failed: world data is incomplete.");
+        if (job.DirtySectorIds == null)
+            throw new InvalidOperationException("AdvanceRuntimeSectorIslandConnectivity failed: dirty sector index is missing.");
+
+        while (job.IslandStage != RuntimeDirtyIslandStage.Complete)
+        {
+            switch (job.IslandStage)
+            {
+                case RuntimeDirtyIslandStage.RebuildDirtyComponents:
+                    if (job.IslandSectorCursor < job.DirtySectorIds.Count)
+                    {
+                        int sectorId = job.DirtySectorIds[job.IslandSectorCursor++];
+                        if (sectorId < 0 || sectorId >= world.Sectors.Length)
+                            throw new InvalidOperationException($"Runtime island rebuild has an out-of-range dirty sector. sector={sectorId}.");
+                        RebuildSectorLocalComponents(world, world.Sectors[sectorId]);
+                        if (!forceComplete && IsBudgetExpired(deadlineTicks, job.IslandSectorCursor))
+                            return;
+                        break;
+                    }
+
+                    job.IslandSectorCursor = 0;
+                    job.IslandComponentOffsets = RentIntArray(world.Sectors.Length + 1, clear: true);
+                    job.IslandStage = RuntimeDirtyIslandStage.PrepareComponentOffsets;
+                    break;
+
+                case RuntimeDirtyIslandStage.PrepareComponentOffsets:
+                    if (job.IslandSectorCursor < world.Sectors.Length)
+                    {
+                        int sectorIndex = job.IslandSectorCursor++;
+                        SectorData sector = world.Sectors[sectorIndex];
+                        ValidateRuntimeSectorComponentStats(sector);
+                        job.IslandComponentOffsets[sectorIndex + 1] = checked(
+                            job.IslandComponentOffsets[sectorIndex] + sector.LocalComponentCount);
+                        if (!forceComplete && IsBudgetExpired(deadlineTicks, job.IslandSectorCursor))
+                            return;
+                        break;
+                    }
+
+                    job.IslandComponentTotal = job.IslandComponentOffsets[world.Sectors.Length];
+                    int componentCapacity = Math.Max(1, job.IslandComponentTotal);
+                    job.IslandParents = RentIntArray(componentCapacity, clear: false);
+                    job.IslandComponentSizes = RentIntArray(componentCapacity, clear: false);
+                    job.IslandComponentMins = RentIntArray(componentCapacity, clear: false);
+                    job.IslandRootHeap = RentIntArray(componentCapacity, clear: false);
+                    job.IslandRootIds = RentIntArray(componentCapacity, clear: true);
+                    job.IslandSectorCursor = 0;
+                    job.IslandComponentCursor = 1;
+                    job.IslandStage = RuntimeDirtyIslandStage.InitializeComponentNodes;
+                    if (!forceComplete && IsBudgetExpired(deadlineTicks, 0))
+                        return;
+                    break;
+
+                case RuntimeDirtyIslandStage.InitializeComponentNodes:
+                    if (job.IslandSectorCursor >= world.Sectors.Length)
+                    {
+                        job.IslandSectorCursor = 0;
+                        job.IslandBoundaryCursor = 0;
+                        job.IslandStage = RuntimeDirtyIslandStage.LinkSectorBoundaries;
+                        break;
+                    }
+
+                    SectorData initializeSector = world.Sectors[job.IslandSectorCursor];
+                    if (job.IslandComponentCursor > initializeSector.LocalComponentCount)
+                    {
+                        job.IslandSectorCursor++;
+                        job.IslandComponentCursor = 1;
+                        break;
+                    }
+
+                    int initializeComponent = job.IslandComponentCursor++;
+                    int initializeNode = job.IslandComponentOffsets[initializeSector.SectorId] + initializeComponent - 1;
+                    job.IslandParents[initializeNode] = initializeNode;
+                    job.IslandComponentSizes[initializeNode] = initializeSector.LocalComponentSizes[initializeComponent];
+                    job.IslandComponentMins[initializeNode] = initializeSector.LocalComponentMinCellIndices[initializeComponent];
+                    if (!forceComplete && IsBudgetExpired(deadlineTicks, initializeNode))
+                        return;
+                    break;
+
+                case RuntimeDirtyIslandStage.LinkSectorBoundaries:
+                    if (job.IslandSectorCursor >= world.Sectors.Length)
+                    {
+                        job.IslandNodeCursor = 0;
+                        job.IslandRootHeapCount = 0;
+                        job.IslandStage = RuntimeDirtyIslandStage.CollectIslandRoots;
+                        break;
+                    }
+
+                    SectorData boundarySector = world.Sectors[job.IslandSectorCursor];
+                    int boundaryCellCount = GetSectorBoundaryCellCount(boundarySector);
+                    if (job.IslandBoundaryCursor >= boundaryCellCount)
+                    {
+                        job.IslandSectorCursor++;
+                        job.IslandBoundaryCursor = 0;
+                        break;
+                    }
+
+                    GetSectorBoundaryCell(boundarySector, job.IslandBoundaryCursor++, out int boundaryX, out int boundaryY);
+                    LinkRuntimeIslandBoundaryCell(job, boundarySector, boundaryX, boundaryY);
+                    if (!forceComplete && IsBudgetExpired(deadlineTicks, job.IslandBoundaryCursor))
+                        return;
+                    break;
+
+                case RuntimeDirtyIslandStage.CollectIslandRoots:
+                    if (job.IslandNodeCursor >= job.IslandComponentTotal)
+                    {
+                        job.IslandNextId = 1;
+                        job.IslandMainId = 0;
+                        job.IslandMainSize = 0;
+                        job.IslandStage = RuntimeDirtyIslandStage.AssignIslandIds;
+                        break;
+                    }
+
+                    int rootCandidate = job.IslandNodeCursor++;
+                    if (FindRuntimeIslandComponentRoot(job.IslandParents, rootCandidate) == rootCandidate)
+                        PushRuntimeIslandRoot(job, rootCandidate);
+                    if (!forceComplete && IsBudgetExpired(deadlineTicks, job.IslandNodeCursor))
+                        return;
+                    break;
+
+                case RuntimeDirtyIslandStage.AssignIslandIds:
+                    if (job.IslandRootHeapCount == 0)
+                    {
+                        world.IslandCount = job.IslandNextId - 1;
+                        world.MainIslandId = job.IslandMainId;
+                        world.MainIslandSize = job.IslandMainSize;
+                        job.IslandSectorCursor = 0;
+                        job.IslandComponentCursor = 0;
+                        job.IslandStage = RuntimeDirtyIslandStage.AssignSectorMappings;
+                        break;
+                    }
+
+                    int root = PopRuntimeIslandRoot(job);
+                    int islandId = job.IslandNextId++;
+                    job.IslandRootIds[root] = islandId;
+                    int rootSize = job.IslandComponentSizes[root];
+                    if (rootSize > job.IslandMainSize)
+                    {
+                        job.IslandMainId = islandId;
+                        job.IslandMainSize = rootSize;
+                    }
+                    if (!forceComplete && IsBudgetExpired(deadlineTicks, islandId))
+                        return;
+                    break;
+
+                case RuntimeDirtyIslandStage.AssignSectorMappings:
+                    if (job.IslandSectorCursor >= world.Sectors.Length)
+                    {
+                        job.IslandCompatibilitySectorCursor = 0;
+                        job.IslandCompatibilityCellCursor = 0;
+                        job.IslandStage = RuntimeDirtyIslandStage.UpdateCompatibilityCache;
+                        break;
+                    }
+
+                    SectorData mappingSector = world.Sectors[job.IslandSectorCursor];
+                    if (job.IslandComponentCursor == 0)
+                    {
+                        Array.Clear(mappingSector.LocalComponentIslandIds, 0, mappingSector.LocalComponentIslandIds.Length);
+                        job.IslandUniformId = 0;
+                        job.IslandUniformMixed = false;
+                        job.IslandComponentCursor = 1;
+                    }
+                    if (job.IslandComponentCursor <= mappingSector.LocalComponentCount)
+                    {
+                        int componentId = job.IslandComponentCursor++;
+                        int node = job.IslandComponentOffsets[mappingSector.SectorId] + componentId - 1;
+                        int componentRoot = FindRuntimeIslandComponentRoot(job.IslandParents, node);
+                        int componentIslandId = job.IslandRootIds[componentRoot];
+                        if (componentIslandId <= 0)
+                            throw new InvalidOperationException($"Runtime island root has no assigned island id. root={componentRoot}.");
+                        mappingSector.LocalComponentIslandIds[componentId] = componentIslandId;
+                        if (job.IslandUniformId == 0)
+                            job.IslandUniformId = componentIslandId;
+                        else if (job.IslandUniformId != componentIslandId)
+                            job.IslandUniformMixed = true;
+                        if (!forceComplete && IsBudgetExpired(deadlineTicks, componentId))
+                            return;
+                        break;
+                    }
+
+                    mappingSector.UniformIslandId = job.IslandUniformMixed ? -1 : job.IslandUniformId;
+                    job.IslandSectorCursor++;
+                    job.IslandComponentCursor = 0;
+                    break;
+
+                case RuntimeDirtyIslandStage.UpdateCompatibilityCache:
+                    if (job.IslandCompatibilitySectorCursor >= job.DirtySectorIds.Count)
+                    {
+                        ReturnRuntimeDirtyIslandBuffers(job);
+                        job.IslandStage = RuntimeDirtyIslandStage.Complete;
+                        break;
+                    }
+
+                    SectorData compatibilitySector = world.Sectors[job.DirtySectorIds[job.IslandCompatibilitySectorCursor]];
+                    if (job.IslandCompatibilityCellCursor >= compatibilitySector.LocalComponentIds.Length)
+                    {
+                        job.IslandCompatibilitySectorCursor++;
+                        job.IslandCompatibilityCellCursor = 0;
+                        break;
+                    }
+
+                    int localIndex = job.IslandCompatibilityCellCursor++;
+                    int compatibilityComponent = compatibilitySector.LocalComponentIds[localIndex];
+                    int worldX = compatibilitySector.StartX + localIndex % compatibilitySector.Width;
+                    int worldY = compatibilitySector.StartY + localIndex / compatibilitySector.Width;
+                    world.IslandIds[world.GetIndex(worldX, worldY)] = compatibilityComponent > 0
+                        ? compatibilitySector.LocalComponentIslandIds[compatibilityComponent]
+                        : 0;
+                    if (!forceComplete && IsBudgetExpired(deadlineTicks, localIndex))
+                        return;
+                    break;
+
+                default:
+                    throw new InvalidOperationException($"Unknown runtime island stage {job.IslandStage}.");
+            }
+        }
+    }
+
+    private static void ValidateRuntimeSectorComponentStats(SectorData sector)
+    {
+        if (sector == null || sector.LocalComponentIds == null)
+            throw new InvalidOperationException("Runtime island sector components are missing.");
+        int requiredLength = sector.LocalComponentCount + 1;
+        if (sector.LocalComponentIslandIds == null || sector.LocalComponentIslandIds.Length != requiredLength
+            || sector.LocalComponentSizes == null || sector.LocalComponentSizes.Length != requiredLength
+            || sector.LocalComponentMinCellIndices == null || sector.LocalComponentMinCellIndices.Length != requiredLength)
+        {
+            throw new InvalidOperationException($"Runtime island sector component statistics are invalid. sector={sector.SectorId}.");
+        }
+    }
+
+    private static int GetSectorBoundaryCellCount(SectorData sector)
+    {
+        if (sector.Width <= 0 || sector.Height <= 0)
+            throw new InvalidOperationException($"Runtime island sector has invalid dimensions. sector={sector.SectorId} size={sector.Width}x{sector.Height}.");
+        if (sector.Height == 1)
+            return sector.Width;
+        if (sector.Width == 1)
+            return sector.Height;
+        return checked(2 * sector.Width + 2 * (sector.Height - 2));
+    }
+
+    private static void GetSectorBoundaryCell(SectorData sector, int cursor, out int x, out int y)
+    {
+        int count = GetSectorBoundaryCellCount(sector);
+        if (cursor < 0 || cursor >= count)
+            throw new ArgumentOutOfRangeException(nameof(cursor), cursor, "Sector boundary cursor is out of range.");
+        if (sector.Height == 1)
+        {
+            x = sector.StartX + cursor;
+            y = sector.StartY;
+            return;
+        }
+        if (sector.Width == 1)
+        {
+            x = sector.StartX;
+            y = sector.StartY + cursor;
+            return;
+        }
+        if (cursor < sector.Width)
+        {
+            x = sector.StartX + cursor;
+            y = sector.StartY;
+            return;
+        }
+        cursor -= sector.Width;
+        if (cursor < sector.Width)
+        {
+            x = sector.StartX + cursor;
+            y = sector.StartY + sector.Height - 1;
+            return;
+        }
+        cursor -= sector.Width;
+        int sideHeight = sector.Height - 2;
+        if (cursor < sideHeight)
+        {
+            x = sector.StartX;
+            y = sector.StartY + cursor + 1;
+            return;
+        }
+        cursor -= sideHeight;
+        x = sector.StartX + sector.Width - 1;
+        y = sector.StartY + cursor + 1;
+    }
+
+    private static void LinkRuntimeIslandBoundaryCell(
+        RuntimeDirtyRebuildJob job,
+        SectorData sector,
+        int x,
+        int y)
+    {
+        NavigationWorld world = job.WorkingWorld;
+        int fromComponent = sector.LocalComponentIds[GetSectorLocalIndex(sector, x, y)];
+        if (fromComponent <= 0)
+            return;
+
+        byte traversalMask = world.NeighborTraversalMask[world.GetIndex(x, y)];
+        for (int direction = 0; direction < NeighborOffsetX.Length; direction++)
+        {
+            int nextX = x + NeighborOffsetX[direction];
+            int nextY = y + NeighborOffsetY[direction];
+            if (!world.TryGetSectorId(nextX, nextY, out int nextSectorId) || nextSectorId == sector.SectorId)
+                continue;
+            if ((traversalMask & (1 << direction)) == 0)
+                continue;
+
+            SectorData nextSector = world.Sectors[nextSectorId];
+            int nextComponent = nextSector.LocalComponentIds[GetSectorLocalIndex(nextSector, nextX, nextY)];
+            if (nextComponent <= 0)
+                continue;
+            UnionRuntimeIslandComponents(
+                job.IslandParents,
+                job.IslandComponentSizes,
+                job.IslandComponentMins,
+                job.IslandComponentOffsets[sector.SectorId] + fromComponent - 1,
+                job.IslandComponentOffsets[nextSectorId] + nextComponent - 1);
+        }
+    }
+
+    private static void PushRuntimeIslandRoot(RuntimeDirtyRebuildJob job, int root)
+    {
+        int index = job.IslandRootHeapCount++;
+        while (index > 0)
+        {
+            int parentIndex = (index - 1) >> 1;
+            int parentRoot = job.IslandRootHeap[parentIndex];
+            if (CompareRuntimeIslandRoots(job, parentRoot, root) <= 0)
+                break;
+            job.IslandRootHeap[index] = parentRoot;
+            index = parentIndex;
+        }
+        job.IslandRootHeap[index] = root;
+    }
+
+    private static int PopRuntimeIslandRoot(RuntimeDirtyRebuildJob job)
+    {
+        if (job.IslandRootHeapCount <= 0)
+            throw new InvalidOperationException("Runtime island root heap is empty.");
+        int result = job.IslandRootHeap[0];
+        int replacement = job.IslandRootHeap[--job.IslandRootHeapCount];
+        int index = 0;
+        while (true)
+        {
+            int left = index * 2 + 1;
+            if (left >= job.IslandRootHeapCount)
+                break;
+            int right = left + 1;
+            int child = right < job.IslandRootHeapCount
+                        && CompareRuntimeIslandRoots(job, job.IslandRootHeap[right], job.IslandRootHeap[left]) < 0
+                ? right
+                : left;
+            if (CompareRuntimeIslandRoots(job, replacement, job.IslandRootHeap[child]) <= 0)
+                break;
+            job.IslandRootHeap[index] = job.IslandRootHeap[child];
+            index = child;
+        }
+        if (job.IslandRootHeapCount > 0)
+            job.IslandRootHeap[index] = replacement;
+        return result;
+    }
+
+    private static int CompareRuntimeIslandRoots(RuntimeDirtyRebuildJob job, int left, int right)
+    {
+        int compare = job.IslandComponentMins[left].CompareTo(job.IslandComponentMins[right]);
+        return compare != 0 ? compare : left.CompareTo(right);
+    }
+
+    private static int FindRuntimeIslandComponentRoot(int[] parent, int node)
+    {
+        int root = node;
+        while (parent[root] != root)
+            root = parent[root];
+        while (parent[node] != node)
+        {
+            int next = parent[node];
+            parent[node] = root;
+            node = next;
+        }
+        return root;
+    }
+
+    private static void UnionRuntimeIslandComponents(int[] parent, int[] sizes, int[] mins, int left, int right)
+    {
+        int leftRoot = FindRuntimeIslandComponentRoot(parent, left);
+        int rightRoot = FindRuntimeIslandComponentRoot(parent, right);
+        if (leftRoot == rightRoot)
+            return;
+        if (sizes[leftRoot] < sizes[rightRoot]
+            || (sizes[leftRoot] == sizes[rightRoot] && mins[leftRoot] > mins[rightRoot]))
+        {
+            int swap = leftRoot;
+            leftRoot = rightRoot;
+            rightRoot = swap;
+        }
+        parent[rightRoot] = leftRoot;
+        sizes[leftRoot] = checked(sizes[leftRoot] + sizes[rightRoot]);
+        mins[leftRoot] = Math.Min(mins[leftRoot], mins[rightRoot]);
     }
 
     private static void RebuildSectorIslandMetadata(NavigationWorld world, SectorData sector)
@@ -22556,6 +23078,7 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         sector.LocalComponentCount = componentId;
+        EnsureSectorComponentStats(world, sector);
     }
 
     private static void AdvanceIslandFieldBuild(
@@ -22846,6 +23369,12 @@ public static partial class FlowFieldCrowdMovementSystem
         if (job.WorkingWorld.Hierarchy == null)
             throw new InvalidOperationException("PrepareRuntimeDirtyCommit failed: hierarchy was not prepared.");
         EnsureFlowPathKernelWitnessIndex(job.WorkingWorld.Hierarchy);
+        foreach (int sectorId in job.CostDirtySectors)
+        {
+            if (sectorId < 0 || sectorId >= job.WorkingWorld.Sectors.Length)
+                throw new InvalidOperationException($"PrepareRuntimeDirtyCommit failed: dirty hash sector out of range. sector={sectorId}.");
+            job.WorkingWorld.Sectors[sectorId].HasDeterministicContentHash = false;
+        }
         if (job.WorkingWorld.L0SearchGraphIndex != null)
             throw new InvalidOperationException("PrepareRuntimeDirtyCommit found a pre-existing working L0 graph index.");
         if (job.WorkingWorld.Hierarchy.SearchGraphIndexes == null)
@@ -22987,6 +23516,8 @@ public static partial class FlowFieldCrowdMovementSystem
             CellSize = source.CellSize,
             EncodedCenterClearance = source.EncodedCenterClearance,
             Origin = source.Origin,
+            HasImmutableContentHash = source.HasImmutableContentHash,
+            ImmutableContentHash = source.ImmutableContentHash,
             BaseWalkableMask = source.BaseWalkableMask,
             BaseNeighborTraversalMask = source.BaseNeighborTraversalMask,
             StaticCollisionVertices = source.StaticCollisionVertices,
@@ -23063,6 +23594,17 @@ public static partial class FlowFieldCrowdMovementSystem
             ? new int[sector.Width * sector.Height]
             : sector.LocalComponentIds;
         copy.LocalComponentCount = sector.LocalComponentCount;
+        copy.LocalComponentIslandIds = sector.LocalComponentIslandIds != null
+            ? (int[])sector.LocalComponentIslandIds.Clone()
+            : new int[sector.LocalComponentCount + 1];
+        copy.LocalComponentSizes = sector.LocalComponentSizes != null
+            ? (int[])sector.LocalComponentSizes.Clone()
+            : new int[sector.LocalComponentCount + 1];
+        copy.LocalComponentMinCellIndices = sector.LocalComponentMinCellIndices != null
+            ? (int[])sector.LocalComponentMinCellIndices.Clone()
+            : new int[sector.LocalComponentCount + 1];
+        copy.HasDeterministicContentHash = sector.HasDeterministicContentHash;
+        copy.DeterministicContentHash = sector.DeterministicContentHash;
         if (!sharePortalCollections)
         {
             copy.PortalIds.AddRange(sector.PortalIds);
@@ -30034,7 +30576,7 @@ public static partial class FlowFieldCrowdMovementSystem
                             && _world.BaseWalkableMask[index];
         byte cost = 0;
         TryGetCostFieldValue(_world, x, y, out cost);
-        int island = _world.IslandIds != null && _world.IslandIds.Length == _world.Width * _world.Height ? _world.IslandIds[index] : -1;
+        int island = ResolveIslandId(_world, x, y);
         string mask = _world.NeighborTraversalMask != null && _world.NeighborTraversalMask.Length == _world.Width * _world.Height
             ? _world.NeighborTraversalMask[index].ToString("X2")
             : "null";
@@ -30920,7 +31462,7 @@ public static partial class FlowFieldCrowdMovementSystem
         bool walkable = world.WalkableMask != null && world.WalkableMask.Length == world.Width * world.Height && world.WalkableMask[index];
         bool baseWalkable = world.BaseWalkableMask != null && world.BaseWalkableMask.Length == world.Width * world.Height && world.BaseWalkableMask[index];
         int cost = TryGetCostFieldValue(world, x, y, out byte resolvedCost) ? resolvedCost : -1;
-        int island = world.IslandIds != null && world.IslandIds.Length == world.Width * world.Height ? world.IslandIds[index] : -1;
+        int island = ResolveIslandId(world, x, y);
         bool link = first || CanTraverseNeighborCells(world, previousX, previousY, x, y);
         bool softBoundary = walkable && cost > 1 && IsBoundaryOnlySoftCostCell(world, x, y);
         bool costStamp = walkable && IsCellAffectedByCostStamp(world, x, y);
@@ -32264,8 +32806,6 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         if (world == null)
             throw new InvalidOperationException("AreCellsOnSameIsland failed: world is null.");
-        if (world.IslandIds == null || world.IslandIds.Length != world.Width * world.Height)
-            throw new InvalidOperationException("AreCellsOnSameIsland failed: island field is missing or invalid.");
         if (!world.IsWalkable(startX, startY) || !world.IsWalkable(goalX, goalY))
             return false;
 
@@ -32315,14 +32855,21 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static int ResolveIslandId(NavigationWorld world, int x, int y)
     {
-        if (world == null || world.IslandIds == null || x < 0 || x >= world.Width || y < 0 || y >= world.Height)
+        if (world == null || x < 0 || x >= world.Width || y < 0 || y >= world.Height)
             return -1;
-        if (TryGetSectorForCell(world, x, y, out SectorData sector) && sector.UniformIslandId > 0)
-            return sector.UniformIslandId;
+        if (!TryGetSectorForCell(world, x, y, out SectorData sector)
+            || sector.LocalComponentIds == null
+            || sector.LocalComponentIds.Length != sector.Width * sector.Height)
+            throw new InvalidOperationException($"ResolveIslandId failed: sector component data is unavailable. cell=({x},{y}) world={world.Version}.");
 
-        if (world.IslandIds.Length != world.Width * world.Height)
-            return -1;
-        return world.IslandIds[world.GetIndex(x, y)];
+        int localIndex = GetSectorLocalIndex(sector, x, y);
+        int componentId = sector.LocalComponentIds[localIndex];
+        if (componentId <= 0)
+            return 0;
+        if (sector.LocalComponentIslandIds == null || componentId >= sector.LocalComponentIslandIds.Length)
+            throw new InvalidOperationException(
+                $"ResolveIslandId failed: component-to-island mapping is unavailable. sector={sector.SectorId} component={componentId}.");
+        return sector.LocalComponentIslandIds[componentId];
     }
 
     private static string BuildIslandNeighborhoodDiagnostics(NavigationWorld world, int centerX, int centerY, int radius)
@@ -32420,7 +32967,7 @@ public static partial class FlowFieldCrowdMovementSystem
         resultX = 0;
         resultY = 0;
         distance = int.MaxValue;
-        if (world == null || world.IslandIds == null || islandId <= 0)
+        if (world == null || islandId <= 0)
             return false;
 
         bool found = false;
@@ -32463,7 +33010,7 @@ public static partial class FlowFieldCrowdMovementSystem
         resultX = 0;
         resultY = 0;
         distance = Fix64.FromRaw(long.MaxValue);
-        if (world == null || world.IslandIds == null || islandId <= 0)
+        if (world == null || islandId <= 0)
             return false;
 
         Fix64 bestDistanceSquared = Fix64.FromRaw(long.MaxValue);
@@ -32513,7 +33060,7 @@ public static partial class FlowFieldCrowdMovementSystem
         resultX = 0;
         resultY = 0;
         distance = float.PositiveInfinity;
-        if (world == null || world.IslandIds == null || islandId <= 0)
+        if (world == null || islandId <= 0)
             return false;
 
         FixVector2 desiredFixed = new FixVector2((Fix64)desiredWorld.x, (Fix64)desiredWorld.z);
@@ -32638,12 +33185,7 @@ public static partial class FlowFieldCrowdMovementSystem
             out int startX,
             out int startY,
             out int startIsland);
-        int startIndex = startResolved ? _world.GetIndex(startX, startY) : -1;
-        int startIslandDirect = startIndex >= 0
-                                && _world.IslandIds != null
-                                && startIndex < _world.IslandIds.Length
-            ? _world.IslandIds[startIndex]
-            : -1;
+        int startIslandDirect = startResolved ? ResolveIslandId(_world, startX, startY) : -1;
         int startSectorUniformIsland = startResolved
                                        && TryGetSectorForCell(_world, startX, startY, out SectorData startSector)
             ? startSector.UniformIslandId
@@ -34235,7 +34777,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     continue;
 
                 walkableCount++;
-                int islandId = world.IslandIds[index];
+                int islandId = ResolveIslandId(world, x, y);
                 if (islandId <= 0 || islandId >= islandSizes.Length)
                     continue;
 
@@ -34362,7 +34904,7 @@ public static partial class FlowFieldCrowdMovementSystem
             for (int x = 0; x < world.Width; x++)
             {
                 int index = world.GetIndex(x, y);
-                if (world.IslandIds[index] != islandId)
+                if (ResolveIslandId(world, x, y) != islandId)
                     continue;
 
                 byte mask = world.NeighborTraversalMask[index];
@@ -34405,7 +34947,7 @@ public static partial class FlowFieldCrowdMovementSystem
                         continue;
                     }
 
-                    int toIsland = world.IslandIds[toIndex];
+                    int toIsland = ResolveIslandId(world, toX, toY);
                     if (toIsland == islandId)
                         continue;
 

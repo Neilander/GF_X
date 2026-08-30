@@ -4124,39 +4124,42 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void NavigationAuthorityDigest_PendingRuntimeIslandQueueOrderMustAffectHash()
+    public void NavigationAuthorityDigest_PendingRuntimeIslandComponentStateMustAffectHash()
     {
         FlowFieldNavigationConfig config = CreateConfig();
         SetNavigationWorkQuotas(config, 1);
         config.EditorTestSectorSizeInCells = 4;
         FlowFieldCrowdMovementSystem.SetConfig(config);
         bool[] walkable = new bool[32 * 8];
-        for (int i = 0; i < walkable.Length; i++)
-            walkable[i] = true;
+        for (int x = 0; x < 32; x++)
+            SetWalkable(walkable, 32, x, 1);
 
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(32, 8, 1f, Vector3.zero, walkable);
         ProcessWorldBuildQueueUntilReady();
         FlowFieldCrowdMovementSystem.RegisterBoxObstacle(
             9001,
-            new Vector3(1.5f, 0f, 1.5f),
-            new Vector3(0.49f, 0f, 0.49f));
+            new Vector3(15.5f, 0f, 1.5f),
+            new Vector3(0.49f, 0f, 2f));
         for (int i = 0; i < 10000; i++)
         {
             FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
-            if (FlowFieldCrowdMovementSystem.GetEditorTestPendingRuntimeDirtyIslandQueueCount() >= 2)
+            if (!FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty())
+                break;
+            if (FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirtyIslandComponentState())
                 break;
         }
 
-        Assert.GreaterOrEqual(FlowFieldCrowdMovementSystem.GetEditorTestPendingRuntimeDirtyIslandQueueCount(), 2);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirtyIslandComponentState());
         string firstProgress = FlowFieldCrowdMovementSystem.GetEditorTestPendingRuntimeDirtyProgressSignature();
         ulong firstHash = FlowFieldCrowdMovementSystem.GetEditorTestAuthorityWorldProgressHash();
 
-        FlowFieldCrowdMovementSystem.PerturbEditorTestPendingRuntimeDirtyIslandQueueOrder();
+        FlowFieldCrowdMovementSystem.PerturbEditorTestPendingRuntimeDirtyIslandComponentSize();
 
         string secondProgress = FlowFieldCrowdMovementSystem.GetEditorTestPendingRuntimeDirtyProgressSignature();
         ulong secondHash = FlowFieldCrowdMovementSystem.GetEditorTestAuthorityWorldProgressHash();
-        Assert.AreEqual(firstProgress, secondProgress, "测试扰动只能改变 FIFO 顺序，不能改变已有阶段和游标摘要。");
-        Assert.AreNotEqual(firstHash, secondHash, "会改变后续 BFS 访问顺序的 runtime island FIFO 必须进入 authority digest。");
+        Assert.AreEqual(firstProgress, secondProgress, "测试扰动只能改变组件状态，不能改变已有阶段和游标摘要。");
+        Assert.AreNotEqual(firstHash, secondHash, "会改变后续 island 大小与主岛选择的组件状态必须进入 authority digest。");
     }
 
     [Test]
@@ -4192,11 +4195,13 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(),
             "readiness 验收不得隐式偿还障碍重建债务。");
         int phaseHistoryCount = LogicPhaseCommandService.History.Count;
-        InvalidOperationException rejectedPhase = Assert.Throws<InvalidOperationException>(
-            () => PhaseManager.SwitchToPhase(GamePhase.Invade));
-        StringAssert.Contains("runtime obstacle update is pending", rejectedPhase.Message);
-        Assert.AreEqual(phaseHistoryCount, LogicPhaseCommandService.History.Count,
-            "导航未 ready 的阶段请求必须在命令记录前拒绝，不能留下半提交历史。");
+        Assert.DoesNotThrow(() => PhaseManager.SwitchToPhase(GamePhase.Invade));
+        Assert.AreEqual(phaseHistoryCount + 1, LogicPhaseCommandService.History.Count,
+            "阶段请求应先记录为权威命令，再由逻辑帧导航屏障延迟应用。");
+        Assert.IsTrue(LogicPhaseCommandService.TryGetPendingPhase(out GamePhase pendingPhase));
+        Assert.AreEqual(GamePhase.Invade, pendingPhase);
+        Assert.AreEqual(GamePhase.Defend, LogicPhaseCommandService.GetRequiredCurrentPhase(),
+            "导航未 ready 时不得提前改变当前阶段。");
 
         FlowFieldCrowdMovementSystem.PrepareInitialNavigationWorlds();
 

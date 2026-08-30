@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using AAAGame.MiniMap;
 using GameFramework;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -10,7 +11,11 @@ public class GameEndManager : GameFrameworkComponent
 
     private bool m_EndEventSubscribed;
     private bool m_ObjectivesPresentationDirty;
+    private bool m_TargetMarkersPresentationDirty;
     private readonly Queue<LogicGameEndResult> m_PendingEndPresentation = new Queue<LogicGameEndResult>();
+    private readonly Dictionary<string, int> m_TargetMarkerUnitIds = new Dictionary<string, int>(StringComparer.Ordinal);
+    private readonly HashSet<string> m_CurrentTargetMarkerIds = new HashSet<string>(StringComparer.Ordinal);
+    private readonly List<string> m_StaleTargetMarkerIds = new List<string>();
 
     public bool IsGameEnded => LogicGameEndService.IsGameEnded;
     public bool IsWin => LogicGameEndService.IsWin;
@@ -28,16 +33,20 @@ public class GameEndManager : GameFrameworkComponent
     private void OnDestroy()
     {
         UnsubscribeEndEvent();
+        ClearTargetMarkers(false);
         m_PendingEndPresentation.Clear();
         m_ObjectivesPresentationDirty = false;
+        m_TargetMarkersPresentationDirty = false;
         if (ReferenceEquals(s_Current, this))
             s_Current = null;
     }
 
     public void Init(LevelData levelData)
     {
+        ClearTargetMarkers(true);
         m_PendingEndPresentation.Clear();
         m_ObjectivesPresentationDirty = false;
+        m_TargetMarkersPresentationDirty = false;
         SubscribeEndEvent();
         LogicGameEndService.Initialize(levelData);
         Log.Info("[GameEndManager] Initialized. level={0}, objectives={1}.",
@@ -95,6 +104,7 @@ public class GameEndManager : GameFrameworkComponent
             return;
         LogicGameEndService.GameEnded += OnLogicGameEnded;
         LogicGameEndService.ObjectivesChanged += OnLogicObjectivesChanged;
+        LogicGameEndService.TargetMarkersChanged += OnLogicTargetMarkersChanged;
         m_EndEventSubscribed = true;
     }
 
@@ -104,6 +114,7 @@ public class GameEndManager : GameFrameworkComponent
             return;
         LogicGameEndService.GameEnded -= OnLogicGameEnded;
         LogicGameEndService.ObjectivesChanged -= OnLogicObjectivesChanged;
+        LogicGameEndService.TargetMarkersChanged -= OnLogicTargetMarkersChanged;
         m_EndEventSubscribed = false;
     }
 
@@ -117,6 +128,11 @@ public class GameEndManager : GameFrameworkComponent
         m_ObjectivesPresentationDirty = true;
     }
 
+    private void OnLogicTargetMarkersChanged()
+    {
+        m_TargetMarkersPresentationDirty = true;
+    }
+
     public void UpdatePresentation()
     {
         if (LogicFrameRuntime.IsExecutingFrame)
@@ -127,8 +143,74 @@ public class GameEndManager : GameFrameworkComponent
             m_ObjectivesPresentationDirty = false;
             GF.Event.Fire(this, LevelObjectivesChangedEventArgs.Create());
         }
+        if (m_TargetMarkersPresentationDirty)
+        {
+            m_TargetMarkersPresentationDirty = false;
+            SyncTargetMarkers();
+        }
         while (m_PendingEndPresentation.Count > 0)
             PresentGameEnd(m_PendingEndPresentation.Dequeue());
+    }
+
+    private void SyncTargetMarkers()
+    {
+        MinimapManager minimapManager = GameEntry.GetComponent<MinimapManager>()
+                                        ?? throw new InvalidOperationException("GameEndManager target markers require MinimapManager.");
+        IReadOnlyList<ConditionTargetMarkerState> targets = LogicGameEndService.GetTargetMarkerSnapshot();
+        m_CurrentTargetMarkerIds.Clear();
+        for (int i = 0; i < targets.Count; i++)
+        {
+            ConditionTargetMarkerState target = targets[i];
+            if (!m_CurrentTargetMarkerIds.Add(target.MarkerId))
+                throw new InvalidOperationException($"Duplicate condition target marker '{target.MarkerId}'.");
+
+            Vector3 worldPosition = new Vector3((float)target.Position.x, 0f, (float)target.Position.y);
+            if (m_TargetMarkerUnitIds.TryGetValue(target.MarkerId, out int unitId))
+            {
+                minimapManager.UpdateUnit(unitId, worldPosition, SideType.NoSide);
+                continue;
+            }
+
+            m_TargetMarkerUnitIds.Add(
+                target.MarkerId,
+                minimapManager.RegisterUnit(
+                    worldPosition,
+                    SideType.NoSide,
+                    MinimapUnitType.LevelTarget,
+                    MinimapUnitData.TargetLocationIconName));
+        }
+
+        m_StaleTargetMarkerIds.Clear();
+        foreach (KeyValuePair<string, int> marker in m_TargetMarkerUnitIds)
+        {
+            if (!m_CurrentTargetMarkerIds.Contains(marker.Key))
+                m_StaleTargetMarkerIds.Add(marker.Key);
+        }
+        for (int i = 0; i < m_StaleTargetMarkerIds.Count; i++)
+        {
+            string markerId = m_StaleTargetMarkerIds[i];
+            minimapManager.UnregisterUnit(m_TargetMarkerUnitIds[markerId]);
+            m_TargetMarkerUnitIds.Remove(markerId);
+        }
+    }
+
+    private void ClearTargetMarkers(bool requireMinimapManager)
+    {
+        if (m_TargetMarkerUnitIds.Count == 0)
+            return;
+
+        MinimapManager minimapManager = GameEntry.GetComponent<MinimapManager>();
+        if (minimapManager == null)
+        {
+            if (requireMinimapManager)
+                throw new InvalidOperationException("GameEndManager cannot clear target markers without MinimapManager.");
+            m_TargetMarkerUnitIds.Clear();
+            return;
+        }
+
+        foreach (int unitId in m_TargetMarkerUnitIds.Values)
+            minimapManager.UnregisterUnit(unitId);
+        m_TargetMarkerUnitIds.Clear();
     }
 
     private void PresentGameEnd(LogicGameEndResult result)

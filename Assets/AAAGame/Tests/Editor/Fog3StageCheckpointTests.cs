@@ -1,4 +1,4 @@
-﻿using AAAGame.MiniMap.FOG3;
+using AAAGame.MiniMap.FOG3;
 using NUnit.Framework;
 using AAAGame.Card;
 using System.Reflection;
@@ -137,58 +137,6 @@ public sealed class Fog3StageCheckpointTests
         }
     }
 
-    [TestCase(0f)]
-    [TestCase(0.55f)]
-    public void BoundaryFade_RendersOnlyInsideTheMoreTransparentCell(float transparentSideAlpha)
-    {
-        Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");
-        Assert.IsNotNull(shader);
-
-        Texture2D source = new Texture2D(2, 1, TextureFormat.RGBA32, false, true)
-        {
-            filterMode = FilterMode.Bilinear,
-            wrapMode = TextureWrapMode.Clamp,
-        };
-        RenderTexture target = RenderTexture.GetTemporary(400, 8, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
-        Material material = new Material(shader);
-        Texture2D readback = new Texture2D(400, 8, TextureFormat.RGBA32, false, true);
-        RenderTexture previous = RenderTexture.active;
-        try
-        {
-            source.SetPixels(new[]
-            {
-                new Color(1f, 1f, 1f, 1f),
-                new Color(1f, 1f, 1f, transparentSideAlpha),
-            });
-            source.Apply(false);
-            material.SetFloat("_FogBoundaryFadeDistance", 0.25f);
-
-            RenderTexture.active = target;
-            GL.Clear(true, true, Color.clear);
-            Graphics.Blit(source, target, material);
-            readback.ReadPixels(new Rect(0f, 0f, target.width, target.height), 0, 0, false);
-            readback.Apply(false);
-
-            Assert.AreEqual(1f, readback.GetPixel(180, 4).r, 0.02f, "The darker cell must remain unchanged up to its edge.");
-            const int boundarySampleX = 200;
-            float boundaryAlpha = readback.GetPixel(boundarySampleX, 4).r;
-            float midpointAlpha = readback.GetPixel(225, 4).r;
-            Assert.AreEqual(1f, boundaryAlpha, 0.03f, "The transition starts from the darker alpha on the transparent side.");
-            Assert.Greater(boundaryAlpha, midpointAlpha);
-            Assert.Greater(midpointAlpha, transparentSideAlpha + 0.05f);
-            Assert.AreEqual(transparentSideAlpha, readback.GetPixel(251, 4).r, 0.03f, "The fade distance is measured inside the transparent cell.");
-            Assert.AreEqual(transparentSideAlpha, readback.GetPixel(320, 4).r, 0.02f);
-        }
-        finally
-        {
-            RenderTexture.active = previous;
-            RenderTexture.ReleaseTemporary(target);
-            Object.DestroyImmediate(readback);
-            Object.DestroyImmediate(material);
-            Object.DestroyImmediate(source);
-        }
-    }
-
     [Test]
     public void TimedTransition_PreservesSubFrameStartTimesInPresentationTexture()
     {
@@ -250,185 +198,108 @@ public sealed class Fog3StageCheckpointTests
     }
 
     [Test]
-    public void BoundaryFade_SupportsTwoCellDistance()
+    public void TimedTransition_PresentationUsesLogicSubFrameChangeTime()
     {
-        Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");
-        Assert.IsNotNull(shader);
-
-        Texture2D source = new Texture2D(4, 1, TextureFormat.RGBA32, false, true)
-        {
-            filterMode = FilterMode.Bilinear,
-            wrapMode = TextureWrapMode.Clamp,
-        };
-        RenderTexture target = RenderTexture.GetTemporary(800, 8, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
-        Material material = new Material(shader);
-        Texture2D readback = new Texture2D(800, 8, TextureFormat.RGBA32, false, true);
-        RenderTexture previous = RenderTexture.active;
+        GameObject viewObject = new GameObject("Fog3SubFramePresentationTimeView");
         try
         {
-            source.SetPixels(new[]
+            Fog3TerrainInfo terrain = CreateFlatTerrain(1, 1, 1f);
+            var map = new Fog3MapData(terrain, (Fix64)0.1f);
+            var settings = new Fog3ViewSettings
             {
-                Color.white,
-                new Color(1f, 1f, 1f, 0f),
-                new Color(1f, 1f, 1f, 0f),
-                new Color(1f, 1f, 1f, 0f),
-            });
-            source.Apply(false);
-            material.SetFloat("_FogBoundaryFadeDistance", 2f);
+                PresentationResolution = 10,
+                SurfaceMode = Fog3OverlaySurfaceMode.FlatWorldPlane,
+                OutsideMaskPadding = 0f,
+                OverlayAlwaysOnTopShader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop"),
+            };
+            Fog3WorldOverlayView view = viewObject.AddComponent<Fog3WorldOverlayView>();
+            view.Build(terrain, map, settings, 0f, Physics.DefaultRaycastLayers, Vector3.zero, 1f, 0.1f);
 
-            RenderTexture.active = target;
-            GL.Clear(true, true, Color.clear);
-            Graphics.Blit(source, target, material);
-            readback.ReadPixels(new Rect(0f, 0f, target.width, target.height), 0, 0, false);
-            readback.Apply(false);
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            float now = Time.time;
+            typeof(Fog3WorldOverlayView).GetField("previousVisibilityResolutionLogicTime", flags)
+                .SetValue(view, 1d);
+            typeof(Fog3WorldOverlayView).GetField("previousVisibilityPresentationTime", flags)
+                .SetValue(view, now - 1f);
+            typeof(Fog3WorldOverlayView).GetField("hasPreviousVisibilityPresentationTime", flags)
+                .SetValue(view, true);
 
-            Assert.AreEqual(1f, readback.GetPixel(180, 4).r, 0.02f, "The darker cell must remain unchanged.");
-            float boundaryAlpha = readback.GetPixel(200, 4).r;
-            float oneCellAlpha = readback.GetPixel(400, 4).r;
-            float twoCellAlpha = readback.GetPixel(600, 4).r;
-            Assert.AreEqual(1f, boundaryAlpha, 0.03f, "The transition must start from the darker alpha.");
-            Assert.Greater(oneCellAlpha, 0.05f, "The second transparent cell must participate in a two-cell fade.");
-            Assert.Less(oneCellAlpha, boundaryAlpha);
-            Assert.AreEqual(0f, twoCellAlpha, 0.03f, "The configured fade endpoint must return to the transparent alpha.");
+            map.ChangeVisibilityCoverage(new Fog3VisibilityRowInterval(0, 0, 0), 1);
+            map.RecordVisibilityChangeLogicTimeCandidate(0, 0, true, 1.25d);
+            map.ResolveVisibilityCoverageChanges(2d);
+            view.Render(map, false);
+
+            Color[] transitions = (Color[])typeof(Fog3WorldOverlayView)
+                .GetField("presentationTransitions", flags)
+                .GetValue(view);
+            Assert.AreEqual(now - 0.75f, transitions[0].a, 0.02f);
+            float[] logicStartAlphas = (float[])typeof(Fog3WorldOverlayView)
+                .GetField("transitionStartAlphas", flags)
+                .GetValue(view);
+            float[] logicStartTimes = (float[])typeof(Fog3WorldOverlayView)
+                .GetField("transitionStartTimes", flags)
+                .GetValue(view);
+
+            float[] spatialTargets = (float[])typeof(Fog3WorldOverlayView)
+                .GetField("presentationSpatialTargets", flags)
+                .GetValue(view);
+            spatialTargets[0] = 0.42f;
+
+            typeof(Fog3WorldOverlayView).GetMethod("RefreshPresentationRegion", flags)
+                .Invoke(view, new object[] { 0, 0, 0, 0 });
+
+            Assert.AreEqual(0.42f, transitions[0].r, 0.000001f);
+            Assert.AreEqual(logicStartAlphas[0], transitions[0].b, 0.000001f);
+            Assert.AreEqual(logicStartTimes[0], transitions[0].a, 0.02f);
         }
         finally
         {
-            RenderTexture.active = previous;
-            RenderTexture.ReleaseTemporary(target);
-            Object.DestroyImmediate(readback);
-            Object.DestroyImmediate(material);
-            Object.DestroyImmediate(source);
+            Object.DestroyImmediate(viewObject);
         }
     }
 
     [Test]
-    public void BoundaryFade_KeepsTransientCircularRevealContourSmooth()
+    public void SpatialPresentation_InterpolatesCurrentContinuouslyWithoutCenterPlateaus()
     {
         Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");
         Assert.IsNotNull(shader);
 
-        const int sourceSize = 256;
-        const int renderedPixelsPerCell = 4;
-        const int renderSize = sourceSize * renderedPixelsPerCell;
-        const float transientVisibleAlpha = 0.72f;
-        Texture2D source = new Texture2D(sourceSize, sourceSize, TextureFormat.RGBA32, false, true)
+        const int sourceWidth = 8;
+        const int renderedPixelsPerCell = 64;
+        const int renderWidth = sourceWidth * renderedPixelsPerCell;
+        float now = Time.time;
+        Texture2D source = new Texture2D(sourceWidth, 1, TextureFormat.RGBAFloat, false, true)
         {
-            filterMode = FilterMode.Bilinear,
+            filterMode = FilterMode.Point,
             wrapMode = TextureWrapMode.Clamp,
         };
-        Color[] sourcePixels = new Color[sourceSize * sourceSize];
-        Vector2 sourceCenter = new Vector2(127.5f, 127.5f);
-        for (int y = 0; y < sourceSize; y++)
+        Color[] sourcePixels = new Color[sourceWidth];
+        for (int x = 0; x < sourceWidth; x++)
         {
-            for (int x = 0; x < sourceSize; x++)
-            {
-                float alpha = Vector2.Distance(new Vector2(x, y), sourceCenter) <= 72f
-                    ? transientVisibleAlpha
-                    : 1f;
-                sourcePixels[x + y * sourceSize] = new Color(1f, 1f, 1f, alpha);
-            }
+            float targetAlpha = 0.1f + x * 0.08f;
+            float currentAlpha = targetAlpha + 0.15f;
+            sourcePixels[x] = new Color(
+                targetAlpha,
+                (byte)Fog3CellState.Visible / 255f,
+                currentAlpha,
+                now);
         }
 
         source.SetPixels(sourcePixels);
         source.Apply(false);
-
-        RenderTexture target = RenderTexture.GetTemporary(renderSize, renderSize, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+        RenderTexture target = RenderTexture.GetTemporary(
+            renderWidth,
+            8,
+            0,
+            RenderTextureFormat.ARGBFloat,
+            RenderTextureReadWrite.Linear);
         Material material = new Material(shader);
-        Texture2D readback = new Texture2D(renderSize, renderSize, TextureFormat.RGBA32, false, true);
+        Texture2D readback = new Texture2D(renderWidth, 8, TextureFormat.RGBAFloat, false, true);
         RenderTexture previous = RenderTexture.active;
         try
         {
-            material.SetFloat("_FogBoundaryFadeDistance", 2f);
-
-            RenderTexture.active = target;
-            GL.Clear(true, true, Color.clear);
-            Graphics.Blit(source, target, material);
-            readback.ReadPixels(new Rect(0f, 0f, renderSize, renderSize), 0, 0, false);
-            readback.Apply(false);
-
-            float renderedCenter = (renderSize - 1) * 0.5f;
-            float[] contourLevels = { 0.1f, 0.5f, 0.9f };
-            foreach (float contourLevel in contourLevels)
-            {
-                float contourThreshold = Mathf.Lerp(transientVisibleAlpha, 1f, contourLevel);
-                float minimumRadius = float.PositiveInfinity;
-                float maximumRadius = 0f;
-                for (int angleDegrees = 0; angleDegrees < 360; angleDegrees++)
-                {
-                    float angleRadians = angleDegrees * Mathf.Deg2Rad;
-                    float directionX = Mathf.Cos(angleRadians);
-                    float directionY = Mathf.Sin(angleRadians);
-                    float contourRadius = -1f;
-                    for (float radius = 0f; radius < 76f * renderedPixelsPerCell; radius += 0.25f)
-                    {
-                        int sampleX = Mathf.RoundToInt(renderedCenter + directionX * radius);
-                        int sampleY = Mathf.RoundToInt(renderedCenter + directionY * radius);
-                        if (readback.GetPixel(sampleX, sampleY).r < contourThreshold)
-                            continue;
-
-                        contourRadius = radius;
-                        break;
-                    }
-
-                    Assert.GreaterOrEqual(
-                        contourRadius,
-                        0f,
-                        $"No transient reveal contour found at level {contourLevel} and angle {angleDegrees}.");
-                    minimumRadius = Mathf.Min(minimumRadius, contourRadius);
-                    maximumRadius = Mathf.Max(maximumRadius, contourRadius);
-                }
-
-                float normalizedMapRipple = (maximumRadius - minimumRadius) / renderSize;
-                Assert.Less(
-                    normalizedMapRipple,
-                    1f / sourceSize,
-                    $"The {contourLevel:P0} contour of a revealing circular sight area must not ripple by one independently configured fog cell.");
-            }
-        }
-        finally
-        {
-            RenderTexture.active = previous;
-            RenderTexture.ReleaseTemporary(target);
-            Object.DestroyImmediate(readback);
-            Object.DestroyImmediate(material);
-            Object.DestroyImmediate(source);
-        }
-    }
-
-    [Test]
-    public void BoundaryFade_DoesNotInterpretHistoricalAlphaAsTargetStateBoundary()
-    {
-        Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");
-        Assert.IsNotNull(shader);
-
-        const int sourceWidth = 32;
-        const int renderedPixelsPerCell = 100;
-        const int renderWidth = sourceWidth * renderedPixelsPerCell;
-        const float leftCurrentAlpha = 0.2f;
-        const float rightCurrentAlpha = 0.8f;
-        Texture2D source = new Texture2D(sourceWidth, 1, TextureFormat.RGBA32, false, true)
-        {
-            filterMode = FilterMode.Point,
-            wrapMode = TextureWrapMode.Clamp,
-        };
-        Color32[] sourcePixels = new Color32[sourceWidth];
-        for (int x = 0; x < sourceWidth; x++)
-        {
-            byte currentAlpha = (byte)Mathf.RoundToInt(
-                (x < sourceWidth / 2 ? leftCurrentAlpha : rightCurrentAlpha) * byte.MaxValue);
-            sourcePixels[x] = new Color32(0, (byte)Fog3CellState.Visible, 0, currentAlpha);
-        }
-
-        source.SetPixels32(sourcePixels);
-        source.Apply(false);
-
-        RenderTexture target = RenderTexture.GetTemporary(renderWidth, 8, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
-        Material material = new Material(shader);
-        Texture2D readback = new Texture2D(renderWidth, 8, TextureFormat.RGBA32, false, true);
-        RenderTexture previous = RenderTexture.active;
-        try
-        {
-            material.SetFloat("_FogBoundaryFadeDistance", 2f);
+            material.SetFloat("_FogFadeSpeed", 0f);
+            material.SetFloat("_FogUsesTimedTransitions", 1f);
             material.SetColor("_FogVisibleColor", Color.white);
 
             RenderTexture.active = target;
@@ -437,114 +308,37 @@ public sealed class Fog3StageCheckpointTests
             readback.ReadPixels(new Rect(0f, 0f, target.width, target.height), 0, 0, false);
             readback.Apply(false);
 
-            int boundaryX = renderWidth / 2;
-            for (int offset = 25; offset <= 175; offset += 25)
+            int sampleStart = renderedPixelsPerCell;
+            int sampleEnd = renderWidth - renderedPixelsPerCell;
+            int longestRun = 1;
+            int longestRunStart = sampleStart;
+            int longestRunEnd = sampleStart;
+            int currentRun = 1;
+            float previousAlpha = readback.GetPixel(sampleStart, 4).r;
+            for (int x = sampleStart + 1; x < sampleEnd; x++)
             {
-                float leftAlpha = readback.GetPixel(boundaryX - offset, 4).r;
-                float rightAlpha = readback.GetPixel(boundaryX + offset - 1, 4).r;
-                Assert.AreEqual(
-                    leftCurrentAlpha + rightCurrentAlpha,
-                    leftAlpha + rightAlpha,
-                    0.04f,
-                    $"Historical alpha must be filtered symmetrically when target state is uniform. offset={offset}.");
-            }
-        }
-        finally
-        {
-            RenderTexture.active = previous;
-            RenderTexture.ReleaseTemporary(target);
-            Object.DestroyImmediate(readback);
-            Object.DestroyImmediate(material);
-            Object.DestroyImmediate(source);
-        }
-    }
+                float alpha = readback.GetPixel(x, 4).r;
+                if (Mathf.Abs(alpha - previousAlpha) <= 0.0001f)
+                    currentRun++;
+                else
+                    currentRun = 1;
 
-    [Test]
-    public void BoundaryFade_PackedPresentationTextureKeepsTransientCircularRevealSmooth()
-    {
-        Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");
-        Assert.IsNotNull(shader);
-
-        const int sourceSize = 64;
-        const int renderedPixelsPerCell = 8;
-        const int renderSize = sourceSize * renderedPixelsPerCell;
-        const float transientVisibleAlpha = 0.72f;
-        Texture2D source = new Texture2D(sourceSize, sourceSize, TextureFormat.RGBA32, false, true)
-        {
-            filterMode = FilterMode.Point,
-            wrapMode = TextureWrapMode.Clamp,
-        };
-        Color32[] sourcePixels = new Color32[sourceSize * sourceSize];
-        Vector2 sourceCenter = new Vector2(31.5f, 31.5f);
-        for (int y = 0; y < sourceSize; y++)
-        {
-            for (int x = 0; x < sourceSize; x++)
-            {
-                bool visible = Vector2.Distance(new Vector2(x, y), sourceCenter) <= 18f;
-                byte targetAlpha = visible ? (byte)0 : byte.MaxValue;
-                byte currentAlpha = visible
-                    ? (byte)Mathf.RoundToInt(transientVisibleAlpha * byte.MaxValue)
-                    : byte.MaxValue;
-                sourcePixels[x + y * sourceSize] = new Color32(
-                    targetAlpha,
-                    (byte)(visible ? Fog3CellState.Visible : Fog3CellState.Hidden),
-                    0,
-                    currentAlpha);
-            }
-        }
-
-        source.SetPixels32(sourcePixels);
-        source.Apply(false);
-        RenderTexture target = RenderTexture.GetTemporary(renderSize, renderSize, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
-        Material material = new Material(shader);
-        Texture2D readback = new Texture2D(renderSize, renderSize, TextureFormat.RGBA32, false, true);
-        RenderTexture previous = RenderTexture.active;
-        try
-        {
-            material.SetFloat("_FogBoundaryFadeDistance", 2f);
-            material.SetColor("_FogHiddenColor", Color.white);
-            material.SetColor("_FogVisibleColor", Color.white);
-
-            RenderTexture.active = target;
-            GL.Clear(true, true, Color.clear);
-            Graphics.Blit(source, target, material);
-            readback.ReadPixels(new Rect(0f, 0f, target.width, target.height), 0, 0, false);
-            readback.Apply(false);
-
-            float renderedCenter = (renderSize - 1) * 0.5f;
-            float[] contourLevels = { 0.1f, 0.5f, 0.9f };
-            foreach (float contourLevel in contourLevels)
-            {
-                float contourThreshold = Mathf.Lerp(transientVisibleAlpha, 1f, contourLevel);
-                float minimumRadius = float.PositiveInfinity;
-                float maximumRadius = 0f;
-                for (int angleDegrees = 0; angleDegrees < 360; angleDegrees++)
+                if (currentRun > longestRun)
                 {
-                    float angleRadians = angleDegrees * Mathf.Deg2Rad;
-                    float directionX = Mathf.Cos(angleRadians);
-                    float directionY = Mathf.Sin(angleRadians);
-                    float contourRadius = -1f;
-                    for (float radius = 0f; radius < 24f * renderedPixelsPerCell; radius += 0.25f)
-                    {
-                        int sampleX = Mathf.Clamp(Mathf.RoundToInt(renderedCenter + directionX * radius), 0, renderSize - 1);
-                        int sampleY = Mathf.Clamp(Mathf.RoundToInt(renderedCenter + directionY * radius), 0, renderSize - 1);
-                        if (readback.GetPixel(sampleX, sampleY).r < contourThreshold)
-                            continue;
-
-                        contourRadius = radius;
-                        break;
-                    }
-
-                    Assert.GreaterOrEqual(contourRadius, 0f, $"No packed contour at level {contourLevel:P0}, angle {angleDegrees}.");
-                    minimumRadius = Mathf.Min(minimumRadius, contourRadius);
-                    maximumRadius = Mathf.Max(maximumRadius, contourRadius);
+                    longestRun = currentRun;
+                    longestRunStart = x - currentRun + 1;
+                    longestRunEnd = x;
                 }
 
-                Assert.Less(
-                    (maximumRadius - minimumRadius) / renderSize,
-                    1f / sourceSize,
-                    $"Packed presentation contour ripples by a full logic cell at level {contourLevel:P0}.");
+                previousAlpha = alpha;
             }
+
+            Assert.LessOrEqual(
+                longestRun,
+                4,
+                $"Spatial presentation must not fall back to the discrete center current alpha inside each presentation texel. " +
+                $"Longest run [{longestRunStart}, {longestRunEnd}] alpha=" +
+                $"{readback.GetPixel(longestRunStart, 4).r:R}.");
         }
         finally
         {
@@ -578,97 +372,6 @@ public sealed class Fog3StageCheckpointTests
         finally
         {
             Object.DestroyImmediate(viewObject);
-        }
-    }
-
-    [Test]
-    public void BoundaryFade_ReconstructsDiagonalContourWithoutCellSizedSteps()
-    {
-        Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");
-        Assert.IsNotNull(shader);
-
-        const int sourceSize = 8;
-        Texture2D source = new Texture2D(sourceSize, sourceSize, TextureFormat.RGBA32, false, true)
-        {
-            filterMode = FilterMode.Bilinear,
-            wrapMode = TextureWrapMode.Clamp,
-        };
-        Color[] sourcePixels = new Color[sourceSize * sourceSize];
-        for (int y = 0; y < sourceSize; y++)
-        {
-            for (int x = 0; x < sourceSize; x++)
-            {
-                float alpha = x + y < sourceSize - 1 ? 1f : 0f;
-                sourcePixels[x + y * sourceSize] = new Color(1f, 1f, 1f, alpha);
-            }
-        }
-
-        source.SetPixels(sourcePixels);
-        source.Apply(false);
-
-        RenderTexture target = RenderTexture.GetTemporary(512, 512, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
-        Material material = new Material(shader);
-        Texture2D readback = new Texture2D(512, 512, TextureFormat.RGBA32, false, true);
-        RenderTexture previous = RenderTexture.active;
-        try
-        {
-            material.SetFloat("_FogBoundaryFadeDistance", 2f);
-
-            RenderTexture.active = target;
-            GL.Clear(true, true, Color.clear);
-            Graphics.Blit(source, target, material);
-            readback.ReadPixels(new Rect(0f, 0f, target.width, target.height), 0, 0, false);
-            readback.Apply(false);
-
-            int previousContourX = -1;
-            int currentRunLength = 0;
-            int longestRunLength = 0;
-            int maximumRowJump = 0;
-            for (int y = 192; y <= 320; y++)
-            {
-                int contourX = -1;
-                for (int x = 0; x < target.width; x++)
-                {
-                    if (readback.GetPixel(x, y).r < 0.5f)
-                    {
-                        contourX = x;
-                        break;
-                    }
-                }
-
-                Assert.GreaterOrEqual(contourX, 0, $"No half-alpha contour found on row {y}.");
-                if (contourX == previousContourX)
-                {
-                    currentRunLength++;
-                }
-                else
-                {
-                    currentRunLength = 1;
-                    if (previousContourX >= 0)
-                        maximumRowJump = Mathf.Max(maximumRowJump, Mathf.Abs(contourX - previousContourX));
-                }
-
-                longestRunLength = Mathf.Max(longestRunLength, currentRunLength);
-                previousContourX = contourX;
-            }
-
-            const int renderedPixelsPerCell = 512 / sourceSize;
-            Assert.Less(
-                longestRunLength,
-                renderedPixelsPerCell / 4,
-                "The diagonal half-alpha contour must move continuously instead of holding for a visible fraction of a cell.");
-            Assert.Less(
-                maximumRowJump,
-                renderedPixelsPerCell / 4,
-                "The diagonal half-alpha contour must not jump across a visible fraction of a cell between adjacent rows.");
-        }
-        finally
-        {
-            RenderTexture.active = previous;
-            RenderTexture.ReleaseTemporary(target);
-            Object.DestroyImmediate(readback);
-            Object.DestroyImmediate(material);
-            Object.DestroyImmediate(source);
         }
     }
 

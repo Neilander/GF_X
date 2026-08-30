@@ -177,6 +177,43 @@ public sealed class LogicPhaseCommandServiceTests
     }
 
     [Test]
+    public void BattlePhaseCommand_NavigationPendingPreservesAuthorityAndAppliesOnceWhenReady()
+    {
+        LogicPhaseCommand battle = LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.Invade);
+        LogicPhaseCommand following = LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.BuildBeforeDefend);
+        var applied = new List<LogicPhaseCommand>();
+        bool navigationReady = false;
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicPhaseCommandService.ApplyFrameForTests(1, applied.Add, () => navigationReady);
+        Assert.IsEmpty(applied);
+        Assert.AreEqual(GamePhase.Defend, LogicPhaseCommandService.CurrentPhase);
+        Assert.AreEqual(2, LogicPhaseCommandService.PendingCount);
+        Assert.AreEqual(1UL, battle.EffectiveFrame);
+        Assert.AreEqual(1UL, following.EffectiveFrame);
+
+        LogicTimeControlService.BeginFrame(2);
+        Assert.DoesNotThrow(() =>
+            LogicPhaseCommandService.ApplyFrameForTests(2, applied.Add, () => navigationReady));
+        Assert.IsEmpty(applied);
+        Assert.AreEqual(2, LogicPhaseCommandService.PendingCount);
+
+        navigationReady = true;
+        LogicTimeControlService.BeginFrame(3);
+        LogicPhaseCommandService.ApplyFrameForTests(3, applied.Add, () => navigationReady);
+
+        CollectionAssert.AreEqual(
+            new[] { battle.Sequence, following.Sequence },
+            new[] { applied[0].Sequence, applied[1].Sequence });
+        Assert.AreEqual(GamePhase.BuildBeforeDefend, LogicPhaseCommandService.CurrentPhase);
+        Assert.AreEqual(0, LogicPhaseCommandService.PendingCount);
+
+        LogicTimeControlService.BeginFrame(4);
+        LogicPhaseCommandService.ApplyFrameForTests(4, applied.Add, () => navigationReady);
+        Assert.AreEqual(2, applied.Count);
+    }
+
+    [Test]
     public void EditorGateCommand_AppliesOnExplicitFutureFrame()
     {
         LogicPhaseCommand command = LogicPhaseCommandService.ScheduleForEditorGate(GamePhase.Invade, 3);
