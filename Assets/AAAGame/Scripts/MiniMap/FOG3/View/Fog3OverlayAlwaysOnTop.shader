@@ -139,7 +139,52 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
 
             float ResolveSpatialPresentationAlpha(float2 uv)
             {
-                return SampleCurrentAlphaContinuous(uv);
+                float center = SampleCurrentAlphaContinuous(uv);
+                if (_FogBoundaryFadeDistance <= 0.0001 || _FogWorldSize.x <= 0.0001 || _FogWorldSize.y <= 0.0001)
+                    return center;
+
+                // Time is resolved in the logic source field first.  Only then do we
+                // extend a boundary toward the more transparent side in world units.
+                // Find the first darker point on each ray instead of sampling one
+                // fixed radius.  A fixed sample creates constant-alpha platforms
+                // whenever several output pixels see the same source cells.
+                float2 uvRadius = float2(
+                    _FogBoundaryFadeDistance / _FogWorldSize.x,
+                    _FogBoundaryFadeDistance / _FogWorldSize.y);
+                const float2 directions[8] = {
+                    float2(1, 0), float2(-1, 0), float2(0, 1), float2(0, -1),
+                    float2(0.70710678, 0.70710678), float2(-0.70710678, 0.70710678),
+                    float2(0.70710678, -0.70710678), float2(-0.70710678, -0.70710678)
+                };
+                float result = center;
+                [unroll]
+                for (int i = 0; i < 8; i++)
+                {
+                    float2 rayOffset = directions[i] * uvRadius;
+                    float boundarySample = SampleCurrentAlphaContinuous(uv + rayOffset);
+                    if (boundarySample <= center + 0.00001)
+                        continue;
+
+                    // Locate the first point whose current alpha is darker than
+                    // the current fragment.  The fixed iteration count keeps the
+                    // shader allocation-free and bounds the work per fragment.
+                    float low = 0.0;
+                    float high = 1.0;
+                    [unroll]
+                    for (int iteration = 0; iteration < 6; iteration++)
+                    {
+                        float middle = (low + high) * 0.5;
+                        float sample = SampleCurrentAlphaContinuous(uv + rayOffset * middle);
+                        if (sample > center + 0.00001)
+                            high = middle;
+                        else
+                            low = middle;
+                    }
+
+                    float influence = saturate(1.0 - high);
+                    result = max(result, lerp(center, boundarySample, influence));
+                }
+                return result;
             }
 
             Varyings vert(Attributes input)
@@ -264,7 +309,43 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
 
             float ResolveSpatialPresentationAlpha(float2 uv)
             {
-                return SampleCurrentAlphaContinuous(uv);
+                float center = SampleCurrentAlphaContinuous(uv);
+                if (_FogBoundaryFadeDistance <= 0.0001 || _FogWorldSize.x <= 0.0001 || _FogWorldSize.y <= 0.0001)
+                    return center;
+                float2 uvRadius = float2(
+                    _FogBoundaryFadeDistance / _FogWorldSize.x,
+                    _FogBoundaryFadeDistance / _FogWorldSize.y);
+                const float2 directions[8] = {
+                    float2(1, 0), float2(-1, 0), float2(0, 1), float2(0, -1),
+                    float2(0.70710678, 0.70710678), float2(-0.70710678, 0.70710678),
+                    float2(0.70710678, -0.70710678), float2(-0.70710678, -0.70710678)
+                };
+                float result = center;
+                [unroll]
+                for (int i = 0; i < 8; i++)
+                {
+                    float2 rayOffset = directions[i] * uvRadius;
+                    float boundarySample = SampleCurrentAlphaContinuous(uv + rayOffset);
+                    if (boundarySample <= center + 0.00001)
+                        continue;
+
+                    float low = 0.0;
+                    float high = 1.0;
+                    [unroll]
+                    for (int iteration = 0; iteration < 6; iteration++)
+                    {
+                        float middle = (low + high) * 0.5;
+                        float sample = SampleCurrentAlphaContinuous(uv + rayOffset * middle);
+                        if (sample > center + 0.00001)
+                            high = middle;
+                        else
+                            low = middle;
+                    }
+
+                    float influence = saturate(1.0 - high);
+                    result = max(result, lerp(center, boundarySample, influence));
+                }
+                return result;
             }
 
             struct appdata

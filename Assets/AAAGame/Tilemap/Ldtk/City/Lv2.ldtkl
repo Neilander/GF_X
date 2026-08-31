@@ -1036,9 +1036,9 @@
 					"defUid": 12,
 					"px": [1104,208],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_ThemeStatue_Lv2", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_ThemeStatue_Lv3", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
-							"params": ["Buil_ThemeStatue_Lv2"]
+							"params": ["Buil_ThemeStatue_Lv3"]
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
@@ -1059,9 +1059,9 @@
 					"defUid": 47,
 					"px": [1096,296],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_BallPit_Lv1", "__tile": null, "defUid": 48, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_BallPit_Lv2", "__tile": null, "defUid": 48, "realEditorValues": [{
 							"id": "V_String",
-							"params": ["Buil_BallPit_Lv1"]
+							"params": ["Buil_BallPit_Lv2"]
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
@@ -1082,9 +1082,9 @@
 					"defUid": 47,
 					"px": [920,120],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_DrinkStand_Lv1", "__tile": null, "defUid": 48, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_DrinkStand_Lv2", "__tile": null, "defUid": 48, "realEditorValues": [{
 							"id": "V_String",
-							"params": ["Buil_DrinkStand_Lv1"]
+							"params": ["Buil_DrinkStand_Lv2"]
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 49, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 50, "realEditorValues": [] }
@@ -1105,9 +1105,9 @@
 					"defUid": 12,
 					"px": [1024,304],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_SouvenirStand_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_SouvenirStand_Lv2", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
-							"params": ["Buil_SouvenirStand_Lv1"]
+							"params": ["Buil_SouvenirStand_Lv2"]
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }

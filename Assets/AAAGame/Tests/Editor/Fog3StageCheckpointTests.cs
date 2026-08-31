@@ -1,4 +1,4 @@
-using AAAGame.MiniMap.FOG3;
+﻿using AAAGame.MiniMap.FOG3;
 using NUnit.Framework;
 using AAAGame.Card;
 using System.Reflection;
@@ -198,7 +198,7 @@ public sealed class Fog3StageCheckpointTests
     }
 
     [Test]
-    public void TimedTransition_PresentationUsesLogicSubFrameChangeTime()
+    public void TimedTransition_PresentationSnapshotUsesOneClockForStateAndSpatialChanges()
     {
         GameObject viewObject = new GameObject("Fog3SubFramePresentationTimeView");
         try
@@ -223,16 +223,18 @@ public sealed class Fog3StageCheckpointTests
                 .SetValue(view, now - 1f);
             typeof(Fog3WorldOverlayView).GetField("hasPreviousVisibilityPresentationTime", flags)
                 .SetValue(view, true);
+            Color[] transitions = (Color[])typeof(Fog3WorldOverlayView)
+                .GetField("presentationTransitions", flags)
+                .GetValue(view);
+            transitions[0].a = now - 1f;
 
             map.ChangeVisibilityCoverage(new Fog3VisibilityRowInterval(0, 0, 0), 1);
             map.RecordVisibilityChangeLogicTimeCandidate(0, 0, true, 1.25d);
             map.ResolveVisibilityCoverageChanges(2d);
             view.Render(map, false);
 
-            Color[] transitions = (Color[])typeof(Fog3WorldOverlayView)
-                .GetField("presentationTransitions", flags)
-                .GetValue(view);
-            Assert.AreEqual(now - 0.75f, transitions[0].a, 0.02f);
+            Assert.AreEqual(Time.time, transitions[0].a, 0.02f);
+            Color previousTransition = transitions[0];
             float[] logicStartAlphas = (float[])typeof(Fog3WorldOverlayView)
                 .GetField("transitionStartAlphas", flags)
                 .GetValue(view);
@@ -244,13 +246,74 @@ public sealed class Fog3StageCheckpointTests
                 .GetField("presentationSpatialTargets", flags)
                 .GetValue(view);
             spatialTargets[0] = 0.42f;
+            logicStartAlphas[0] = 0.91f;
+            logicStartTimes[0] = previousTransition.a + 0.1f;
+
+            float fadeSpeed = (float)typeof(Fog3WorldOverlayView)
+                .GetField("visibilityFadeSpeed", flags)
+                .GetValue(view);
+            float expectedStartAlpha = Mathf.MoveTowards(
+                previousTransition.b,
+                previousTransition.r,
+                fadeSpeed * Mathf.Max(0f, Time.time - previousTransition.a));
 
             typeof(Fog3WorldOverlayView).GetMethod("RefreshPresentationRegion", flags)
                 .Invoke(view, new object[] { 0, 0, 0, 0 });
 
             Assert.AreEqual(0.42f, transitions[0].r, 0.000001f);
-            Assert.AreEqual(logicStartAlphas[0], transitions[0].b, 0.000001f);
-            Assert.AreEqual(logicStartTimes[0], transitions[0].a, 0.02f);
+            Assert.Greater(Mathf.Abs(logicStartAlphas[0] - transitions[0].b), 0.000001f);
+            Assert.AreEqual(expectedStartAlpha, transitions[0].b, 0.000001f);
+            Assert.AreEqual(Time.time, transitions[0].a, 0.02f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(viewObject);
+        }
+    }
+
+    [Test]
+    public void TimedTransition_SameDirectionSpatialChangeRebasesAtPresentationTime()
+    {
+        GameObject viewObject = new GameObject("Fog3ActiveSpatialTrajectoryView");
+        try
+        {
+            Fog3TerrainInfo terrain = CreateFlatTerrain(1, 1, 1f);
+            var map = new Fog3MapData(terrain, (Fix64)0.1f);
+            var settings = new Fog3ViewSettings
+            {
+                PresentationResolution = 10,
+                SurfaceMode = Fog3OverlaySurfaceMode.FlatWorldPlane,
+                OutsideMaskPadding = 0f,
+                OverlayAlwaysOnTopShader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop"),
+            };
+            Fog3WorldOverlayView view = viewObject.AddComponent<Fog3WorldOverlayView>();
+            view.Build(terrain, map, settings, 0f, Physics.DefaultRaycastLayers, Vector3.zero, 1f, 0.1f);
+
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            Color[] transitions = (Color[])typeof(Fog3WorldOverlayView)
+                .GetField("presentationTransitions", flags)
+                .GetValue(view);
+            float[] spatialTargets = (float[])typeof(Fog3WorldOverlayView)
+                .GetField("presentationSpatialTargets", flags)
+                .GetValue(view);
+            float startTime = Time.time - 0.1f;
+            transitions[0] = new Color(
+                0.4f,
+                (byte)Fog3CellState.Hidden / 255f,
+                0.8f,
+                startTime);
+            spatialTargets[0] = 0.2f;
+
+            typeof(Fog3WorldOverlayView).GetMethod("RefreshPresentationRegion", flags)
+                .Invoke(view, new object[] { 0, 0, 0, 0 });
+
+            float expectedStartAlpha = Mathf.MoveTowards(
+                0.8f,
+                0.4f,
+                view.VisibilityFadeSpeed * 0.1f);
+            Assert.AreEqual(0.2f, transitions[0].r, 0.000001f);
+            Assert.AreEqual(expectedStartAlpha, transitions[0].b, 0.000001f);
+            Assert.AreEqual(Time.time, transitions[0].a, 0.02f);
         }
         finally
         {
@@ -339,6 +402,84 @@ public sealed class Fog3StageCheckpointTests
                 $"Spatial presentation must not fall back to the discrete center current alpha inside each presentation texel. " +
                 $"Longest run [{longestRunStart}, {longestRunEnd}] alpha=" +
                 $"{readback.GetPixel(longestRunStart, 4).r:R}.");
+        }
+        finally
+        {
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            Object.DestroyImmediate(readback);
+            Object.DestroyImmediate(material);
+            Object.DestroyImmediate(source);
+        }
+    }
+
+    [Test]
+    public void SpatialPresentation_StaticBoundaryFadesByWorldDistance()
+    {
+        Shader shader = Shader.Find("AAAGame/FOG3/OverlayAlwaysOnTop");
+        Assert.IsNotNull(shader);
+
+        const int sourceWidth = 64;
+        const int renderedPixelsPerCell = 8;
+        const int renderWidth = sourceWidth * renderedPixelsPerCell;
+        Texture2D source = new Texture2D(sourceWidth, 1, TextureFormat.RGBAFloat, false, true)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        Color[] sourcePixels = new Color[sourceWidth];
+        for (int x = 0; x < sourceWidth; x++)
+        {
+            float alpha = x < sourceWidth / 2 ? 1f : 0f;
+            sourcePixels[x] = new Color(alpha, (byte)Fog3CellState.Visible / 255f, alpha, Time.time);
+        }
+
+        source.SetPixels(sourcePixels);
+        source.Apply(false);
+        RenderTexture target = RenderTexture.GetTemporary(
+            renderWidth,
+            8,
+            0,
+            RenderTextureFormat.ARGBFloat,
+            RenderTextureReadWrite.Linear);
+        Material material = new Material(shader);
+        Texture2D readback = new Texture2D(renderWidth, 8, TextureFormat.RGBAFloat, false, true);
+        RenderTexture previous = RenderTexture.active;
+        try
+        {
+            material.SetFloat("_FogFadeSpeed", 0f);
+            material.SetFloat("_FogUsesTimedTransitions", 1f);
+            material.SetFloat("_FogBoundaryFadeDistance", 2f);
+            material.SetVector("_FogWorldSize", new Vector4(sourceWidth * 0.1f, 1f, 0f, 0f));
+            material.SetColor("_FogHiddenColor", Color.white);
+            material.SetColor("_FogVisibleColor", Color.white);
+
+            RenderTexture.active = target;
+            GL.Clear(true, true, Color.clear);
+            Graphics.Blit(source, target, material);
+            readback.ReadPixels(new Rect(0f, 0f, target.width, target.height), 0, 0, false);
+            readback.Apply(false);
+
+            int boundary = sourceWidth / 2 * renderedPixelsPerCell;
+            // The shader writes alpha, but the transparent blend state also
+            // blends the destination alpha.  The white red channel therefore
+            // exposes the unmultiplied fog alpha for this isolated readback.
+            float darkSide = readback.GetPixel(boundary - 16, 4).r;
+            float nearBoundary = readback.GetPixel(boundary + 8, 4).r;
+            float middle = readback.GetPixel(boundary + 80, 4).r;
+            float outside = readback.GetPixel(boundary + 176, 4).r;
+            Assert.Greater(darkSide, 0.99f, $"The darker side of a static boundary must stay opaque. probes={darkSide:R},{nearBoundary:R},{middle:R},{outside:R}");
+            Assert.Greater(nearBoundary, middle, $"Static spatial fade must decrease away from the boundary. probes={darkSide:R},{nearBoundary:R},{middle:R},{outside:R}");
+            Assert.That(middle, Is.InRange(0.3f, 0.7f), $"The middle of a two-world-unit fade must not be a constant plateau. probes={darkSide:R},{nearBoundary:R},{middle:R},{outside:R}");
+            Assert.Less(outside, 0.05f, $"The transparent side must reach its unmodified alpha after the configured distance. probes={darkSide:R},{nearBoundary:R},{middle:R},{outside:R}");
+
+            float previousAlpha = nearBoundary;
+            for (int x = boundary + 9; x <= boundary + 160; x++)
+            {
+                float alpha = readback.GetPixel(x, 4).r;
+                Assert.LessOrEqual(alpha, previousAlpha + 0.015f, $"Static spatial fade is not monotonic at output pixel {x}.");
+                previousAlpha = alpha;
+            }
         }
         finally
         {

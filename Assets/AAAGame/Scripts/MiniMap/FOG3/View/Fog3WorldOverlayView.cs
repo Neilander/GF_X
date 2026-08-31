@@ -7,11 +7,13 @@ namespace AAAGame.MiniMap.FOG3
     {
         private const string FogOverlayShaderAssetPath = "Assets/AAAGame/Scripts/MiniMap/FOG3/View/Fog3OverlayAlwaysOnTop.shader";
         private Texture2D fogTexture;
+        private RenderTexture fogLogicTransitionTexture;
         private RenderTexture fogPresentationTexture;
         private Texture2D fogUploadTexture;
         private Texture2D fogUploadTextureAlternate;
         private Color32[] pixels;
         private Color[] presentationTransitions;
+        private Color[] logicTransitionSource;
         private Color[] uploadPixels;
         private Color32[] targetPixels;
         private Fog3CellState[] targetStates;
@@ -64,6 +66,7 @@ namespace AAAGame.MiniMap.FOG3
         }
 
         public Texture2D FogTexture => fogTexture;
+        public RenderTexture FogLogicTransitionTexture => fogLogicTransitionTexture;
         public RenderTexture FogPresentationTexture => fogPresentationTexture;
         public Material FogMaterial => fogMaterial;
         public Material OutsideMaterial => outsideMaterial;
@@ -188,12 +191,24 @@ namespace AAAGame.MiniMap.FOG3
             if (cameraPresentationMaximumX < cameraPresentationMinimumX)
                 return false;
 
-            UploadNewCameraCoverage(
-                previousMinimumX,
-                previousMinimumY,
-                previousMaximumX,
-                previousMaximumY);
+            UploadLogicForPresentationBounds();
             return true;
+        }
+
+        private void UploadLogicForPresentationBounds()
+        {
+            if (cameraPresentationMaximumX < cameraPresentationMinimumX
+                || cameraPresentationMaximumY < cameraPresentationMinimumY)
+                return;
+            int minimumX = Mathf.FloorToInt((float)cameraPresentationMinimumX * logicWidth / fogPresentationTexture.width);
+            int minimumY = Mathf.FloorToInt((float)cameraPresentationMinimumY * logicHeight / fogPresentationTexture.height);
+            int maximumX = Mathf.CeilToInt((float)(cameraPresentationMaximumX + 1) * logicWidth / fogPresentationTexture.width) - 1;
+            int maximumY = Mathf.CeilToInt((float)(cameraPresentationMaximumY + 1) * logicHeight / fogPresentationTexture.height) - 1;
+            UploadLogicTransitionRectangleCore(
+                Mathf.Clamp(minimumX, 0, logicWidth - 1),
+                Mathf.Clamp(minimumY, 0, logicHeight - 1),
+                Mathf.Clamp(maximumX, 0, logicWidth - 1),
+                Mathf.Clamp(maximumY, 0, logicHeight - 1));
         }
 
         private void UploadNewCameraCoverage(
@@ -262,9 +277,10 @@ namespace AAAGame.MiniMap.FOG3
         {
             if (mapData == null)
                 throw new System.ArgumentNullException(nameof(mapData));
-            if (fogTexture == null || fogPresentationTexture == null || fogUploadTexture == null
+            if (fogTexture == null || fogLogicTransitionTexture == null || fogPresentationTexture == null || fogUploadTexture == null
                 || fogUploadTextureAlternate == null
                 || pixels == null || presentationTransitions == null || uploadPixels == null
+                || logicTransitionSource == null
                 || targetPixels == null || targetStates == null || presentationStates == null
                 || currentAlphas == null || targetAlphas == null || presentationSpatialTargets == null
                 || presentationDistanceAny == null || presentationDistanceOpaque == null
@@ -312,6 +328,15 @@ namespace AAAGame.MiniMap.FOG3
                 transitionStartTimes[index] = transitionTime;
                 currentAlphas[index] = currentAlpha;
                 targetAlphas[index] = targetColor.a;
+                presentationTransitions[index] = PackPresentationTransition(
+                    targetColor.a,
+                    state,
+                    currentAlpha,
+                    transitionTime);
+                logicTransitionSource[index] = presentationTransitions[index];
+                // Keep the legacy diagnostic snapshot anchored at the render call;
+                // it is never sampled by the material anymore.
+                presentationTransitions[index].a = now;
                 targetStatesChanged = true;
                 targetPixel.a = (byte)Mathf.RoundToInt(currentAlpha * byte.MaxValue);
                 pixels[index] = targetPixel;
@@ -323,23 +348,18 @@ namespace AAAGame.MiniMap.FOG3
 
             long fillTicks = System.Diagnostics.Stopwatch.GetTimestamp() - fillStartTicks;
             long setStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            if (targetStatesChanged || !presentationSpatialTargetsInitialized)
+            // The transition texture is the authoritative presentation input field.
+            // Spatial reconstruction is evaluated from this field by the shader at the
+            // current frame time, so output texels never own independent clocks.
+            if (targetStatesChanged)
             {
-                if (!presentationSpatialTargetsInitialized)
-                    RebuildPresentationSpatialTargets();
-                else
-                    RebuildPresentationSpatialTargetsRegion(
-                        changedMinimumX,
-                        changedMinimumY,
-                        changedMaximumX,
-                        changedMaximumY);
-                RefreshPresentationRegion(
-                    targetStatesChanged && presentationSpatialTargetsInitialized ? changedMinimumX : 0,
-                    targetStatesChanged && presentationSpatialTargetsInitialized ? changedMinimumY : 0,
-                    targetStatesChanged && presentationSpatialTargetsInitialized ? changedMaximumX : mapData.Width - 1,
-                    targetStatesChanged && presentationSpatialTargetsInitialized ? changedMaximumY : mapData.Height - 1);
-                presentationSpatialTargetsInitialized = true;
+                UploadLogicTransitionRectangle(
+                    changedMinimumX,
+                    changedMinimumY,
+                    changedMaximumX,
+                    changedMaximumY);
             }
+            presentationSpatialTargetsInitialized = true;
             long setTicks = System.Diagnostics.Stopwatch.GetTimestamp() - setStartTicks;
             long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - renderStartTicks;
             previousVisibilityResolutionLogicTime = visibilityResolutionLogicTime;
@@ -362,6 +382,46 @@ namespace AAAGame.MiniMap.FOG3
                     fillTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
                     setTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
             }
+        }
+
+        private void UploadLogicTransitionRectangle(int minimumX, int minimumY, int maximumX, int maximumY)
+        {
+            if (minimumX < 0 || minimumY < 0 || maximumX < minimumX || maximumY < minimumY)
+                return;
+            if (cameraPresentationMaximumX >= cameraPresentationMinimumX
+                && cameraPresentationMaximumY >= cameraPresentationMinimumY)
+            {
+                int cameraMinX = Mathf.FloorToInt((float)cameraPresentationMinimumX * logicWidth / fogPresentationTexture.width);
+                int cameraMinY = Mathf.FloorToInt((float)cameraPresentationMinimumY * logicHeight / fogPresentationTexture.height);
+                int cameraMaxX = Mathf.CeilToInt((float)(cameraPresentationMaximumX + 1) * logicWidth / fogPresentationTexture.width) - 1;
+                int cameraMaxY = Mathf.CeilToInt((float)(cameraPresentationMaximumY + 1) * logicHeight / fogPresentationTexture.height) - 1;
+                minimumX = Mathf.Max(minimumX, cameraMinX);
+                minimumY = Mathf.Max(minimumY, cameraMinY);
+                maximumX = Mathf.Min(maximumX, cameraMaxX);
+                maximumY = Mathf.Min(maximumY, cameraMaxY);
+                if (maximumX < minimumX || maximumY < minimumY)
+                    return;
+            }
+            UploadLogicTransitionRectangleCore(minimumX, minimumY, maximumX, maximumY);
+        }
+
+        private void UploadLogicTransitionRectangleCore(int minimumX, int minimumY, int maximumX, int maximumY)
+        {
+            int width = logicWidth;
+            int dirtyWidth = maximumX - minimumX + 1;
+            int dirtyHeight = maximumY - minimumY + 1;
+            Texture2D uploadTexture = SelectFogUploadTexture(dirtyWidth, dirtyHeight);
+            EnsureFogUploadTextureSize(uploadTexture, dirtyWidth, dirtyHeight);
+            for (int y = 0; y < dirtyHeight; y++)
+            {
+                int sourceOffset = minimumX + (minimumY + y) * width;
+                System.Array.Copy(logicTransitionSource, sourceOffset, uploadPixels, y * uploadTexture.width, dirtyWidth);
+            }
+            uploadTexture.SetPixelData(uploadPixels, 0, 0);
+            uploadTexture.Apply(false, false);
+            Graphics.CopyTexture(
+                uploadTexture, 0, 0, 0, 0, dirtyWidth, dirtyHeight,
+                fogLogicTransitionTexture, 0, 0, minimumX, minimumY);
         }
 
         private void RebuildPresentationSpatialTargetsRegion(
@@ -677,6 +737,21 @@ namespace AAAGame.MiniMap.FOG3
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = FilterMode.Bilinear
             };
+            fogLogicTransitionTexture = new RenderTexture(
+                width,
+                height,
+                0,
+                RenderTextureFormat.ARGBFloat,
+                RenderTextureReadWrite.Linear)
+            {
+                name = "FOG3_LogicTransitionTexture",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Point,
+                useMipMap = false,
+                autoGenerateMips = false
+            };
+            if (!fogLogicTransitionTexture.Create())
+                throw new System.InvalidOperationException("FOG3 logic transition RenderTexture creation failed.");
             fogPresentationTexture = new RenderTexture(
                 presentationWidth,
                 presentationHeight,
@@ -713,8 +788,9 @@ namespace AAAGame.MiniMap.FOG3
                 presentationToLogicX[x] = PresentationToLogic(x, presentationWidth, logicWidth);
             for (int y = 0; y < presentationHeight; y++)
                 presentationToLogicY[y] = PresentationToLogic(y, presentationHeight, logicHeight);
-            presentationTransitions = new Color[presentationCellCount];
-            uploadPixels = new Color[presentationCellCount];
+            presentationTransitions = new Color[Mathf.Max(presentationCellCount, cellCount)];
+            logicTransitionSource = new Color[cellCount];
+            uploadPixels = new Color[Mathf.Max(presentationCellCount, cellCount)];
             presentationSpatialTargets = new float[presentationCellCount];
             presentationDistanceAny = new float[presentationCellCount];
             presentationDistanceOpaque = new float[presentationCellCount];
@@ -750,7 +826,9 @@ namespace AAAGame.MiniMap.FOG3
                 }
             }
 
-            RebuildPresentationSpatialTargets();
+            // Spatial reconstruction now happens from the logic source in the shader.
+            // Keep the diagnostic array allocated for editor tooling, but do not build
+            // a second full-resolution distance field on the CPU.
             presentationSpatialTargetsInitialized = true;
             fogTexture.SetPixels32(pixels);
             fogTexture.Apply(false);
@@ -763,11 +841,24 @@ namespace AAAGame.MiniMap.FOG3
                     int logicIndex = logicX + logicY * logicWidth;
                     int presentationIndex = x + y * presentationWidth;
                     Fog3CellState state = targetStates[logicIndex];
-                    float alpha = presentationSpatialTargets[presentationIndex];
+                    float alpha = targetAlphas[logicIndex];
+                    presentationSpatialTargets[presentationIndex] = alpha;
                     presentationStates[presentationIndex] = state;
-                    presentationTransitions[presentationIndex] = PackPresentationTransition(alpha, state, alpha, now);
+                    presentationTransitions[presentationIndex] = PackPresentationTransition(
+                        targetAlphas[logicIndex], state, currentAlphas[logicIndex], transitionStartTimes[logicIndex]);
                 }
             }
+
+            for (int i = 0; i < cellCount; i++)
+            {
+                logicTransitionSource[i] = PackPresentationTransition(
+                    targetAlphas[i], targetStates[i], currentAlphas[i], transitionStartTimes[i]);
+            }
+
+            // A newly created RenderTexture has undefined contents. Seed the complete
+            // logical source once; later frames only copy dirty rectangles.
+            UploadPresentationRectangle(0, 0, presentationWidth - 1, presentationHeight - 1);
+            UploadLogicTransitionRectangleCore(0, 0, width - 1, height - 1);
         }
 
         private void RefreshPresentationRegion(
@@ -804,6 +895,7 @@ namespace AAAGame.MiniMap.FOG3
                     int presentationIndex = x + y * presentationWidth;
                     Fog3CellState state = targetStates[logicIndex];
                     float spatialTargetAlpha = presentationSpatialTargets[presentationIndex];
+                    Color previous = presentationTransitions[presentationIndex];
                     bool stateChanged = presentationStates[presentationIndex] != state;
                     // The presentation texture is ARGBFloat; an 8-bit threshold leaves
                     // small moving-boundary changes on their old transition clocks.
@@ -811,12 +903,16 @@ namespace AAAGame.MiniMap.FOG3
                     if (!stateChanged && !targetChanged)
                         continue;
 
+                    float presentationTransitionTime = now;
+                    float presentationStartAlpha = ResolvePackedTransitionAlpha(
+                        previous,
+                        presentationTransitionTime);
                     presentationStates[presentationIndex] = state;
                     presentationTransitions[presentationIndex] = PackPresentationTransition(
                         spatialTargetAlpha,
                         state,
-                        transitionStartAlphas[logicIndex],
-                        transitionStartTimes[logicIndex]);
+                        presentationStartAlpha,
+                        presentationTransitionTime);
                     changedMinimumX = Mathf.Min(changedMinimumX, x);
                     changedMinimumY = Mathf.Min(changedMinimumY, y);
                     changedMaximumX = Mathf.Max(changedMaximumX, x);
@@ -1139,6 +1235,14 @@ namespace AAAGame.MiniMap.FOG3
                 visibilityFadeSpeed * Mathf.Max(0f, now - transitionStartTimes[index]));
         }
 
+        private float ResolvePackedTransitionAlpha(Color transition, float now)
+        {
+            return Mathf.MoveTowards(
+                transition.b,
+                transition.r,
+                visibilityFadeSpeed * Mathf.Max(0f, now - transition.a));
+        }
+
         private static Color PackPresentationTransition(
             float targetAlpha,
             Fog3CellState state,
@@ -1172,7 +1276,7 @@ namespace AAAGame.MiniMap.FOG3
                 meshFilter.sharedMesh = CreateQuadMesh(fogMeshBounds, overlayHeight, "FOG3_WorldOverlayMesh");
 
             fogMaterial = CreateTransparentMaterial("FOG3_WorldOverlayMaterial", Color.white, 100);
-            SetMainTexture(fogMaterial, fogPresentationTexture);
+            SetMainTexture(fogMaterial, fogLogicTransitionTexture);
             fogMaterial.SetFloat("_FogBoundaryFadeDistance", visibilityBoundaryFadeDistance);
             fogMaterial.SetVector(
                 "_FogWorldSize",
@@ -1947,6 +2051,7 @@ namespace AAAGame.MiniMap.FOG3
         {
             pixels = null;
             presentationTransitions = null;
+            logicTransitionSource = null;
             uploadPixels = null;
             targetPixels = null;
             targetStates = null;
@@ -1983,6 +2088,13 @@ namespace AAAGame.MiniMap.FOG3
             {
                 DestroyUnityObjectSafe(fogTexture);
                 fogTexture = null;
+            }
+
+            if (fogLogicTransitionTexture != null)
+            {
+                fogLogicTransitionTexture.Release();
+                DestroyUnityObjectSafe(fogLogicTransitionTexture);
+                fogLogicTransitionTexture = null;
             }
 
             if (fogPresentationTexture != null)

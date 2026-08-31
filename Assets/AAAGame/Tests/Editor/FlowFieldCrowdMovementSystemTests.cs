@@ -4210,6 +4210,104 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 初始预烘Overlay后所有Walkable格必须拥有合法Island()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.EditorTestSectorSizeInCells = 4;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 20;
+        const int height = 12;
+        bool[] walkable = new bool[width * height];
+        byte[] costs = new byte[walkable.Length];
+        byte[] neighbors = new byte[walkable.Length];
+        Vector3[] anchors = new Vector3[walkable.Length];
+        int[] offsetX = { -1, 0, 1, -1, 1, -1, 0, 1 };
+        int[] offsetY = { -1, -1, -1, 0, 0, 1, 1, 1 };
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int index = x + y * width;
+                walkable[index] = true;
+                costs[index] = 1;
+                anchors[index] = new Vector3(x + 0.5f, 0f, y + 0.5f);
+                byte mask = 0;
+                for (int direction = 0; direction < 8; direction++)
+                {
+                    int nx = x + offsetX[direction];
+                    int ny = y + offsetY[direction];
+                    if (nx >= 0 && nx < width && ny >= 0 && ny < height)
+                        mask |= (byte)(1 << direction);
+                }
+                neighbors[index] = mask;
+            }
+        }
+
+        FlowNavigationGridAsset.DerivedNavigationData derived = BuildDerivedBakeFixture(
+            width,
+            height,
+            walkable,
+            costs,
+            neighbors);
+        Assert.IsTrue(derived.IsValid, "测试前提要求预烘导航数据完整。");
+
+        // Register before world creation so the prebaked import must apply the initial overlay path.
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(
+            9061,
+            new Vector3(10.5f, 0f, 5.5f),
+            new Vector3(0.49f, 0f, 0.49f));
+        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSource(
+            AgentTypeHelper.MediumMovementTypeId,
+            width,
+            height,
+            1f,
+            Vector3.zero,
+            walkable,
+            anchors,
+            costs,
+            neighbors,
+            derived);
+
+        ProcessWorldBuildQueueUntilReady();
+
+        int checkedWalkable = 0;
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestRuntimeCellDiagnostics(
+                    x,
+                    y,
+                    out bool cellWalkable,
+                    out int islandId,
+                    out int islandCount,
+                    out _,
+                    out _,
+                    out _));
+                if (!cellWalkable)
+                    continue;
+
+                checkedWalkable++;
+                Assert.Greater(islandId, 0, $"预烘初始 overlay 后 walkable cell ({x},{y}) 不得保留 island=0。");
+                Assert.Less(islandId, islandCount + 1, $"预烘初始 overlay 后 cell ({x},{y}) 的 island 超出计数。");
+            }
+        }
+
+        Assert.Greater(checkedWalkable, 0);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestRuntimeCellDiagnostics(
+            10,
+            5,
+            out bool obstacleWalkable,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _));
+        Assert.IsFalse(obstacleWalkable, "预烘初始 overlay 必须把登记的动态障碍写入 walkable mask。");
+    }
+
+    [Test]
     public void CompleteRuntimeRebuildQueue_低配额Pending也必须立即提交最新障碍World()
     {
         FlowFieldNavigationConfig config = CreateConfig();
@@ -7656,6 +7754,50 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void RuntimeDirtyCommit仅失效受影响区域的StableGoal()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.EditorTestSectorSizeInCells = 8;
+        SetNavigationWorkQuotas(config, 128);
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 40;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext nearChaser = CreateEntity(new Vector3(0.5f, 0f, 3.5f));
+        SimEntityContext nearTarget = CreateEntity(new Vector3(4.5f, 0f, 3.5f));
+        nearChaser.TargetComp = new SimTargetingComp(nearChaser, new List<IEntityContext> { nearTarget })
+        {
+            CurrentTarget = nearTarget
+        };
+        SimEntityContext farChaser = CreateEntity(new Vector3(32.5f, 0f, 3.5f));
+        SimEntityContext farTarget = CreateEntity(new Vector3(36.5f, 0f, 3.5f));
+        farChaser.TargetComp = new SimTargetingComp(farChaser, new List<IEntityContext> { farTarget })
+        {
+            CurrentTarget = farTarget
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(nearChaser, nearTarget.Position, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(farChaser, farTarget.Position, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(farChaser.LogicEntityId.Value, out _, out _, out _, out _, out _, out _));
+
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(9251, new Vector3(2.5f, 0f, 3.5f), new Vector3(0.49f, 0f, 0.49f));
+        ProcessRuntimeDirtyQueueUntilReady(2);
+
+        Assert.IsFalse(
+            FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(nearChaser.LogicEntityId.Value, out _, out _, out _, out _, out _, out _),
+            "dirty sector 内单位的 StableGoal 必须失效。");
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(farChaser.LogicEntityId.Value, out _, out _, out _, out _, out _, out _),
+            "未触碰 dirty sector 的单位不得因其他区域建造而清空 StableGoal。");
+    }
+
+    [Test]
     public void RuntimeDirtyPortalTransitions_ProcessAtMostFixedSourceQuotaPerQueueTick()
     {
         FlowFieldNavigationConfig config = CreateConfig();
@@ -7684,11 +7826,13 @@ public class FlowFieldCrowdMovementSystemTests
             Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
             firstAccessCount = FlowFieldCrowdMovementSystem.GetEditorTestPendingRuntimeDirtyPortalGraphAccessCount();
         }
-        Assert.AreEqual(16, firstAccessCount, "The first queue tick must stop after the fixed portal-source quota.");
+        int sourceQuota = FlowFieldCrowdMovementSystem.GetEditorTestRuntimeDirtyPortalTransitionSourceQuota();
+        Assert.Greater(sourceQuota, 0, "生产 RuntimeDirty portal source quota 必须为正数。");
+        Assert.AreEqual(sourceQuota, firstAccessCount, "首个 queue tick 必须按生产 portal-source quota 停止。");
 
         FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
         int secondAccessCount = FlowFieldCrowdMovementSystem.GetEditorTestPendingRuntimeDirtyPortalGraphAccessCount();
-        Assert.AreEqual(16, secondAccessCount - firstAccessCount, "A later queue tick must use the same deterministic portal-source quota.");
+        Assert.AreEqual(sourceQuota, secondAccessCount - firstAccessCount, "后续 queue tick 必须复用同一确定性 portal-source quota。");
 
         ProcessRuntimeDirtyQueueUntilReady(3);
     }

@@ -396,6 +396,8 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         public NavigationWorld World;
         public int Fanout;
+        public PortalHierarchy ReuseSource;
+        public HashSet<int> AffectedSectors;
         public readonly List<PortalHierarchyLevel> CompletedLevels = new List<PortalHierarchyLevel>(4);
         public int NextLevel = 1;
         public int NextClusterSpanSectors;
@@ -494,6 +496,14 @@ public static partial class FlowFieldCrowdMovementSystem
             {
                 int clusterX = job.ClusterCursor % job.CurrentLevel.ClusterCountX;
                 int clusterY = job.ClusterCursor / job.CurrentLevel.ClusterCountX;
+                if (TryReusePortalHierarchyCluster(job, clusterX, clusterY))
+                {
+                    job.ClusterCursor++;
+                    if (!forceComplete && IsBudgetExpired(deadlineTicks, job.ClusterCursor))
+                        return;
+                    continue;
+                }
+
                 job.CurrentCluster = new PortalHierarchyCluster
                 {
                     ClusterId = job.ClusterCursor,
@@ -554,6 +564,57 @@ public static partial class FlowFieldCrowdMovementSystem
             if (!forceComplete && IsBudgetExpired(deadlineTicks, job.ClusterCursor))
                 return;
         }
+    }
+
+    private static bool TryReusePortalHierarchyCluster(
+        PortalHierarchyBuildJob job,
+        int clusterX,
+        int clusterY)
+    {
+        if (job?.ReuseSource?.Levels == null || job.AffectedSectors == null)
+            return false;
+        int levelIndex = job.NextLevel - 1;
+        if (levelIndex < 0 || levelIndex >= job.ReuseSource.Levels.Length)
+            return false;
+
+        PortalHierarchyLevel sourceLevel = job.ReuseSource.Levels[levelIndex];
+        if (sourceLevel == null
+            || sourceLevel.Level != job.CurrentLevel.Level
+            || sourceLevel.ClusterSpanSectors != job.CurrentLevel.ClusterSpanSectors
+            || sourceLevel.ClusterCountX != job.CurrentLevel.ClusterCountX
+            || sourceLevel.ClusterCountY != job.CurrentLevel.ClusterCountY
+            || clusterX < 0 || clusterY < 0
+            || clusterX >= sourceLevel.ClusterCountX
+            || clusterY >= sourceLevel.ClusterCountY)
+            return false;
+
+        int clusterId = clusterY * sourceLevel.ClusterCountX + clusterX;
+        if (clusterId < 0 || clusterId >= sourceLevel.Clusters.Length)
+            return false;
+        PortalHierarchyCluster sourceCluster = sourceLevel.Clusters[clusterId];
+        if (sourceCluster == null)
+            return false;
+
+        int startSectorX = clusterX * job.CurrentLevel.ClusterSpanSectors;
+        int startSectorY = clusterY * job.CurrentLevel.ClusterSpanSectors;
+        int widthSectors = Math.Min(
+            job.CurrentLevel.ClusterSpanSectors,
+            job.World.SectorCountX - startSectorX);
+        int heightSectors = Math.Min(
+            job.CurrentLevel.ClusterSpanSectors,
+            job.World.SectorCountY - startSectorY);
+        for (int y = 0; y < heightSectors; y++)
+        {
+            for (int x = 0; x < widthSectors; x++)
+            {
+                int sectorId = (startSectorY + y) * job.World.SectorCountX + startSectorX + x;
+                if (job.AffectedSectors.Contains(sectorId))
+                    return false;
+            }
+        }
+
+        job.CurrentLevel.Clusters[job.ClusterCursor] = sourceCluster;
+        return true;
     }
 
     private static PortalHierarchy BuildPortalHierarchy(NavigationWorld world, int fanout)
