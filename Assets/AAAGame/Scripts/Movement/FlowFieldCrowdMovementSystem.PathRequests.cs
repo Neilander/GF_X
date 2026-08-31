@@ -485,15 +485,23 @@ public static partial class FlowFieldCrowdMovementSystem
             failureReason = $"world unavailable source={request.Source.CharacterKey} agentType={agent.AgentTypeId}";
             return false;
         }
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (!TryResolveStartCellForReachabilityFixed(
                 request.Source,
                 out int startX,
                 out int startY,
                 out int sourceIslandId))
         {
+            if (profile)
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowPrepareStartCell, Stopwatch.GetTimestamp() - phaseStartTicks);
             failureReason = $"start reachability failed source={request.Source.CharacterKey} {BuildReachabilityStartDiagnostics(request.Source)}";
             return false;
         }
+        if (profile)
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowPrepareStartCell, Stopwatch.GetTimestamp() - phaseStartTicks);
+
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (!TryResolveStableGoalCellFixed(
                 agent,
                 request.Source,
@@ -506,9 +514,13 @@ public static partial class FlowFieldCrowdMovementSystem
                 out FixVector2 finalGoal,
                 out bool useSectorCorridorPolicy))
         {
+            if (profile)
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowPrepareStableGoal, Stopwatch.GetTimestamp() - phaseStartTicks);
             failureReason = $"goal reachability failed source={request.Source.CharacterKey} {BuildGoalResolutionFailure(request.Source, ToWorldVector3(request.InputGoalPosition))}";
             return false;
         }
+        if (profile)
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowPrepareStableGoal, Stopwatch.GetTimestamp() - phaseStartTicks);
         if (!_world.TryGetSectorId(startX, startY, out int startSectorId))
         {
             failureReason = $"start sector failed source={request.Source.CharacterKey} start=({startX},{startY})";

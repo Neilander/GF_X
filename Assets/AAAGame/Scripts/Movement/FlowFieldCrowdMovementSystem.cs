@@ -3467,6 +3467,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int IslandCompatibilityCellCursor;
         public int IslandUniformId;
         public bool IslandUniformMixed;
+        public bool IslandMappingNeedsWrite;
         public RuntimeDirtyPortalStage PortalStage;
         public bool PortalInitialized;
         public HashSet<int> PortalTransitionDirtySectors;
@@ -9489,7 +9490,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         if (found == null)
             throw new InvalidOperationException("GetEditorTestPendingRuntimeDirtyProgressSignature failed: no job is pending.");
-        return $"{found.Stage}:{found.CloneShellStage}:{found.CloneCellCursor}:{found.CloneSectorCursor}:{found.CloneShellInitialized}:{found.SectorCursor}:{found.ObstacleCursor}:{found.ApplyingCircleObstacles}:{found.IslandStage}:{found.IslandSectorCursor}:{found.IslandComponentCursor}:{found.IslandBoundaryCursor}:{found.IslandNodeCursor}:{found.IslandRootHeapCount}:{found.PortalStage}:{found.PortalSectorCursor}:{found.PortalAddCursor}:{found.PortalTransitionCursor}:{found.PortalTransitionFromCursor}:{FormatPortalHierarchyBuildProgress(found.HierarchyBuildJob)}";
+        return $"{found.Stage}:{found.CloneShellStage}:{found.CloneCellCursor}:{found.CloneSectorCursor}:{found.CloneShellInitialized}:{found.SectorCursor}:{found.ObstacleCursor}:{found.ApplyingCircleObstacles}:{found.IslandStage}:{found.IslandSectorCursor}:{found.IslandComponentCursor}:{found.IslandBoundaryCursor}:{found.IslandNodeCursor}:{found.IslandRootHeapCount}:{found.IslandMappingNeedsWrite}:{found.PortalStage}:{found.PortalSectorCursor}:{found.PortalAddCursor}:{found.PortalTransitionCursor}:{found.PortalTransitionFromCursor}:{FormatPortalHierarchyBuildProgress(found.HierarchyBuildJob)}";
     }
 
     private static string FormatPortalHierarchyBuildProgress(PortalHierarchyBuildJob job)
@@ -22284,11 +22285,12 @@ public static partial class FlowFieldCrowdMovementSystem
                         $"ProcessRuntimeDirtyClone failed: unknown clone shell stage {job.CloneShellStage}.");
             }
 
-            if (!forceComplete)
-            {
-                ExhaustNavigationWorkBudget();
+            // Every shell transition is one deterministic operation. Keep consuming
+            // the current quota instead of terminating the whole job after the first
+            // constant-time transition; otherwise a local dirty rebuild spends one
+            // logic tick per shell field before any actual clone work can start.
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, 0))
                 return;
-            }
         }
 
         NavigationWorld working = job.WorkingWorld;
@@ -22811,7 +22813,30 @@ public static partial class FlowFieldCrowdMovementSystem
                     SectorData mappingSector = world.Sectors[job.IslandSectorCursor];
                     if (job.IslandComponentCursor == 0)
                     {
-                        Array.Clear(mappingSector.LocalComponentIslandIds, 0, mappingSector.LocalComponentIslandIds.Length);
+                        job.IslandMappingNeedsWrite = job.DirtySectors.Contains(mappingSector.SectorId);
+                        if (!job.IslandMappingNeedsWrite)
+                        {
+                            for (int componentId = 1; componentId <= mappingSector.LocalComponentCount; componentId++)
+                            {
+                                int node = job.IslandComponentOffsets[mappingSector.SectorId] + componentId - 1;
+                                int componentRoot = FindRuntimeIslandComponentRoot(job.IslandParents, node);
+                                int componentIslandId = job.IslandRootIds[componentRoot];
+                                if (componentIslandId <= 0)
+                                    throw new InvalidOperationException($"Runtime island root has no assigned island id. root={componentRoot}.");
+                                if (mappingSector.LocalComponentIslandIds[componentId] != componentIslandId)
+                                {
+                                    job.IslandMappingNeedsWrite = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (job.IslandMappingNeedsWrite)
+                        {
+                            if (!job.DirtySectors.Contains(mappingSector.SectorId))
+                                mappingSector.LocalComponentIslandIds = (int[])mappingSector.LocalComponentIslandIds.Clone();
+                            Array.Clear(mappingSector.LocalComponentIslandIds, 0, mappingSector.LocalComponentIslandIds.Length);
+                        }
                         job.IslandUniformId = 0;
                         job.IslandUniformMixed = false;
                         job.IslandComponentCursor = 1;
@@ -22824,7 +22849,8 @@ public static partial class FlowFieldCrowdMovementSystem
                         int componentIslandId = job.IslandRootIds[componentRoot];
                         if (componentIslandId <= 0)
                             throw new InvalidOperationException($"Runtime island root has no assigned island id. root={componentRoot}.");
-                        mappingSector.LocalComponentIslandIds[componentId] = componentIslandId;
+                        if (job.IslandMappingNeedsWrite)
+                            mappingSector.LocalComponentIslandIds[componentId] = componentIslandId;
                         if (job.IslandUniformId == 0)
                             job.IslandUniformId = componentIslandId;
                         else if (job.IslandUniformId != componentIslandId)
@@ -22837,6 +22863,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     mappingSector.UniformIslandId = job.IslandUniformMixed ? -1 : job.IslandUniformId;
                     job.IslandSectorCursor++;
                     job.IslandComponentCursor = 0;
+                    job.IslandMappingNeedsWrite = false;
                     break;
 
                 case RuntimeDirtyIslandStage.UpdateCompatibilityCache:
@@ -23013,6 +23040,25 @@ public static partial class FlowFieldCrowdMovementSystem
             }
             foreach (int islandId in pair.Value)
                 rootIslands.Add(islandId);
+        }
+
+        // A removed bridge can split one previously connected island into multiple
+        // dirty roots. Reusing the old island id for all of them would silently merge
+        // the split topology back together; only reuse when every old island is owned
+        // by exactly one new root.
+        var rootsByExternalIsland = new Dictionary<int, int>();
+        foreach (KeyValuePair<int, HashSet<int>> pair in externalIslandsByRoot)
+        {
+            foreach (int islandId in pair.Value)
+            {
+                if (rootsByExternalIsland.TryGetValue(islandId, out int existingRoot)
+                    && existingRoot != pair.Key)
+                {
+                    return false;
+                }
+
+                rootsByExternalIsland[islandId] = pair.Key;
+            }
         }
 
         var assignedIslandByRoot = new Dictionary<int, int>();
@@ -24020,7 +24066,7 @@ public static partial class FlowFieldCrowdMovementSystem
             : sector.LocalComponentIds;
         copy.LocalComponentCount = sector.LocalComponentCount;
         copy.LocalComponentIslandIds = sector.LocalComponentIslandIds != null
-            ? (int[])sector.LocalComponentIslandIds.Clone()
+            ? (componentMutable ? (int[])sector.LocalComponentIslandIds.Clone() : sector.LocalComponentIslandIds)
             : new int[sector.LocalComponentCount + 1];
         copy.LocalComponentSizes = sector.LocalComponentSizes != null
             ? (componentMutable ? (int[])sector.LocalComponentSizes.Clone() : sector.LocalComponentSizes)
@@ -24250,6 +24296,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 continue;
 
             world.WalkableMask[i] = false;
+            if (world.CostField != null && world.CostField.Length == world.Width * world.Height)
+                world.CostField[i] = byte.MaxValue;
             pruned++;
         }
 
@@ -24284,6 +24332,8 @@ public static partial class FlowFieldCrowdMovementSystem
                     continue;
 
                 world.WalkableMask[index] = false;
+                if (world.CostField != null && world.CostField.Length == world.Width * world.Height)
+                    world.CostField[index] = byte.MaxValue;
                 pruned++;
             }
         }
@@ -32605,13 +32655,11 @@ public static partial class FlowFieldCrowdMovementSystem
             MovingTargetAnchors.Add(anchorKey, anchor);
         }
 
-        int currentFrame = GetFrameCount();
         int anchorReachableGoalX;
         int anchorReachableGoalY;
         int anchorReachableGoalSectorId;
         FixVector2 anchorReachableGoalWorld;
-        if (anchor.ReachabilityFrame == currentFrame
-            && anchor.ReachabilityWorldVersion == _world.Version
+        if (anchor.ReachabilityWorldVersion == _world.Version
             && anchor.ReachabilityRawGoalX == anchorRawGoalX
             && anchor.ReachabilityRawGoalY == anchorRawGoalY)
         {
@@ -32637,7 +32685,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 return false;
             }
 
-            anchor.ReachabilityFrame = currentFrame;
+            anchor.ReachabilityFrame = GetFrameCount();
             anchor.ReachabilityWorldVersion = _world.Version;
             anchor.ReachabilityRawGoalX = anchorRawGoalX;
             anchor.ReachabilityRawGoalY = anchorRawGoalY;
@@ -34648,14 +34696,6 @@ public static partial class FlowFieldCrowdMovementSystem
             world.CostField = new byte[world.Width * world.Height];
 
         SectorData sector = world.Sectors[sectorId];
-        if ((costStamps == null || costStamps.Count == 0)
-            && !HasDynamicObstacleInCostDomain(world, sector))
-        {
-            // The working cost field starts as an exact clone of the committed field.
-            // Without a stamp or dynamic blocked cell in this sector's blur domain there
-            // is no authoritative cost change to apply.
-            return;
-        }
         if (world.SourceCostField != null && world.SourceCostField.Length == world.Width * world.Height)
         {
             InitializeAuthoredCostFieldForSector(world, sector, costStamps);
@@ -34674,32 +34714,6 @@ public static partial class FlowFieldCrowdMovementSystem
         RebuildCostFieldInBounds(world, sourceMinX, sourceMinY, sourceMaxX, sourceMaxY, sectorMinX, sectorMinY, sectorMaxX, sectorMaxY, costStamps);
         sector.IsClearCostField = IsSectorCostFieldClear(world, sector);
         sector.IsClearFlowTile = IsSectorClearFlowTile(world, sector);
-    }
-
-    private static bool HasDynamicObstacleInCostDomain(NavigationWorld world, SectorData sector)
-    {
-        if (world == null || sector == null)
-            throw new InvalidOperationException("HasDynamicObstacleInCostDomain failed: world or sector is null.");
-
-        int padding = ResolveWallCostPaddingCells(world, 1);
-        int minX = Mathf.Max(0, sector.StartX - padding);
-        int minY = Mathf.Max(0, sector.StartY - padding);
-        int maxX = Mathf.Min(world.Width - 1, sector.StartX + sector.Width - 1 + padding);
-        int maxY = Mathf.Min(world.Height - 1, sector.StartY + sector.Height - 1 + padding);
-        for (int y = minY; y <= maxY; y++)
-        {
-            for (int x = minX; x <= maxX; x++)
-            {
-                int index = world.GetIndex(x, y);
-                bool baseWalkable = world.BaseWalkableMask != null
-                                    && world.BaseWalkableMask.Length == world.Width * world.Height
-                                    && world.BaseWalkableMask[index];
-                if (baseWalkable && !world.WalkableMask[index])
-                    return true;
-            }
-        }
-
-        return false;
     }
 
     private static void InitializeAuthoredCostFieldForSector(NavigationWorld world, SectorData sector, IReadOnlyCollection<CostStamp> costStamps)
@@ -34987,7 +35001,6 @@ public static partial class FlowFieldCrowdMovementSystem
                 world.CostField[index] = (byte)Mathf.Clamp(1 + penalty, 1, 254);
             }
         }
-
         ApplyCostStampsInBounds(world, writeMinX, writeMinY, writeMaxX, writeMaxY, costStamps);
     }
 
@@ -35346,7 +35359,7 @@ public static partial class FlowFieldCrowdMovementSystem
             for (int x = sector.StartX; x < sector.StartX + sector.Width; x++)
             {
                 int index = rowStart + x;
-                if (world.WalkableMask[index] && world.CostField[index] != 1)
+                if (!world.WalkableMask[index] || world.CostField[index] != 1)
                     return false;
             }
         }
@@ -36921,6 +36934,11 @@ public static partial class FlowFieldCrowdMovementSystem
 #if UNITY_EDITOR
         if (TestAgentTypeRadii.TryGetValue(agentTypeId, out Fix64 testRadius))
             return testRadius;
+        if (agentTypeId == AnyAgentTypeId
+            && TestAgentTypeRadii.TryGetValue(ResolvePreferredAgentTypeId(0), out Fix64 defaultTestRadius))
+        {
+            return defaultTestRadius;
+        }
 #endif
 
         if (agentTypeId == MAEntity.UnknownNavAgentTypeId)

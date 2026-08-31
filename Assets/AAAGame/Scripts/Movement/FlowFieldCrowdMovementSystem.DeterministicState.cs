@@ -2517,6 +2517,7 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(job.IslandCompatibilityCellCursor);
         hasher.Add(job.IslandUniformId);
         hasher.Add(job.IslandUniformMixed);
+        hasher.Add(job.IslandMappingNeedsWrite);
         AddAuthorityOptionalIntArray(hasher, job.IslandComponentOffsets);
         AddAuthorityOptionalIntArray(hasher, job.IslandParents);
         AddAuthorityOptionalIntArray(hasher, job.IslandComponentSizes);

@@ -4432,7 +4432,7 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void RuntimeDirtyCloneShell_AdvancesAtMostOneLargeBlockPerQueueTick()
+    public void RuntimeDirtyCloneShell_DrainsConstantTimeShellWithinQuota()
     {
         FlowFieldNavigationConfig config = CreateConfig();
         config.EditorTestSectorSizeInCells = 4;
@@ -4452,21 +4452,15 @@ public class FlowFieldCrowdMovementSystemTests
             new Vector3(0.49f, 0f, 0.49f));
 
         FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
-        StringAssert.StartsWith(
-            "InitializeClone:RentWalkableMask:0:0:False:",
-            FlowFieldCrowdMovementSystem.GetEditorTestPendingRuntimeDirtyProgressSignature());
-        FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
-        StringAssert.StartsWith(
-            "InitializeClone:RentCostField:0:0:False:",
-            FlowFieldCrowdMovementSystem.GetEditorTestPendingRuntimeDirtyProgressSignature());
-        FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
-        StringAssert.StartsWith(
-            "InitializeClone:RentNeighborTraversalMask:0:0:False:",
-            FlowFieldCrowdMovementSystem.GetEditorTestPendingRuntimeDirtyProgressSignature());
-        FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
-        StringAssert.StartsWith(
-            "InitializeClone:RentIslandIds:0:0:False:",
-            FlowFieldCrowdMovementSystem.GetEditorTestPendingRuntimeDirtyProgressSignature());
+        string progress = FlowFieldCrowdMovementSystem.GetEditorTestPendingRuntimeDirtyProgressSignature();
+        StringAssert.Contains(
+            ":True:",
+            progress,
+            "常量时间的 clone 壳层必须在同一 quota 内完成，不能每个壳层字段额外占用一个逻辑 Tick。");
+        StringAssert.DoesNotContain(
+            "InitializeClone:RentWalkableMask",
+            progress,
+            "clone 壳层完成后不得停留在首个常量租赁步骤。");
     }
 
     [Test]
@@ -10393,10 +10387,11 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(firstChaser, target.Position, 2f, out _));
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(secondChaser, target.Position, 2f, out _));
         Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestStableGoalReachabilityReuseCount());
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(firstChaser.LogicEntityId.Value, out int firstX, out int firstY, out _, out _, out _, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(firstChaser.LogicEntityId.Value, out _, out _, out _, out int firstX, out int firstY, out _));
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(secondChaser.LogicEntityId.Value, out int secondX, out int secondY, out _, out _, out _, out _));
         Assert.AreEqual(firstX, secondX);
         Assert.AreEqual(firstY, secondY);
+
     }
 
     [Test]

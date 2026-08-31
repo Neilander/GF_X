@@ -15,6 +15,8 @@ internal static class Lv2PullChasePerformanceRunner
 {
     private const string LaunchScenePath = "Assets/AAAGame/Scene/Launch.unity";
     private const string ResultRelativePath = "Logs/Lv2PullChasePerformance.txt";
+    private const string BuildResultRelativePath = "Logs/Lv2RuntimeDirtyBuildPerformance.txt";
+    private const string RuntimeDirtyBuildBuildingId = "Buil_DDoSDevice_Lv1";
     private const string SessionPrefix = "Avenge.Lv2PullChasePerformance.";
     private const string RunningKey = SessionPrefix + "Running";
     private const string StateKey = SessionPrefix + "State";
@@ -26,6 +28,12 @@ internal static class Lv2PullChasePerformanceRunner
     private const string ModeStartFrameKey = SessionPrefix + "ModeStartFrame";
     private const string WaypointIndexKey = SessionPrefix + "WaypointIndex";
     private const string RetreatStartFrameKey = SessionPrefix + "RetreatStartFrame";
+    private const string BuildScenarioKey = SessionPrefix + "BuildScenario";
+    private const string BuildScheduledFrameKey = SessionPrefix + "BuildScheduledFrame";
+    private const string BuildAppliedFrameKey = SessionPrefix + "BuildAppliedFrame";
+    private const string BuildBeforeDefendScheduledFrameKey = SessionPrefix + "BuildBeforeDefendScheduledFrame";
+    private const string DefenseScheduledFrameKey = SessionPrefix + "DefenseScheduledFrame";
+    private const string DefenseAppliedFrameKey = SessionPrefix + "DefenseAppliedFrame";
     private const ulong BaselineTicks = 30;
     private const ulong RetreatTicks = 600;
     private const int SampleIntervalRenderFrames = 10;
@@ -157,6 +165,10 @@ internal static class Lv2PullChasePerformanceRunner
         WaitingForTarget = 5,
         Running = 6,
         Finishing = 7,
+        WaitingForBuild = 8,
+        WaitingForDefense = 9,
+        WaitingForBuildInvade = 10,
+        WaitingForBuildBeforeDefend = 11,
     }
 
     private enum ScenarioMode
@@ -174,6 +186,17 @@ internal static class Lv2PullChasePerformanceRunner
     [MenuItem("Tools/Logic Frames/Run Lv2 Pull Chase Performance")]
     public static void Run()
     {
+        Start(false);
+    }
+
+    [MenuItem("Tools/Logic Frames/Run Lv2 RuntimeDirty Build Performance")]
+    public static void RunRuntimeDirtyBuildPerformance()
+    {
+        Start(true);
+    }
+
+    private static void Start(bool buildScenario)
+    {
         if (SessionState.GetBool(RunningKey, false))
             throw new InvalidOperationException("Lv2 pull-chase performance runner is already running.");
         if (EditorApplication.isPlayingOrWillChangePlaymode)
@@ -186,10 +209,13 @@ internal static class Lv2PullChasePerformanceRunner
         ResetCaptureState();
         string startedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
         SessionState.SetBool(RunningKey, true);
+        SessionState.SetBool(BuildScenarioKey, buildScenario);
         SessionState.SetInt(StateKey, (int)RunnerState.WaitingForPlay);
         SessionState.SetString(StartedUtcKey, startedUtc);
         MainThreadFrameProfilerNextPlayCapture.ArmNextPlay(false);
-        WriteResult("RESULT=RUNNING" + Environment.NewLine + "startedUtc=" + startedUtc + Environment.NewLine);
+        WriteResult(
+            buildScenario ? BuildResultRelativePath : ResultRelativePath,
+            "RESULT=RUNNING" + Environment.NewLine + "startedUtc=" + startedUtc + Environment.NewLine);
         EditorSceneManager.OpenScene(LaunchScenePath, OpenSceneMode.Single);
         EditorApplication.isPlaying = true;
     }
@@ -235,6 +261,18 @@ internal static class Lv2PullChasePerformanceRunner
                     break;
                 case RunnerState.WaitingForInvade:
                     WaitForInvade();
+                    break;
+                case RunnerState.WaitingForBuild:
+                    WaitForBuild();
+                    break;
+                case RunnerState.WaitingForBuildInvade:
+                    WaitForBuildInvade();
+                    break;
+                case RunnerState.WaitingForBuildBeforeDefend:
+                    WaitForBuildBeforeDefend();
+                    break;
+                case RunnerState.WaitingForDefense:
+                    WaitForDefense();
                     break;
                 case RunnerState.WaitingForTarget:
                     BeginChaseWhenReady();
@@ -300,6 +338,16 @@ internal static class Lv2PullChasePerformanceRunner
         s_NavigationBeforeInvade = FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics();
         if (LogicPhaseCommandService.PendingCount != 0)
             throw new InvalidOperationException($"Lv2 pull-chase runner found {LogicPhaseCommandService.PendingCount} pending phase commands before invade.");
+
+        if (SessionState.GetBool(BuildScenarioKey, false))
+        {
+            ScheduleDDoSConstruction(frame);
+            SessionState.SetInt(StateKey, (int)RunnerState.WaitingForBuild);
+            AppendEvent("ddos-build-scheduled", frame, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics());
+            BeginPerformanceWindow();
+            return;
+        }
+
         PhaseManager.SwitchToPhase(GamePhase.Invade);
         SessionState.SetInt(InvadeScheduledFrameKey, ToSessionInt(frame));
         SessionState.SetInt(StateKey, (int)RunnerState.WaitingForInvade);
@@ -320,6 +368,163 @@ internal static class Lv2PullChasePerformanceRunner
         s_NavigationAfterInvade = FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics();
         SessionState.SetInt(StateKey, (int)RunnerState.WaitingForTarget);
         AppendEvent("invade-applied", frame, s_NavigationAfterInvade);
+    }
+
+    private static void ScheduleDDoSConstruction(ulong currentFrame)
+    {
+        BuildManager buildManager = UnityGameFramework.Runtime.GameEntry.GetComponent<BuildManager>()
+                                    ?? throw new InvalidOperationException("Lv2 RuntimeDirty build runner requires BuildManager.");
+        IList<IEntityContext> entities = EntityRegistry.AllEntities
+                                         ?? throw new InvalidOperationException("Lv2 RuntimeDirty build runner requires EntityRegistry.AllEntities.");
+        IBuildingLogicContext selectedOwner = null;
+        string constructionDiagnostics = string.Empty;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            IEntityContext entity = entities[i]
+                                    ?? throw new InvalidOperationException($"Lv2 RuntimeDirty build runner found a null entity at index {i}.");
+            if (!entity.Alive
+                || !entity.TryGetLogicBuilding(out IBuildingLogicContext owner)
+                || owner.OwnerFactionId != EntitySideHelper.PlayerFactionId
+                || owner.BuildingData == null
+                || owner.BuildingData.Lv != 0)
+            {
+                continue;
+            }
+
+            List<BuildingData> candidates = buildManager.GetLv0ConstructCandidates(owner, requireUnlockedArche: false);
+            constructionDiagnostics += $" owner={owner.LogicEntityId.Value}/{owner.BuildingData.Identifier} candidates={candidates.Count}";
+            for (int candidateIndex = 0; candidateIndex < candidates.Count; candidateIndex++)
+            {
+                BuildingData candidate = candidates[candidateIndex];
+                if (candidate == null)
+                    throw new InvalidOperationException($"Lv2 RuntimeDirty build runner encountered a null candidate for owner {owner.LogicEntityId.Value} at index {candidateIndex}.");
+                constructionDiagnostics += $" [{candidate.Identifier}:visible={buildManager.IsConstructOptionVisible(owner, candidate.Identifier)},condition={buildManager.SatisfyBuildCondition(candidate, owner.OwnerFactionId)},affordable={buildManager.HasBuildCost(candidate.Identifier, owner)}]";
+                if (!string.Equals(candidate.Identifier, RuntimeDirtyBuildBuildingId, StringComparison.Ordinal))
+                    continue;
+                if (!buildManager.IsConstructOptionExecutable(owner, candidate.Identifier))
+                {
+                    constructionDiagnostics += $" ddosExecutable=false cost={buildManager.GetBuildingCost(candidate, owner)}";
+                    continue;
+                }
+                selectedOwner = owner;
+                break;
+            }
+            if (selectedOwner != null)
+                break;
+        }
+
+        if (selectedOwner == null)
+        {
+            throw new InvalidOperationException(
+                $"Lv2 RuntimeDirty build runner found no executable {RuntimeDirtyBuildBuildingId} option." + constructionDiagnostics);
+        }
+        if (!buildManager.ConstructBuilding(selectedOwner, RuntimeDirtyBuildBuildingId))
+            throw new InvalidOperationException($"Lv2 RuntimeDirty build runner failed to submit {RuntimeDirtyBuildBuildingId} construction.");
+
+        SessionState.SetInt(BuildScheduledFrameKey, ToSessionInt(currentFrame));
+    }
+
+    private static void WaitForBuild()
+    {
+        ulong frame = LogicFrameRuntime.CurrentFrame;
+        ulong scheduledFrame = FromSessionInt(BuildScheduledFrameKey);
+        IEntityContext built = ResolvePlayerBuilding(RuntimeDirtyBuildBuildingId);
+        if (built == null)
+        {
+            if (frame > scheduledFrame + 180)
+                throw new InvalidOperationException($"Lv2 RuntimeDirty build runner did not observe {RuntimeDirtyBuildBuildingId} after 180 ticks. frame={frame}.");
+            return;
+        }
+
+        if (SessionState.GetInt(BuildAppliedFrameKey, 0) == 0)
+        {
+            SessionState.SetInt(BuildAppliedFrameKey, ToSessionInt(frame));
+            AppendEvent("ddos-build-applied", frame, $"entity={built.LogicEntityId.Value}/{built.CharacterKey}");
+        }
+
+        if (FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty())
+            return;
+
+        if (PhaseManager.CurrentPhase != GamePhase.BuildBeforeInvade)
+            throw new InvalidOperationException($"Lv2 RuntimeDirty build runner expected BuildBeforeInvade before invade, actual={PhaseManager.CurrentPhase}.");
+        PhaseManager.SwitchToPhase(GamePhase.Invade);
+        SessionState.SetInt(InvadeScheduledFrameKey, ToSessionInt(frame));
+        SessionState.SetInt(StateKey, (int)RunnerState.WaitingForBuildInvade);
+        AppendEvent("invade-after-build-scheduled", frame, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics());
+    }
+
+    private static void WaitForBuildInvade()
+    {
+        ulong frame = LogicFrameRuntime.CurrentFrame;
+        ulong scheduledFrame = FromSessionInt(InvadeScheduledFrameKey);
+        if (PhaseManager.CurrentPhase != GamePhase.Invade)
+        {
+            if (frame > scheduledFrame + 30)
+                throw new InvalidOperationException($"Lv2 RuntimeDirty build runner invade-after-build did not apply within 30 ticks. scheduled={scheduledFrame}, current={frame}.");
+            return;
+        }
+
+        PhaseManager.SwitchToPhase(GamePhase.BuildBeforeDefend);
+        SessionState.SetInt(BuildBeforeDefendScheduledFrameKey, ToSessionInt(frame));
+        SessionState.SetInt(StateKey, (int)RunnerState.WaitingForBuildBeforeDefend);
+        AppendEvent("build-before-defend-scheduled", frame, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics());
+    }
+
+    private static void WaitForBuildBeforeDefend()
+    {
+        ulong frame = LogicFrameRuntime.CurrentFrame;
+        ulong scheduledFrame = FromSessionInt(BuildBeforeDefendScheduledFrameKey);
+        if (PhaseManager.CurrentPhase != GamePhase.BuildBeforeDefend)
+        {
+            if (frame > scheduledFrame + 30)
+                throw new InvalidOperationException($"Lv2 RuntimeDirty build runner BuildBeforeDefend did not apply within 30 ticks. scheduled={scheduledFrame}, current={frame}.");
+            return;
+        }
+
+        PhaseManager.SwitchToPhase(GamePhase.Defend);
+        SessionState.SetInt(DefenseScheduledFrameKey, ToSessionInt(frame));
+        SessionState.SetInt(StateKey, (int)RunnerState.WaitingForDefense);
+        AppendEvent("defense-scheduled", frame, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics());
+    }
+
+    private static void WaitForDefense()
+    {
+        ulong frame = LogicFrameRuntime.CurrentFrame;
+        ulong scheduledFrame = FromSessionInt(DefenseScheduledFrameKey);
+        if (PhaseManager.CurrentPhase != GamePhase.Defend)
+        {
+            if (frame > scheduledFrame + 30)
+                throw new InvalidOperationException($"Lv2 RuntimeDirty build runner defense switch did not apply within 30 ticks. scheduled={scheduledFrame}, actual={PhaseManager.CurrentPhase}.");
+            return;
+        }
+        if (SessionState.GetInt(DefenseAppliedFrameKey, 0) == 0)
+        {
+            SessionState.SetInt(DefenseAppliedFrameKey, ToSessionInt(frame));
+            AppendEvent("defense-applied", frame, FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics());
+        }
+        if (frame < FromSessionInt(DefenseAppliedFrameKey) + 30)
+            return;
+        PassBuild(frame);
+    }
+
+    private static IEntityContext ResolvePlayerBuilding(string buildingId)
+    {
+        IList<IEntityContext> entities = EntityRegistry.AllEntities
+                                         ?? throw new InvalidOperationException("Lv2 RuntimeDirty build runner requires EntityRegistry.AllEntities.");
+        for (int i = 0; i < entities.Count; i++)
+        {
+            IEntityContext entity = entities[i]
+                                    ?? throw new InvalidOperationException($"Lv2 RuntimeDirty build runner found a null entity at index {i}.");
+            if (entity.Alive
+                && entity.TryGetLogicBuilding(out IBuildingLogicContext building)
+                && building.OwnerFactionId == EntitySideHelper.PlayerFactionId
+                && building.BuildingData != null
+                && string.Equals(building.BuildingData.Identifier, buildingId, StringComparison.Ordinal))
+            {
+                return entity;
+            }
+        }
+        return null;
     }
 
     private static void BeginChaseWhenReady()
@@ -482,7 +687,7 @@ internal static class Lv2PullChasePerformanceRunner
     {
         InputModel inputModel = GF.DataModel?.GetDataModel<InputModel>()
                                 ?? throw new InvalidOperationException("Lv2 pull-chase runner lost InputModel.");
-        inputModel.LogicTimeline.EnqueueWorldMove(Time.realtimeSinceStartupAsDouble, direction);
+        inputModel.LogicTimeline.EnqueueEditorWorldMoveForNextFrame(direction);
     }
 
     private static IEntityContext ResolveNearestEnemySoldier(FixVector2 heroPosition)
@@ -917,8 +1122,40 @@ internal static class Lv2PullChasePerformanceRunner
             "finalChase=" + DescribeChaseState(hero, target) + Environment.NewLine +
             "scopePeaks:" + Environment.NewLine + BuildChaseScopePeakReport() + Environment.NewLine +
             "samples:" + Environment.NewLine + string.Join(Environment.NewLine, s_Samples) + Environment.NewLine;
-        WriteResult(report);
+        WriteResult(ResultRelativePath, report);
         Log.Info("[Lv2PullChasePerformance] PASS. maxFrameMs={0:F3}, maxLogicMs={1:F3}, samples={2}.", s_MaxFrameMilliseconds, s_MaxLogicMilliseconds, s_Samples.Count);
+        SessionState.SetInt(StateKey, (int)RunnerState.Finishing);
+        EditorApplication.isPlaying = false;
+    }
+
+    private static void PassBuild(ulong frame)
+    {
+        DrainNavigationPathTickDiagnostics();
+        if (FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty())
+            throw new InvalidOperationException("Lv2 RuntimeDirty build runner reached completion with pending navigation rebuild.");
+
+        string report =
+            "RESULT=PASS" + Environment.NewLine +
+            "startedUtc=" + SessionState.GetString(StartedUtcKey, string.Empty) + Environment.NewLine +
+            "finishedUtc=" + DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture) + Environment.NewLine +
+            "buildScheduledFrame=" + SessionState.GetInt(BuildScheduledFrameKey, 0) + Environment.NewLine +
+            "buildAppliedFrame=" + SessionState.GetInt(BuildAppliedFrameKey, 0) + Environment.NewLine +
+            "buildBeforeDefendScheduledFrame=" + SessionState.GetInt(BuildBeforeDefendScheduledFrameKey, 0) + Environment.NewLine +
+            "defenseScheduledFrame=" + SessionState.GetInt(DefenseScheduledFrameKey, 0) + Environment.NewLine +
+            "defenseAppliedFrame=" + SessionState.GetInt(DefenseAppliedFrameKey, 0) + Environment.NewLine +
+            "finalLogicFrame=" + frame + Environment.NewLine +
+            "maxFrameMs=" + s_MaxFrameMilliseconds.ToString("F3", CultureInfo.InvariantCulture) + Environment.NewLine +
+            "maxFrame=" + s_MaxFrame + Environment.NewLine +
+            "maxLogicMs=" + s_MaxLogicMilliseconds.ToString("F3", CultureInfo.InvariantCulture) + Environment.NewLine +
+            "maxLogicRenderFrame=" + s_MaxLogicFrame + Environment.NewLine +
+            "peakRequiredFlowTileCommits=" + s_PeakRequiredFlowTileCommits + Environment.NewLine +
+            "peakFlowTileQueueMutations=" + s_PeakFlowTileQueueMutations + Environment.NewLine +
+            "peakPathPortalExpansions=" + s_PeakPathPortalExpansions + Environment.NewLine +
+            "navigationFinal=" + FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics() + Environment.NewLine +
+            "scopePeaks:" + Environment.NewLine + BuildChaseScopePeakReport() + Environment.NewLine +
+            "samples:" + Environment.NewLine + string.Join(Environment.NewLine, s_Samples) + Environment.NewLine;
+        WriteResult(BuildResultRelativePath, report);
+        Log.Info("[Lv2RuntimeDirtyBuildPerformance] PASS. maxFrameMs={0:F3}, maxLogicMs={1:F3}, samples={2}.", s_MaxFrameMilliseconds, s_MaxLogicMilliseconds, s_Samples.Count);
         SessionState.SetInt(StateKey, (int)RunnerState.Finishing);
         EditorApplication.isPlaying = false;
     }
@@ -935,7 +1172,9 @@ internal static class Lv2PullChasePerformanceRunner
             "navigation=" + (EditorApplication.isPlaying ? FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics() : string.Empty) + Environment.NewLine +
             "exception=" + exception + Environment.NewLine +
             "samples:" + Environment.NewLine + string.Join(Environment.NewLine, s_Samples) + Environment.NewLine;
-        WriteResult(report);
+        WriteResult(
+            SessionState.GetBool(BuildScenarioKey, false) ? BuildResultRelativePath : ResultRelativePath,
+            report);
         UnityEngine.Debug.LogException(exception);
         SessionState.SetInt(StateKey, (int)RunnerState.Finishing);
         if (EditorApplication.isPlaying)
@@ -994,6 +1233,12 @@ internal static class Lv2PullChasePerformanceRunner
         SessionState.SetInt(BaselineStartFrameKey, 0);
         SessionState.SetInt(InvadeScheduledFrameKey, 0);
         SessionState.SetInt(RetreatStartFrameKey, 0);
+        SessionState.SetInt(BuildScheduledFrameKey, 0);
+        SessionState.SetInt(BuildAppliedFrameKey, 0);
+        SessionState.SetInt(BuildBeforeDefendScheduledFrameKey, 0);
+        SessionState.SetInt(DefenseScheduledFrameKey, 0);
+        SessionState.SetInt(DefenseAppliedFrameKey, 0);
+        SessionState.SetBool(BuildScenarioKey, false);
     }
 
     private static int ToSessionInt(ulong frame)
@@ -1013,10 +1258,10 @@ internal static class Lv2PullChasePerformanceRunner
         return Mathf.Sqrt(x * x + z * z);
     }
 
-    private static void WriteResult(string text)
+    private static void WriteResult(string relativePath, string text)
     {
         string path = Path.Combine(Directory.GetParent(Application.dataPath)?.FullName
-                                   ?? throw new InvalidOperationException("Cannot resolve project root."), ResultRelativePath);
+                                   ?? throw new InvalidOperationException("Cannot resolve project root."), relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(path)
                                   ?? throw new InvalidOperationException("Cannot resolve result directory."));
         File.WriteAllText(path, text);
