@@ -2119,6 +2119,11 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(valid);
         if (!valid)
             return;
+        bool graphSlicePending = search.HasPendingGraphSlice;
+        hasher.Add(graphSlicePending);
+        hasher.Add(graphSlicePending && search.IsPendingGraphSliceCompleted);
+        if (graphSlicePending)
+            return;
         hasher.Add(search.CostCount);
         hasher.Add(search.CostsAuthorityHash);
         hasher.Add(search.PreviousCount);
@@ -2155,6 +2160,17 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(hasKernelState);
         if (hasKernelState)
         {
+            bool graphSlicePending = search.KernelState.HasPendingGraphSlice;
+            hasher.Add(graphSlicePending);
+            hasher.Add(graphSlicePending && search.KernelState.IsPendingGraphSliceCompleted);
+            if (graphSlicePending)
+            {
+                AddSortedInts(hasher, search.TargetNodes);
+                AddIntList(hasher, search.TargetNodeSequence);
+                AddIntList(hasher, search.SourceNodes);
+                AddLongList(hasher, search.SourceCosts);
+                return;
+            }
             hasher.Add(search.KernelState.CostCount);
             hasher.Add(search.KernelState.CostsAuthorityHash);
             hasher.Add(search.KernelState.PreviousCount);
@@ -2217,9 +2233,14 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(state.DownwardCustomizationIndex);
         hasher.Add(state.PolicyExpansionScheduled);
         hasher.Add(state.GoalConnectorScheduled);
-        hasher.Add(state.RouteState == null || !state.RouteState.IsCreated
-            ? int.MinValue
-            : state.RouteState.LastLogicalNode);
+        bool routeStateCreated = state.RouteState != null && state.RouteState.IsCreated;
+        bool routeSlicePending = routeStateCreated && state.RouteState.HasPendingSlice;
+        hasher.Add(routeSlicePending);
+        // A scheduled route job owns its NativeLists until completion. Hash the
+        // pending marker only; reading the lists here would force a sync or
+        // violate Job Safety. The complete state is hashed on the next tick.
+        hasher.Add(routeSlicePending ? state.RouteState.IsPendingSliceCompleted : false);
+        hasher.Add(routeSlicePending ? int.MinValue : (routeStateCreated ? state.RouteState.LastLogicalNode : int.MinValue));
         hasher.Add(state.AuthorityHashCursor);
         hasher.Add(state.HashingPortalIds);
         hasher.Add(state.SharedSuffixRegistrationCursor);
@@ -2240,9 +2261,8 @@ public static partial class FlowFieldCrowdMovementSystem
             AddIntArray(hasher, state.MergedSuffix.PortalIds);
         }
         hasher.Add(state.WitnessAuthorityHasher?.Hash ?? 0UL);
-        bool routeStateCreated = state.RouteState != null && state.RouteState.IsCreated;
         hasher.Add(routeStateCreated);
-        if (routeStateCreated)
+        if (routeStateCreated && !routeSlicePending)
         {
             hasher.Add(state.RouteState.TaskCount);
             hasher.Add(state.RouteState.TaskAuthorityHash);

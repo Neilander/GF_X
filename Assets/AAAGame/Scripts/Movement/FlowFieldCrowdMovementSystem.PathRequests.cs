@@ -7,6 +7,11 @@ using UnityGameFramework.Runtime;
 
 public static partial class FlowFieldCrowdMovementSystem
 {
+    // A request is an incremental state machine.  Keeping a bounded quantum
+    // per visit prevents one expensive graph slice from monopolizing the Tick;
+    // the enclosing operation quota still determines total work completed.
+    private const int NavigationPathRequestFairShareOperationQuota = 256;
+
     private enum NavigationPathSourceStage
     {
         Initialize = 0,
@@ -344,6 +349,15 @@ public static partial class FlowFieldCrowdMovementSystem
         public readonly List<NavigationPathSourceJob> Sources = new List<NavigationPathSourceJob>(8);
         public readonly Dictionary<int, NavigationSharedRouteSuffix> SharedRouteSuffixes =
             new Dictionary<int, NavigationSharedRouteSuffix>(32);
+        // Goal-side reverse connectors are target authority.  They are shared
+        // by every source in this request at the same hierarchy depth; keeping
+        // them on the request prevents each source from rebuilding the same
+        // restricted search and connector chain on the main thread.
+        public readonly Dictionary<int, PortalHierarchyConnector> SharedGoalConnectors =
+            new Dictionary<int, PortalHierarchyConnector>(4);
+        public readonly HashSet<int> SharedGoalConnectorBuildLevels = new HashSet<int>();
+        public readonly Dictionary<int, int> SharedGoalConnectorBuilderSourceIds =
+            new Dictionary<int, int>(4);
         public readonly FlowPathKernelRouteMergeIndex SharedRouteMergeIndex =
             new FlowPathKernelRouteMergeIndex(32);
         public ulong SharedRouteSuffixesAuthorityContentHash;
@@ -351,6 +365,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int GoalX;
         public int GoalY;
         public FixVector2 StableGoal;
+        public bool PolicyMutationStarted;
         public bool Complete;
     }
 
@@ -816,10 +831,38 @@ public static partial class FlowFieldCrowdMovementSystem
             ?? throw new InvalidOperationException("Cannot remove a null navigation path request node.");
         for (int i = 0; i < job.Sources.Count; i++)
             DisposeNavigationPathSourceTransientState(job.Sources[i]);
+        DisposeSharedGoalConnectorAuthorities(job);
         job.SharedRouteMergeIndex.Dispose();
         if (!PendingNavigationPathRequests.Remove(job.IdentityKey))
             throw new InvalidOperationException("Navigation path request pending index is inconsistent.");
         NavigationPathRequestQueue.Remove(node);
+    }
+
+    private static void DisposeSharedGoalConnectorAuthorities(NavigationPathRequestJob job)
+    {
+        if (job == null)
+            throw new InvalidOperationException("Cannot dispose shared goal connectors for a null request.");
+        if (job.SharedGoalConnectors.Count == 0)
+            return;
+
+        var disposed = new HashSet<PortalHierarchyConnector>();
+        foreach (PortalHierarchyConnector root in job.SharedGoalConnectors.Values)
+        {
+            if (root == null)
+                throw new InvalidOperationException("Navigation request shared goal connector map contains a null authority.");
+            for (PortalHierarchyConnector cursor = root; cursor != null; cursor = cursor.Child)
+            {
+                if (!disposed.Add(cursor))
+                    continue;
+                if (!cursor.IsRequestShared)
+                    continue;
+                cursor.DisposeOwnedSearchState();
+                cursor.IsRequestShared = false;
+            }
+        }
+        job.SharedGoalConnectors.Clear();
+        job.SharedGoalConnectorBuildLevels.Clear();
+        job.SharedGoalConnectorBuilderSourceIds.Clear();
     }
 
     private static bool IsSectorCorridorPolicyReferencedByPendingNavigationPathRequest(
@@ -884,56 +927,111 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         if (_world == null)
             throw new InvalidOperationException("Navigation path request processing requires an active world.");
-        LinkedListNode<NavigationPathRequestJob> node = NavigationPathRequestQueue.First;
-        while (node != null && !IsNavigationWorkBudgetExhausted())
+        int fairShareQuota = Math.Min(
+            NavigationPathRequestFairShareOperationQuota,
+            _remainingNavigationWorkOperations);
+        if (fairShareQuota <= 0)
+            return;
+
+        // Round-robin the pending state machines.  The previous implementation
+        // drained one job until the global quota was exhausted, which made a
+        // single synchronous Burst graph slice a frame-sized stall and delayed
+        // every other source.  A visit commits only the mutation made by that
+        // bounded slice; no state is recomputed or discarded between visits.
+        NavigationPathRequestsBlockedByPendingSlice.Clear();
+        while (!IsNavigationWorkBudgetExhausted())
         {
-            LinkedListNode<NavigationPathRequestJob> next = node.Next;
-            NavigationPathRequestJob job = node.Value;
-            if (job == null)
-                throw new InvalidOperationException("Navigation path request queue contains a null job.");
-            if (job.Key.WorldVersion != _world.Version)
+            bool progressed = false;
+            LinkedListNode<NavigationPathRequestJob> node = NavigationPathRequestQueue.First;
+            while (node != null && !IsNavigationWorkBudgetExhausted())
             {
+                LinkedListNode<NavigationPathRequestJob> next = node.Next;
+                NavigationPathRequestJob job = node.Value;
+                if (job == null)
+                    throw new InvalidOperationException("Navigation path request queue contains a null job.");
+                if (job.Key.WorldVersion != _world.Version)
+                {
+                    node = next;
+                    continue;
+                }
+                if (job.Complete)
+                {
+                    node = next;
+                    continue;
+                }
+                if (NavigationPathRequestsBlockedByPendingSlice.Contains(job))
+                {
+                    node = next;
+                    continue;
+                }
+
+                progressed = true;
+                bool scheduledSliceBeforeAdvance = HasNavigationPathRequestScheduledSlice(job);
+                bool policyMutationStarted = job.PolicyMutationStarted;
+                int operationCapacity = Math.Min(
+                    fairShareQuota,
+                    _remainingNavigationWorkOperations);
+                int operationCount = AdvanceNavigationPathRequestSlice(
+                    job,
+                    ref policyMutationStarted,
+                    operationCapacity);
+                if (operationCount <= 0
+                    || (!scheduledSliceBeforeAdvance && operationCount > operationCapacity))
+                {
+                    throw new InvalidOperationException(
+                        $"Navigation path request slice consumed an invalid operation count. consumed={operationCount}, capacity={operationCapacity}.");
+                }
+                _perf.NavigationPathRequestOperations = checked(
+                    _perf.NavigationPathRequestOperations + operationCount);
+                job.PolicyMutationStarted = policyMutationStarted;
+                long budgetStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                    ? Stopwatch.GetTimestamp()
+                    : 0L;
+                // Worker slices consume the same logical operation budget as
+                // synchronous slices.  Scheduling itself costs one visit,
+                // but completion accounts for the operations actually run;
+                // otherwise a frame can report more work than its quota.
+                for (int i = 0; i < operationCount; i++)
+                    IsBudgetExpired(0L, 0);
+                if (MainThreadFrameProfiler.LoggingEnabled)
+                {
+                    _perf.NavigationPathBudgetConsumeTicks +=
+                        Stopwatch.GetTimestamp() - budgetStartTicks;
+                }
+
+                // A route slice owns its native state until the worker has
+                // completed. Do not busy-spin this request in the same Tick.
+                if (scheduledSliceBeforeAdvance
+                    || IsNavigationPathRequestBlockedByPendingSlice(job))
+                    NavigationPathRequestsBlockedByPendingSlice.Add(job);
+
                 node = next;
-                continue;
             }
 
-            bool policyMutationStarted = false;
-            try
-            {
-                while (!job.Complete && !IsNavigationWorkBudgetExhausted())
-                {
-                    int operationCapacity = _remainingNavigationWorkOperations;
-                    int operationCount = AdvanceNavigationPathRequestSlice(
-                        job,
-                        ref policyMutationStarted,
-                        operationCapacity);
-                    if (operationCount <= 0 || operationCount > operationCapacity)
-                    {
-                        throw new InvalidOperationException(
-                            $"Navigation path request slice consumed an invalid operation count. consumed={operationCount}, capacity={operationCapacity}.");
-                    }
-                    _perf.NavigationPathRequestOperations = checked(
-                        _perf.NavigationPathRequestOperations + operationCount);
-                    long budgetStartTicks = MainThreadFrameProfiler.LoggingEnabled
-                        ? Stopwatch.GetTimestamp()
-                        : 0L;
-                    for (int i = 0; i < operationCount; i++)
-                        IsBudgetExpired(0L, 0);
-                    if (MainThreadFrameProfiler.LoggingEnabled)
-                    {
-                        _perf.NavigationPathBudgetConsumeTicks +=
-                            Stopwatch.GetTimestamp() - budgetStartTicks;
-                    }
-                }
-            }
-            finally
+            if (!progressed)
+                break;
+        }
+        NavigationPathRequestsBlockedByPendingSlice.Clear();
+
+        // Commit each policy at most once for this world pass.  Keeping the
+        // mutation flag on the request preserves the transaction across fair
+        // share visits without multiplying authority refreshes per source.
+        LinkedListNode<NavigationPathRequestJob> commitNode = NavigationPathRequestQueue.First;
+        while (commitNode != null)
+        {
+            LinkedListNode<NavigationPathRequestJob> next = commitNode.Next;
+            NavigationPathRequestJob job = commitNode.Value
+                                            ?? throw new InvalidOperationException("Navigation path request queue contains a null job.");
+            if (job.Key.WorldVersion == _world.Version && job.PolicyMutationStarted)
             {
                 long commitStartTicks = MainThreadFrameProfiler.LoggingEnabled
                     ? Stopwatch.GetTimestamp()
                     : 0L;
                 try
                 {
+                    bool policyMutationStarted = job.PolicyMutationStarted;
                     CommitNavigationPathPolicyMutation(job, ref policyMutationStarted);
+                    job.PolicyMutationStarted = policyMutationStarted;
                 }
                 finally
                 {
@@ -944,15 +1042,23 @@ public static partial class FlowFieldCrowdMovementSystem
                     }
                 }
             }
+            commitNode = next;
+        }
 
-            if (job.Complete)
+        LinkedListNode<NavigationPathRequestJob> removeNode = NavigationPathRequestQueue.First;
+        while (removeNode != null)
+        {
+            LinkedListNode<NavigationPathRequestJob> next = removeNode.Next;
+            NavigationPathRequestJob job = removeNode.Value
+                                            ?? throw new InvalidOperationException("Navigation path request queue contains a null job.");
+            if (job.Key.WorldVersion == _world.Version && job.Complete)
             {
                 long removalStartTicks = MainThreadFrameProfiler.LoggingEnabled
                     ? Stopwatch.GetTimestamp()
                     : 0L;
                 try
                 {
-                    RemoveNavigationPathRequestNode(node);
+                    RemoveNavigationPathRequestNode(removeNode);
                 }
                 finally
                 {
@@ -963,8 +1069,80 @@ public static partial class FlowFieldCrowdMovementSystem
                     }
                 }
             }
-            node = next;
+            removeNode = next;
         }
+    }
+
+    private static bool IsNavigationPathRequestBlockedByPendingSlice(NavigationPathRequestJob job)
+    {
+        if (job == null || job.Complete || job.SourceCursor >= job.Sources.Count)
+            return false;
+        NavigationPathSourceJob source = job.Sources[job.SourceCursor]
+            ?? throw new InvalidOperationException("Navigation path request contains a null source job.");
+        IncrementalRouteMaterialization materialization = source.Materialization;
+        bool routePending = materialization != null
+                            && materialization.RouteState.HasPendingSlice
+                            && !materialization.RouteState.IsPendingSliceCompleted;
+        return routePending || IsNavigationPathSourceBlockedByPendingGraph(job, source);
+    }
+
+    private static bool HasNavigationPathRequestScheduledSlice(NavigationPathRequestJob job)
+    {
+        if (job == null || job.Complete || job.SourceCursor >= job.Sources.Count)
+            return false;
+        NavigationPathSourceJob source = job.Sources[job.SourceCursor]
+            ?? throw new InvalidOperationException("Navigation path request contains a null source job.");
+        IncrementalRouteMaterialization materialization = source.Materialization;
+        return (materialization != null && materialization.RouteState.HasPendingSlice)
+               || IsNavigationPathSourceScheduledGraph(job, source);
+    }
+
+    private static bool IsNavigationPathSourceBlockedByPendingGraph(
+        NavigationPathRequestJob job,
+        NavigationPathSourceJob source)
+    {
+        return IsNavigationPathSourceScheduledGraph(job, source)
+               && !IsNavigationPathSourceGraphCompleted(job, source);
+    }
+
+    private static bool IsNavigationPathSourceScheduledGraph(
+        NavigationPathRequestJob job,
+        NavigationPathSourceJob source)
+    {
+        if (source?.RestrictedSearch?.KernelState?.HasPendingGraphSlice == true)
+            return true;
+        if (source?.ReversePolicyExpansion != null)
+        {
+            FlowPathKernelSearchState search = source.ReversePolicyExpansion.Hierarchy
+                ? source.HierarchyPolicy?.SearchState
+                : job?.Policy?.SearchState;
+            if (search?.HasPendingGraphSlice == true)
+                return true;
+        }
+        if (source?.HierarchyPolicy?.SearchState?.HasPendingGraphSlice == true)
+            return true;
+        return false;
+    }
+
+    private static bool IsNavigationPathSourceGraphCompleted(
+        NavigationPathRequestJob job,
+        NavigationPathSourceJob source)
+    {
+        if (source?.RestrictedSearch?.KernelState?.HasPendingGraphSlice == true
+            && !source.RestrictedSearch.KernelState.IsPendingGraphSliceCompleted)
+            return false;
+        if (source?.ReversePolicyExpansion != null)
+        {
+            FlowPathKernelSearchState search = source.ReversePolicyExpansion.Hierarchy
+                ? source.HierarchyPolicy?.SearchState
+                : job?.Policy?.SearchState;
+            if (search?.HasPendingGraphSlice == true && !search.IsPendingGraphSliceCompleted)
+                return false;
+        }
+        if (source?.HierarchyPolicy?.SearchState?.HasPendingGraphSlice == true
+            && !source.HierarchyPolicy.SearchState.IsPendingGraphSliceCompleted)
+            return false;
+        return true;
     }
 
     private static void ProcessNavigationPathRequestsAcrossWorlds()
@@ -1008,9 +1186,13 @@ public static partial class FlowFieldCrowdMovementSystem
         NavigationPathSourceStage stage = source.Stage;
         IncrementalRouteMaterializationStage materializationStage = source.Materialization?.Stage
                                                                    ?? IncrementalRouteMaterializationStage.Initialize;
-        int routeTaskType = source.Materialization != null && source.Materialization.RouteState.TaskCount > 0
-            ? source.Materialization.RouteState.Peek().Type
-            : -1;
+        int routeTaskType = -1;
+        if (source.Materialization != null)
+        {
+            FlowPathKernelRouteState routeState = source.Materialization.RouteState;
+            if (!routeState.HasPendingSlice && routeState.TaskCount > 0)
+                routeTaskType = routeState.Peek().Type;
+        }
         bool recordTiming = MainThreadFrameProfiler.LoggingEnabled;
         long startTicks = recordTiming ? Stopwatch.GetTimestamp() : 0L;
         int operationCount = 1;
@@ -1225,6 +1407,15 @@ public static partial class FlowFieldCrowdMovementSystem
         if (latestGoal.GoalSectorId == job.Key.GoalSectorId)
             return false;
 
+        // A moving target crossing a sector does not invalidate the source-side
+        // hierarchy route when the committed goal policy can be rebound exactly.
+        // Keep that policy authority and rebuild only each source's local route
+        // materialization.  The full reset below remains the strict topology
+        // change path when the boundary costs are not a uniform shift.
+        if (TryRebindCompletedNavigationPathRequestGoal(job, latestGoal, ref policyMutationStarted))
+            return true;
+
+        DisposeSharedGoalConnectorAuthorities(job);
         for (int i = 0; i < job.Sources.Count; i++)
         {
             NavigationPathSourceJob source = job.Sources[i];
@@ -1246,6 +1437,176 @@ public static partial class FlowFieldCrowdMovementSystem
         job.SharedRouteMergeIndex.Clear();
         job.SharedRouteSuffixesAuthorityContentHash = 0UL;
         job.SourceCursor = 0;
+        return true;
+    }
+
+    private static bool TryRebindCompletedNavigationPathRequestGoal(
+        NavigationPathRequestJob job,
+        NavigationPathDemand latestGoal,
+        ref bool policyMutationStarted)
+    {
+        SectorCorridorPolicy policy = job.Policy;
+        if (policy == null || !policy.HasAuthorityContentHash)
+            return false;
+        if (policy.HierarchyPolicies.Count == 0)
+            return false;
+
+        var anchorKey = new MovingTargetAnchorKey(
+            job.Key.MovingTargetId,
+            job.Key.AgentTypeId,
+            job.Key.SourceIslandId);
+        if (!MovingTargetAnchors.TryGetValue(anchorKey, out MovingTargetAnchor anchor)
+            || anchor == null
+            || !anchor.HasPinnedSectorCorridorPolicy
+            || !anchor.PinnedSectorCorridorPolicyKey.Equals(job.PolicyKey))
+        {
+            throw new InvalidOperationException(
+                $"Completed moving-target request has no matching pinned policy target={job.Key.MovingTargetId}, " +
+                $"agentType={job.Key.AgentTypeId}, island={job.Key.SourceIslandId}.");
+        }
+        if (!SectorCorridorPolicies.TryGetValue(job.PolicyKey, out SectorCorridorPolicy mappedPolicy)
+            || !ReferenceEquals(mappedPolicy, policy))
+        {
+            throw new InvalidOperationException("Completed moving-target request policy map is not authoritative.");
+        }
+
+        NavigationPathRequestKey nextKey = CreateNavigationPathRequestKey(latestGoal);
+        SectorCorridorPolicyKey nextPolicyKey = CreateNavigationPathPolicyKey(
+            nextKey,
+            latestGoal.GoalX,
+            latestGoal.GoalY);
+
+        // Remove the old key from the authority index while the policy is
+        // mutated.  It remains owned by this pending request throughout.
+        _sectorCorridorPolicyAuthorityContentHash ^= policy.AuthorityContentHash;
+        SectorCorridorPolicies.Remove(job.PolicyKey);
+        policy.HasAuthorityContentHash = false;
+        anchor.HasPinnedSectorCorridorPolicy = false;
+        anchor.PinnedSectorCorridorPolicyKey = default;
+
+        bool rebound;
+        try
+        {
+            rebound = TryRebindSectorCorridorPolicyExactGoal(
+                policy,
+                latestGoal.GoalSectorId,
+                latestGoal.GoalX,
+                latestGoal.GoalY);
+        }
+        catch
+        {
+            policy.HasAuthorityContentHash = true;
+            RefreshSectorCorridorPolicyAuthority(job.PolicyKey, policy);
+            PinMovingTargetSectorCorridorPolicy(anchor, job.PolicyKey);
+            throw;
+        }
+
+        if (!rebound)
+        {
+            policy.HasAuthorityContentHash = true;
+            RefreshSectorCorridorPolicyAuthority(job.PolicyKey, policy);
+            PinMovingTargetSectorCorridorPolicy(anchor, job.PolicyKey);
+            return false;
+        }
+
+        RefreshSectorCorridorPolicyAuthority(nextPolicyKey, policy);
+        SectorCorridorPolicies[nextPolicyKey] = policy;
+        PinMovingTargetSectorCorridorPolicy(anchor, nextPolicyKey);
+        job.Key = nextKey;
+        job.PolicyKey = nextPolicyKey;
+        job.GoalX = latestGoal.GoalX;
+        job.GoalY = latestGoal.GoalY;
+        job.StableGoal = latestGoal.StableGoal;
+        DisposeSharedGoalConnectorAuthorities(job);
+        job.SharedRouteSuffixes.Clear();
+        job.SharedRouteMergeIndex.Clear();
+        job.SharedRouteSuffixesAuthorityContentHash = 0UL;
+
+        for (int i = 0; i < job.Sources.Count; i++)
+        {
+            NavigationPathSourceJob source = job.Sources[i]
+                ?? throw new InvalidOperationException("Navigation path request contains a null source job.");
+            if (source.Stage != NavigationPathSourceStage.Complete || source.Handle == null)
+                throw new InvalidOperationException("Moving-target policy rebind requires completed source routes.");
+
+            source.Demand = source.LatestDemand
+                ?? throw new InvalidOperationException("Navigation path request source has no latest demand snapshot.");
+            // A moving target crossing into a sector already present in the
+            // committed corridor only changes the terminal binding. Preserve
+            // that corridor and trim its suffix instead of re-expanding the
+            // same hierarchy route for every source on every crossing.
+            if (TryRetainNavigationPathThroughGoalSector(source, source.Demand, out PathHandle retainedHandle))
+            {
+                source.Handle = retainedHandle;
+                source.Stage = NavigationPathSourceStage.Complete;
+                _perf.NavigationPathMovingGoalCorridorTrimHits++;
+                continue;
+            }
+            if (source.HierarchyLevelArrayIndex < 0)
+                throw new InvalidOperationException(
+                    $"Moving-target policy rebind encountered a source without hierarchy source={source.Demand.SourceId}.");
+
+            if (source.Materialization?.RouteState != null)
+                source.Materialization.RouteState.Dispose();
+            source.Materialization = null;
+            if (source.RestrictedSearch?.KernelState != null)
+                source.RestrictedSearch.KernelState.Dispose();
+            source.RestrictedSearch = null;
+            EndRestrictedInputCollection(source);
+            source.ReversePolicyExpansion = null;
+            source.GoalConnector = null;
+            source.NextGoalConnectorLevel = 0;
+            source.DownwardCustomizations.Clear();
+            source.NextDownwardLevel = source.HierarchyLevelArrayIndex;
+            source.Handle = null;
+            source.Stage = NavigationPathSourceStage.BuildDownwardCustomization;
+        }
+
+        job.SourceCursor = 0;
+        policyMutationStarted = false;
+        return true;
+    }
+
+    private static bool TryRetainNavigationPathThroughGoalSector(
+        NavigationPathSourceJob source,
+        NavigationPathDemand latestGoal,
+        out PathHandle retainedHandle)
+    {
+        retainedHandle = null;
+        PathHandle current = source.Handle;
+        if (current == null
+            || current.WorldVersion != _world.Version
+            || current.SectorIds == null
+            || current.PortalIds == null
+            || current.SectorIds.Length != current.PortalIds.Length + 1)
+        {
+            return false;
+        }
+
+        int currentIndex = Mathf.Max(0, current.CurrentSectorIndex);
+        int goalIndex = FindSectorIndex(current, latestGoal.GoalSectorId, currentIndex);
+        if (goalIndex < currentIndex)
+            return false;
+
+        int sectorCount = goalIndex + 1;
+        int portalCount = goalIndex;
+        var sectors = new int[sectorCount];
+        var portals = new int[portalCount];
+        current.SectorIds.CopyTo(0, sectors, 0, sectorCount);
+        if (portalCount > 0)
+            current.PortalIds.CopyTo(0, portals, 0, portalCount);
+
+        retainedHandle = new PathHandle
+        {
+            HandleId = _nextPathHandleId++,
+            WorldVersion = current.WorldVersion,
+            GoalX = latestGoal.GoalX,
+            GoalY = latestGoal.GoalY,
+            SectorIds = ImmutableRouteSequence.FromArray(sectors),
+            PortalIds = ImmutableRouteSequence.FromArray(portals),
+            CurrentSectorIndex = currentIndex,
+            BuildSource = current.BuildSource + ":movingGoalTrim"
+        };
         return true;
     }
 
@@ -1340,7 +1701,6 @@ public static partial class FlowFieldCrowdMovementSystem
         }
         source.GoalConnector = lowerConnector;
         source.NextGoalConnectorLevel = lowerConnector == null ? 0 : lowerConnector.TargetLevelIndex + 1;
-        _perf.SectorCorridorGoalConnectorBuilds++;
         source.Stage = NavigationPathSourceStage.BuildGoalConnector;
         if (profile)
             _perf.NavigationPathInitializeHierarchySelectionTicks +=
@@ -1375,12 +1735,18 @@ public static partial class FlowFieldCrowdMovementSystem
                 throw new InvalidOperationException(
                     $"Navigation path request has no moving-target anchor target={job.Key.MovingTargetId}, agentType={job.Key.AgentTypeId}, island={job.Key.SourceIslandId}.");
             }
-            if (anchor.HasPinnedSectorCorridorPolicy
-                && !anchor.PinnedSectorCorridorPolicyKey.Equals(job.PolicyKey))
+            if (TryAcquirePinnedMovingTargetSectorCorridorPolicy(
+                    anchor,
+                    job.PolicyKey,
+                    job.Key.GoalSectorId,
+                    job.GoalX,
+                    job.GoalY,
+                    out SectorCorridorPolicy pinnedPolicy))
             {
-                RemoveSectorCorridorPolicy(anchor.PinnedSectorCorridorPolicyKey);
-                anchor.HasPinnedSectorCorridorPolicy = false;
-                anchor.PinnedSectorCorridorPolicyKey = default;
+                job.Policy = pinnedPolicy;
+                if (profile)
+                    _perf.NavigationPathInitializePolicyAnchorTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
+                return;
             }
         }
         if (profile)
@@ -1570,17 +1936,29 @@ public static partial class FlowFieldCrowdMovementSystem
                         EdgeCursor = search.EdgeCursor
                     };
                     PortalHierarchyCluster cluster = search.ContainingCluster;
-                    FlowPathKernelGraphSliceResult slice = search.KernelState.AdvanceGraphSlice(
-                        graph,
-                        search.Reverse,
-                        search.World.SectorCountX,
-                        cluster?.StartSectorX ?? 0,
-                        cluster?.StartSectorY ?? 0,
-                        cluster?.WidthSectors ?? 0,
-                        cluster?.HeightSectors ?? 0,
-                        cursor,
-                        operationCapacity - operationCount);
-                    if (slice.OperationCount <= 0)
+                    FlowPathKernelGraphSliceResult slice;
+                    if (search.KernelState.HasPendingGraphSlice)
+                    {
+                        if (!search.KernelState.IsPendingGraphSliceCompleted)
+                            return 1;
+                        slice = search.KernelState.CompleteScheduledGraphSlice();
+                    }
+                    else
+                    {
+                        search.KernelState.ScheduleGraphSlice(
+                            graph,
+                            search.Reverse,
+                            search.World.SectorCountX,
+                            cluster?.StartSectorX ?? 0,
+                            cluster?.StartSectorY ?? 0,
+                            cluster?.WidthSectors ?? 0,
+                            cluster?.HeightSectors ?? 0,
+                            cursor,
+                            operationCapacity - operationCount);
+                        return 1;
+                    }
+                    if (slice.OperationCount <= 0
+                        && slice.StopReason != FlowPathKernelGraphSliceStopReason.TargetSettled)
                         throw new InvalidOperationException("Incremental restricted graph slice consumed no operations.");
                     RecordNavigationPathGraphSlice(slice.OperationCount);
                     search.CurrentNode = slice.Cursor.CurrentNode;
@@ -1651,10 +2029,69 @@ public static partial class FlowFieldCrowdMovementSystem
         NavigationPathSourceJob source,
         int operationCapacity)
     {
+        if (job == null || source == null || source.Demand == null)
+            throw new InvalidOperationException("Navigation goal connector advance received an incomplete request source.");
+        if (source.HierarchyLevelArrayIndex < 0)
+            throw new InvalidOperationException("Navigation goal connector advance requires a resolved hierarchy level.");
+
+        int sharedDepth = source.HierarchyLevelArrayIndex;
+        if (job.SharedGoalConnectors.TryGetValue(sharedDepth, out PortalHierarchyConnector sharedConnector))
+        {
+            if (sharedConnector == null)
+                throw new InvalidOperationException(
+                    $"Navigation request shared goal connector is invalid depth={sharedDepth} target={job.Key.MovingTargetId}.");
+            sharedConnector.RequireSingleAuthority();
+            source.GoalConnector = sharedConnector;
+            source.NextGoalConnectorLevel = sharedDepth + 1;
+            _perf.NavigationPathSharedGoalConnectorHits++;
+            return 1;
+        }
+
+        bool isBuilder = job.SharedGoalConnectorBuilderSourceIds.TryGetValue(
+                             sharedDepth,
+                             out int builderSourceId)
+                         && builderSourceId == source.Demand.SourceId;
+        if (job.SharedGoalConnectorBuildLevels.Contains(sharedDepth) && !isBuilder)
+        {
+            // The first deterministic source owns construction.  Other
+            // sources remain pending until that target-side authority is
+            // complete; they must not create a duplicate search.
+            return 1;
+        }
+
+        if (!job.SharedGoalConnectorBuildLevels.Add(sharedDepth))
+        {
+            if (!job.SharedGoalConnectorBuilderSourceIds.TryGetValue(
+                    sharedDepth,
+                    out int existingBuilderSourceId)
+                || existingBuilderSourceId != source.Demand.SourceId)
+                return 1;
+        }
+        else
+        {
+            job.SharedGoalConnectorBuilderSourceIds[sharedDepth] = source.Demand.SourceId;
+            _perf.SectorCorridorGoalConnectorBuilds++;
+            _perf.NavigationPathSharedGoalConnectorBuilds++;
+        }
+
         PortalHierarchy hierarchy = _world.Hierarchy
             ?? throw new InvalidOperationException("Navigation path request requires a committed hierarchy.");
         if (source.NextGoalConnectorLevel > source.HierarchyLevelArrayIndex)
         {
+            if (source.GoalConnector == null)
+                throw new InvalidOperationException("Navigation goal connector reached completion without an authority.");
+            if (!job.SharedGoalConnectors.ContainsKey(sharedDepth))
+            {
+                for (PortalHierarchyConnector cursor = source.GoalConnector;
+                     cursor != null;
+                     cursor = cursor.Child)
+                {
+                    cursor.IsRequestShared = true;
+                }
+                job.SharedGoalConnectors.Add(sharedDepth, source.GoalConnector);
+                job.SharedGoalConnectorBuildLevels.Remove(sharedDepth);
+                job.SharedGoalConnectorBuilderSourceIds.Remove(sharedDepth);
+            }
             source.Stage = NavigationPathSourceStage.CreateHierarchyPolicy;
             return 1;
         }
@@ -1867,6 +2304,12 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("Navigation hierarchy policy has no goal boundary source.");
         BeginHashedPortalHierarchyPolicyMutation(job.Policy, ref policyMutationStarted);
         job.Policy.HierarchyPolicies.Add(source.HierarchyLevelArrayIndex, source.HierarchyPolicy);
+        for (PortalHierarchyConnector cursor = source.GoalConnector;
+             cursor != null;
+             cursor = cursor.Child)
+        {
+            cursor.IsRequestShared = false;
+        }
         source.NextDownwardLevel = source.HierarchyLevelArrayIndex;
         source.Stage = NavigationPathSourceStage.ExpandHierarchyPolicy;
         return 1;
@@ -2208,28 +2651,55 @@ public static partial class FlowFieldCrowdMovementSystem
                     FlowPathKernelSearchState searchState = expansion.Hierarchy
                         ? source.HierarchyPolicy.SearchState
                         : job.Policy.SearchState;
-                    BeginHashedPortalHierarchyPolicyMutation(job.Policy, ref policyMutationStarted);
-                    FlowPathKernelGraphIndex graph = ResolveFlowPathKernelSearchGraphIndex(
-                        _world,
-                        expansion.Hierarchy ? expansion.HierarchyLevel : null);
-                    FlowPathKernelGraphCursor cursor = new FlowPathKernelGraphCursor
+                    FlowPathKernelGraphSliceResult slice;
+                    if (searchState.HasPendingGraphSlice)
                     {
-                        Stage = expansion.Stage == IncrementalReversePolicyExpansionStage.Pop ? 0 : 1,
-                        CurrentNode = expansion.CurrentNode,
-                        CurrentCost = expansion.CurrentCost,
-                        EdgeCursor = expansion.EdgeCursor
-                    };
-                    FlowPathKernelGraphSliceResult slice = searchState.AdvanceGraphSlice(
-                        graph,
-                        reverse: true,
-                        _world.SectorCountX,
-                        0,
-                        0,
-                        0,
-                        0,
-                        cursor,
-                        operationCapacity - operationCount);
-                    if (slice.OperationCount <= 0)
+                        if (!searchState.IsPendingGraphSliceCompleted)
+                            return 1;
+                        slice = searchState.CompleteScheduledGraphSlice();
+                    }
+                    else
+                    {
+                        bool hasUnsettledTarget = false;
+                        foreach (int targetNode in expansion.PendingTargetNodes)
+                        {
+                            if (!searchState.ContainsSettled(targetNode))
+                            {
+                                hasUnsettledTarget = true;
+                                break;
+                            }
+                        }
+                        if (!hasUnsettledTarget)
+                        {
+                            expansion.PendingTargetNodes.Clear();
+                            expansion.Stage = IncrementalReversePolicyExpansionStage.Complete;
+                            return operationCount == 0 ? 1 : operationCount;
+                        }
+                        BeginHashedPortalHierarchyPolicyMutation(job.Policy, ref policyMutationStarted);
+                        FlowPathKernelGraphIndex graph = ResolveFlowPathKernelSearchGraphIndex(
+                            _world,
+                            expansion.Hierarchy ? expansion.HierarchyLevel : null);
+                        FlowPathKernelGraphCursor cursor = new FlowPathKernelGraphCursor
+                        {
+                            Stage = expansion.Stage == IncrementalReversePolicyExpansionStage.Pop ? 0 : 1,
+                            CurrentNode = expansion.CurrentNode,
+                            CurrentCost = expansion.CurrentCost,
+                            EdgeCursor = expansion.EdgeCursor
+                        };
+                        searchState.ScheduleGraphSlice(
+                            graph,
+                            reverse: true,
+                            _world.SectorCountX,
+                            0,
+                            0,
+                            0,
+                            0,
+                            cursor,
+                            operationCapacity - operationCount);
+                        return 1;
+                    }
+                    if (slice.OperationCount <= 0
+                        && slice.StopReason != FlowPathKernelGraphSliceStopReason.TargetSettled)
                         throw new InvalidOperationException("Navigation reverse policy graph slice consumed no operations.");
                     RecordNavigationPathGraphSlice(slice.OperationCount);
                     expansion.CurrentNode = slice.Cursor.CurrentNode;
@@ -2401,6 +2871,8 @@ public static partial class FlowFieldCrowdMovementSystem
         NavigationPathSourceJob source,
         IncrementalRouteMaterialization state)
     {
+        if (state.RouteState.HasPendingSlice)
+            return;
         if (state.MergedSuffix != null
             || state.RouteState.L0NodeCount == 0
             || (state.Stage != IncrementalRouteMaterializationStage.ExpandDownward
@@ -2561,7 +3033,154 @@ public static partial class FlowFieldCrowdMovementSystem
             job.Key.GoalSectorId,
             job.Policy.GoalCellIndex % _world.Width,
             job.Policy.GoalCellIndex / _world.Width);
+
+        // A moving-target request is a group authority. Once one source in a
+        // start sector has materialized a valid corridor, later sources in
+        // that same sector only need an exact local access check. Re-expanding
+        // the same high-level route per unit is the performance divergence
+        // this request group is designed to eliminate.
+        if (TryBindNavigationRouteFromSharedStartSector(job, source, state))
+            return;
         state.Stage = IncrementalRouteMaterializationStage.SelectStartPortal;
+    }
+
+    private static bool TryBindNavigationRouteFromSharedStartSector(
+        NavigationPathRequestJob job,
+        NavigationPathSourceJob source,
+        IncrementalRouteMaterialization state)
+    {
+        if (job == null || source?.Demand == null || state == null)
+            throw new InvalidOperationException("Shared start-sector route binding received incomplete state.");
+        if (job.SharedRouteSuffixes.Count == 0)
+            return false;
+
+        int exactBestStartNode = ResolveExactStartPortalNodeForSharedRoute(job, source);
+        if (exactBestStartNode == int.MinValue)
+            return false;
+
+        // Dictionary iteration is not an authority order. Select the lowest
+        // accessible route node so the group binding is deterministic.
+        int selectedNode = int.MaxValue;
+        NavigationSharedRouteSuffix selected = null;
+        foreach (KeyValuePair<int, NavigationSharedRouteSuffix> pair in job.SharedRouteSuffixes)
+        {
+            NavigationSharedRouteSuffix suffix = pair.Value
+                ?? throw new InvalidOperationException("Shared route suffix index contains a null suffix.");
+            DecodePortalNode(suffix.MergeNode, out int sectorId, out int portalId);
+            if (sectorId != source.Demand.StartSectorId
+                || suffix.PortalStartIndex < 0
+                || suffix.PortalStartIndex >= suffix.PortalIds.Length
+                || suffix.SectorStartIndex < 0
+                || suffix.SectorStartIndex >= suffix.SectorIds.Length
+                || suffix.SectorIds[suffix.SectorStartIndex] != source.Demand.StartSectorId
+                || pair.Key != suffix.MergeNode)
+            {
+                continue;
+            }
+
+            int firstPortalId = suffix.PortalIds[suffix.PortalStartIndex];
+            int firstPortalNode = EncodePortalNode(source.Demand.StartSectorId, firstPortalId);
+            if (firstPortalNode != exactBestStartNode)
+                continue;
+            long accessCost = ResolveDeterministicPortalAccessCost(
+                _world,
+                _world.Sectors[source.Demand.StartSectorId],
+                source.Demand.StartSectorId,
+                firstPortalId,
+                source.Demand.StartX,
+                source.Demand.StartY);
+            if (accessCost == long.MaxValue)
+                continue;
+            if (suffix.MergeNode >= selectedNode)
+                continue;
+            selectedNode = suffix.MergeNode;
+            selected = suffix;
+        }
+
+        if (selected == null)
+            return false;
+
+        ImmutableRouteSequence sectorIds = ImmutableRouteSequence.Concat(
+            Array.Empty<int>(),
+            0,
+            selected.SectorIds,
+            selected.SectorStartIndex);
+        ImmutableRouteSequence portalIds = ImmutableRouteSequence.Concat(
+            Array.Empty<int>(),
+            0,
+            selected.PortalIds,
+            selected.PortalStartIndex);
+        if (sectorIds.Length == 0
+            || portalIds.Length + 1 != sectorIds.Length
+            || sectorIds[0] != source.Demand.StartSectorId
+            || sectorIds[sectorIds.Length - 1] != job.Key.GoalSectorId)
+        {
+            throw new InvalidOperationException(
+                $"Shared start-sector route is inconsistent source={source.Demand.SourceId}, " +
+                $"startSector={source.Demand.StartSectorId}, goalSector={job.Key.GoalSectorId}, " +
+                $"selectedNode={FormatRouteNode(selectedNode)}.");
+        }
+
+        source.Handle = new PathHandle
+        {
+            HandleId = _nextPathHandleId++,
+            WorldVersion = _world.Version,
+            GoalX = job.GoalX,
+            GoalY = job.GoalY,
+            SectorIds = sectorIds,
+            PortalIds = portalIds,
+            CurrentSectorIndex = 0,
+            BuildSource = "sharedStartSectorRoute:pathRequest"
+        };
+        state.Stage = IncrementalRouteMaterializationStage.Complete;
+        _perf.NavigationPathSharedStartRouteHits++;
+        return true;
+    }
+
+    private static int ResolveExactStartPortalNodeForSharedRoute(
+        NavigationPathRequestJob job,
+        NavigationPathSourceJob source)
+    {
+        NavigationPathDemand demand = source.Demand
+            ?? throw new InvalidOperationException("Shared route start-node resolution has no demand.");
+        SectorData startSector = _world.Sectors[demand.StartSectorId];
+        FlowPathKernelSearchState policySearch = source.HierarchyLevelArrayIndex >= 0
+            ? source.DownwardCustomizations.Count == 0
+                ? throw new InvalidOperationException("Shared route start-node resolution has no downward policy.")
+                : source.DownwardCustomizations[source.DownwardCustomizations.Count - 1].SearchState
+            : job.Policy?.SearchState;
+        if (policySearch == null || !policySearch.IsCreated)
+            throw new InvalidOperationException("Shared route start-node resolution has no policy search authority.");
+
+        long bestCost = long.MaxValue;
+        int bestNode = int.MinValue;
+        for (int i = 0; i < startSector.PortalIds.Count; i++)
+        {
+            int portalId = startSector.PortalIds[i];
+            int node = EncodePortalNode(demand.StartSectorId, portalId);
+            long accessCost = ResolveDeterministicPortalAccessCost(
+                _world,
+                startSector,
+                demand.StartSectorId,
+                portalId,
+                demand.StartX,
+                demand.StartY);
+            if (accessCost == long.MaxValue
+                || !policySearch.ContainsSettled(node)
+                || !policySearch.TryGetCost(node, out long suffixCost))
+            {
+                continue;
+            }
+
+            long totalCost = AddDeterministicPortalCosts(accessCost, suffixCost);
+            if (totalCost < bestCost
+                || (totalCost == bestCost && source.HierarchyLevelArrayIndex >= 0 && node < bestNode))
+            {
+                bestCost = totalCost;
+                bestNode = node;
+            }
+        }
+        return bestNode;
     }
 
     private static void AdvanceNavigationRouteStartPortalSelection(
@@ -2658,6 +3277,8 @@ public static partial class FlowFieldCrowdMovementSystem
         IncrementalRouteMaterialization state,
         int operationCapacity)
     {
+        if (state.RouteState.HasPendingSlice)
+            return AdvanceRouteExpansionTaskSlice(job, state, operationCapacity);
         if (state.RouteState.TaskCount > 0)
             return AdvanceRouteExpansionTaskSlice(job, state, operationCapacity);
         if (state.DownwardCustomizationIndex < 0)
@@ -2699,6 +3320,8 @@ public static partial class FlowFieldCrowdMovementSystem
             state.PolicyExpansionScheduled = true;
             return 1;
         }
+        if (state.RouteState.HasPendingSlice)
+            return AdvanceRouteExpansionTaskSlice(job, state, operationCapacity);
         if (state.RouteState.TaskCount > 0)
             return AdvanceRouteExpansionTaskSlice(job, state, operationCapacity);
         state.Stage = source.HierarchyLevelArrayIndex >= 0
@@ -2722,6 +3345,8 @@ public static partial class FlowFieldCrowdMovementSystem
             state.GoalConnectorScheduled = true;
             return 1;
         }
+        if (state.RouteState.HasPendingSlice)
+            return AdvanceRouteExpansionTaskSlice(job, state, operationCapacity);
         if (state.RouteState.TaskCount > 0)
             return AdvanceRouteExpansionTaskSlice(job, state, operationCapacity);
         state.Stage = IncrementalRouteMaterializationStage.ConvertRoute;
@@ -2793,6 +3418,26 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         if (operationCapacity <= 0)
             throw new ArgumentOutOfRangeException(nameof(operationCapacity));
+        FlowPathKernelRouteSliceResult result;
+        if (state.RouteState.HasPendingSlice)
+        {
+            if (!state.RouteState.IsPendingSliceCompleted)
+                return 1;
+            result = state.RouteState.CompleteScheduledSlice();
+
+            // The scheduled job owns the route stack until completion. Only
+            // after Complete() may the authority be inspected or mutated.
+            _perf.NavigationPathRouteSlices = checked(_perf.NavigationPathRouteSlices + 1);
+            _perf.NavigationPathRouteSliceOperations = checked(
+                _perf.NavigationPathRouteSliceOperations + result.OperationCount);
+            if (result.OperationCount <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"Navigation route slice stopped without consuming work. reason={result.StopReason}.");
+            }
+            return result.OperationCount;
+        }
+
         if (state.RouteState.TaskCount == 0)
             throw new InvalidOperationException("Navigation route expansion has no pending task.");
 
@@ -2820,7 +3465,7 @@ public static partial class FlowFieldCrowdMovementSystem
             (int)RouteExpansionTaskType.TraverseDownwardPolicy,
             (int)RouteExpansionTaskType.TraverseConnectorPolicy);
         FlowPathKernelSearchState search = ResolveRouteSearchAuthority(state, authoritySlot);
-        FlowPathKernelRouteSliceResult result = state.RouteState.AdvanceSlice(
+        state.RouteState.ScheduleSlice(
             search,
             RequireRouteWitnessIndex(),
             job.SharedRouteMergeIndex,
@@ -2834,15 +3479,7 @@ public static partial class FlowFieldCrowdMovementSystem
             (int)RouteExpansionTaskType.TraverseArray,
             (int)RouteExpansionTaskType.BeginConnector,
             operationCapacity);
-        _perf.NavigationPathRouteSlices = checked(_perf.NavigationPathRouteSlices + 1);
-        _perf.NavigationPathRouteSliceOperations = checked(
-            _perf.NavigationPathRouteSliceOperations + result.OperationCount);
-        if (result.OperationCount <= 0)
-        {
-            throw new InvalidOperationException(
-                $"Navigation route slice stopped without consuming work. reason={result.StopReason}, task={topType}.");
-        }
-        return result.OperationCount;
+        return 1;
     }
 
     private static int RegisterRouteSearchAuthority(
@@ -3339,6 +3976,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 source.Demand.Agent.NavState.HasPendingNavigationReplacement = false;
                 DisposeNavigationPathSourceTransientState(source);
             }
+            DisposeSharedGoalConnectorAuthorities(job);
             job.SharedRouteMergeIndex.Dispose();
         }
         NavigationPathRequestQueue.Clear();
@@ -3455,7 +4093,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"runtime=[allocatedBytes={snapshot.NavigationPathAllocatedBytes},gc={snapshot.NavigationPathGen0Collections}/{snapshot.NavigationPathGen1Collections}/{snapshot.NavigationPathGen2Collections}]," +
                 $"creates=[policy={snapshot.NavigationPathPolicyCreates},search={snapshot.NavigationPathRestrictedSearchCreates}," +
                 $"hierarchy={snapshot.NavigationPathHierarchyPolicyCreates},materialization={snapshot.NavigationPathMaterializationCreates}," +
-                $"concat={snapshot.NavigationPathImmutableConcatCreates},suffix={snapshot.NavigationPathSharedSuffixCreates}]," +
+                $"concat={snapshot.NavigationPathImmutableConcatCreates},suffix={snapshot.NavigationPathSharedSuffixCreates},sharedStartRouteHits={snapshot.NavigationPathSharedStartRouteHits},movingGoalCorridorTrimHits={snapshot.NavigationPathMovingGoalCorridorTrimHits}," +
+                $"sharedGoalConnectorBuilds={snapshot.NavigationPathSharedGoalConnectorBuilds},sharedGoalConnectorHits={snapshot.NavigationPathSharedGoalConnectorHits}]," +
                 $"stages=[{BuildEditorNavigationPathStageDiagnostics(snapshot)}]," +
                 $"slowest=[milliseconds={TicksToMs(snapshot.NavigationPathSlowestOperationTicks):F3}," +
                 $"world={snapshot.NavigationPathSlowestWorldVersion},agentType={snapshot.NavigationPathSlowestAgentTypeId}," +

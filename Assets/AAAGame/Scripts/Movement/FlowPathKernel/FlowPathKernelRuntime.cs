@@ -201,6 +201,10 @@ namespace AAAGame.FlowPath
         private NativeList<FlowPathKernelSearchCommand> m_Commands;
         private NativeReference<SearchMetadata> m_Metadata;
         private NativeList<int> m_GraphSliceTargets;
+        private JobHandle m_PendingGraphSlice;
+        private bool m_HasPendingGraphSlice;
+        private FlowPathKernelGraphIndex m_PendingGraph;
+        private bool m_PendingGraphReverse;
 
         public FlowPathKernelSearchState(int capacity)
         {
@@ -216,21 +220,24 @@ namespace AAAGame.FlowPath
         }
 
         public bool IsCreated => m_Costs.IsCreated;
-        public int OpenCount => m_Open.Length;
-        public int ExpansionCount => m_Metadata.Value.ExpansionCount;
-        public int CostCount => m_Costs.Count();
-        public int PreviousCount => m_Previous.Count();
-        public int SettledCount => m_Settled.Count();
-        public ulong CostsAuthorityHash => m_Metadata.Value.CostsAuthorityHash;
-        public ulong PreviousAuthorityHash => m_Metadata.Value.PreviousAuthorityHash;
-        public ulong SettledAuthorityHash => m_Metadata.Value.SettledAuthorityHash;
-        public ulong OpenAuthorityHash => m_Metadata.Value.OpenAuthorityHash;
+        public bool HasPendingGraphSlice => m_HasPendingGraphSlice;
+        public bool IsPendingGraphSliceCompleted => m_HasPendingGraphSlice && m_PendingGraphSlice.IsCompleted;
+        public int OpenCount { get { RequireNoPendingGraphSlice(); return m_Open.Length; } }
+        public int ExpansionCount { get { RequireNoPendingGraphSlice(); return m_Metadata.Value.ExpansionCount; } }
+        public int CostCount { get { RequireNoPendingGraphSlice(); return m_Costs.Count(); } }
+        public int PreviousCount { get { RequireNoPendingGraphSlice(); return m_Previous.Count(); } }
+        public int SettledCount { get { RequireNoPendingGraphSlice(); return m_Settled.Count(); } }
+        public ulong CostsAuthorityHash { get { RequireNoPendingGraphSlice(); return m_Metadata.Value.CostsAuthorityHash; } }
+        public ulong PreviousAuthorityHash { get { RequireNoPendingGraphSlice(); return m_Metadata.Value.PreviousAuthorityHash; } }
+        public ulong SettledAuthorityHash { get { RequireNoPendingGraphSlice(); return m_Metadata.Value.SettledAuthorityHash; } }
+        public ulong OpenAuthorityHash { get { RequireNoPendingGraphSlice(); return m_Metadata.Value.OpenAuthorityHash; } }
 
         internal NativeParallelHashMap<int, int> PreviousMap
         {
             get
             {
                 RequireCreated();
+                RequireNoPendingGraphSlice();
                 return m_Previous;
             }
         }
@@ -238,6 +245,7 @@ namespace AAAGame.FlowPath
         public void AddSource(int node, long cost)
         {
             RequireCreated();
+            RequireNoPendingGraphSlice();
             BeginCommandSlice();
             AppendAddSource(node, cost);
             ExecuteCommandSlice(out _, out _);
@@ -246,6 +254,7 @@ namespace AAAGame.FlowPath
         public FlowPathKernelPopStatus PopOne(out FlowPathKernelSearchEntry entry)
         {
             RequireCreated();
+            RequireNoPendingGraphSlice();
             BeginCommandSlice();
             AppendPop();
             ExecuteCommandSlice(out FlowPathKernelPopStatus status, out entry);
@@ -255,6 +264,7 @@ namespace AAAGame.FlowPath
         public void Relax(int currentNode, int nextNode, long nextCost)
         {
             RequireCreated();
+            RequireNoPendingGraphSlice();
             BeginCommandSlice();
             AppendRelax(currentNode, nextNode, nextCost);
             ExecuteCommandSlice(out _, out _);
@@ -263,6 +273,7 @@ namespace AAAGame.FlowPath
         public void BeginCommandSlice()
         {
             RequireCreated();
+            RequireNoPendingGraphSlice();
             m_Commands.Clear();
         }
 
@@ -309,6 +320,7 @@ namespace AAAGame.FlowPath
             out FlowPathKernelSearchEntry popEntry)
         {
             RequireCreated();
+            RequireNoPendingGraphSlice();
             if (m_Commands.Length == 0)
                 throw new InvalidOperationException("Flow path search command slice is empty.");
             new SearchCommandSliceJob
@@ -387,85 +399,168 @@ namespace AAAGame.FlowPath
                 cursor.EdgeCursor += range.Start;
                 cursor.EdgeEnd = range.Start + range.Count;
             }
-            GraphSliceOutput output;
             int operationCount = 0;
+            FlowPathKernelGraphSliceResult result;
             do
             {
-                new AdvanceGraphSliceJob
-                {
-                    Reverse = reverse ? 1 : 0,
-                    Targets = m_GraphSliceTargets,
-                    SectorCountX = sectorCountX,
-                    Restricted = restricted ? 1 : 0,
-                    AllowedStartSectorX = allowedStartSectorX,
-                    AllowedStartSectorY = allowedStartSectorY,
-                    AllowedWidthSectors = allowedWidthSectors,
-                    AllowedHeightSectors = allowedHeightSectors,
-                    OperationQuota = operationQuota - operationCount,
-                    InitialCursor = cursor,
-                    OutgoingEdges = graph.OutgoingEdges,
-                    IncomingEdges = graph.IncomingEdges,
-                    OutgoingRanges = graph.OutgoingRanges,
-                    IncomingRanges = graph.IncomingRanges,
-                    Costs = m_Costs,
-                    Previous = m_Previous,
-                    Settled = m_Settled,
-                    Open = m_Open,
-                    Metadata = m_Metadata
-                }.Run();
-                output = m_Metadata.Value.GraphSliceOutput;
-                if (output.Error != 0)
-                    throw new InvalidOperationException($"Flow path graph slice failed with error={output.Error}.");
-                operationCount = checked(operationCount + output.OperationCount);
-                cursor = output.Cursor;
-                if (output.CapacityMask == 0)
+                ScheduleGraphSlice(
+                    graph,
+                    reverse,
+                    sectorCountX,
+                    allowedStartSectorX,
+                    allowedStartSectorY,
+                    allowedWidthSectors,
+                    allowedHeightSectors,
+                    cursor,
+                    operationQuota - operationCount);
+                result = CompleteScheduledGraphSlice();
+                operationCount = checked(operationCount + result.OperationCount);
+                cursor = result.Cursor;
+                if (result.StopReason != FlowPathKernelGraphSliceStopReason.QuotaExhausted
+                    || result.OperationCount == 0)
                     break;
-                GrowExhaustedGraphSliceCapacity(output.CapacityMask);
             }
             while (operationCount < operationQuota);
-            output.OperationCount = operationCount;
+            return new FlowPathKernelGraphSliceResult(
+                operationCount,
+                result.StopReason,
+                cursor,
+                result.RemainingTargets);
+        }
+
+        public void ScheduleGraphSlice(
+            FlowPathKernelGraphIndex graph,
+            bool reverse,
+            int sectorCountX,
+            int allowedStartSectorX,
+            int allowedStartSectorY,
+            int allowedWidthSectors,
+            int allowedHeightSectors,
+            FlowPathKernelGraphCursor cursor,
+            int operationQuota)
+        {
+            RequireCreated();
+            if (m_HasPendingGraphSlice)
+                throw new InvalidOperationException("Flow path graph slice is already scheduled.");
+            if (graph == null || !graph.IsCreated)
+                throw new InvalidOperationException("Flow path graph slice requires a committed graph index.");
+            if (m_GraphSliceTargets.Length == 0)
+                throw new InvalidOperationException("Flow path graph slice targets were not configured.");
+            if (operationQuota <= 0)
+                throw new ArgumentOutOfRangeException(nameof(operationQuota));
+            if (sectorCountX <= 0)
+                throw new ArgumentOutOfRangeException(nameof(sectorCountX));
+            bool restricted = allowedWidthSectors > 0 || allowedHeightSectors > 0;
+            if (restricted && (allowedWidthSectors <= 0 || allowedHeightSectors <= 0))
+                throw new ArgumentException("Flow path graph slice restriction is incomplete.");
+            if (cursor.Stage == 1)
+            {
+                if (!graph.TryGetRange(reverse, cursor.CurrentNode, out FlowPathKernelGraphRange range)
+                    || cursor.EdgeCursor < 0
+                    || cursor.EdgeCursor > range.Count)
+                {
+                    throw new InvalidOperationException(
+                        $"Flow path graph cursor is outside its immutable adjacency range node={cursor.CurrentNode}, offset={cursor.EdgeCursor}.");
+                }
+                cursor.EdgeCursor += range.Start;
+                cursor.EdgeEnd = range.Start + range.Count;
+            }
+            m_PendingGraph = graph;
+            m_PendingGraphReverse = reverse;
+            m_PendingGraphSlice = new AdvanceGraphSliceJob
+            {
+                Reverse = reverse ? 1 : 0,
+                Targets = m_GraphSliceTargets,
+                SectorCountX = sectorCountX,
+                Restricted = restricted ? 1 : 0,
+                AllowedStartSectorX = allowedStartSectorX,
+                AllowedStartSectorY = allowedStartSectorY,
+                AllowedWidthSectors = allowedWidthSectors,
+                AllowedHeightSectors = allowedHeightSectors,
+                OperationQuota = operationQuota,
+                InitialCursor = cursor,
+                OutgoingEdges = graph.OutgoingEdges,
+                IncomingEdges = graph.IncomingEdges,
+                OutgoingRanges = graph.OutgoingRanges,
+                IncomingRanges = graph.IncomingRanges,
+                Costs = m_Costs,
+                Previous = m_Previous,
+                Settled = m_Settled,
+                Open = m_Open,
+                Metadata = m_Metadata
+            }.Schedule();
+            m_HasPendingGraphSlice = true;
+            JobHandle.ScheduleBatchedJobs();
+        }
+
+        public FlowPathKernelGraphSliceResult CompleteScheduledGraphSlice()
+        {
+            RequireCreated();
+            if (!m_HasPendingGraphSlice)
+                throw new InvalidOperationException("Flow path graph slice has no scheduled job.");
+            m_PendingGraphSlice.Complete();
+            m_HasPendingGraphSlice = false;
+            GraphSliceOutput output = m_Metadata.Value.GraphSliceOutput;
             if (output.Error != 0)
                 throw new InvalidOperationException($"Flow path graph slice failed with error={output.Error}.");
-            if (output.Cursor.Stage == 1)
+            if (output.CapacityMask != 0)
+                GrowExhaustedGraphSliceCapacity(output.CapacityMask);
+            FlowPathKernelGraphCursor cursor = output.Cursor;
+            if (cursor.Stage == 1)
             {
-                if (!graph.TryGetRange(reverse, output.Cursor.CurrentNode, out FlowPathKernelGraphRange range))
+                if (!m_PendingGraph.TryGetRange(m_PendingGraphReverse, cursor.CurrentNode, out FlowPathKernelGraphRange range))
                     throw new InvalidOperationException("Flow path graph slice returned a missing adjacency range.");
-                output.Cursor.EdgeCursor -= range.Start;
-                output.Cursor.EdgeEnd = range.Count;
+                cursor.EdgeCursor -= range.Start;
+                cursor.EdgeEnd = range.Count;
             }
             else
             {
-                output.Cursor.EdgeCursor = 0;
-                output.Cursor.EdgeEnd = 0;
+                cursor.EdgeCursor = 0;
+                cursor.EdgeEnd = 0;
             }
+            m_PendingGraph = null;
             return new FlowPathKernelGraphSliceResult(
                 output.OperationCount,
                 (FlowPathKernelGraphSliceStopReason)output.StopReason,
-                output.Cursor,
+                cursor,
                 output.RemainingTargets);
+        }
+
+        public bool TryCompleteScheduledGraphSlice(out FlowPathKernelGraphSliceResult result)
+        {
+            RequireCreated();
+            result = default(FlowPathKernelGraphSliceResult);
+            if (!m_HasPendingGraphSlice || !m_PendingGraphSlice.IsCompleted)
+                return false;
+            result = CompleteScheduledGraphSlice();
+            return true;
         }
 
         public bool TryGetCost(int node, out long cost)
         {
             RequireCreated();
+            RequireNoPendingGraphSlice();
             return m_Costs.TryGetValue(node, out cost);
         }
 
         public bool ContainsSettled(int node)
         {
             RequireCreated();
+            RequireNoPendingGraphSlice();
             return m_Settled.Contains(node);
         }
 
         public bool TryGetPrevious(int node, out int previous)
         {
             RequireCreated();
+            RequireNoPendingGraphSlice();
             return m_Previous.TryGetValue(node, out previous);
         }
 
         public void ShiftCosts(long delta)
         {
             RequireCreated();
+            RequireNoPendingGraphSlice();
             if (delta == 0L)
                 return;
             using (NativeArray<int> keys = m_Costs.GetKeyArray(Allocator.TempJob))
@@ -486,6 +581,7 @@ namespace AAAGame.FlowPath
         public bool ValidateAuthorityHashes()
         {
             RequireCreated();
+            RequireNoPendingGraphSlice();
             ulong costsHash = 0UL;
             foreach (var pair in m_Costs)
                 costsHash ^= CostToken(pair.Key, pair.Value);
@@ -521,8 +617,64 @@ namespace AAAGame.FlowPath
                 addSettled(node);
         }
 
+        public void ImportCompleted(
+            System.Collections.Generic.IReadOnlyDictionary<int, long> costs,
+            System.Collections.Generic.IReadOnlyDictionary<int, int> previous,
+            System.Collections.Generic.IReadOnlyCollection<int> settled,
+            int expansionCount)
+        {
+            RequireCreated();
+            RequireNoPendingGraphSlice();
+            if (costs == null || previous == null || settled == null)
+                throw new System.ArgumentNullException("Flow path kernel completed search data cannot be null.");
+            if (m_Costs.Count() != 0 || m_Previous.Count() != 0 || m_Settled.Count() != 0 || m_Open.Length != 0)
+                throw new System.InvalidOperationException("Flow path kernel completed search import requires an empty state.");
+            if (expansionCount < 0)
+                throw new System.ArgumentOutOfRangeException(nameof(expansionCount));
+
+            ulong costsHash = 0UL;
+            foreach (var pair in costs)
+            {
+                EnsureCapacityForNode(pair.Key, needsPrevious: false);
+                if (!m_Costs.TryAdd(pair.Key, pair.Value))
+                    throw new System.InvalidOperationException($"Flow path kernel completed cost import contains duplicate node={pair.Key}.");
+                costsHash ^= CostToken(pair.Key, pair.Value);
+            }
+
+            ulong previousHash = 0UL;
+            foreach (var pair in previous)
+            {
+                EnsureCapacityForNode(pair.Key, needsPrevious: true);
+                if (!m_Previous.TryAdd(pair.Key, pair.Value))
+                    throw new System.InvalidOperationException($"Flow path kernel completed previous import contains duplicate node={pair.Key}.");
+                previousHash ^= PreviousToken(pair.Key, pair.Value);
+            }
+
+            ulong settledHash = 0UL;
+            foreach (int node in settled)
+            {
+                EnsureSettledCapacity();
+                if (!m_Settled.Add(node))
+                    throw new System.InvalidOperationException($"Flow path kernel completed settled import contains duplicate node={node}.");
+                settledHash ^= NodeToken(node);
+            }
+
+            SearchMetadata metadata = m_Metadata.Value;
+            metadata.ExpansionCount = expansionCount;
+            metadata.CostsAuthorityHash = costsHash;
+            metadata.PreviousAuthorityHash = previousHash;
+            metadata.SettledAuthorityHash = settledHash;
+            metadata.OpenAuthorityHash = 0UL;
+            m_Metadata.Value = metadata;
+        }
+
         public void Dispose()
         {
+            if (m_HasPendingGraphSlice)
+            {
+                m_PendingGraphSlice.Complete();
+                m_HasPendingGraphSlice = false;
+            }
             if (m_Costs.IsCreated)
                 m_Costs.Dispose();
             if (m_Previous.IsCreated)
@@ -551,6 +703,12 @@ namespace AAAGame.FlowPath
             {
                 throw new ObjectDisposedException(nameof(FlowPathKernelSearchState));
             }
+        }
+
+        private void RequireNoPendingGraphSlice()
+        {
+            if (m_HasPendingGraphSlice)
+                throw new InvalidOperationException("Flow path search state is owned by a pending graph slice job.");
         }
 
         private void EnsureCapacityForNode(int node, bool needsPrevious)
@@ -1289,6 +1447,8 @@ namespace AAAGame.FlowPath
         private NativeReference<int> m_SliceOperationCount;
         private NativeReference<int> m_SliceStopReason;
         private NativeReference<int> m_Error;
+        private JobHandle m_PendingSlice;
+        private bool m_HasPendingSlice;
 
         public FlowPathKernelRouteState(int taskCapacity, int nodeCapacity)
         {
@@ -1314,6 +1474,8 @@ namespace AAAGame.FlowPath
         }
 
         public bool IsCreated => m_Tasks.IsCreated;
+        public bool HasPendingSlice => m_HasPendingSlice;
+        public bool IsPendingSliceCompleted => m_HasPendingSlice && m_PendingSlice.IsCompleted;
         public int TaskCount => m_Tasks.Length;
         public int L0NodeCount => m_L0Nodes.Length;
         public int ConvertedSectorCount => m_SectorIds.Length;
@@ -1549,7 +1711,53 @@ namespace AAAGame.FlowPath
             if (operationQuota <= 0)
                 throw new ArgumentOutOfRangeException(nameof(operationQuota));
 
-            new AdvanceRouteSliceJob
+            ScheduleSlice(
+                search,
+                witnessIndex,
+                mergeIndex,
+                searchAuthoritySlot,
+                hierarchyTraversalTaskType,
+                l0TraversalTaskType,
+                downwardTraversalTaskType,
+                connectorTraversalTaskType,
+                hierarchyPairTaskType,
+                pairTaskType,
+                witnessTraversalTaskType,
+                connectorBoundaryTaskType,
+                operationQuota);
+            return CompleteScheduledSlice();
+        }
+
+        public void ScheduleSlice(
+            FlowPathKernelSearchState search,
+            FlowPathKernelWitnessIndex witnessIndex,
+            FlowPathKernelRouteMergeIndex mergeIndex,
+            int searchAuthoritySlot,
+            int hierarchyTraversalTaskType,
+            int l0TraversalTaskType,
+            int downwardTraversalTaskType,
+            int connectorTraversalTaskType,
+            int hierarchyPairTaskType,
+            int pairTaskType,
+            int witnessTraversalTaskType,
+            int connectorBoundaryTaskType,
+            int operationQuota)
+        {
+            RequireCreated();
+            if (m_HasPendingSlice)
+                throw new InvalidOperationException("Flow path route slice is already scheduled.");
+            if (search == null || !search.IsCreated)
+                throw new InvalidOperationException("Flow path route slice requires a live search authority.");
+            if (search.HasPendingGraphSlice)
+                throw new InvalidOperationException("Flow path route slice cannot overlap a pending graph slice job.");
+            if (witnessIndex == null || !witnessIndex.IsCreated)
+                throw new InvalidOperationException("Flow path route slice requires a live witness index.");
+            if (mergeIndex == null || !mergeIndex.IsCreated)
+                throw new InvalidOperationException("Flow path route slice requires a live merge index.");
+            if (operationQuota <= 0)
+                throw new ArgumentOutOfRangeException(nameof(operationQuota));
+
+            m_PendingSlice = new AdvanceRouteSliceJob
             {
                 SearchAuthoritySlot = searchAuthoritySlot,
                 HierarchyTraversalTaskType = hierarchyTraversalTaskType,
@@ -1574,11 +1782,35 @@ namespace AAAGame.FlowPath
                 OperationCount = m_SliceOperationCount,
                 StopReason = m_SliceStopReason,
                 Error = m_Error
-            }.Run();
+            }.Schedule();
+            m_HasPendingSlice = true;
+            // Flush the worker queue at the hand-off boundary. This lets a
+            // short slice finish during the same logic update when available,
+            // while preserving the cross-tick pending state for longer work.
+            JobHandle.ScheduleBatchedJobs();
+        }
+
+        public FlowPathKernelRouteSliceResult CompleteScheduledSlice()
+        {
+            RequireCreated();
+            if (!m_HasPendingSlice)
+                throw new InvalidOperationException("Flow path route slice has no scheduled job.");
+            m_PendingSlice.Complete();
+            m_HasPendingSlice = false;
             ThrowOperationError("route slice");
             return new FlowPathKernelRouteSliceResult(
                 m_SliceOperationCount.Value,
                 (FlowPathKernelRouteSliceStopReason)m_SliceStopReason.Value);
+        }
+
+        public bool TryCompleteScheduledSlice(out FlowPathKernelRouteSliceResult result)
+        {
+            RequireCreated();
+            result = default(FlowPathKernelRouteSliceResult);
+            if (!m_HasPendingSlice || !m_PendingSlice.IsCompleted)
+                return false;
+            result = CompleteScheduledSlice();
+            return true;
         }
 
         public FlowPathKernelRouteSliceResult AdvanceConversionSlice(int startSectorId, int operationQuota)
@@ -1630,6 +1862,11 @@ namespace AAAGame.FlowPath
 
         public void Dispose()
         {
+            if (m_HasPendingSlice)
+            {
+                m_PendingSlice.Complete();
+                m_HasPendingSlice = false;
+            }
             if (m_Tasks.IsCreated)
                 m_Tasks.Dispose();
             if (m_L0Nodes.IsCreated)

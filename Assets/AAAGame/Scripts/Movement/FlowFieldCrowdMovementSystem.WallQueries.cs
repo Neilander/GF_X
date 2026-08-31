@@ -126,7 +126,8 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         int factionId = EntitySideHelper.ToFactionId(self.Side);
-        byte[] blockedMask = GetWallOverlayMask(agent.AgentTypeId, factionId, navigationClearance);
+        IReadOnlyList<LogicStaticCollisionObstacle> wallObstacles =
+            LogicWallRuntime.GetCollisionObstaclesForFaction(factionId);
         if (!TryFindShortestWallQueryPath(
                 startX,
                 startY,
@@ -140,6 +141,18 @@ public static partial class FlowFieldCrowdMovementSystem
             return false;
         }
 
+        if (!DoesResolvedPathIntersectWallGeometry(
+                startX,
+                startY,
+                noWallGoalIndex,
+                wallObstacles,
+                navigationClearance))
+        {
+            wallDistance = noWallDistance;
+            return true;
+        }
+
+        byte[] blockedMask = GetWallOverlayMask(agent.AgentTypeId, factionId, navigationClearance);
         if (!DoesResolvedPathUseWall(startX, startY, noWallGoalIndex, blockedMask))
         {
             wallDistance = noWallDistance;
@@ -158,6 +171,71 @@ public static partial class FlowFieldCrowdMovementSystem
             wallDistance = Fix64.FromRaw(long.MaxValue);
         }
         return true;
+    }
+
+    private static bool DoesResolvedPathIntersectWallGeometry(
+        int startX,
+        int startY,
+        int goalIndex,
+        IReadOnlyList<LogicStaticCollisionObstacle> obstacles,
+        Fix64 clearance)
+    {
+        if (obstacles == null)
+            throw new InvalidOperationException("Wall geometry path check received a null obstacle list.");
+        int startIndex = _world.GetIndex(startX, startY);
+        int current = goalIndex;
+        int guard = 0;
+        while (current != startIndex)
+        {
+            if (current < 0 || current >= _world.Width * _world.Height)
+                throw new InvalidOperationException($"Wall geometry path check reached invalid cell {current}.");
+            if (IsWallGeometryCellBlocked(current, obstacles, clearance))
+                return true;
+
+            int parent = DistanceEstimateParents[current];
+            if (parent < 0 || ++guard > _world.Width * _world.Height)
+                throw new InvalidOperationException("Wall geometry path check did not reach its start cell.");
+
+            int currentX = current % _world.Width;
+            int currentY = current / _world.Width;
+            int parentX = parent % _world.Width;
+            int parentY = parent / _world.Width;
+            if (currentX != parentX && currentY != parentY)
+            {
+                if (IsWallGeometryCellBlocked(_world.GetIndex(currentX, parentY), obstacles, clearance)
+                    || IsWallGeometryCellBlocked(_world.GetIndex(parentX, currentY), obstacles, clearance))
+                {
+                    return true;
+                }
+            }
+            current = parent;
+        }
+
+        return IsWallGeometryCellBlocked(startIndex, obstacles, clearance);
+    }
+
+    private static bool IsWallGeometryCellBlocked(
+        int cellIndex,
+        IReadOnlyList<LogicStaticCollisionObstacle> obstacles,
+        Fix64 clearance)
+    {
+        int x = cellIndex % _world.Width;
+        int y = cellIndex / _world.Width;
+        FixVector2 center = _world.GridToWorldCenterFixed(x, y);
+        Fix64 clearanceSquared = clearance * clearance;
+        for (int obstacleIndex = 0; obstacleIndex < obstacles.Count; obstacleIndex++)
+        {
+            LogicStaticCollisionObstacle obstacle = obstacles[obstacleIndex];
+            Fix64 dx = Fix64.Max(
+                Fix64.Abs(center.x - obstacle.Center.x) - obstacle.HalfExtents.x,
+                Fix64.Zero);
+            Fix64 dy = Fix64.Max(
+                Fix64.Abs(center.y - obstacle.Center.y) - obstacle.HalfExtents.y,
+                Fix64.Zero);
+            if (dx * dx + dy * dy <= clearanceSquared)
+                return true;
+        }
+        return false;
     }
 
     private static int BuildWallAttackGoalSet(

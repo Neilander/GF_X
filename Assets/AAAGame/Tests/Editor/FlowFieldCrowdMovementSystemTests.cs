@@ -276,6 +276,37 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsFalse(unreachableSettled);
     }
 
+    [Test]
+    public void FlowPathKernelGraphSlice跨Tick调度且Pending期间禁止读取()
+    {
+        using var graph = new AAAGame.FlowPath.FlowPathKernelGraphIndex(
+            new[] { new AAAGame.FlowPath.FlowPathKernelGraphEdge(0, 1, 7L) });
+        using var search = new AAAGame.FlowPath.FlowPathKernelSearchState(4);
+        search.AddSource(0, 0L);
+        search.SetGraphSliceTargets(new[] { 1 });
+
+        search.ScheduleGraphSlice(
+            graph,
+            reverse: false,
+            sectorCountX: 1,
+            allowedStartSectorX: 0,
+            allowedStartSectorY: 0,
+            allowedWidthSectors: 0,
+            allowedHeightSectors: 0,
+            cursor: default(AAAGame.FlowPath.FlowPathKernelGraphCursor),
+            operationQuota: 1);
+        Assert.IsTrue(search.HasPendingGraphSlice);
+        long ignoredCost;
+        Assert.Throws<InvalidOperationException>(() => search.TryGetCost(1, out ignoredCost));
+
+        AAAGame.FlowPath.FlowPathKernelGraphSliceResult result =
+            search.CompleteScheduledGraphSlice();
+        Assert.IsFalse(search.HasPendingGraphSlice);
+        Assert.Greater(result.OperationCount, 0);
+        Assert.IsTrue(search.TryGetCost(1, out long cost));
+        Assert.AreEqual(7L, cost);
+    }
+
     private static KernelSearchResult RunKernelGraphSearchToCompletion(
         AAAGame.FlowPath.FlowPathKernelGraphIndex graph,
         int quota,
@@ -10387,8 +10418,16 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(firstChaser, target.Position, 2f, out _));
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(secondChaser, target.Position, 2f, out _));
         Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestStableGoalReachabilityReuseCount());
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestIslandFieldValue(1, 2, out int firstStartIsland, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestIslandFieldValue(2, 2, out int secondStartIsland, out _));
+        Assert.AreEqual(
+            firstStartIsland,
+            secondStartIsland,
+            $"同一左侧连通区域的两个起点必须共享全局 island；first={firstStartIsland} second={secondStartIsland} " +
+            $"firstAnchor={FlowFieldCrowdMovementSystem.GetEditorTestMovingTargetAnchorDiagnostics(firstChaser.LogicEntityId.Value)} " +
+            $"secondAnchor={FlowFieldCrowdMovementSystem.GetEditorTestMovingTargetAnchorDiagnostics(secondChaser.LogicEntityId.Value)}");
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(firstChaser.LogicEntityId.Value, out _, out _, out _, out int firstX, out int firstY, out _));
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(secondChaser.LogicEntityId.Value, out int secondX, out int secondY, out _, out _, out _, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(secondChaser.LogicEntityId.Value, out _, out _, out _, out int secondX, out int secondY, out _));
         Assert.AreEqual(firstX, secondX);
         Assert.AreEqual(firstY, secondY);
 
@@ -12820,6 +12859,58 @@ public class FlowFieldCrowdMovementSystemTests
             out int goalY));
         Assert.AreEqual(62, goalX);
         Assert.AreEqual(2, goalY);
+    }
+
+    [Test]
+    public void NavigationPathRequest移动目标跨Sector在完成Request上原位重绑定GoalPolicy()
+    {
+        const int width = 128;
+        const int height = 4;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.EditorTestSectorSizeInCells = 4;
+        config.PathRequestOperationQuota = 1_000_000;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext target = CreateEntity(new Vector3(126.5f, 0f, 1.5f), false, 0, 0.18f);
+        SimEntityContext first = CreateEntity(new Vector3(0.5f, 0f, 1.5f), false, 0, 0.18f);
+        SimEntityContext second = CreateEntity(new Vector3(4.5f, 0f, 2.5f), false, 0, 0.18f);
+        var targets = new List<IEntityContext> { target };
+        first.TargetComp = new SimTargetingComp(first, targets) { CurrentTarget = target };
+        second.TargetComp = new SimTargetingComp(second, targets) { CurrentTarget = target };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 1f / 30f);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(first, target.PositionFixed, Fix64.One);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(second, target.PositionFixed, Fix64.One);
+        FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathGoalCell(
+            first.LogicEntityId.Value,
+            out int initialGoalX,
+            out _));
+        Assert.AreEqual(126, initialGoalX);
+
+        target.Position = new Vector3(122.5f, 0f, 1.5f);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 2f / 30f);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(first, target.PositionFixed, Fix64.One);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(second, target.PositionFixed, Fix64.One);
+        FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+
+        TestContext.Out.WriteLine(FlowFieldCrowdMovementSystem.GetEditorTestFramePathSearchDiagnostics());
+
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestFrameSectorCorridorExactGoalRebindCount(),
+            "moving target 跨 sector 且 hierarchy 边界满足统一平移时必须原位重绑定 goal policy。");
+        Assert.Zero(FlowFieldCrowdMovementSystem.GetEditorTestFrameSectorCorridorExactGoalReplacementCount());
+        Assert.Zero(FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathRequestCount());
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathGoalCell(
+            first.LogicEntityId.Value,
+            out int updatedGoalX,
+            out _));
+        Assert.AreEqual(122, updatedGoalX);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryValidateEditorTestSectorCorridorPolicyIncrementalAuthorityHashes(
+            out string authorityFailure), authorityFailure);
     }
 
     [Test]

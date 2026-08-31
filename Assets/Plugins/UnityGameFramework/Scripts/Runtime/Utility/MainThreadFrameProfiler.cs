@@ -194,7 +194,14 @@ namespace UnityGameFramework.Runtime
         FlowNavigationPathL0 = 183,
         FlowNavigationPathMaterialize = 184,
         FlowNavigationPathComplete = 185,
-        Count = 186
+        FlowSteeringPortalState = 186,
+        FlowSteeringFunnel = 187,
+        FlowSteeringGradient = 188,
+        FlowSteeringIntegration = 189,
+        FlowSteeringDiagnostics = 190,
+        FlowSteeringFunnelGridLos = 191,
+        FlowSteeringFunnelStaticSweep = 192,
+        Count = 193
     }
 
     public static class MainThreadFrameProfiler

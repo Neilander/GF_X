@@ -39,7 +39,7 @@ public class FlowFieldNavigationConfig : ScriptableObject
     public int SharedGoalBuildOperationQuota = 2048;
     [Tooltip("Maximum deterministic multi-source portal path operations processed per logic Tick.")]
     [Min(1)]
-    public int PathRequestOperationQuota = 2048;
+    public int PathRequestOperationQuota = 512;
     [Header("Debug")]
     [Tooltip("Run the fixed-point static collision solver in shadow mode without changing authoritative movement.")]
     public bool EnableDeterministicStaticCollisionShadow = true;

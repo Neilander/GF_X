@@ -68,6 +68,10 @@ public static partial class FlowFieldCrowdMovementSystem
         public PortalGraphSearchResult Search;
         public FlowPathKernelSearchState SearchState;
         public PortalHierarchyConnector Child;
+        // Request-scoped goal connectors are shared read-only authorities. Their
+        // native search state is released by the owning request, never by an
+        // individual source that merely references the connector.
+        public bool IsRequestShared;
 
         public bool ContainsSettled(int node)
         {
@@ -134,6 +138,14 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         public void Dispose()
+        {
+            if (IsRequestShared)
+                return;
+            SearchState?.Dispose();
+            SearchState = null;
+        }
+
+        public void DisposeOwnedSearchState()
         {
             SearchState?.Dispose();
             SearchState = null;
@@ -1708,9 +1720,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 Stopwatch.GetTimestamp() - connectorStartTicks);
         }
 
-        var replacementConnectors = new Dictionary<int, PortalHierarchyConnector>(ownerPolicy.HierarchyPolicies.Count);
         bool hasUniformDelta = false;
         long uniformDelta = 0L;
+        var replacementConnectors = new Dictionary<int, PortalHierarchyConnector>(ownerPolicy.HierarchyPolicies.Count);
         foreach (KeyValuePair<int, PortalHierarchyReversePolicy> pair in ownerPolicy.HierarchyPolicies)
         {
             int levelArrayIndex = pair.Key;
@@ -1745,15 +1757,23 @@ public static partial class FlowFieldCrowdMovementSystem
         if (!hasUniformDelta)
             return false;
 
+        PortalHierarchyConnector importedHighestConnector = ImportCompletedPortalHierarchyConnector(
+            highestConnector);
+        var importedConnectors = new Dictionary<int, PortalHierarchyConnector>(replacementConnectors.Count);
+        foreach (int levelArrayIndex in replacementConnectors.Keys)
+            importedConnectors.Add(
+                levelArrayIndex,
+                ResolvePortalHierarchyConnectorAtLevel(importedHighestConnector, levelArrayIndex));
+
         var previousConnectors = new HashSet<PortalHierarchyConnector>();
         foreach (PortalHierarchyReversePolicy existing in ownerPolicy.HierarchyPolicies.Values)
         {
-            for (PortalHierarchyConnector connector = existing?.GoalConnector;
+            if (existing == null || existing.GoalConnector == null)
+                throw new InvalidOperationException("Moving-target hierarchy policy contains an invalid goal connector.");
+            for (PortalHierarchyConnector connector = existing.GoalConnector;
                  connector != null;
                  connector = connector.Child)
-            {
                 previousConnectors.Add(connector);
-            }
         }
         foreach (KeyValuePair<int, PortalHierarchyReversePolicy> pair in ownerPolicy.HierarchyPolicies)
         {
@@ -1762,28 +1782,48 @@ public static partial class FlowFieldCrowdMovementSystem
             existing.GoalSectorId = goalSectorId;
             existing.GoalX = goalX;
             existing.GoalY = goalY;
-            existing.GoalConnector = replacementConnectors[pair.Key];
+            existing.GoalConnector = importedConnectors[pair.Key];
             existing.GoalConnectorAuthorityContentHash =
                 ComputePortalHierarchyConnectorAuthorityContentHash(existing.GoalConnector);
             existing.L0WitnessesByStartNode.Clear();
             existing.L0WitnessesAuthorityContentHash = 0UL;
         }
-        var replacementConnectorSet = new HashSet<PortalHierarchyConnector>();
-        foreach (PortalHierarchyConnector replacement in replacementConnectors.Values)
-        {
-            for (PortalHierarchyConnector connector = replacement;
-                 connector != null;
-                 connector = connector.Child)
-            {
-                replacementConnectorSet.Add(connector);
-            }
-        }
+        var importedConnectorSet = new HashSet<PortalHierarchyConnector>();
+        for (PortalHierarchyConnector connector = importedHighestConnector;
+             connector != null;
+             connector = connector.Child)
+            importedConnectorSet.Add(connector);
         foreach (PortalHierarchyConnector previous in previousConnectors)
         {
-            if (!replacementConnectorSet.Contains(previous))
+            if (!importedConnectorSet.Contains(previous))
                 previous.Dispose();
         }
         return true;
+    }
+
+    private static PortalHierarchyConnector ImportCompletedPortalHierarchyConnector(
+        PortalHierarchyConnector connector)
+    {
+        if (connector == null)
+            throw new InvalidOperationException("Moving-target hierarchy connector import encountered a null connector.");
+        connector.RequireSingleAuthority();
+        if (connector.Search == null)
+            throw new InvalidOperationException("Moving-target hierarchy connector import requires managed source data.");
+        var searchState = new FlowPathKernelSearchState(
+            System.Math.Max(16, checked(connector.Search.Costs.Count * 2)));
+        searchState.ImportCompleted(
+            connector.Search.Costs,
+            connector.Search.PreviousNode,
+            connector.Search.SettledNodes,
+            connector.Search.ExpansionCount);
+        return new PortalHierarchyConnector
+        {
+            TargetLevelIndex = connector.TargetLevelIndex,
+            SearchState = searchState,
+            Child = connector.Child == null
+                ? null
+                : ImportCompletedPortalHierarchyConnector(connector.Child)
+        };
     }
 
     private static PortalHierarchyConnector ResolvePortalHierarchyConnectorAtLevel(
@@ -1807,7 +1847,7 @@ public static partial class FlowFieldCrowdMovementSystem
         out long uniformDelta)
     {
         uniformDelta = 0L;
-        if (previousConnector?.Search == null || nextConnector?.Search == null)
+        if (previousConnector == null || nextConnector == null)
             throw new InvalidOperationException("Moving-target hierarchy rebind encountered an invalid goal connector.");
         PortalHierarchyLevel level = hierarchy.Levels[levelArrayIndex];
         int previousClusterId = ResolveHierarchyClusterId(_world, level, previousGoalSectorId);
