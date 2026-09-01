@@ -6,6 +6,7 @@ using System.Text;
 using AAAGame.FlowPath;
 using AAAGame.MiniMap.FOG3;
 using GameFramework;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
@@ -137,6 +138,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int DeterministicFlowTileCommitQuota = 8;
         public int FlowTileBuildOperationQuota = 2048;
         public int SharedGoalBuildOperationQuota = 2048;
+        public int MovingTargetProjectionOperationQuota = 2048;
         public int PathRequestOperationQuota = 512;
         public bool RequireAuthoredNavigationSource = true;
         public bool EnableDeterministicStaticCollisionShadow = true;
@@ -145,6 +147,44 @@ public static partial class FlowFieldCrowdMovementSystem
         public bool DrawNavigationDebug = false;
         public bool DrawFlowFieldDebug;
         public bool StrictNoFallback = true;
+    }
+
+    // Cost and traversal inputs are immutable for one committed world version.
+    // Tile workers share this backing rather than materializing a sector snapshot per request.
+    private sealed class FlowTileSectorInputBacking : IDisposable
+    {
+        public NativeArray<bool> Walkable;
+        public NativeArray<byte> TraversalMask;
+        public NativeArray<byte> CellCosts;
+        public int ReferenceCount = 1;
+
+        public void Acquire()
+        {
+            if (ReferenceCount <= 0)
+                throw new InvalidOperationException("Cannot acquire a disposed flow tile sector input backing.");
+            ReferenceCount = checked(ReferenceCount + 1);
+        }
+
+        public void ReleaseOwner()
+        {
+            Release();
+        }
+
+        public void Release()
+        {
+            if (ReferenceCount <= 0)
+                throw new InvalidOperationException("Flow tile sector input backing reference was released twice.");
+            ReferenceCount--;
+            if (ReferenceCount == 0)
+                Dispose();
+        }
+
+        public void Dispose()
+        {
+            if (Walkable.IsCreated) Walkable.Dispose();
+            if (TraversalMask.IsCreated) TraversalMask.Dispose();
+            if (CellCosts.IsCreated) CellCosts.Dispose();
+        }
     }
 
     private sealed class NavigationWorld
@@ -180,6 +220,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public Vector3[] CellNavAnchors;
         public FixVector2[] CellNavAnchorsFixedXZ;
         public byte[] NeighborTraversalMask;
+        public FlowTileSectorInputBacking[] FlowTileSectorInputBackings;
         public int[] IslandIds;
         public int IslandCount;
         public int MainIslandId;
@@ -188,6 +229,9 @@ public static partial class FlowFieldCrowdMovementSystem
         public int SectorCountX;
         public int SectorCountY;
         public SectorData[] Sectors;
+        // World-derived accelerator for exact reachable-goal projection. Its bucket
+        // contents are immutable after publication; query scratch is consumer-local.
+        public GoalProjectionSpatialIndex GoalProjectionSpatialIndex;
         public PortalData[] Portals;
         public FlowPathKernelGraphIndex L0SearchGraphIndex;
         public Dictionary<int, PortalData> PortalsById;
@@ -1561,16 +1605,74 @@ public static partial class FlowFieldCrowdMovementSystem
         public bool HasIntegrationDirectionsHandle;
         public NativeArray<int> IntegrationCostsNative;
         public NativeArray<byte> DirectionsNative;
-        public NativeArray<byte> WalkableNative;
-        public NativeArray<byte> TraversalMaskNative;
-        public NativeArray<byte> CellCostsNative;
-        public NativeArray<int> GoalIndicesNative;
+        public FlowTileSectorInputBacking SectorInputBacking;
+        public NativeArray<int> GoalLocalIndicesNative;
         public NativeArray<int> GoalSeedCostsNative;
         public NativeArray<byte> PortalHandoffNative;
         public NativeArray<int> ExternalXNative;
         public NativeArray<int> ExternalYNative;
         public NativeArray<int> ExternalCostsNative;
         public NativeArray<int> StatusNative;
+    }
+
+    private sealed class GoalProjectionSpatialIndex
+    {
+        public const int BucketSizeInCells = 8;
+
+        public int BucketCountX;
+        public int BucketCountY;
+        public GoalProjectionBucket[] Buckets;
+        public int[] QueryVisitStamps;
+        public int QueryVisitToken;
+        public int[] HeapBucketIds;
+        public Fix64[] HeapLowerBounds;
+        public int HeapCount;
+        // Row-major cell lists partitioned by finalized island. They remain
+        // useful for diagnostics, but runtime projection uses the hierarchy.
+        public int[][] IslandCellIndices;
+        public GoalProjectionHierarchyNode[] HierarchyNodes;
+        public int HierarchyRootNodeIndex;
+    }
+
+    // A node covers a power-of-two block of 8x8 leaf buckets. IslandIds is
+    // sorted, so a nearest-point query can reject an entire region before it
+    // reaches its cells. Leaf nodes reference one GoalProjectionBucket.
+    private sealed class GoalProjectionHierarchyNode
+    {
+        public int MinBucketX;
+        public int MinBucketY;
+        public int BucketSpan;
+        public int BucketId = -1;
+        public int Child0 = -1;
+        public int Child1 = -1;
+        public int Child2 = -1;
+        public int Child3 = -1;
+        public int[] IslandIds;
+    }
+
+    private sealed class GoalProjectionBucket
+    {
+        // Both arrays use the same cell-index order (row-major). Island ids are
+        // captured from the already-finalized component-to-island authority.
+        public int[] CellIndices;
+        public int[] IslandIds;
+    }
+
+    private sealed class GoalProjectionSpatialIndexBuildJob
+    {
+        public int ScanIndex;
+        public int FinalizeBucketCursor;
+        public List<int>[] BucketCellLists;
+        public List<int>[] IslandCellLists;
+        public GoalProjectionSpatialIndex WorkingIndex;
+        public List<GoalProjectionHierarchyNode> HierarchyNodes;
+        public int HierarchyLeafSpan;
+        public int HierarchyLeafCursor;
+        public int[] HierarchyCurrentLevelNodeIndices;
+        public int HierarchyCurrentLevelWidth;
+        public int HierarchyCurrentLevelHeight;
+        public int HierarchyParentCursor;
+        public List<int> HierarchyNextLevelNodeIndices;
     }
 
     private static bool AreIntArraysEqual(int[] left, int[] right)
@@ -2046,6 +2148,19 @@ public static partial class FlowFieldCrowdMovementSystem
         public int ReachabilityGoalY = -1;
         public int ReachabilityGoalSectorId = -1;
         public FixVector2 ReachabilityGoalWorldFixed;
+        // Projection is target-side authority. Source consumers never finish it.
+        public bool HasPendingProjection;
+        public int PendingProjectionWorldVersion = -1;
+        public int PendingProjectionRawGoalX = -1;
+        public int PendingProjectionRawGoalY = -1;
+        public FixVector2 PendingProjectionGoalWorldFixed;
+        public int PendingProjectionCellCursor;
+        public int PendingProjectionBestCellIndex = int.MaxValue;
+        public Fix64 PendingProjectionBestDistanceSquared = Fix64.FromRaw(long.MaxValue);
+        public int PendingProjectionLeafBucketId = -1;
+        public int PendingProjectionLeafCellCursor;
+        public readonly List<int> PendingProjectionNodeHeap = new List<int>(16);
+        public readonly List<Fix64> PendingProjectionNodeLowerBounds = new List<Fix64>(16);
         public bool HasPinnedSectorCorridorPolicy;
         public SectorCorridorPolicyKey PinnedSectorCorridorPolicyKey;
         public int LastUsedFrame = -1;
@@ -2451,6 +2566,7 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
+    [BurstCompile]
     private struct DeterministicFlowTileIntegrationDirectionsJob : IJob
     {
         public int Width;
@@ -2460,10 +2576,10 @@ public static partial class FlowFieldCrowdMovementSystem
         public bool IsPortalGoal;
         public NativeArray<int> IntegrationCosts;
         public NativeArray<byte> Directions;
-        [ReadOnly] public NativeArray<byte> Walkable;
+        [ReadOnly] public NativeArray<bool> Walkable;
         [ReadOnly] public NativeArray<byte> TraversalMask;
         [ReadOnly] public NativeArray<byte> CellCosts;
-        [ReadOnly] public NativeArray<int> GoalIndices;
+        [ReadOnly] public NativeArray<int> GoalLocalIndices;
         [ReadOnly] public NativeArray<int> GoalSeedCosts;
         [ReadOnly] public NativeArray<byte> PortalHandoff;
         [ReadOnly] public NativeArray<int> ExternalX;
@@ -2485,11 +2601,11 @@ public static partial class FlowFieldCrowdMovementSystem
             int heapCount = 0;
             for (int i = 0; i < GoalSeedCosts.Length; i++)
             {
-                int localIndex = GoalIndices[i];
+                int localIndex = GoalLocalIndices[i];
                 int seedCost = GoalSeedCosts[i];
                 if (localIndex < 0 || localIndex >= count || seedCost == int.MaxValue)
                     continue;
-                if (Walkable[localIndex] == 0 || seedCost < 0)
+                if (!Walkable[localIndex] || seedCost < 0)
                     continue;
                 if (seedCost < IntegrationCosts[localIndex])
                 {
@@ -2545,7 +2661,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     continue;
                 int worldX = StartX + localIndex % Width;
                 int worldY = StartY + localIndex / Width;
-                int goalIndex = GoalIndices[localIndex];
+                int goalIndex = FindGoalIndex(localIndex);
                 if (goalIndex >= 0)
                 {
                     if (IsPortalGoal)
@@ -2661,7 +2777,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     vertical = Math.Min(vertical, nextCost);
             }
 
-            int goalIndex = GoalIndices[localIndex];
+            int goalIndex = FindGoalIndex(localIndex);
             if (goalIndex >= 0 && goalIndex < ExternalCosts.Length && ExternalCosts[goalIndex] != int.MaxValue)
             {
                 int externalX = ExternalX[goalIndex];
@@ -2739,9 +2855,19 @@ public static partial class FlowFieldCrowdMovementSystem
             return worldX - StartX + (worldY - StartY) * Width;
         }
 
+        private int FindGoalIndex(int localIndex)
+        {
+            for (int i = 0; i < GoalLocalIndices.Length; i++)
+            {
+                if (GoalLocalIndices[i] == localIndex)
+                    return i;
+            }
+            return -1;
+        }
+
         private bool CanTraverse(int fromIndex, int toIndex, int dx, int dy)
         {
-            if (Walkable[fromIndex] == 0 || Walkable[toIndex] == 0)
+            if (!Walkable[fromIndex] || !Walkable[toIndex])
                 return false;
             int offset = OffsetIndex(dx, dy);
             if (offset < 0 || (TraversalMask[fromIndex] & (1 << offset)) == 0)
@@ -2754,8 +2880,8 @@ public static partial class FlowFieldCrowdMovementSystem
             int sideB = (fromX + dx) + (fromY) * Width;
             if (fromX + dx < 0 || fromX + dx >= Width || fromY + dy < 0 || fromY + dy >= Height)
                 return false;
-            return Walkable[sideA] != 0
-                   && Walkable[sideB] != 0
+            return Walkable[sideA]
+                   && Walkable[sideB]
                    && HasTraversal(fromIndex, sideA, 0, dy)
                    && HasTraversal(fromIndex, sideB, dx, 0)
                    && HasTraversal(sideA, toIndex, dx, 0)
@@ -2765,7 +2891,9 @@ public static partial class FlowFieldCrowdMovementSystem
         private bool HasTraversal(int fromIndex, int toIndex, int dx, int dy)
         {
             int offset = OffsetIndex(dx, dy);
-            return offset >= 0 && (TraversalMask[fromIndex] & (1 << offset)) != 0 && Walkable[toIndex] != 0;
+            return offset >= 0
+                   && (TraversalMask[fromIndex] & (1 << offset)) != 0
+                   && Walkable[toIndex];
         }
 
         private static int OffsetIndex(int dx, int dy)
@@ -3044,6 +3172,10 @@ public static partial class FlowFieldCrowdMovementSystem
     private static bool _staticCollisionObstacleSnapshotDirty = true;
     private static readonly Dictionary<int, CostStamp> CostStamps = new Dictionary<int, CostStamp>();
     private static readonly Dictionary<MovingTargetAnchorKey, MovingTargetAnchor> MovingTargetAnchors = new Dictionary<MovingTargetAnchorKey, MovingTargetAnchor>();
+    private static readonly LinkedList<MovingTargetAnchorKey> MovingTargetProjectionQueue =
+        new LinkedList<MovingTargetAnchorKey>();
+    private static readonly HashSet<MovingTargetAnchorKey> PendingMovingTargetProjectionKeys =
+        new HashSet<MovingTargetAnchorKey>();
     private static readonly HashSet<MovingTargetAnchorKey> ReferencedMovingTargetAnchorKeysScratch = new HashSet<MovingTargetAnchorKey>();
     private static readonly Dictionary<FlowTileCacheKey, FlowTileCacheEntry> FlowTileCache = new Dictionary<FlowTileCacheKey, FlowTileCacheEntry>();
     private static readonly Dictionary<FlowTileCacheKey, FlowTileCacheEntry> DeterministicFlowTileCache = new Dictionary<FlowTileCacheKey, FlowTileCacheEntry>();
@@ -3112,6 +3244,11 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly int[] CardinalOffsetY = { 0, 0, -1, 1 };
     private static readonly int[] CorridorAxisProbeOffsets = { -2, -1, 1, 2 };
     private static readonly Dictionary<long, List<AgentRuntimeData>> AgentSpatialBuckets = new Dictionary<long, List<AgentRuntimeData>>();
+    // Goal occupancy used to scan every registered agent for every candidate point.
+    // Keep separate position/goal indexes so the exact Fix64 distance test remains
+    // authoritative while the broad phase is bounded by the local bucket window.
+    private static readonly Dictionary<long, List<AgentRuntimeData>> NavigationGoalPositionBuckets = new Dictionary<long, List<AgentRuntimeData>>();
+    private static readonly Dictionary<long, List<AgentRuntimeData>> NavigationGoalTargetBuckets = new Dictionary<long, List<AgentRuntimeData>>();
     private static readonly List<AgentRuntimeData> NearbyAgentScratch = new List<AgentRuntimeData>(32);
     private static readonly List<AgentRuntimeData> CombatClusterScratch = new List<AgentRuntimeData>(16);
     private static readonly List<NavigationGoalReservation> NavigationGoalReservations = new List<NavigationGoalReservation>(128);
@@ -3399,18 +3536,155 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new ArgumentNullException(nameof(job));
         if (job.IntegrationCostsNative.IsCreated) job.IntegrationCostsNative.Dispose();
         if (job.DirectionsNative.IsCreated) job.DirectionsNative.Dispose();
-        if (job.WalkableNative.IsCreated) job.WalkableNative.Dispose();
-        if (job.TraversalMaskNative.IsCreated) job.TraversalMaskNative.Dispose();
-        if (job.CellCostsNative.IsCreated) job.CellCostsNative.Dispose();
-        if (job.GoalIndicesNative.IsCreated) job.GoalIndicesNative.Dispose();
+        if (job.GoalLocalIndicesNative.IsCreated) job.GoalLocalIndicesNative.Dispose();
         if (job.GoalSeedCostsNative.IsCreated) job.GoalSeedCostsNative.Dispose();
         if (job.PortalHandoffNative.IsCreated) job.PortalHandoffNative.Dispose();
         if (job.ExternalXNative.IsCreated) job.ExternalXNative.Dispose();
         if (job.ExternalYNative.IsCreated) job.ExternalYNative.Dispose();
         if (job.ExternalCostsNative.IsCreated) job.ExternalCostsNative.Dispose();
         if (job.StatusNative.IsCreated) job.StatusNative.Dispose();
+        if (job.SectorInputBacking != null)
+        {
+            job.SectorInputBacking.Release();
+            job.SectorInputBacking = null;
+        }
         job.HasIntegrationDirectionsHandle = false;
         job.IntegrationDirectionsHandle = default;
+    }
+
+    private static void ReplaceFlowTileWorldInputBackings(NavigationWorld world)
+    {
+        if (world == null)
+            throw new ArgumentNullException(nameof(world));
+        int cellCount = checked(world.Width * world.Height);
+        bool hasWholeCostField = world.CostField != null && world.CostField.Length == cellCount;
+        bool hasSectorCostFields = world.SectorCostFields != null
+                                   && world.Sectors != null
+                                   && world.SectorCostFields.Length == world.Sectors.Length;
+        if (world.WalkableMask == null || world.WalkableMask.Length != cellCount
+            || world.NeighborTraversalMask == null || world.NeighborTraversalMask.Length != cellCount
+            || (!hasWholeCostField && !hasSectorCostFields))
+        {
+            throw new InvalidOperationException(
+                $"Flow tile world input backing requires complete committed fields world={world.Version}, agentType={world.AgentTypeId}.");
+        }
+
+        DisposeFlowTileWorldInputBackings(world);
+        world.FlowTileSectorInputBackings = new FlowTileSectorInputBacking[world.Sectors.Length];
+        for (int sectorIndex = 0; sectorIndex < world.Sectors.Length; sectorIndex++)
+            world.FlowTileSectorInputBackings[sectorIndex] = CreateFlowTileSectorInputBacking(world, sectorIndex);
+    }
+
+    private static void EnsureFlowTileWorldInputBackings(NavigationWorld world)
+    {
+        if (world == null)
+            throw new ArgumentNullException(nameof(world));
+        if (world.FlowTileSectorInputBackings == null)
+            ReplaceFlowTileWorldInputBackings(world);
+        else if (world.FlowTileSectorInputBackings.Length != world.Sectors.Length)
+            throw new InvalidOperationException($"Flow tile world input backing count mismatch world={world.Version}.");
+    }
+
+    private static FlowTileSectorInputBacking CreateFlowTileSectorInputBacking(NavigationWorld world, int sectorIndex)
+    {
+        if (world == null || world.Sectors == null)
+            throw new InvalidOperationException("CreateFlowTileSectorInputBacking failed: world sectors are missing.");
+        SectorData sector = world.Sectors[sectorIndex]
+            ?? throw new InvalidOperationException($"Flow tile input backing sector is null index={sectorIndex}.");
+        int count = checked(sector.Width * sector.Height);
+        bool[] walkable = new bool[count];
+        byte[] traversal = new byte[count];
+        byte[] costs = new byte[count];
+        for (int y = 0; y < sector.Height; y++)
+        for (int x = 0; x < sector.Width; x++)
+        {
+            int local = x + y * sector.Width;
+            int worldIndex = world.GetIndex(sector.StartX + x, sector.StartY + y);
+            walkable[local] = world.WalkableMask[worldIndex];
+            traversal[local] = world.NeighborTraversalMask[worldIndex];
+            costs[local] = checked((byte)GetCostFieldValueStrict(world, sector.StartX + x, sector.StartY + y));
+        }
+        return new FlowTileSectorInputBacking
+        {
+            Walkable = new NativeArray<bool>(walkable, Allocator.Persistent),
+            TraversalMask = new NativeArray<byte>(traversal, Allocator.Persistent),
+            CellCosts = new NativeArray<byte>(costs, Allocator.Persistent)
+        };
+    }
+
+    private static void PrepareRuntimeDirtyFlowTileWorldInputBackings(RuntimeDirtyRebuildJob job)
+    {
+        if (job == null || job.TargetWorld == null || job.WorkingWorld == null)
+            throw new InvalidOperationException("PrepareRuntimeDirtyFlowTileWorldInputBackings failed: world is missing.");
+        if (job.WorkingWorld.FlowTileSectorInputBackings != null)
+            throw new InvalidOperationException("PrepareRuntimeDirtyFlowTileWorldInputBackings called twice.");
+        FlowTileSectorInputBacking[] source = job.TargetWorld.FlowTileSectorInputBackings;
+        if (source == null || source.Length != job.TargetWorld.Sectors.Length)
+            throw new InvalidOperationException("PrepareRuntimeDirtyFlowTileWorldInputBackings failed: target backing is missing.");
+        FlowTileSectorInputBacking[] result = new FlowTileSectorInputBacking[job.WorkingWorld.Sectors.Length];
+        try
+        {
+            for (int i = 0; i < result.Length; i++)
+            {
+                if (job.DirtySectors.Contains(i) || job.CostDirtySectors.Contains(i))
+                    result[i] = CreateFlowTileSectorInputBacking(job.WorkingWorld, i);
+                else
+                {
+                    FlowTileSectorInputBacking backing = source[i]
+                        ?? throw new InvalidOperationException($"PrepareRuntimeDirtyFlowTileWorldInputBackings found null source backing sector={i}.");
+                    backing.Acquire();
+                    result[i] = backing;
+                }
+            }
+            job.WorkingWorld.FlowTileSectorInputBackings = result;
+        }
+        catch
+        {
+            for (int i = 0; i < result.Length; i++)
+            {
+                if (result[i] == null)
+                    continue;
+                if (job.DirtySectors.Contains(i) || job.CostDirtySectors.Contains(i))
+                    result[i].ReleaseOwner();
+                else
+                    result[i].Release();
+            }
+            throw;
+        }
+    }
+
+    private static FlowTileSectorInputBacking RequireFlowTileSectorInputBacking(NavigationWorld world, int sectorId)
+    {
+        if (world == null)
+            throw new ArgumentNullException(nameof(world));
+        if (world.FlowTileSectorInputBackings == null || sectorId < 0 || sectorId >= world.FlowTileSectorInputBackings.Length)
+            throw new InvalidOperationException($"Flow tile sector input backing is missing world={world.Version} sector={sectorId}.");
+        FlowTileSectorInputBacking backing = world.FlowTileSectorInputBackings[sectorId];
+        SectorData sector = world.Sectors[sectorId];
+        int cellCount = checked(sector.Width * sector.Height);
+        if (backing == null
+            || !backing.Walkable.IsCreated || backing.Walkable.Length != cellCount
+            || !backing.TraversalMask.IsCreated || backing.TraversalMask.Length != cellCount
+            || !backing.CellCosts.IsCreated || backing.CellCosts.Length != cellCount)
+        {
+            throw new InvalidOperationException(
+                $"Flow tile world input backing is missing or invalid world={world.Version}, agentType={world.AgentTypeId}.");
+        }
+        return backing;
+    }
+
+    private static void DisposeFlowTileWorldInputBackings(NavigationWorld world)
+    {
+        if (world?.FlowTileSectorInputBackings == null)
+            return;
+        for (int i = 0; i < world.FlowTileSectorInputBackings.Length; i++)
+        {
+            FlowTileSectorInputBacking backing = world.FlowTileSectorInputBackings[i];
+            if (backing == null)
+                continue;
+            backing.ReleaseOwner();
+        }
+        world.FlowTileSectorInputBackings = null;
     }
 
     private static void ReturnRuntimeDirtyWorkingWorld(RuntimeDirtyRebuildJob job)
@@ -3421,6 +3695,8 @@ public static partial class FlowFieldCrowdMovementSystem
         NavigationWorld working = job?.WorkingWorld;
         if (working == null)
             return;
+
+        DisposeFlowTileWorldInputBackings(working);
 
         if (!ReferenceEquals(working.Hierarchy, job.TargetWorld?.Hierarchy))
             DisposeFlowPathKernelWitnessIndex(working.Hierarchy);
@@ -3658,10 +3934,11 @@ public static partial class FlowFieldCrowdMovementSystem
         SymmetrizeNeighborMask = 7,
         CostField = 8,
         IslandField = 9,
-        PortalGraph = 10,
-        Hierarchy = 11,
-        Commit = 12,
-        Complete = 13
+        GoalProjectionIndex = 10,
+        PortalGraph = 11,
+        Hierarchy = 12,
+        Commit = 13,
+        Complete = 14
     }
 
     private sealed class WorldBuildJob
@@ -3705,6 +3982,8 @@ public static partial class FlowFieldCrowdMovementSystem
         public int IslandMainSize;
         public bool IslandInitialized;
         public bool IslandBfsActive;
+        public GoalProjectionSpatialIndexBuildJob GoalProjectionIndexBuildJob;
+        public bool UsesPrebakedHierarchy;
         public RuntimeDirtyPortalStage PortalStage;
         public bool PortalInitialized;
         public List<PortalData> PortalRebuiltPortals;
@@ -3780,12 +4059,13 @@ public static partial class FlowFieldCrowdMovementSystem
         CostField = 5,
         IslandField = 6,
         SectorComponents = 7,
-        PortalGraph = 8,
-        Hierarchy = 9,
-        PrepareCommit = 10,
-        WorldHash = 11,
-        Commit = 12,
-        Complete = 13
+        GoalProjectionIndex = 8,
+        PortalGraph = 9,
+        Hierarchy = 10,
+        PrepareCommit = 11,
+        WorldHash = 12,
+        Commit = 13,
+        Complete = 14
     }
 
     private enum RuntimeDirtyCloneShellStage
@@ -3872,6 +4152,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int IslandUniformId;
         public bool IslandUniformMixed;
         public bool IslandMappingNeedsWrite;
+        public GoalProjectionSpatialIndexBuildJob GoalProjectionIndexBuildJob;
         public RuntimeDirtyPortalStage PortalStage;
         public bool PortalInitialized;
         public HashSet<int> PortalTransitionDirtySectors;
@@ -4114,6 +4395,9 @@ public static partial class FlowFieldCrowdMovementSystem
     private static int _nextPathHandleId = 1;
     private static int _lastAgentSpatialBucketFrame = -1;
     private static int _lastAgentSpatialBucketWorldVersion = -1;
+    private static int _lastNavigationGoalOccupancyBucketFrame = -1;
+    private static int _lastNavigationGoalOccupancyBucketWorldVersion = -1;
+    private static Fix64 _navigationGoalOccupancyMaximumThreshold = Fix64.Zero;
     private static int _lastAgentRegistrySyncFrame = -1;
     private static int _lastOverlapDiagnosticsFrame = -1;
     private static string _lastWorldDirtyReason = "initial";
@@ -4161,6 +4445,8 @@ public static partial class FlowFieldCrowdMovementSystem
         ClearNavigationPathRequests();
         _collectedNavigationSyncFrame = -1;
         AgentSpatialBuckets.Clear();
+        NavigationGoalPositionBuckets.Clear();
+        NavigationGoalTargetBuckets.Clear();
         NearbyAgentScratch.Clear();
         CircleObstacles.Clear();
         BoxObstacles.Clear();
@@ -4169,6 +4455,8 @@ public static partial class FlowFieldCrowdMovementSystem
         _staticCollisionObstacleSnapshotDirty = true;
         ClearCostStamps();
         MovingTargetAnchors.Clear();
+        MovingTargetProjectionQueue.Clear();
+        PendingMovingTargetProjectionKeys.Clear();
         CombatTargetSlotCache.Clear();
         AttackAreaCandidateCache.Clear();
         _attackAreaCandidateCacheFrame = int.MinValue;
@@ -4212,9 +4500,18 @@ public static partial class FlowFieldCrowdMovementSystem
         FixedCorridorLookupByWorldVersion.Clear();
         _fixedCorridorClassifiedCellCount = 0;
         _fixedCorridorExpandedCellCount = 0;
+#if UNITY_EDITOR
+        foreach (EditorNavigationPreviewWorld preview in EditorNavigationPreviewWorlds.Values)
+        {
+            if (preview?.World != null)
+                DisposeFlowTileWorldInputBackings(preview.World);
+        }
+        EditorNavigationPreviewWorlds.Clear();
+#endif
         foreach (WorldRuntimeState state in WorldStates.Values)
         {
             ReturnRuntimeDirtyWorkingWorld(state.RuntimeDirtyJob);
+            DisposeFlowTileWorldInputBackings(state.World);
             state.World?.L0SearchGraphIndex?.Dispose();
             if (state.World != null)
                 state.World.L0SearchGraphIndex = null;
@@ -4238,6 +4535,9 @@ public static partial class FlowFieldCrowdMovementSystem
         ResetDeterministicHashCheckpoint();
         _lastAgentSpatialBucketFrame = -1;
         _lastAgentSpatialBucketWorldVersion = -1;
+        _lastNavigationGoalOccupancyBucketFrame = -1;
+        _lastNavigationGoalOccupancyBucketWorldVersion = -1;
+        _navigationGoalOccupancyMaximumThreshold = Fix64.Zero;
         _lastAgentRegistrySyncFrame = -1;
         _lastOverlapDiagnosticsFrame = -1;
         _successfulMoveDiagnosticFrame = -1;
@@ -4327,8 +4627,12 @@ public static partial class FlowFieldCrowdMovementSystem
         Agents.Clear();
         OrderedAgentIds.Clear();
         AgentSpatialBuckets.Clear();
+        NavigationGoalPositionBuckets.Clear();
+        NavigationGoalTargetBuckets.Clear();
         NearbyAgentScratch.Clear();
         MovingTargetAnchors.Clear();
+        MovingTargetProjectionQueue.Clear();
+        PendingMovingTargetProjectionKeys.Clear();
         CombatTargetSlotCache.Clear();
         FixedPortalOwners.Clear();
         FixedPortalOwnerEvaluatedFrameByWorld.Clear();
@@ -4338,6 +4642,9 @@ public static partial class FlowFieldCrowdMovementSystem
         FixedCorridorLookupByWorldVersion.Clear();
         _lastAgentSpatialBucketFrame = -1;
         _lastAgentSpatialBucketWorldVersion = -1;
+        _lastNavigationGoalOccupancyBucketFrame = -1;
+        _lastNavigationGoalOccupancyBucketWorldVersion = -1;
+        _navigationGoalOccupancyMaximumThreshold = Fix64.Zero;
     }
 
 #if UNITY_EDITOR
@@ -4898,6 +5205,7 @@ public static partial class FlowFieldCrowdMovementSystem
         ProcessWorldBuildSymmetrizeNeighborMask(job, long.MaxValue, forceComplete: true);
         ProcessWorldBuildCostField(job, long.MaxValue, forceComplete: true);
         ProcessWorldBuildIslandField(job, long.MaxValue, forceComplete: true);
+        BuildGoalProjectionSpatialIndexImmediate(job.WorkingWorld);
         ProcessWorldBuildPortalGraph(job, long.MaxValue, forceComplete: true);
         if (job.WorkingWorld == null)
             throw new InvalidOperationException("BuildDerivedNavigationDataForAsset failed: working world is null after build.");
@@ -5327,6 +5635,7 @@ public static partial class FlowFieldCrowdMovementSystem
         world.Hierarchy = ImportPortalHierarchy(world, data.Hierarchy);
 
         ValidateImportedDerivedNavigationWorld(world);
+        ReplaceFlowTileWorldInputBackings(world);
         return world;
     }
 
@@ -5645,6 +5954,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 case RuntimeDirtyRebuildStage.SectorComponents:
                     ProcessRuntimeDirtySectorComponents(job, long.MaxValue, forceComplete: true);
                     break;
+                case RuntimeDirtyRebuildStage.GoalProjectionIndex:
+                    ProcessRuntimeDirtyGoalProjectionIndex(job, long.MaxValue, forceComplete: true);
+                    break;
                 case RuntimeDirtyRebuildStage.PortalGraph:
                     ProcessRuntimeDirtyPortalGraph(job, long.MaxValue, forceComplete: true);
                     break;
@@ -5663,6 +5975,8 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         pendingPortalAccessEntries = job.PendingPortalAccessEntries;
+        PrepareRuntimeDirtyFlowTileWorldInputBackings(job);
+        DisposeFlowTileWorldInputBackings(targetWorld);
         return job.WorkingWorld;
     }
 
@@ -5715,6 +6029,7 @@ public static partial class FlowFieldCrowdMovementSystem
         Config.DeterministicFlowTileCommitQuota = Mathf.Max(1, config.DeterministicFlowTileCommitQuota);
         Config.FlowTileBuildOperationQuota = Mathf.Max(1, config.FlowTileBuildOperationQuota);
         Config.SharedGoalBuildOperationQuota = Mathf.Max(1, config.SharedGoalBuildOperationQuota);
+        Config.MovingTargetProjectionOperationQuota = Mathf.Max(1, config.MovingTargetProjectionOperationQuota);
         Config.PathRequestOperationQuota = Mathf.Max(1, config.PathRequestOperationQuota);
         Config.RequireAuthoredNavigationSource = config.RequireAuthoredNavigationSource;
         Config.EnableDeterministicStaticCollisionShadow = config.EnableDeterministicStaticCollisionShadow;
@@ -5782,6 +6097,8 @@ public static partial class FlowFieldCrowdMovementSystem
         ActiveSharedGoalFieldDemandStartCells.Clear();
         s_NavigationDistancePrewarmCompleted = false;
         MovingTargetAnchors.Clear();
+        MovingTargetProjectionQueue.Clear();
+        PendingMovingTargetProjectionKeys.Clear();
         CombatTargetSlotCache.Clear();
         FixedPortalOwners.Clear();
         FixedPortalOwnerEvaluatedFrameByWorld.Clear();
@@ -5790,9 +6107,14 @@ public static partial class FlowFieldCrowdMovementSystem
         PendingFixedCorridorParticipantAgentIdsByWorld.Clear();
         FixedCorridorLookupByWorldVersion.Clear();
         AgentSpatialBuckets.Clear();
+        NavigationGoalPositionBuckets.Clear();
+        NavigationGoalTargetBuckets.Clear();
         NearbyAgentScratch.Clear();
         _lastAgentSpatialBucketFrame = -1;
         _lastAgentSpatialBucketWorldVersion = -1;
+        _lastNavigationGoalOccupancyBucketFrame = -1;
+        _lastNavigationGoalOccupancyBucketWorldVersion = -1;
+        _navigationGoalOccupancyMaximumThreshold = Fix64.Zero;
         foreach (KeyValuePair<int, AgentRuntimeData> pair in Agents)
         {
             ClearCommittedNavigationPath(pair.Value);
@@ -6196,10 +6518,25 @@ public static partial class FlowFieldCrowdMovementSystem
         WorldRuntimeState previousActiveWorldState = _activeWorldState;
         try
         {
+            // Target-side projection owns and validates its own immutable world.
+            // Do not make a ready world wait for an unrelated agent-type rebuild.
+            const long deadlineTicks = 0L;
+            long projectionStartTicks = Stopwatch.GetTimestamp();
+            BeginNavigationWorkBudget(Config.MovingTargetProjectionOperationQuota);
+            try
+            {
+                ProcessMovingTargetProjectionQueue();
+            }
+            finally
+            {
+                EndNavigationWorkBudget();
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowTileQueueMovingTargetProjection,
+                    Stopwatch.GetTimestamp() - projectionStartTicks);
+            }
+
             if (!CanProcessFlowTileBuildQueue())
                 return;
-
-            const long deadlineTicks = 0L;
             CurrentSteeringFlowTileBuildKeys.Clear();
             NextSteeringFlowTileBuildKeys.Clear();
 
@@ -7167,35 +7504,24 @@ public static partial class FlowFieldCrowdMovementSystem
 
         FlowTileCacheEntry tile = job.Tile;
         int count = checked(tile.Width * tile.Height);
+        FlowTileSectorInputBacking worldBacking = RequireFlowTileSectorInputBacking(_world, tile.Key.SectorId);
+        worldBacking.Acquire();
+        job.SectorInputBacking = worldBacking;
         job.IntegrationCostsNative = new NativeArray<int>(count, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         job.DirectionsNative = new NativeArray<byte>(count, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        job.WalkableNative = new NativeArray<byte>(count, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        job.TraversalMaskNative = new NativeArray<byte>(count, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        job.CellCostsNative = new NativeArray<byte>(count, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        job.GoalIndicesNative = new NativeArray<int>(count, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         int goalCount = tile.GoalCells?.Length ?? 0;
+        job.GoalLocalIndicesNative = new NativeArray<int>(goalCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         job.GoalSeedCostsNative = new NativeArray<int>(goalCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         job.PortalHandoffNative = new NativeArray<byte>(goalCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         job.ExternalXNative = new NativeArray<int>(goalCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         job.ExternalYNative = new NativeArray<int>(goalCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         job.ExternalCostsNative = new NativeArray<int>(goalCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         job.StatusNative = new NativeArray<int>(1, Allocator.Persistent, NativeArrayOptions.ClearMemory);
-        int heapCapacity = checked(Math.Max(64, count * 8 + goalCount + 1));
+        // A successful relaxation can be inserted at most once per directed
+        // cardinal edge, plus the initial wave-front seeds.
+        int heapCapacity = checked(Math.Max(64, count * 4 + goalCount));
         NativeArray<int> heapCosts = new NativeArray<int>(heapCapacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         NativeArray<int> heapIndices = new NativeArray<int>(heapCapacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-
-        for (int localIndex = 0; localIndex < count; localIndex++)
-        {
-            int worldX = tile.StartX + localIndex % tile.Width;
-            int worldY = tile.StartY + localIndex / tile.Width;
-            int worldIndex = _world.GetIndex(worldX, worldY);
-            job.WalkableNative[localIndex] = _world.WalkableMask[worldIndex] ? (byte)1 : (byte)0;
-            job.TraversalMaskNative[localIndex] = _world.NeighborTraversalMask[worldIndex];
-            if (!TryGetCostFieldValue(_world, worldX, worldY, out byte cellCost))
-                throw new InvalidOperationException($"Flow tile integration snapshot has no cost field cell=({worldX},{worldY}) key={FormatTileKey(tile.Key)}.");
-            job.CellCostsNative[localIndex] = cellCost;
-            job.GoalIndicesNative[localIndex] = -1;
-        }
 
         for (int goalIndex = 0; goalIndex < goalCount; goalIndex++)
         {
@@ -7203,7 +7529,7 @@ public static partial class FlowFieldCrowdMovementSystem
             if (!IsInsideSector(tile, goal.x, goal.y))
                 throw new InvalidOperationException($"Flow tile integration snapshot has an outside goal cell goal={goal} key={FormatTileKey(tile.Key)}.");
             int localIndex = tile.GetLocalIndex(goal.x, goal.y);
-            job.GoalIndicesNative[localIndex] = goalIndex;
+            job.GoalLocalIndicesNative[goalIndex] = localIndex;
             job.GoalSeedCostsNative[goalIndex] = job.GoalSeedCosts[goalIndex];
             job.PortalHandoffNative[goalIndex] = job.PortalHandoffDirectionIndices != null
                 ? job.PortalHandoffDirectionIndices[goalIndex]
@@ -7231,10 +7557,10 @@ public static partial class FlowFieldCrowdMovementSystem
             IsPortalGoal = tile.Key.GoalKind == TileGoalKind.Portal,
             IntegrationCosts = job.IntegrationCostsNative,
             Directions = job.DirectionsNative,
-            Walkable = job.WalkableNative,
-            TraversalMask = job.TraversalMaskNative,
-            CellCosts = job.CellCostsNative,
-            GoalIndices = job.GoalIndicesNative,
+            Walkable = worldBacking.Walkable,
+            TraversalMask = worldBacking.TraversalMask,
+            CellCosts = worldBacking.CellCosts,
+            GoalLocalIndices = job.GoalLocalIndicesNative,
             GoalSeedCosts = job.GoalSeedCostsNative,
             PortalHandoff = job.PortalHandoffNative,
             ExternalX = job.ExternalXNative,
@@ -7249,6 +7575,7 @@ public static partial class FlowFieldCrowdMovementSystem
         job.Stage = FlowTileBuildStage.Integrate;
         heapCosts.Dispose(job.IntegrationDirectionsHandle);
         heapIndices.Dispose(job.IntegrationDirectionsHandle);
+        JobHandle.ScheduleBatchedJobs();
     }
 
     private static void CopyCompletedDeterministicFlowTilePayload(FlowTileBuildJob job)
@@ -7267,9 +7594,18 @@ public static partial class FlowFieldCrowdMovementSystem
 
         DisposeDeterministicFlowTileIntegrationJobPayloads(job);
         job.Cursor = 0;
-        job.Stage = job.Tile.Key.GoalKind == TileGoalKind.Portal
-            ? FlowTileBuildStage.PortalSlots
-            : FlowTileBuildStage.DiagnosticShadow;
+        if (job.Tile.Key.GoalKind == TileGoalKind.Portal)
+        {
+            job.SlotTraceCursor = -1;
+            job.SlotTraceLocalIndices.Clear();
+            job.Tile.DeterministicPortalTargetSlotIndices = new ushort[count];
+            job.Stage = FlowTileBuildStage.PortalSlots;
+        }
+        else
+        {
+            job.Tile.DeterministicPortalTargetSlotIndices = null;
+            job.Stage = FlowTileBuildStage.DiagnosticShadow;
+        }
     }
 
     private static void AdvanceDeterministicFlowTileSeed(FlowTileBuildJob job)
@@ -7319,107 +7655,6 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         throw new InvalidOperationException(
             $"Portal potential shape materialization is no longer a valid build stage key={FormatTileKey(job?.Tile?.Key ?? default)}.");
-    }
-
-    private static void AdvanceDeterministicFlowTileIntegration(FlowTileBuildJob job)
-    {
-        FlowTileCacheEntry tile = job.Tile ?? throw new InvalidOperationException("Flow integration has no tile.");
-        if (job.OpenSet == null)
-            throw new InvalidOperationException($"Flow integration has no open set key={FormatTileKey(tile.Key)}.");
-        if (job.OpenSet.Count == 0)
-        {
-            job.Cursor = 0;
-            job.Stage = FlowTileBuildStage.Directions;
-            return;
-        }
-
-        DeterministicFlowNode node = job.OpenSet.Pop();
-        int[] costs = tile.DeterministicIntegrationCosts;
-        if (node.Cost != costs[node.Index])
-            return;
-        int worldX = tile.StartX + node.Index % tile.Width;
-        int worldY = tile.StartY + node.Index / tile.Width;
-        for (int directionIndex = 0; directionIndex < CardinalOffsetX.Length; directionIndex++)
-        {
-            int nextX = worldX + CardinalOffsetX[directionIndex];
-            int nextY = worldY + CardinalOffsetY[directionIndex];
-            if (!IsInsideSector(tile, nextX, nextY)
-                || !CanTraverseNeighborCells(_world, nextX, nextY, worldX, worldY))
-            {
-                continue;
-            }
-            int candidateCost = ResolveDeterministicEikonalIntegrationCost(
-                tile,
-                costs,
-                nextX,
-                nextY,
-                job.PortalExternalCells,
-                job.PortalExternalCosts);
-            int nextIndex = tile.GetLocalIndex(nextX, nextY);
-            if (candidateCost >= costs[nextIndex])
-                continue;
-            costs[nextIndex] = candidateCost;
-            job.OpenSet.Push(candidateCost, nextIndex);
-        }
-    }
-
-    private static void AdvanceDeterministicFlowTileDirections(FlowTileBuildJob job)
-    {
-        FlowTileCacheEntry tile = job.Tile ?? throw new InvalidOperationException("Flow direction pass has no tile.");
-        int count = tile.Width * tile.Height;
-        if (job.Cursor < 0 || job.Cursor >= count)
-            throw new InvalidOperationException($"Flow direction cursor is invalid cursor={job.Cursor}, key={FormatTileKey(tile.Key)}.");
-        int localIndex = job.Cursor++;
-        int[] costs = tile.DeterministicIntegrationCosts;
-        if (costs[localIndex] != int.MaxValue)
-        {
-            int worldX = tile.StartX + localIndex % tile.Width;
-            int worldY = tile.StartY + localIndex / tile.Width;
-            int goalCellIndex = IndexOfGoalCell(tile.GoalCells, worldX, worldY);
-            if (goalCellIndex >= 0)
-            {
-                if (tile.Key.GoalKind == TileGoalKind.Portal)
-                    tile.DeterministicFlowDirectionIndices[localIndex] = job.PortalHandoffDirectionIndices[goalCellIndex];
-            }
-            else
-            {
-                int bestCost = costs[localIndex];
-                int bestDirectionIndex = -1;
-                for (int directionIndex = 0; directionIndex < NeighborOffsetX.Length; directionIndex++)
-                {
-                    int nextX = worldX + NeighborOffsetX[directionIndex];
-                    int nextY = worldY + NeighborOffsetY[directionIndex];
-                    if (!IsInsideSector(tile, nextX, nextY)
-                        || !CanTraverseNeighborCells(_world, worldX, worldY, nextX, nextY))
-                    {
-                        continue;
-                    }
-                    int nextCost = costs[tile.GetLocalIndex(nextX, nextY)];
-                    if (nextCost >= bestCost)
-                        continue;
-                    bestCost = nextCost;
-                    bestDirectionIndex = directionIndex;
-                }
-                if (bestDirectionIndex >= 0)
-                    tile.DeterministicFlowDirectionIndices[localIndex] = checked((byte)(bestDirectionIndex + 1));
-            }
-        }
-        if (job.Cursor < count)
-            return;
-
-        job.Cursor = 0;
-        if (tile.Key.GoalKind == TileGoalKind.Portal)
-        {
-            job.SlotTraceCursor = -1;
-            job.SlotTraceLocalIndices.Clear();
-            tile.DeterministicPortalTargetSlotIndices = new ushort[count];
-            job.Stage = FlowTileBuildStage.PortalSlots;
-        }
-        else
-        {
-            tile.DeterministicPortalTargetSlotIndices = null;
-            job.Stage = FlowTileBuildStage.DiagnosticShadow;
-        }
     }
 
     private static void AdvanceDeterministicPortalSlotPass(FlowTileBuildJob job)
@@ -11272,7 +11507,9 @@ public static partial class FlowFieldCrowdMovementSystem
             .Append(", sharedCount=").Append(PendingSharedGoalFieldBuildJobs.Count)
             .Append(", sharedJobs=").Append(BuildPendingSharedGoalFieldJobDiagnostics())
             .Append(", pathRequestCount=").Append(PendingNavigationPathRequests.Count)
-            .Append(", pathRequests=").Append(GetEditorTestPendingNavigationPathRequestDiagnostics());
+            .Append(", pathRequests=").Append(GetEditorTestPendingNavigationPathRequestDiagnostics())
+            .Append(", movingProjectionCount=").Append(MovingTargetProjectionQueue.Count)
+            .Append(", movingProjectionJobs=").Append(BuildPendingMovingTargetProjectionDiagnostics());
         return builder.ToString();
     }
 
@@ -11436,13 +11673,79 @@ public static partial class FlowFieldCrowdMovementSystem
 
             return $"movingAnchor=key(target:{key.TargetId},agentType:{key.AgentTypeId},island:{key.IslandId}) " +
                    $"activeRaw=({anchor.RawGoalX},{anchor.RawGoalY}) active=({anchor.ActiveGoalX},{anchor.ActiveGoalY}) activeSector={anchor.ActiveGoalSectorId} activeWorld={anchor.ActiveGoalWorld} activeVersion={anchor.ActiveWorldVersion} " +
-                   $"queue={SharedGoalFieldBuildQueue.Count} pendingKeys={PendingSharedGoalFieldBuildJobs.Count} sharedCache={SharedGoalFields.Count} sharedJobs={BuildPendingSharedGoalFieldJobDiagnostics()}";
+                   $"projection=(pending={anchor.HasPendingProjection},world={anchor.PendingProjectionWorldVersion},raw=({anchor.PendingProjectionRawGoalX},{anchor.PendingProjectionRawGoalY}),leaf={anchor.PendingProjectionLeafBucketId}:{anchor.PendingProjectionLeafCellCursor},cells={anchor.PendingProjectionCellCursor},frontier={anchor.PendingProjectionNodeHeap.Count},best={anchor.PendingProjectionBestCellIndex}) " +
+                   $"projectionQueue={MovingTargetProjectionQueue.Count} queue={SharedGoalFieldBuildQueue.Count} pendingKeys={PendingSharedGoalFieldBuildJobs.Count} sharedCache={SharedGoalFields.Count} sharedJobs={BuildPendingSharedGoalFieldJobDiagnostics()}";
         }
         finally
         {
             _world = previousWorld;
             _activeWorldState = previousActiveWorldState;
         }
+    }
+
+    public static int GetEditorTestMovingTargetProjectionQueueCount()
+    {
+        return MovingTargetProjectionQueue.Count;
+    }
+
+    public static bool TryGetEditorTestMovingTargetProjectionState(
+        int targetId,
+        int agentTypeId,
+        int islandId,
+        out bool pending,
+        out int rawGoalX,
+        out int rawGoalY,
+        out int processedCells,
+        out int frontierCount,
+        out int publishedGoalX,
+        out int publishedGoalY)
+    {
+        var key = new MovingTargetAnchorKey(targetId, ResolvePreferredAgentTypeId(agentTypeId), islandId);
+        if (!MovingTargetAnchors.TryGetValue(key, out MovingTargetAnchor anchor) || anchor == null)
+        {
+            pending = false;
+            rawGoalX = -1;
+            rawGoalY = -1;
+            processedCells = 0;
+            frontierCount = 0;
+            publishedGoalX = -1;
+            publishedGoalY = -1;
+            return false;
+        }
+
+        pending = anchor.HasPendingProjection;
+        rawGoalX = anchor.PendingProjectionRawGoalX;
+        rawGoalY = anchor.PendingProjectionRawGoalY;
+        processedCells = anchor.PendingProjectionCellCursor;
+        frontierCount = anchor.PendingProjectionNodeHeap.Count;
+        publishedGoalX = anchor.ActiveGoalX;
+        publishedGoalY = anchor.ActiveGoalY;
+        return true;
+    }
+
+    private static string BuildPendingMovingTargetProjectionDiagnostics()
+    {
+        var builder = new StringBuilder(256);
+        bool wrote = false;
+        foreach (MovingTargetAnchorKey key in MovingTargetProjectionQueue)
+        {
+            if (!MovingTargetAnchors.TryGetValue(key, out MovingTargetAnchor anchor) || anchor == null)
+                throw new InvalidOperationException("Moving-target projection diagnostics found a missing anchor.");
+            if (!anchor.HasPendingProjection)
+                throw new InvalidOperationException("Moving-target projection diagnostics found a non-pending anchor in the queue.");
+            if (wrote)
+                builder.Append(" | ");
+            wrote = true;
+            builder.Append("{key=").Append(key.TargetId).Append('/').Append(key.AgentTypeId).Append('/').Append(key.IslandId)
+                .Append(",world=").Append(anchor.PendingProjectionWorldVersion)
+                .Append(",raw=(").Append(anchor.PendingProjectionRawGoalX).Append(',').Append(anchor.PendingProjectionRawGoalY).Append(')')
+                .Append(",cells=").Append(anchor.PendingProjectionCellCursor)
+                .Append(",leaf=").Append(anchor.PendingProjectionLeafBucketId).Append(':').Append(anchor.PendingProjectionLeafCellCursor)
+                .Append(",frontier=").Append(anchor.PendingProjectionNodeHeap.Count)
+                .Append(",best=").Append(anchor.PendingProjectionBestCellIndex)
+                .Append('}');
+        }
+        return builder.ToString();
     }
 
     private static string BuildSharedGoalFieldStateDiagnostic(int goalSectorId, int goalX, int goalY, int agentTypeId)
@@ -14721,6 +15024,12 @@ public static partial class FlowFieldCrowdMovementSystem
                     elapsedTicks);
             }
 
+            // A target-side projection can be pending before any path request
+            // exists. The source has already received its explicit prepared
+            // navigation snapshot; dispatch starts only after publication.
+            if (demand == null)
+                continue;
+
             phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             if (!TryReuseNavigationPathDemand(demand))
                 EnqueueNavigationPathDemand(demand);
@@ -14848,6 +15157,33 @@ public static partial class FlowFieldCrowdMovementSystem
         agent.NavState.CommittedMovingTargetId = int.MinValue;
     }
 
+    private static void PreparePendingMovingTargetProjectionNavigation(
+        AgentRuntimeData agent,
+        int movingTargetId,
+        int startSectorId,
+        FixVector2 inputGoal,
+        Fix64 maximumTravelDistance)
+    {
+        if (agent == null)
+            throw new ArgumentNullException(nameof(agent));
+        if (movingTargetId == int.MinValue)
+            throw new InvalidOperationException("Pending target projection requires a moving target id.");
+        if (startSectorId < 0)
+            throw new InvalidOperationException("Pending target projection requires a valid start sector.");
+
+        AgentNavState nav = agent.NavState;
+        ClearCommittedNavigationPath(agent);
+        nav.HasPendingNavigation = true;
+        RemoveFixedPortalParticipation(agent.Id);
+        nav.PreparedNavigationGoalFixed = inputGoal;
+
+        nav.StableGoalTargetId = movingTargetId;
+        nav.PreparedNavigationFrame = GetFrameCount();
+        nav.HasPreparedNavigationSnapshot = true;
+        nav.PreparedInputGoalFixed = inputGoal;
+        nav.PreparedMaximumTravelDistanceFixed = maximumTravelDistance;
+    }
+
     private static bool RequiresPreparedNavigationSnapshot()
     {
         if (LogicFrameRuntime.IsTimelineRunning)
@@ -14926,7 +15262,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 out int finalGoalX,
                 out int finalGoalY,
                 out FixVector2 finalGoalPosition,
-                out bool useSectorCorridorPolicy);
+                out bool useSectorCorridorPolicy,
+                out bool pendingProjection);
         if (profile)
         {
             MainThreadFrameProfiler.Record(
@@ -14935,6 +15272,11 @@ public static partial class FlowFieldCrowdMovementSystem
         }
         if (!goalResolved)
         {
+            if (pendingProjection)
+            {
+                failureReason = $"moving-target projection pending source={source.CharacterKey}";
+                return false;
+            }
             failureReason = $"goal reachability failed source={source.CharacterKey} {BuildGoalResolutionFailure(source, ToWorldVector3(goalPosition))}";
             return false;
         }
@@ -16494,11 +16836,15 @@ public static partial class FlowFieldCrowdMovementSystem
         AgentRuntimeData agent,
         Fix64 maximumTravelDistance)
     {
+#if UNITY_EDITOR
+        if (LogicFrameRuntime.IsTimelineRunning || _editorTestRequirePreparedNavigationSnapshot)
+            throw new InvalidOperationException("Editor direct flow-tile commit cannot run while prepared navigation snapshots are required.");
         if (agent?.NavState?.PathHandle == null)
             throw new InvalidOperationException("CommitSteeringReadDomainFlowTilePayloadsForCurrentTick failed: agent path is missing.");
         if (maximumTravelDistance < Fix64.Zero)
             throw new ArgumentOutOfRangeException(nameof(maximumTravelDistance), maximumTravelDistance, "Maximum travel distance cannot be negative.");
 
+        EnqueueSteeringReadDomainFlowTileBuilds(agent, maximumTravelDistance);
         PathHandle handle = agent.NavState.PathHandle;
         ResolveSteeringReadCorridor(
             handle,
@@ -16515,6 +16861,7 @@ public static partial class FlowFieldCrowdMovementSystem
             startIndex,
             maximumTravelDistance);
         int committedCount = 0;
+        PathHandle directBuildSnapshot = null;
         long commitStartTicks = Stopwatch.GetTimestamp();
         for (int index = endIndex; index >= startIndex; index--)
         {
@@ -16530,8 +16877,23 @@ public static partial class FlowFieldCrowdMovementSystem
             if (DeterministicFlowTileCache.ContainsKey(key))
                 continue;
             if (FindPendingFlowTileBuildJob(key) == null)
-                throw new InvalidOperationException(
-                    $"CommitSteeringReadDomainFlowTilePayloadsForCurrentTick found neither committed nor pending tile key={FormatTileKey(key)}.");
+            {
+                directBuildSnapshot ??= CreateSteeringReadDomainBuildSnapshot(
+                    handle,
+                    sectorIds,
+                    portalIds,
+                    startIndex,
+                    goalX,
+                    goalY,
+                    usesCommittedCorridor);
+                EnqueueFlowTileBuildJob(
+                    directBuildSnapshot,
+                    index,
+                    goalX,
+                    goalY,
+                    agent.AgentTypeId);
+            }
+            committedCount += CommitEditorDirectFlowTilePayload(key);
         }
         _perf.RequiredFlowTileCommits += committedCount;
         _perf.FlowTileQueueTicks += Stopwatch.GetTimestamp() - commitStartTicks;
@@ -16541,7 +16903,39 @@ public static partial class FlowFieldCrowdMovementSystem
             RefreshFlowTileReferenceCounts();
             TrimTileCache();
         }
+#else
+        throw new InvalidOperationException("Direct steering flow-tile commit is unavailable outside Editor tests.");
+#endif
     }
+
+#if UNITY_EDITOR
+    private static int CommitEditorDirectFlowTilePayload(FlowTileCacheKey requiredKey)
+    {
+        LinkedListNode<FlowTileBuildJob> requiredNode = FindPendingFlowTileBuildJob(requiredKey);
+        if (requiredNode == null)
+        {
+            throw new InvalidOperationException(
+                $"CommitEditorDirectFlowTilePayload found neither committed nor pending tile key={FormatTileKey(requiredKey)}.");
+        }
+
+        FlowTileBuildJob requiredJob = requiredNode.Value;
+        if (IsFlowTileBuildJobStale(requiredJob))
+            throw new InvalidOperationException($"CommitEditorDirectFlowTilePayload found a stale tile key={FormatTileKey(requiredKey)}.");
+
+        int remainingOperations = int.MaxValue;
+        while (!AdvanceDeterministicFlowTileBuildJob(requiredJob, ref remainingOperations))
+        {
+            if (requiredJob.HasIntegrationDirectionsHandle)
+                requiredJob.IntegrationDirectionsHandle.Complete();
+            if (remainingOperations <= 0)
+                throw new InvalidOperationException($"CommitEditorDirectFlowTilePayload exhausted operation range key={FormatTileKey(requiredKey)}.");
+        }
+        FlowTileBuildQueue.Remove(requiredNode);
+        if (!PendingFlowTileBuildJobs.Remove(requiredKey))
+            throw new InvalidOperationException($"CommitEditorDirectFlowTilePayload lost pending index key={FormatTileKey(requiredKey)}.");
+        return 1;
+    }
+#endif
 
     private static FixVector2 ResolveSpatiallyInterpolatedDeterministicGradientFixed(
         PathHandle handle,
@@ -20537,6 +20931,73 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
+    private static long ResolveNavigationGoalBucketKey(FixVector2 point)
+    {
+        Vector3 worldPoint = ToWorldVector3(point);
+        ResolveSpatialBucketCell(worldPoint, out int cellX, out int cellY);
+        return BuildSpatialBucketKey(cellX, cellY);
+    }
+
+    private static void AddNavigationGoalBucketEntry(
+        Dictionary<long, List<AgentRuntimeData>> buckets,
+        long key,
+        AgentRuntimeData agent)
+    {
+        if (!buckets.TryGetValue(key, out List<AgentRuntimeData> bucket))
+        {
+            bucket = new List<AgentRuntimeData>(4);
+            buckets.Add(key, bucket);
+        }
+        bucket.Add(agent);
+    }
+
+    private static void EnsureNavigationGoalOccupancyBuckets()
+    {
+        if (_world == null)
+            throw new InvalidOperationException("EnsureNavigationGoalOccupancyBuckets failed: world is null.");
+
+        int frame = GetFrameCount();
+        int worldVersion = _world.Version;
+        if (_lastNavigationGoalOccupancyBucketFrame == frame
+            && _lastNavigationGoalOccupancyBucketWorldVersion == worldVersion)
+        {
+            return;
+        }
+
+        // Spatial state is synchronized once per logical frame before this broad
+        // phase. Reusing that snapshot keeps occupancy lookup out of the entity loop.
+        SyncRegisteredAgentSpatialState(frame);
+        NavigationGoalPositionBuckets.Clear();
+        NavigationGoalTargetBuckets.Clear();
+        _navigationGoalOccupancyMaximumThreshold = Fix64.Zero;
+        for (int i = 0; i < OrderedAgentIds.Count; i++)
+        {
+            if (!Agents.TryGetValue(OrderedAgentIds[i], out AgentRuntimeData agent) || agent == null)
+                throw new InvalidOperationException(
+                    $"EnsureNavigationGoalOccupancyBuckets failed: ordered agent is missing id={OrderedAgentIds[i]}.");
+
+            AddNavigationGoalBucketEntry(
+                NavigationGoalPositionBuckets,
+                ResolveNavigationGoalBucketKey(agent.PositionFixed),
+                agent);
+
+            Fix64 agentThreshold = agent.RadiusFixed * (Fix64)2 + NavigationGoalOccupancyPadding;
+            if (agentThreshold > _navigationGoalOccupancyMaximumThreshold)
+                _navigationGoalOccupancyMaximumThreshold = agentThreshold;
+
+            if (ShouldUseAgentNavigationGoalAsOccupancyFixed(agent))
+            {
+                AddNavigationGoalBucketEntry(
+                    NavigationGoalTargetBuckets,
+                    ResolveNavigationGoalBucketKey(agent.NavState.LastGoalWorldFixed),
+                    agent);
+            }
+        }
+
+        _lastNavigationGoalOccupancyBucketFrame = frame;
+        _lastNavigationGoalOccupancyBucketWorldVersion = worldVersion;
+    }
+
     private static List<AgentRuntimeData> CollectNearbyDynamicNeighbors(AgentRuntimeData self, float avoidRadius)
     {
         if (self == null)
@@ -21041,6 +21502,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 case WorldBuildStage.IslandField:
                     ProcessWorldBuildIslandField(job, deadlineTicks, forceComplete);
                     break;
+                case WorldBuildStage.GoalProjectionIndex:
+                    ProcessWorldBuildGoalProjectionIndex(job, deadlineTicks, forceComplete);
+                    break;
                 case WorldBuildStage.PortalGraph:
                     ProcessWorldBuildPortalGraph(job, deadlineTicks, forceComplete);
                     break;
@@ -21515,7 +21979,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 RefreshWorldBuildAuthorityInputHash(job);
                 if (job.WorkingWorld.Hierarchy == null)
                     throw new InvalidOperationException("InitializeWorldBuildJob failed: prebaked navigation has no hierarchy.");
-                job.Stage = WorldBuildStage.Commit;
+                job.UsesPrebakedHierarchy = true;
+                job.Stage = WorldBuildStage.GoalProjectionIndex;
                 return true;
             }
 
@@ -21916,7 +22381,34 @@ public static partial class FlowFieldCrowdMovementSystem
 
         RebuildAllSectorLocalComponents(world);
         LogIslandFieldDiagnostics(world, "world-build-pending");
-        job.Stage = WorldBuildStage.PortalGraph;
+        job.Stage = WorldBuildStage.GoalProjectionIndex;
+    }
+
+    private static void ProcessWorldBuildGoalProjectionIndex(WorldBuildJob job, long deadlineTicks, bool forceComplete)
+    {
+        if (job == null || job.WorkingWorld == null)
+            throw new InvalidOperationException("ProcessWorldBuildGoalProjectionIndex failed: working world is null.");
+
+        if (job.WorkingWorld.GoalProjectionSpatialIndex != null)
+        {
+            if (!job.UsesPrebakedHierarchy)
+                throw new InvalidOperationException("ProcessWorldBuildGoalProjectionIndex found a stale non-prebaked index.");
+            job.Stage = WorldBuildStage.Commit;
+            return;
+        }
+
+        if (!ProcessGoalProjectionSpatialIndexBuild(
+                job.WorkingWorld,
+                ref job.GoalProjectionIndexBuildJob,
+                deadlineTicks,
+                forceComplete))
+        {
+            return;
+        }
+
+        job.Stage = job.UsesPrebakedHierarchy
+            ? WorldBuildStage.Commit
+            : WorldBuildStage.PortalGraph;
     }
 
     private static void ProcessWorldBuildPortalGraph(WorldBuildJob job, long deadlineTicks, bool forceComplete)
@@ -22107,6 +22599,8 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         if (job.WorkingWorld == null)
             throw new InvalidOperationException("CommitWorldBuildJob failed: working world is null.");
+        if (job.WorkingWorld.GoalProjectionSpatialIndex == null)
+            throw new InvalidOperationException("CommitWorldBuildJob failed: exact goal-projection index was not prepared before commit.");
 
         NavigationWorld previousWorld = state.World;
         int previousWorldVersion = previousWorld != null ? previousWorld.Version : 0;
@@ -22143,6 +22637,7 @@ public static partial class FlowFieldCrowdMovementSystem
         EnsureAllSectorPortalAccessCoverage(state.World, "world-build-commit");
         FinalizeWorldCostStorage(state.World);
         RebuildDeterministicPortalTransitionCosts(state.World);
+        EnsureFlowTileWorldInputBackings(state.World);
         ValidateAllSectorPortalAccessCoverage(state.World, "world-build-commit");
         if (state.World.Hierarchy == null)
             throw new InvalidOperationException("CommitWorldBuildJob failed: hierarchy was not prepared before commit.");
@@ -22156,6 +22651,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 previousWorld.L0SearchGraphIndex = null;
             DisposeFlowPathKernelWitnessIndex(previousWorld?.Hierarchy);
         }
+        if (previousWorld != null && !ReferenceEquals(previousWorld, state.World))
+            DisposeFlowTileWorldInputBackings(previousWorld);
         RefreshNavigationWorldDeterministicHash(state.World);
         CombatTargetSlotCache.Clear();
         ClearFixedPortalOwnersForWorld(previousWorldVersion);
@@ -22588,6 +23085,9 @@ public static partial class FlowFieldCrowdMovementSystem
                     break;
                 case RuntimeDirtyRebuildStage.SectorComponents:
                     ProcessRuntimeDirtySectorComponents(job, deadlineTicks, forceComplete);
+                    break;
+                case RuntimeDirtyRebuildStage.GoalProjectionIndex:
+                    ProcessRuntimeDirtyGoalProjectionIndex(job, deadlineTicks, forceComplete);
                     break;
                 case RuntimeDirtyRebuildStage.PortalGraph:
                     if (!ProcessRuntimeDirtyPortalGraph(job, deadlineTicks, forceComplete))
@@ -23045,7 +23545,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
             RebuildAllSectorLocalComponents(world);
             job.SectorCursor = 0;
-            job.Stage = RuntimeDirtyRebuildStage.PortalGraph;
+            job.Stage = RuntimeDirtyRebuildStage.GoalProjectionIndex;
             return;
         }
 
@@ -23055,7 +23555,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         job.IslandInitialized = true;
         job.SectorCursor = 0;
-        job.Stage = RuntimeDirtyRebuildStage.PortalGraph;
+        job.Stage = RuntimeDirtyRebuildStage.GoalProjectionIndex;
     }
 
     private static void ProcessRuntimeDirtySectorComponents(RuntimeDirtyRebuildJob job, long deadlineTicks, bool forceComplete)
@@ -23074,6 +23574,23 @@ public static partial class FlowFieldCrowdMovementSystem
             return;
         LogIslandFieldDiagnostics(world, "runtime-dirty");
         job.SectorCursor = 0;
+        job.Stage = RuntimeDirtyRebuildStage.GoalProjectionIndex;
+    }
+
+    private static void ProcessRuntimeDirtyGoalProjectionIndex(RuntimeDirtyRebuildJob job, long deadlineTicks, bool forceComplete)
+    {
+        if (job == null || job.WorkingWorld == null)
+            throw new InvalidOperationException("ProcessRuntimeDirtyGoalProjectionIndex failed: working world is null.");
+
+        if (!ProcessGoalProjectionSpatialIndexBuild(
+                job.WorkingWorld,
+                ref job.GoalProjectionIndexBuildJob,
+                deadlineTicks,
+                forceComplete))
+        {
+            return;
+        }
+
         job.Stage = RuntimeDirtyRebuildStage.PortalGraph;
     }
 
@@ -24321,6 +24838,9 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("PrepareRuntimeDirtyCommit failed: job is null.");
         if (job.WorkingWorld == null)
             throw new InvalidOperationException("PrepareRuntimeDirtyCommit failed: working world is null.");
+        if (job.WorkingWorld.GoalProjectionSpatialIndex == null)
+            throw new InvalidOperationException(
+                "PrepareRuntimeDirtyCommit failed: exact goal-projection index was not prepared.");
         if (job.WorldHashBuildJob != null)
             throw new InvalidOperationException("PrepareRuntimeDirtyCommit failed: world hash job already exists.");
 
@@ -24382,11 +24902,17 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("CommitRuntimeDirtyJob failed: target world changed while job was pending.");
         if (!working.HasDeterministicContentHash || job.WorldHashBuildJob == null || !job.WorldHashBuildJob.Complete)
             throw new InvalidOperationException("CommitRuntimeDirtyJob failed: working world hash is incomplete.");
+        if (working.GoalProjectionSpatialIndex == null)
+            throw new InvalidOperationException(
+                "CommitRuntimeDirtyJob failed: working goal-projection index is incomplete.");
+
+        PrepareRuntimeDirtyFlowTileWorldInputBackings(job);
 
         bool prewarmAffected = NavigationDistancePrewarmTouchesDirtyWorld(target, job.CostDirtySectors);
         bool[] oldWalkableMask = target.WalkableMask;
         byte[] oldNeighborTraversalMask = target.NeighborTraversalMask;
         int[] oldIslandIds = target.IslandIds;
+        FlowTileSectorInputBacking[] oldInputBackings = target.FlowTileSectorInputBackings;
         FlowPathKernelGraphIndex oldL0SearchGraphIndex = target.L0SearchGraphIndex;
         List<SectorPortalAccessKey> oldPortalAccessKeys = CreatePortalAccessInvalidationKeys(
             target,
@@ -24401,6 +24927,9 @@ public static partial class FlowFieldCrowdMovementSystem
         target.CostField = working.CostField;
         target.SectorCostFields = working.SectorCostFields;
         target.NeighborTraversalMask = working.NeighborTraversalMask;
+        target.GoalProjectionSpatialIndex = working.GoalProjectionSpatialIndex;
+        target.FlowTileSectorInputBackings = working.FlowTileSectorInputBackings;
+        working.FlowTileSectorInputBackings = null;
         target.IslandIds = working.IslandIds;
         target.IslandCount = working.IslandCount;
         target.MainIslandId = working.MainIslandId;
@@ -24421,6 +24950,15 @@ public static partial class FlowFieldCrowdMovementSystem
         ReturnWorldArrayIfOwned(oldWalkableMask, target.BaseWalkableMask, target.WalkableMask);
         ReturnWorldArrayIfOwned(oldNeighborTraversalMask, target.BaseNeighborTraversalMask, target.NeighborTraversalMask);
         ReturnWorldArrayIfOwned(oldIslandIds, null, target.IslandIds);
+        if (oldInputBackings != null)
+        {
+            for (int i = 0; i < oldInputBackings.Length; i++)
+            {
+                FlowTileSectorInputBacking backing = oldInputBackings[i];
+                if (backing != null)
+                    backing.ReleaseOwner();
+            }
+        }
         job.CommitSwapTicks = Stopwatch.GetTimestamp() - stepStartTicks;
 
         stepStartTicks = Stopwatch.GetTimestamp();
@@ -33216,7 +33754,8 @@ public static partial class FlowFieldCrowdMovementSystem
         out int finalGoalX,
         out int finalGoalY,
         out FixVector2 finalGoalPosition,
-        out bool useSectorCorridorPolicy)
+        out bool useSectorCorridorPolicy,
+        out bool pendingProjection)
     {
         goalX = 0;
         goalY = 0;
@@ -33225,6 +33764,7 @@ public static partial class FlowFieldCrowdMovementSystem
         finalGoalY = 0;
         finalGoalPosition = rawGoalPosition;
         useSectorCorridorPolicy = false;
+        pendingProjection = false;
         IEntityContext currentTarget = self?.TargetComp?.CurrentTarget;
         bool useRawGoal = currentTarget == null
                           || ReferenceEquals(currentTarget, self)
@@ -33294,78 +33834,50 @@ public static partial class FlowFieldCrowdMovementSystem
             anchor = new MovingTargetAnchor { Key = anchorKey };
             MovingTargetAnchors.Add(anchorKey, anchor);
         }
-
-        int anchorReachableGoalX;
-        int anchorReachableGoalY;
-        int anchorReachableGoalSectorId;
-        FixVector2 anchorReachableGoalWorld;
-        if (anchor.ReachabilityWorldVersion == _world.Version
-            && anchor.ReachabilityRawGoalX == anchorRawGoalX
-            && anchor.ReachabilityRawGoalY == anchorRawGoalY)
-        {
-            anchorReachableGoalX = anchor.ReachabilityGoalX;
-            anchorReachableGoalY = anchor.ReachabilityGoalY;
-            anchorReachableGoalSectorId = anchor.ReachabilityGoalSectorId;
-            anchorReachableGoalWorld = anchor.ReachabilityGoalWorldFixed;
-            _perf.StableGoalReachabilityReuse++;
-        }
-        else
-        {
-            if (!TryResolveReachableGoalCellFixed(
-                    _world,
-                    currentTargetFramePosition,
-                    anchorRawGoalX,
-                    anchorRawGoalY,
-                    startIsland,
-                    out anchorReachableGoalX,
-                    out anchorReachableGoalY,
-                    out anchorReachableGoalWorld,
-                    out anchorReachableGoalSectorId))
-            {
-                return false;
-            }
-
-            anchor.ReachabilityFrame = GetFrameCount();
-            anchor.ReachabilityWorldVersion = _world.Version;
-            anchor.ReachabilityRawGoalX = anchorRawGoalX;
-            anchor.ReachabilityRawGoalY = anchorRawGoalY;
-            anchor.ReachabilityGoalX = anchorReachableGoalX;
-            anchor.ReachabilityGoalY = anchorReachableGoalY;
-            anchor.ReachabilityGoalSectorId = anchorReachableGoalSectorId;
-            anchor.ReachabilityGoalWorldFixed = anchorReachableGoalWorld;
-        }
+        anchor.LastUsedFrame = GetFrameCount();
 
         bool hasStableGoal = anchor.ActiveGoalX >= 0
                              && anchor.ActiveGoalY >= 0
                              && anchor.ActiveWorldVersion == _world.Version;
-        bool shouldRefresh = !hasStableGoal
-                             || anchor.RawGoalX != anchorRawGoalX
-                             || anchor.RawGoalY != anchorRawGoalY
-                             || anchor.ActiveGoalX != anchorReachableGoalX
-                             || anchor.ActiveGoalY != anchorReachableGoalY
-                             || anchor.ActiveGoalSectorId != anchorReachableGoalSectorId;
-        if (shouldRefresh)
+        bool hasCurrentProjection = anchor.ReachabilityWorldVersion == _world.Version
+                                    && anchor.ReachabilityRawGoalX == anchorRawGoalX
+                                    && anchor.ReachabilityRawGoalY == anchorRawGoalY;
+        if (!hasCurrentProjection)
         {
-            if (!hasStableGoal)
-                _perf.StableGoalRefreshInitial++;
+            int rawGoalIsland = _world.IsWalkable(anchorRawGoalX, anchorRawGoalY)
+                ? ResolveIslandId(_world, anchorRawGoalX, anchorRawGoalY)
+                : -1;
+            if (rawGoalIsland == startIsland)
+            {
+                CancelMovingTargetProjectionTask(anchor);
+                PublishDirectMovingTargetProjection(
+                    anchor,
+                    _world,
+                    anchorRawGoalX,
+                    anchorRawGoalY,
+                    currentTargetFramePosition);
+                hasStableGoal = true;
+            }
             else
-                _perf.StableGoalRefreshCellDelta++;
+            {
+                RequestMovingTargetAnchorProjection(
+                    anchor,
+                    _world,
+                    anchorRawGoalX,
+                    anchorRawGoalY,
+                    currentTargetFramePosition);
+                pendingProjection = true;
+                return false;
+            }
 
-            SetMovingTargetActiveGoalFixed(
-                anchor,
-                anchorRawGoalX,
-                anchorRawGoalY,
-                anchorReachableGoalX,
-                anchorReachableGoalY,
-                anchorReachableGoalSectorId,
-                anchorReachableGoalWorld);
+            _perf.StableGoalRefreshCellDelta++;
         }
         else
         {
             _perf.StableGoalReuse++;
+            _perf.StableGoalReachabilityReuse++;
         }
 
-        anchor.LastUsedFrame = GetFrameCount();
         agent.NavState.StableGoalTargetId = targetId;
         agent.NavState.StableGoalRawX = anchor.RawGoalX;
         agent.NavState.StableGoalRawY = anchor.RawGoalY;
@@ -33480,6 +33992,7 @@ public static partial class FlowFieldCrowdMovementSystem
     }
 
     private static void SetMovingTargetActiveGoalFixed(
+        NavigationWorld world,
         MovingTargetAnchor anchor,
         int rawGoalX,
         int rawGoalY,
@@ -33488,6 +34001,8 @@ public static partial class FlowFieldCrowdMovementSystem
         int goalSectorId,
         FixVector2 goalWorld)
     {
+        if (world == null)
+            throw new InvalidOperationException("SetMovingTargetActiveGoalFixed failed: world is null.");
         if (anchor == null)
             throw new InvalidOperationException("SetMovingTargetActiveGoalFixed failed: anchor is null.");
 
@@ -33498,7 +34013,437 @@ public static partial class FlowFieldCrowdMovementSystem
         anchor.ActiveGoalSectorId = goalSectorId;
         anchor.ActiveGoalWorldFixed = goalWorld;
         anchor.ActiveGoalWorld = ToWorldVector3(goalWorld);
-        anchor.ActiveWorldVersion = _world.Version;
+        anchor.ActiveWorldVersion = world.Version;
+    }
+
+    private static void RequestMovingTargetAnchorProjection(
+        MovingTargetAnchor anchor,
+        NavigationWorld world,
+        int rawGoalX,
+        int rawGoalY,
+        FixVector2 rawGoalWorld)
+    {
+        if (anchor == null)
+            throw new InvalidOperationException("Moving-target projection request received a null anchor.");
+        if (world == null)
+            throw new InvalidOperationException("Moving-target projection request received a null world.");
+        if (!world.WorldToGridFixed(rawGoalWorld, out int resolvedRawGoalX, out int resolvedRawGoalY)
+            || resolvedRawGoalX != rawGoalX
+            || resolvedRawGoalY != rawGoalY)
+        {
+            throw new InvalidOperationException(
+                $"Moving-target projection request has inconsistent raw goal. key={anchor.Key.TargetId}/{anchor.Key.AgentTypeId}/{anchor.Key.IslandId} raw=({rawGoalX},{rawGoalY}).");
+        }
+
+        bool sameRequest = anchor.HasPendingProjection
+                           && anchor.PendingProjectionWorldVersion == world.Version
+                           && anchor.PendingProjectionRawGoalX == rawGoalX
+                           && anchor.PendingProjectionRawGoalY == rawGoalY;
+        if (sameRequest)
+            return;
+
+        anchor.HasPendingProjection = true;
+        anchor.PendingProjectionWorldVersion = world.Version;
+        anchor.PendingProjectionRawGoalX = rawGoalX;
+        anchor.PendingProjectionRawGoalY = rawGoalY;
+        anchor.PendingProjectionGoalWorldFixed = rawGoalWorld;
+        anchor.PendingProjectionCellCursor = 0;
+        anchor.PendingProjectionBestCellIndex = int.MaxValue;
+        anchor.PendingProjectionBestDistanceSquared = Fix64.FromRaw(long.MaxValue);
+        anchor.PendingProjectionLeafBucketId = -1;
+        anchor.PendingProjectionLeafCellCursor = 0;
+        anchor.PendingProjectionNodeHeap.Clear();
+        anchor.PendingProjectionNodeLowerBounds.Clear();
+        GoalProjectionSpatialIndex index = world.GoalProjectionSpatialIndex
+            ?? throw new InvalidOperationException(
+                $"Moving-target projection requested against a world without its published spatial index. world={world.Version}.");
+        if (index.HierarchyNodes == null
+            || index.HierarchyNodes.Length == 0
+            || index.HierarchyRootNodeIndex < 0
+            || index.HierarchyRootNodeIndex >= index.HierarchyNodes.Length)
+        {
+            throw new InvalidOperationException(
+                $"Moving-target projection requested against a world without a published spatial hierarchy. world={world.Version}.");
+        }
+        PushMovingTargetProjectionNode(anchor, world, index, index.HierarchyRootNodeIndex);
+        if (PendingMovingTargetProjectionKeys.Add(anchor.Key))
+            InsertMovingTargetProjectionQueueKey(anchor.Key);
+    }
+
+    private static void PublishDirectMovingTargetProjection(
+        MovingTargetAnchor anchor,
+        NavigationWorld world,
+        int rawGoalX,
+        int rawGoalY,
+        FixVector2 rawGoalWorld)
+    {
+        if (!world.IsWalkable(rawGoalX, rawGoalY)
+            || ResolveIslandId(world, rawGoalX, rawGoalY) != anchor.Key.IslandId
+            || !world.TryGetSectorId(rawGoalX, rawGoalY, out int goalSectorId))
+        {
+            throw new InvalidOperationException(
+                $"Direct moving-target projection is not on the source island. key={anchor.Key.TargetId}/{anchor.Key.AgentTypeId}/{anchor.Key.IslandId} raw=({rawGoalX},{rawGoalY}).");
+        }
+
+        anchor.ReachabilityFrame = GetFrameCount();
+        anchor.ReachabilityWorldVersion = world.Version;
+        anchor.ReachabilityRawGoalX = rawGoalX;
+        anchor.ReachabilityRawGoalY = rawGoalY;
+        anchor.ReachabilityGoalX = rawGoalX;
+        anchor.ReachabilityGoalY = rawGoalY;
+        anchor.ReachabilityGoalSectorId = goalSectorId;
+        anchor.ReachabilityGoalWorldFixed = rawGoalWorld;
+        SetMovingTargetActiveGoalFixed(
+            world,
+            anchor,
+            rawGoalX,
+            rawGoalY,
+            rawGoalX,
+            rawGoalY,
+            goalSectorId,
+            rawGoalWorld);
+        _perf.StableGoalRefreshInitial++;
+    }
+
+    private static void CancelMovingTargetProjectionTask(MovingTargetAnchor anchor)
+    {
+        if (anchor == null)
+            throw new ArgumentNullException(nameof(anchor));
+        if (!anchor.HasPendingProjection)
+        {
+            if (PendingMovingTargetProjectionKeys.Contains(anchor.Key))
+                throw new InvalidOperationException("Moving-target projection key exists without pending anchor state.");
+            return;
+        }
+
+        LinkedListNode<MovingTargetAnchorKey> node = MovingTargetProjectionQueue.First;
+        while (node != null && !node.Value.Equals(anchor.Key))
+            node = node.Next;
+        if (node == null || !PendingMovingTargetProjectionKeys.Remove(anchor.Key))
+            throw new InvalidOperationException("Moving-target projection queue is missing a pending anchor.");
+        MovingTargetProjectionQueue.Remove(node);
+        ResetMovingTargetProjectionTask(anchor);
+    }
+
+    private static void InsertMovingTargetProjectionQueueKey(MovingTargetAnchorKey key)
+    {
+        LinkedListNode<MovingTargetAnchorKey> node = MovingTargetProjectionQueue.First;
+        while (node != null && CompareMovingTargetAnchorKeys(node.Value, key) <= 0)
+            node = node.Next;
+        if (node == null)
+            MovingTargetProjectionQueue.AddLast(key);
+        else
+            MovingTargetProjectionQueue.AddBefore(node, key);
+    }
+
+    private static void ProcessMovingTargetProjectionQueue()
+    {
+        EnsureNavigationWorkBudgetActive();
+        while (!IsNavigationWorkBudgetExhausted() && MovingTargetProjectionQueue.First != null)
+        {
+            LinkedListNode<MovingTargetAnchorKey> node = FindReadyMovingTargetProjectionNode();
+            if (node == null)
+                return;
+            MovingTargetAnchorKey key = node.Value;
+            MovingTargetAnchor anchor = MovingTargetAnchors[key];
+            WorldRuntimeState state = WorldStates[key.AgentTypeId];
+
+            NavigationWorld world = state.World;
+            GoalProjectionSpatialIndex index = world.GoalProjectionSpatialIndex
+                ?? throw new InvalidOperationException(
+                    $"Moving-target projection consumed world without index. world={world.Version}.");
+            if (key.IslandId <= 0
+                || index.IslandCellIndices == null
+                || key.IslandId >= index.IslandCellIndices.Length)
+            {
+                throw new InvalidOperationException(
+                    $"Moving-target projection has invalid source island. world={world.Version} island={key.IslandId}.");
+            }
+
+            if (ProcessMovingTargetProjectionTask(anchor, world, index))
+                PublishCompletedMovingTargetProjection(node, anchor, world);
+        }
+    }
+
+    private static LinkedListNode<MovingTargetAnchorKey> FindReadyMovingTargetProjectionNode()
+    {
+        LinkedListNode<MovingTargetAnchorKey> node = MovingTargetProjectionQueue.First;
+        while (node != null)
+        {
+            LinkedListNode<MovingTargetAnchorKey> next = node.Next;
+            MovingTargetAnchorKey key = node.Value;
+            if (!MovingTargetAnchors.TryGetValue(key, out MovingTargetAnchor anchor) || anchor == null)
+                throw new InvalidOperationException("Moving-target projection queue references a missing anchor.");
+            if (!anchor.HasPendingProjection)
+                throw new InvalidOperationException("Moving-target projection queue references an anchor without pending authority.");
+            if (!WorldStates.TryGetValue(key.AgentTypeId, out WorldRuntimeState state) || state?.World == null)
+                throw new InvalidOperationException("Moving-target projection queue references an unavailable world state.");
+
+            if (state.IsDirty || state.BuildJob != null || state.RuntimeDirtyJob != null
+                || state.World.Version != anchor.PendingProjectionWorldVersion)
+            {
+                // A projection may only publish against the exact immutable
+                // world it started from. Discard it explicitly; the next
+                // demand against the newly published world creates its task.
+                ResetMovingTargetProjectionTask(anchor);
+                MovingTargetProjectionQueue.Remove(node);
+                if (!PendingMovingTargetProjectionKeys.Remove(key))
+                    throw new InvalidOperationException("Moving-target projection queue index is inconsistent while invalidating a stale task.");
+            }
+            else
+            {
+                return node;
+            }
+            node = next;
+        }
+        return null;
+    }
+
+    private static bool ProcessMovingTargetProjectionTask(
+        MovingTargetAnchor anchor,
+        NavigationWorld world,
+        GoalProjectionSpatialIndex index)
+    {
+        if (index.HierarchyNodes == null || index.HierarchyNodes.Length == 0)
+            throw new InvalidOperationException("Moving-target projection consumed a spatial index without hierarchy nodes.");
+        while (!IsNavigationWorkBudgetExhausted())
+        {
+            if (anchor.PendingProjectionLeafBucketId >= 0)
+            {
+                GoalProjectionBucket bucket = index.Buckets[anchor.PendingProjectionLeafBucketId]
+                    ?? throw new InvalidOperationException("Moving-target projection leaf references a null bucket.");
+                if (bucket.CellIndices == null || bucket.IslandIds == null || bucket.CellIndices.Length != bucket.IslandIds.Length)
+                    throw new InvalidOperationException("Moving-target projection leaf bucket has invalid storage.");
+                while (anchor.PendingProjectionLeafCellCursor < bucket.CellIndices.Length)
+                {
+                    int candidateCursor = anchor.PendingProjectionLeafCellCursor++;
+                    if (bucket.IslandIds[candidateCursor] == anchor.Key.IslandId)
+                    {
+                        int cellIndex = bucket.CellIndices[candidateCursor];
+                        int x = cellIndex % world.Width;
+                        int y = cellIndex / world.Width;
+                        FixVector2 center = world.GridToWorldCenterFixed(x, y);
+                        Fix64 dx = center.x - anchor.PendingProjectionGoalWorldFixed.x;
+                        Fix64 dz = center.y - anchor.PendingProjectionGoalWorldFixed.y;
+                        Fix64 distanceSquared = dx * dx + dz * dz;
+                        if (distanceSquared < anchor.PendingProjectionBestDistanceSquared
+                            || (distanceSquared == anchor.PendingProjectionBestDistanceSquared
+                                && cellIndex < anchor.PendingProjectionBestCellIndex))
+                        {
+                            anchor.PendingProjectionBestDistanceSquared = distanceSquared;
+                            anchor.PendingProjectionBestCellIndex = cellIndex;
+                        }
+                    }
+                    anchor.PendingProjectionCellCursor++;
+                    if (IsBudgetExpired(0L, anchor.PendingProjectionCellCursor))
+                        return false;
+                }
+                anchor.PendingProjectionLeafBucketId = -1;
+                anchor.PendingProjectionLeafCellCursor = 0;
+                continue;
+            }
+
+            if (anchor.PendingProjectionNodeHeap.Count == 0)
+                return true;
+            PopMovingTargetProjectionNode(anchor, out int nodeIndex, out Fix64 lowerBoundSquared);
+            if (anchor.PendingProjectionBestCellIndex != int.MaxValue
+                && lowerBoundSquared > anchor.PendingProjectionBestDistanceSquared)
+            {
+                anchor.PendingProjectionNodeHeap.Clear();
+                anchor.PendingProjectionNodeLowerBounds.Clear();
+                return true;
+            }
+
+            GoalProjectionHierarchyNode node = index.HierarchyNodes[nodeIndex]
+                ?? throw new InvalidOperationException("Moving-target projection hierarchy contains a null node.");
+            if (node.BucketId >= 0)
+            {
+                anchor.PendingProjectionLeafBucketId = node.BucketId;
+                anchor.PendingProjectionLeafCellCursor = 0;
+            }
+            else
+            {
+                PushMovingTargetProjectionChildIfRelevant(anchor, world, index, node.Child0);
+                PushMovingTargetProjectionChildIfRelevant(anchor, world, index, node.Child1);
+                PushMovingTargetProjectionChildIfRelevant(anchor, world, index, node.Child2);
+                PushMovingTargetProjectionChildIfRelevant(anchor, world, index, node.Child3);
+            }
+            if (IsBudgetExpired(0L, nodeIndex))
+                return false;
+        }
+        return false;
+    }
+
+    private static void PushMovingTargetProjectionChildIfRelevant(
+        MovingTargetAnchor anchor,
+        NavigationWorld world,
+        GoalProjectionSpatialIndex index,
+        int childNodeIndex)
+    {
+        if (childNodeIndex < 0)
+            return;
+        GoalProjectionHierarchyNode child = index.HierarchyNodes[childNodeIndex]
+            ?? throw new InvalidOperationException("Moving-target projection hierarchy contains a null child.");
+        if (ContainsGoalProjectionIslandId(child.IslandIds, anchor.Key.IslandId))
+            PushMovingTargetProjectionNode(anchor, world, index, childNodeIndex);
+    }
+
+    private static void PushMovingTargetProjectionNode(
+        MovingTargetAnchor anchor,
+        NavigationWorld world,
+        GoalProjectionSpatialIndex index,
+        int nodeIndex)
+    {
+        GoalProjectionHierarchyNode node = index.HierarchyNodes[nodeIndex]
+            ?? throw new InvalidOperationException("Moving-target projection hierarchy contains a null node.");
+        if (!ContainsGoalProjectionIslandId(node.IslandIds, anchor.Key.IslandId))
+            return;
+        Fix64 lowerBoundSquared = GetGoalProjectionHierarchyNodeLowerBoundSquared(
+            world,
+            node,
+            anchor.PendingProjectionGoalWorldFixed);
+        int heapIndex = anchor.PendingProjectionNodeHeap.Count;
+        anchor.PendingProjectionNodeHeap.Add(nodeIndex);
+        anchor.PendingProjectionNodeLowerBounds.Add(lowerBoundSquared);
+        while (heapIndex > 0)
+        {
+            int parent = (heapIndex - 1) / 2;
+            if (CompareGoalProjectionHeapNodes(
+                    anchor.PendingProjectionNodeLowerBounds[parent], anchor.PendingProjectionNodeHeap[parent],
+                    lowerBoundSquared, nodeIndex) <= 0)
+            {
+                break;
+            }
+            anchor.PendingProjectionNodeHeap[heapIndex] = anchor.PendingProjectionNodeHeap[parent];
+            anchor.PendingProjectionNodeLowerBounds[heapIndex] = anchor.PendingProjectionNodeLowerBounds[parent];
+            heapIndex = parent;
+        }
+        anchor.PendingProjectionNodeHeap[heapIndex] = nodeIndex;
+        anchor.PendingProjectionNodeLowerBounds[heapIndex] = lowerBoundSquared;
+    }
+
+    private static void PopMovingTargetProjectionNode(
+        MovingTargetAnchor anchor,
+        out int nodeIndex,
+        out Fix64 lowerBoundSquared)
+    {
+        int count = anchor.PendingProjectionNodeHeap.Count;
+        if (count <= 0 || anchor.PendingProjectionNodeLowerBounds.Count != count)
+            throw new InvalidOperationException("Moving-target projection node heap is invalid.");
+        nodeIndex = anchor.PendingProjectionNodeHeap[0];
+        lowerBoundSquared = anchor.PendingProjectionNodeLowerBounds[0];
+        int lastIndex = count - 1;
+        int lastNode = anchor.PendingProjectionNodeHeap[lastIndex];
+        Fix64 lastBound = anchor.PendingProjectionNodeLowerBounds[lastIndex];
+        anchor.PendingProjectionNodeHeap.RemoveAt(lastIndex);
+        anchor.PendingProjectionNodeLowerBounds.RemoveAt(lastIndex);
+        if (lastIndex == 0)
+            return;
+
+        int heapIndex = 0;
+        while (true)
+        {
+            int left = heapIndex * 2 + 1;
+            if (left >= lastIndex)
+                break;
+            int right = left + 1;
+            int child = right < lastIndex
+                        && CompareGoalProjectionHeapNodes(
+                            anchor.PendingProjectionNodeLowerBounds[right], anchor.PendingProjectionNodeHeap[right],
+                            anchor.PendingProjectionNodeLowerBounds[left], anchor.PendingProjectionNodeHeap[left]) < 0
+                ? right
+                : left;
+            if (CompareGoalProjectionHeapNodes(
+                    lastBound, lastNode,
+                    anchor.PendingProjectionNodeLowerBounds[child], anchor.PendingProjectionNodeHeap[child]) <= 0)
+            {
+                break;
+            }
+            anchor.PendingProjectionNodeHeap[heapIndex] = anchor.PendingProjectionNodeHeap[child];
+            anchor.PendingProjectionNodeLowerBounds[heapIndex] = anchor.PendingProjectionNodeLowerBounds[child];
+            heapIndex = child;
+        }
+        anchor.PendingProjectionNodeHeap[heapIndex] = lastNode;
+        anchor.PendingProjectionNodeLowerBounds[heapIndex] = lastBound;
+    }
+
+    private static bool ContainsGoalProjectionIslandId(int[] islandIds, int islandId)
+    {
+        return islandIds != null && Array.BinarySearch(islandIds, islandId) >= 0;
+    }
+
+    private static Fix64 GetGoalProjectionHierarchyNodeLowerBoundSquared(
+        NavigationWorld world,
+        GoalProjectionHierarchyNode node,
+        FixVector2 desiredWorld)
+    {
+        int minX = node.MinBucketX * GoalProjectionSpatialIndex.BucketSizeInCells;
+        int minY = node.MinBucketY * GoalProjectionSpatialIndex.BucketSizeInCells;
+        int maxX = Math.Min(world.Width - 1, (node.MinBucketX + node.BucketSpan) * GoalProjectionSpatialIndex.BucketSizeInCells - 1);
+        int maxY = Math.Min(world.Height - 1, (node.MinBucketY + node.BucketSpan) * GoalProjectionSpatialIndex.BucketSizeInCells - 1);
+        if (minX > maxX || minY > maxY)
+            throw new InvalidOperationException("Moving-target projection hierarchy node with members lies outside the world.");
+        world.GetGridCellBoundsFixed(minX, minY, out FixVector2 minimum, out _);
+        world.GetGridCellBoundsFixed(maxX, maxY, out _, out FixVector2 maximum);
+        Fix64 dx = desiredWorld.x < minimum.x
+            ? minimum.x - desiredWorld.x
+            : desiredWorld.x > maximum.x ? desiredWorld.x - maximum.x : Fix64.Zero;
+        Fix64 dz = desiredWorld.y < minimum.y
+            ? minimum.y - desiredWorld.y
+            : desiredWorld.y > maximum.y ? desiredWorld.y - maximum.y : Fix64.Zero;
+        return dx * dx + dz * dz;
+    }
+
+    private static void PublishCompletedMovingTargetProjection(
+        LinkedListNode<MovingTargetAnchorKey> queueNode,
+        MovingTargetAnchor anchor,
+        NavigationWorld world)
+    {
+        int bestCellIndex = anchor.PendingProjectionBestCellIndex;
+        if (bestCellIndex < 0 || bestCellIndex == int.MaxValue)
+            throw new InvalidOperationException("Moving-target projection completed without a candidate.");
+        int bestX = bestCellIndex % world.Width;
+        int bestY = bestCellIndex / world.Width;
+        if (!world.TryGetSectorId(bestX, bestY, out int bestSectorId))
+            throw new InvalidOperationException("Moving-target projection selected a cell without a sector.");
+
+        anchor.ReachabilityFrame = GetFrameCount();
+        anchor.ReachabilityWorldVersion = world.Version;
+        anchor.ReachabilityRawGoalX = anchor.PendingProjectionRawGoalX;
+        anchor.ReachabilityRawGoalY = anchor.PendingProjectionRawGoalY;
+        anchor.ReachabilityGoalX = bestX;
+        anchor.ReachabilityGoalY = bestY;
+        anchor.ReachabilityGoalSectorId = bestSectorId;
+        anchor.ReachabilityGoalWorldFixed = world.GridToWorldCenterFixed(bestX, bestY);
+        SetMovingTargetActiveGoalFixed(
+            world,
+            anchor,
+            anchor.PendingProjectionRawGoalX,
+            anchor.PendingProjectionRawGoalY,
+            bestX,
+            bestY,
+            bestSectorId,
+            anchor.ReachabilityGoalWorldFixed);
+        _perf.StableGoalRefreshInitial++;
+        ResetMovingTargetProjectionTask(anchor);
+        MovingTargetProjectionQueue.Remove(queueNode);
+        if (!PendingMovingTargetProjectionKeys.Remove(anchor.Key))
+            throw new InvalidOperationException("Moving-target projection queue index is inconsistent.");
+    }
+
+    private static void ResetMovingTargetProjectionTask(MovingTargetAnchor anchor)
+    {
+        anchor.HasPendingProjection = false;
+        anchor.PendingProjectionWorldVersion = -1;
+        anchor.PendingProjectionRawGoalX = -1;
+        anchor.PendingProjectionRawGoalY = -1;
+        anchor.PendingProjectionCellCursor = 0;
+        anchor.PendingProjectionBestCellIndex = int.MaxValue;
+        anchor.PendingProjectionBestDistanceSquared = Fix64.FromRaw(long.MaxValue);
+        anchor.PendingProjectionLeafBucketId = -1;
+        anchor.PendingProjectionLeafCellCursor = 0;
+        anchor.PendingProjectionNodeHeap.Clear();
+        anchor.PendingProjectionNodeLowerBounds.Clear();
     }
 
     private static bool TryResolveStartCellForReachabilityFixed(IEntityContext self, out int startX, out int startY, out int startIsland)
@@ -34052,38 +34997,86 @@ public static partial class FlowFieldCrowdMovementSystem
             }
         }
 
-        for (int i = 0; i < OrderedAgentIds.Count; i++)
+        EnsureNavigationGoalOccupancyBuckets();
+        float bucketSize = ResolveAgentSpatialBucketSize();
+        Fix64 broadPhaseThreshold = Fix64.Max(requiredDistance, _navigationGoalOccupancyMaximumThreshold);
+        // Add one bucket for boundary-straddling points: two cells in buckets
+        // separated by ceil(d / bucketSize) + 1 can still be within d.
+        int searchRadius = Mathf.Max(1, Mathf.CeilToInt((float)broadPhaseThreshold / bucketSize) + 1);
+        ResolveSpatialBucketCell(ToWorldVector3(position), out int centerCellX, out int centerCellY);
+
+        for (int bucketY = centerCellY - searchRadius; bucketY <= centerCellY + searchRadius; bucketY++)
         {
-            AgentRuntimeData other = Agents[OrderedAgentIds[i]];
-            if (other.Id == selfId || other.Id == ignoredAgentId || other.IgnoreAgentCollision)
-                continue;
-
-            Fix64 otherThreshold = Fix64.Max(
-                requiredDistance,
-                other.RadiusFixed * (Fix64)2 + NavigationGoalOccupancyPadding);
-            Fix64 otherThresholdSq = otherThreshold * otherThreshold;
-            Fix64 positionDistanceSq = FixVector2.SqrMagnitude(other.PositionFixed - position);
-            if (positionDistanceSq < otherThresholdSq
-                && (positionDistanceSq < bestDistanceSq
-                    || (positionDistanceSq == bestDistanceSq && other.Id < reservingAgentId)))
+            for (int bucketX = centerCellX - searchRadius; bucketX <= centerCellX + searchRadius; bucketX++)
             {
-                bestDistanceSq = positionDistanceSq;
-                reservingAgentId = other.Id;
-            }
+                long bucketKey = BuildSpatialBucketKey(bucketX, bucketY);
+                if (NavigationGoalPositionBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> positionBucket))
+                {
+                    for (int i = 0; i < positionBucket.Count; i++)
+                    {
+                        EvaluateNavigationGoalOccupancyCandidate(
+                            positionBucket[i],
+                            selfId,
+                            ignoredAgentId,
+                            position,
+                            requiredDistance,
+                            ref bestDistanceSq,
+                            ref reservingAgentId,
+                            useGoalPosition: false);
+                    }
+                }
 
-            if (!ShouldUseAgentNavigationGoalAsOccupancyFixed(other))
-                continue;
-            Fix64 goalDistanceSq = FixVector2.SqrMagnitude(other.NavState.LastGoalWorldFixed - position);
-            if (goalDistanceSq < otherThresholdSq
-                && (goalDistanceSq < bestDistanceSq
-                    || (goalDistanceSq == bestDistanceSq && other.Id < reservingAgentId)))
-            {
-                bestDistanceSq = goalDistanceSq;
-                reservingAgentId = other.Id;
+                if (NavigationGoalTargetBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> targetBucket))
+                {
+                    for (int i = 0; i < targetBucket.Count; i++)
+                    {
+                        EvaluateNavigationGoalOccupancyCandidate(
+                            targetBucket[i],
+                            selfId,
+                            ignoredAgentId,
+                            position,
+                            requiredDistance,
+                            ref bestDistanceSq,
+                            ref reservingAgentId,
+                            useGoalPosition: true);
+                    }
+                }
             }
         }
 
         return reservingAgentId != 0;
+    }
+
+    private static void EvaluateNavigationGoalOccupancyCandidate(
+        AgentRuntimeData other,
+        int selfId,
+        int ignoredAgentId,
+        FixVector2 position,
+        Fix64 requiredDistance,
+        ref Fix64 bestDistanceSq,
+        ref int reservingAgentId,
+        bool useGoalPosition)
+    {
+        if (other == null)
+            throw new InvalidOperationException("EvaluateNavigationGoalOccupancyCandidate received a null agent.");
+        if (other.Id == selfId || other.Id == ignoredAgentId || other.IgnoreAgentCollision)
+            return;
+
+        Fix64 otherThreshold = Fix64.Max(
+            requiredDistance,
+            other.RadiusFixed * (Fix64)2 + NavigationGoalOccupancyPadding);
+        Fix64 otherThresholdSq = otherThreshold * otherThreshold;
+        FixVector2 candidatePosition = useGoalPosition
+            ? other.NavState.LastGoalWorldFixed
+            : other.PositionFixed;
+        Fix64 distanceSq = FixVector2.SqrMagnitude(candidatePosition - position);
+        if (distanceSq < otherThresholdSq
+            && (distanceSq < bestDistanceSq
+                || (distanceSq == bestDistanceSq && other.Id < reservingAgentId)))
+        {
+            bestDistanceSq = distanceSq;
+            reservingAgentId = other.Id;
+        }
     }
 
     private static Fix64 ResolveNavigationGoalAngleFixed(int index)
@@ -34296,6 +35289,548 @@ public static partial class FlowFieldCrowdMovementSystem
         return found;
     }
 
+    private static bool ProcessGoalProjectionSpatialIndexBuild(
+        NavigationWorld world,
+        ref GoalProjectionSpatialIndexBuildJob buildJob,
+        long deadlineTicks,
+        bool forceComplete)
+    {
+        if (world == null || world.Width <= 0 || world.Height <= 0)
+            throw new InvalidOperationException("Goal projection spatial index build received an invalid world.");
+        if (world.Sectors == null || world.Sectors.Length == 0)
+            throw new InvalidOperationException("Goal projection spatial index build requires finalized sector components.");
+        if (world.GoalProjectionSpatialIndex != null)
+            throw new InvalidOperationException("Goal projection spatial index build attempted to replace a published index.");
+
+        int cellCount = checked(world.Width * world.Height);
+        if (buildJob == null)
+        {
+            int bucketCountX = (world.Width + GoalProjectionSpatialIndex.BucketSizeInCells - 1)
+                               / GoalProjectionSpatialIndex.BucketSizeInCells;
+            int bucketCountY = (world.Height + GoalProjectionSpatialIndex.BucketSizeInCells - 1)
+                               / GoalProjectionSpatialIndex.BucketSizeInCells;
+            buildJob = new GoalProjectionSpatialIndexBuildJob
+            {
+                BucketCellLists = new List<int>[checked(bucketCountX * bucketCountY)],
+                IslandCellLists = new List<int>[checked(world.IslandCount + 1)]
+            };
+        }
+
+        int expectedBucketCountX = (world.Width + GoalProjectionSpatialIndex.BucketSizeInCells - 1)
+                                   / GoalProjectionSpatialIndex.BucketSizeInCells;
+        int expectedBucketCountY = (world.Height + GoalProjectionSpatialIndex.BucketSizeInCells - 1)
+                                   / GoalProjectionSpatialIndex.BucketSizeInCells;
+        if (buildJob.BucketCellLists == null
+            || buildJob.BucketCellLists.Length != expectedBucketCountX * expectedBucketCountY
+            || buildJob.IslandCellLists == null
+            || buildJob.IslandCellLists.Length != world.IslandCount + 1)
+        {
+            throw new InvalidOperationException("Goal projection spatial index build has invalid bucket storage.");
+        }
+
+        while (buildJob.ScanIndex < cellCount)
+        {
+            int cellIndex = buildJob.ScanIndex++;
+            if (world.WalkableMask[cellIndex])
+            {
+                int x = cellIndex % world.Width;
+                int y = cellIndex / world.Width;
+                int bucketX = x / GoalProjectionSpatialIndex.BucketSizeInCells;
+                int bucketY = y / GoalProjectionSpatialIndex.BucketSizeInCells;
+                int bucketId = bucketX + bucketY * expectedBucketCountX;
+                List<int> cells = buildJob.BucketCellLists[bucketId];
+                if (cells == null)
+                {
+                    cells = new List<int>(GoalProjectionSpatialIndex.BucketSizeInCells * GoalProjectionSpatialIndex.BucketSizeInCells);
+                    buildJob.BucketCellLists[bucketId] = cells;
+                }
+                cells.Add(cellIndex);
+
+                int islandId = ResolveIslandId(world, x, y);
+                if (islandId <= 0 || islandId >= buildJob.IslandCellLists.Length)
+                {
+                    throw new InvalidOperationException(
+                        $"Goal projection spatial index found a walkable cell without a finalized island. cell={cellIndex} world={world.Version}.");
+                }
+                List<int> islandCells = buildJob.IslandCellLists[islandId];
+                if (islandCells == null)
+                {
+                    islandCells = new List<int>();
+                    buildJob.IslandCellLists[islandId] = islandCells;
+                }
+                islandCells.Add(cellIndex);
+            }
+
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, buildJob.ScanIndex))
+                return false;
+        }
+
+        GoalProjectionSpatialIndex index = buildJob.WorkingIndex;
+        if (index == null)
+        {
+            index = new GoalProjectionSpatialIndex
+            {
+                BucketCountX = expectedBucketCountX,
+                BucketCountY = expectedBucketCountY,
+                Buckets = new GoalProjectionBucket[buildJob.BucketCellLists.Length],
+                QueryVisitStamps = new int[buildJob.BucketCellLists.Length],
+                HeapBucketIds = new int[buildJob.BucketCellLists.Length],
+                HeapLowerBounds = new Fix64[buildJob.BucketCellLists.Length],
+                IslandCellIndices = new int[buildJob.IslandCellLists.Length][]
+            };
+            for (int islandId = 1; islandId < index.IslandCellIndices.Length; islandId++)
+            {
+                List<int> islandCells = buildJob.IslandCellLists[islandId];
+                index.IslandCellIndices[islandId] = islandCells != null
+                    ? islandCells.ToArray()
+                    : Array.Empty<int>();
+            }
+            buildJob.WorkingIndex = index;
+        }
+        while (buildJob.FinalizeBucketCursor < index.Buckets.Length)
+        {
+            int bucketId = buildJob.FinalizeBucketCursor++;
+            List<int> cells = buildJob.BucketCellLists[bucketId];
+            if (cells == null || cells.Count == 0)
+            {
+                index.Buckets[bucketId] = new GoalProjectionBucket
+                {
+                    CellIndices = Array.Empty<int>(),
+                    IslandIds = Array.Empty<int>()
+                };
+            }
+            else
+            {
+                int[] cellIndices = cells.ToArray();
+                int[] islandIds = new int[cellIndices.Length];
+                for (int i = 0; i < cellIndices.Length; i++)
+                {
+                    int cellIndex = cellIndices[i];
+                    int islandId = ResolveIslandId(world, cellIndex % world.Width, cellIndex / world.Width);
+                    if (islandId <= 0)
+                    {
+                        throw new InvalidOperationException(
+                            $"Goal projection spatial index found a walkable cell without a finalized island. cell={cellIndex} world={world.Version}.");
+                    }
+                    islandIds[i] = islandId;
+                }
+                index.Buckets[bucketId] = new GoalProjectionBucket
+                {
+                    CellIndices = cellIndices,
+                    IslandIds = islandIds
+                };
+            }
+
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, buildJob.FinalizeBucketCursor))
+                return false;
+        }
+
+        if (!ProcessGoalProjectionSpatialHierarchyBuild(world, buildJob, deadlineTicks, forceComplete))
+            return false;
+
+        world.GoalProjectionSpatialIndex = index;
+        buildJob = null;
+        return true;
+    }
+
+    private static bool ProcessGoalProjectionSpatialHierarchyBuild(
+        NavigationWorld world,
+        GoalProjectionSpatialIndexBuildJob buildJob,
+        long deadlineTicks,
+        bool forceComplete)
+    {
+        GoalProjectionSpatialIndex index = buildJob.WorkingIndex
+                                           ?? throw new InvalidOperationException("Goal projection hierarchy build has no working index.");
+        if (buildJob.HierarchyNodes == null)
+        {
+            int leafSpan = 1;
+            int requiredSpan = Math.Max(index.BucketCountX, index.BucketCountY);
+            while (leafSpan < requiredSpan)
+                leafSpan = checked(leafSpan * 2);
+
+            buildJob.HierarchyLeafSpan = leafSpan;
+            buildJob.HierarchyNodes = new List<GoalProjectionHierarchyNode>(checked(leafSpan * leafSpan * 2));
+            buildJob.HierarchyCurrentLevelNodeIndices = new int[checked(leafSpan * leafSpan)];
+            buildJob.HierarchyCurrentLevelWidth = leafSpan;
+            buildJob.HierarchyCurrentLevelHeight = leafSpan;
+        }
+
+        while (buildJob.HierarchyLeafCursor < buildJob.HierarchyCurrentLevelNodeIndices.Length)
+        {
+            int leafIndex = buildJob.HierarchyLeafCursor++;
+            int bucketX = leafIndex % buildJob.HierarchyLeafSpan;
+            int bucketY = leafIndex / buildJob.HierarchyLeafSpan;
+            int bucketId = bucketX < index.BucketCountX && bucketY < index.BucketCountY
+                ? bucketX + bucketY * index.BucketCountX
+                : -1;
+            int[] islandIds = bucketId >= 0
+                ? GetSortedDistinctGoalProjectionIslandIds(index.Buckets[bucketId])
+                : Array.Empty<int>();
+            buildJob.HierarchyCurrentLevelNodeIndices[leafIndex] = buildJob.HierarchyNodes.Count;
+            buildJob.HierarchyNodes.Add(new GoalProjectionHierarchyNode
+            {
+                MinBucketX = bucketX,
+                MinBucketY = bucketY,
+                BucketSpan = 1,
+                BucketId = bucketId,
+                IslandIds = islandIds
+            });
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, buildJob.HierarchyLeafCursor))
+                return false;
+        }
+
+        while (buildJob.HierarchyCurrentLevelWidth > 1 || buildJob.HierarchyCurrentLevelHeight > 1)
+        {
+            int parentWidth = Math.Max(1, buildJob.HierarchyCurrentLevelWidth / 2);
+            int parentHeight = Math.Max(1, buildJob.HierarchyCurrentLevelHeight / 2);
+            int parentCount = checked(parentWidth * parentHeight);
+            if (buildJob.HierarchyNextLevelNodeIndices == null)
+                buildJob.HierarchyNextLevelNodeIndices = new List<int>(parentCount);
+
+            while (buildJob.HierarchyParentCursor < parentCount)
+            {
+                int parentIndex = buildJob.HierarchyParentCursor++;
+                int parentX = parentIndex % parentWidth;
+                int parentY = parentIndex / parentWidth;
+                int childX = parentX * 2;
+                int childY = parentY * 2;
+                int child0 = buildJob.HierarchyCurrentLevelNodeIndices[childX + childY * buildJob.HierarchyCurrentLevelWidth];
+                int child1 = childX + 1 < buildJob.HierarchyCurrentLevelWidth
+                    ? buildJob.HierarchyCurrentLevelNodeIndices[childX + 1 + childY * buildJob.HierarchyCurrentLevelWidth]
+                    : -1;
+                int child2 = childY + 1 < buildJob.HierarchyCurrentLevelHeight
+                    ? buildJob.HierarchyCurrentLevelNodeIndices[childX + (childY + 1) * buildJob.HierarchyCurrentLevelWidth]
+                    : -1;
+                int child3 = childX + 1 < buildJob.HierarchyCurrentLevelWidth && childY + 1 < buildJob.HierarchyCurrentLevelHeight
+                    ? buildJob.HierarchyCurrentLevelNodeIndices[childX + 1 + (childY + 1) * buildJob.HierarchyCurrentLevelWidth]
+                    : -1;
+                buildJob.HierarchyNextLevelNodeIndices.Add(buildJob.HierarchyNodes.Count);
+                buildJob.HierarchyNodes.Add(new GoalProjectionHierarchyNode
+                {
+                    MinBucketX = childX,
+                    MinBucketY = childY,
+                    BucketSpan = checked(buildJob.HierarchyLeafSpan / parentWidth),
+                    Child0 = child0,
+                    Child1 = child1,
+                    Child2 = child2,
+                    Child3 = child3,
+                    IslandIds = MergeGoalProjectionIslandIds(
+                        buildJob.HierarchyNodes[child0].IslandIds,
+                        child1 >= 0 ? buildJob.HierarchyNodes[child1].IslandIds : null,
+                        child2 >= 0 ? buildJob.HierarchyNodes[child2].IslandIds : null,
+                        child3 >= 0 ? buildJob.HierarchyNodes[child3].IslandIds : null)
+                });
+                if (!forceComplete && IsBudgetExpired(deadlineTicks, buildJob.HierarchyParentCursor))
+                    return false;
+            }
+
+            buildJob.HierarchyCurrentLevelNodeIndices = buildJob.HierarchyNextLevelNodeIndices.ToArray();
+            buildJob.HierarchyCurrentLevelWidth = parentWidth;
+            buildJob.HierarchyCurrentLevelHeight = parentHeight;
+            buildJob.HierarchyParentCursor = 0;
+            buildJob.HierarchyNextLevelNodeIndices = null;
+        }
+
+        if (buildJob.HierarchyCurrentLevelNodeIndices == null || buildJob.HierarchyCurrentLevelNodeIndices.Length != 1)
+            throw new InvalidOperationException("Goal projection hierarchy did not converge to one root.");
+        index.HierarchyNodes = buildJob.HierarchyNodes.ToArray();
+        index.HierarchyRootNodeIndex = buildJob.HierarchyCurrentLevelNodeIndices[0];
+        return true;
+    }
+
+    private static int[] GetSortedDistinctGoalProjectionIslandIds(GoalProjectionBucket bucket)
+    {
+        if (bucket == null || bucket.IslandIds == null || bucket.IslandIds.Length == 0)
+            return Array.Empty<int>();
+
+        int[] sorted = (int[])bucket.IslandIds.Clone();
+        Array.Sort(sorted);
+        int distinctCount = 1;
+        for (int i = 1; i < sorted.Length; i++)
+        {
+            if (sorted[i] != sorted[distinctCount - 1])
+                sorted[distinctCount++] = sorted[i];
+        }
+        if (distinctCount == sorted.Length)
+            return sorted;
+        int[] result = new int[distinctCount];
+        Array.Copy(sorted, result, distinctCount);
+        return result;
+    }
+
+    private static int[] MergeGoalProjectionIslandIds(int[] first, int[] second, int[] third, int[] fourth)
+    {
+        int total = (first?.Length ?? 0) + (second?.Length ?? 0) + (third?.Length ?? 0) + (fourth?.Length ?? 0);
+        if (total == 0)
+            return Array.Empty<int>();
+
+        int[] merged = new int[total];
+        int[] cursors = { 0, 0, 0, 0 };
+        int[][] sources = { first ?? Array.Empty<int>(), second ?? Array.Empty<int>(), third ?? Array.Empty<int>(), fourth ?? Array.Empty<int>() };
+        int count = 0;
+        while (true)
+        {
+            int next = int.MaxValue;
+            for (int i = 0; i < sources.Length; i++)
+            {
+                if (cursors[i] < sources[i].Length && sources[i][cursors[i]] < next)
+                    next = sources[i][cursors[i]];
+            }
+            if (next == int.MaxValue)
+                break;
+            if (count == 0 || merged[count - 1] != next)
+                merged[count++] = next;
+            for (int i = 0; i < sources.Length; i++)
+            {
+                while (cursors[i] < sources[i].Length && sources[i][cursors[i]] == next)
+                    cursors[i]++;
+            }
+        }
+        if (count == merged.Length)
+            return merged;
+        int[] result = new int[count];
+        Array.Copy(merged, result, count);
+        return result;
+    }
+
+    private static void BuildGoalProjectionSpatialIndexImmediate(NavigationWorld world)
+    {
+        GoalProjectionSpatialIndexBuildJob buildJob = null;
+        if (!ProcessGoalProjectionSpatialIndexBuild(world, ref buildJob, long.MaxValue, forceComplete: true)
+            || buildJob != null)
+        {
+            throw new InvalidOperationException("Immediate goal projection spatial index build did not complete.");
+        }
+    }
+
+    private static bool TryFindNearestWalkableInIslandByWorldDistanceFromSpatialIndex(
+        NavigationWorld world,
+        int centerX,
+        int centerY,
+        FixVector2 desiredWorld,
+        int islandId,
+        out int resultX,
+        out int resultY,
+        out Fix64 distance)
+    {
+        resultX = 0;
+        resultY = 0;
+        distance = Fix64.FromRaw(long.MaxValue);
+        if (world == null || islandId <= 0)
+            return false;
+
+        GoalProjectionSpatialIndex index = world.GoalProjectionSpatialIndex
+                                            ?? throw new InvalidOperationException(
+                                                $"Reachable-goal projection attempted to consume a world without its published spatial index. world={world.Version}.");
+        if (index.Buckets == null
+            || index.Buckets.Length == 0
+            || index.HierarchyNodes == null
+            || index.HierarchyNodes.Length == 0
+            || index.HierarchyRootNodeIndex < 0
+            || index.HierarchyRootNodeIndex >= index.HierarchyNodes.Length)
+        {
+            throw new InvalidOperationException("Reachable-goal projection spatial index has invalid storage.");
+        }
+
+        if (!world.WorldToGridFixed(desiredWorld, out int desiredX, out int desiredY))
+        {
+            throw new InvalidOperationException(
+                $"Reachable-goal projection desired point is outside the published grid. raw=({desiredWorld.x.RawValue},{desiredWorld.y.RawValue}).");
+        }
+        var query = new MovingTargetAnchor
+        {
+            Key = new MovingTargetAnchorKey(int.MinValue, world.AgentTypeId, islandId),
+            PendingProjectionGoalWorldFixed = desiredWorld
+        };
+        PushMovingTargetProjectionNode(query, world, index, index.HierarchyRootNodeIndex);
+        while (query.PendingProjectionNodeHeap.Count > 0)
+        {
+            PopMovingTargetProjectionNode(query, out int nodeIndex, out Fix64 lowerBoundSquared);
+            if (query.PendingProjectionBestCellIndex != int.MaxValue
+                && lowerBoundSquared > query.PendingProjectionBestDistanceSquared)
+            {
+                break;
+            }
+            GoalProjectionHierarchyNode node = index.HierarchyNodes[nodeIndex]
+                ?? throw new InvalidOperationException("Reachable-goal projection hierarchy contains a null node.");
+            if (node.BucketId >= 0)
+            {
+                GoalProjectionBucket bucket = index.Buckets[node.BucketId]
+                    ?? throw new InvalidOperationException($"Goal projection spatial index bucket is null. bucket={node.BucketId}.");
+                if (bucket.CellIndices == null || bucket.IslandIds == null || bucket.CellIndices.Length != bucket.IslandIds.Length)
+                    throw new InvalidOperationException($"Goal projection spatial index bucket has invalid cells. bucket={node.BucketId}.");
+                for (int i = 0; i < bucket.CellIndices.Length; i++)
+                {
+                    if (bucket.IslandIds[i] != islandId)
+                        continue;
+                    int cellIndex = bucket.CellIndices[i];
+                    int x = cellIndex % world.Width;
+                    int y = cellIndex / world.Width;
+                    FixVector2 worldCenter = world.GridToWorldCenterFixed(x, y);
+                    Fix64 dx = worldCenter.x - desiredWorld.x;
+                    Fix64 dz = worldCenter.y - desiredWorld.y;
+                    Fix64 candidateDistanceSquared = dx * dx + dz * dz;
+                    if (candidateDistanceSquared < query.PendingProjectionBestDistanceSquared
+                        || (candidateDistanceSquared == query.PendingProjectionBestDistanceSquared
+                            && cellIndex < query.PendingProjectionBestCellIndex))
+                    {
+                        query.PendingProjectionBestCellIndex = cellIndex;
+                        query.PendingProjectionBestDistanceSquared = candidateDistanceSquared;
+                    }
+                }
+            }
+            else
+            {
+                PushMovingTargetProjectionChildIfRelevant(query, world, index, node.Child0);
+                PushMovingTargetProjectionChildIfRelevant(query, world, index, node.Child1);
+                PushMovingTargetProjectionChildIfRelevant(query, world, index, node.Child2);
+                PushMovingTargetProjectionChildIfRelevant(query, world, index, node.Child3);
+            }
+        }
+
+        if (query.PendingProjectionBestCellIndex == int.MaxValue)
+            return false;
+
+        resultX = query.PendingProjectionBestCellIndex % world.Width;
+        resultY = query.PendingProjectionBestCellIndex / world.Width;
+        distance = Fix64.Sqrt(query.PendingProjectionBestDistanceSquared);
+        return true;
+    }
+
+    private static int BeginGoalProjectionSpatialIndexQuery(GoalProjectionSpatialIndex index)
+    {
+        if (index.QueryVisitToken == int.MaxValue)
+        {
+            Array.Clear(index.QueryVisitStamps, 0, index.QueryVisitStamps.Length);
+            index.QueryVisitToken = 1;
+            return index.QueryVisitToken;
+        }
+
+        return ++index.QueryVisitToken;
+    }
+
+    private static void TryPushGoalProjectionBucketNeighbor(
+        NavigationWorld world,
+        GoalProjectionSpatialIndex index,
+        int bucketX,
+        int bucketY,
+        FixVector2 desiredWorld,
+        int visitToken)
+    {
+        if (bucketX < 0 || bucketX >= index.BucketCountX || bucketY < 0 || bucketY >= index.BucketCountY)
+            return;
+
+        PushGoalProjectionBucket(world, index, bucketX + bucketY * index.BucketCountX, desiredWorld, visitToken);
+    }
+
+    private static void PushGoalProjectionBucket(
+        NavigationWorld world,
+        GoalProjectionSpatialIndex index,
+        int bucketId,
+        FixVector2 desiredWorld,
+        int visitToken)
+    {
+        if (index.QueryVisitStamps[bucketId] == visitToken)
+            return;
+        if (index.HeapCount >= index.HeapBucketIds.Length)
+            throw new InvalidOperationException("Goal projection spatial index heap capacity is exhausted.");
+
+        index.QueryVisitStamps[bucketId] = visitToken;
+        Fix64 lowerBoundSquared = GetGoalProjectionBucketLowerBoundSquared(world, index, bucketId, desiredWorld);
+        int heapIndex = index.HeapCount++;
+        while (heapIndex > 0)
+        {
+            int parent = (heapIndex - 1) / 2;
+            if (CompareGoalProjectionHeapNodes(
+                    index.HeapLowerBounds[parent],
+                    index.HeapBucketIds[parent],
+                    lowerBoundSquared,
+                    bucketId) <= 0)
+            {
+                break;
+            }
+
+            index.HeapLowerBounds[heapIndex] = index.HeapLowerBounds[parent];
+            index.HeapBucketIds[heapIndex] = index.HeapBucketIds[parent];
+            heapIndex = parent;
+        }
+        index.HeapLowerBounds[heapIndex] = lowerBoundSquared;
+        index.HeapBucketIds[heapIndex] = bucketId;
+    }
+
+    private static void PopGoalProjectionBucket(
+        GoalProjectionSpatialIndex index,
+        out int bucketId,
+        out Fix64 lowerBoundSquared)
+    {
+        if (index.HeapCount <= 0)
+            throw new InvalidOperationException("Goal projection spatial index heap is empty.");
+
+        bucketId = index.HeapBucketIds[0];
+        lowerBoundSquared = index.HeapLowerBounds[0];
+        int lastIndex = --index.HeapCount;
+        if (lastIndex == 0)
+            return;
+
+        int lastBucketId = index.HeapBucketIds[lastIndex];
+        Fix64 lastLowerBound = index.HeapLowerBounds[lastIndex];
+        int heapIndex = 0;
+        while (true)
+        {
+            int left = heapIndex * 2 + 1;
+            if (left >= lastIndex)
+                break;
+            int right = left + 1;
+            int child = right < lastIndex
+                        && CompareGoalProjectionHeapNodes(
+                            index.HeapLowerBounds[right], index.HeapBucketIds[right],
+                            index.HeapLowerBounds[left], index.HeapBucketIds[left]) < 0
+                ? right
+                : left;
+            if (CompareGoalProjectionHeapNodes(
+                    lastLowerBound, lastBucketId,
+                    index.HeapLowerBounds[child], index.HeapBucketIds[child]) <= 0)
+            {
+                break;
+            }
+
+            index.HeapLowerBounds[heapIndex] = index.HeapLowerBounds[child];
+            index.HeapBucketIds[heapIndex] = index.HeapBucketIds[child];
+            heapIndex = child;
+        }
+        index.HeapLowerBounds[heapIndex] = lastLowerBound;
+        index.HeapBucketIds[heapIndex] = lastBucketId;
+    }
+
+    private static int CompareGoalProjectionHeapNodes(Fix64 leftDistance, int leftBucketId, Fix64 rightDistance, int rightBucketId)
+    {
+        int distanceOrder = leftDistance.CompareTo(rightDistance);
+        return distanceOrder != 0 ? distanceOrder : leftBucketId.CompareTo(rightBucketId);
+    }
+
+    private static Fix64 GetGoalProjectionBucketLowerBoundSquared(
+        NavigationWorld world,
+        GoalProjectionSpatialIndex index,
+        int bucketId,
+        FixVector2 desiredWorld)
+    {
+        int bucketX = bucketId % index.BucketCountX;
+        int bucketY = bucketId / index.BucketCountX;
+        int minX = bucketX * GoalProjectionSpatialIndex.BucketSizeInCells;
+        int minY = bucketY * GoalProjectionSpatialIndex.BucketSizeInCells;
+        int maxX = Math.Min(world.Width - 1, minX + GoalProjectionSpatialIndex.BucketSizeInCells - 1);
+        int maxY = Math.Min(world.Height - 1, minY + GoalProjectionSpatialIndex.BucketSizeInCells - 1);
+        world.GetGridCellBoundsFixed(minX, minY, out FixVector2 minimum, out _);
+        world.GetGridCellBoundsFixed(maxX, maxY, out _, out FixVector2 maximum);
+        Fix64 dx = desiredWorld.x < minimum.x
+            ? minimum.x - desiredWorld.x
+            : desiredWorld.x > maximum.x ? desiredWorld.x - maximum.x : Fix64.Zero;
+        Fix64 dz = desiredWorld.y < minimum.y
+            ? minimum.y - desiredWorld.y
+            : desiredWorld.y > maximum.y ? desiredWorld.y - maximum.y : Fix64.Zero;
+        return dx * dx + dz * dz;
+    }
+
     private static bool TryFindNearestWalkableInIslandByWorldDistanceFixed(
         NavigationWorld world,
         int centerX,
@@ -34328,17 +35863,17 @@ public static partial class FlowFieldCrowdMovementSystem
             ref bestDistanceSquared);
         if (!found && allowFullIslandSearch)
         {
-            found = TryFindNearestWalkableInIslandByWorldDistanceInBounds(
+            found = TryFindNearestWalkableInIslandByWorldDistanceFromSpatialIndex(
                 world,
-                0,
-                world.Width - 1,
-                0,
-                world.Height - 1,
+                centerX,
+                centerY,
                 desiredWorld,
                 islandId,
-                ref resultX,
-                ref resultY,
-                ref bestDistanceSquared);
+                out resultX,
+                out resultY,
+                out distance);
+            if (found)
+                return true;
         }
 
         if (found)
@@ -34385,19 +35920,17 @@ public static partial class FlowFieldCrowdMovementSystem
             return found;
         }
 
-        found = TryFindNearestWalkableInIslandByWorldDistanceInBounds(
+        found = TryFindNearestWalkableInIslandByWorldDistanceFromSpatialIndex(
             world,
-            0,
-            world.Width - 1,
-            0,
-            world.Height - 1,
+            centerX,
+            centerY,
             desiredFixed,
             islandId,
-            ref resultX,
-            ref resultY,
-            ref bestDistanceSquared);
+            out resultX,
+            out resultY,
+            out Fix64 fullDistance);
         if (found)
-            distance = (float)Fix64.Sqrt(bestDistanceSquared);
+            distance = (float)fullDistance;
         return found;
     }
 

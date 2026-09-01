@@ -106,6 +106,7 @@ internal static class Lv2PullChasePerformanceRunner
         MainThreadPerfScope.FlowTileQueueReferenceTrim,
         MainThreadPerfScope.FlowTileQueueCommit,
         MainThreadPerfScope.FlowTileQueueSharedGoal,
+        MainThreadPerfScope.FlowTileQueueMovingTargetProjection,
         MainThreadPerfScope.FlowTileCommitQueueScan,
         MainThreadPerfScope.FlowTileCommitDirections,
         MainThreadPerfScope.FlowTileCommitContinuation,

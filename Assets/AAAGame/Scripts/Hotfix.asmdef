@@ -12,6 +12,7 @@
         "GameFramework",
         "DOTween.Extension",
         "AAAGame.FlowPathKernel",
+        "Unity.Burst",
         "Unity.Jobs",
         "Unity.Collections",
         "Unity.Mathematics",

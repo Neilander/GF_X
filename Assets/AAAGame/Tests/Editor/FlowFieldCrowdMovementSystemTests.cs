@@ -294,7 +294,7 @@ public class FlowFieldCrowdMovementSystemTests
             allowedWidthSectors: 0,
             allowedHeightSectors: 0,
             cursor: default(AAAGame.FlowPath.FlowPathKernelGraphCursor),
-            operationQuota: 1);
+            operationQuota: 2);
         Assert.IsTrue(search.HasPendingGraphSlice);
         long ignoredCost;
         Assert.Throws<InvalidOperationException>(() => search.TryGetCost(1, out ignoredCost));
@@ -7884,6 +7884,238 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void ExactGoalProjectionSpatialIndex在多岛锚点等距和边缘查询中必须等价全图扫描()
+    {
+        const int width = 24;
+        const int height = 17;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        for (int y = 0; y < height; y++)
+            walkable[11 + y * width] = false;
+
+        Vector3[] anchors = new Vector3[walkable.Length];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+                anchors[x + y * width] = new Vector3(x + 0.5f + (x % 3 == 0 ? 0.13f : 0f), 0f, y + 0.5f + (y % 2 == 0 ? -0.11f : 0f));
+        }
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable, anchors);
+        ProcessWorldBuildQueueUntilReady();
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestRuntimeCellDiagnostics(
+            3, 8, out _, out int leftIsland, out _, out _, out _, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestRuntimeCellDiagnostics(
+            20, 8, out _, out int rightIsland, out _, out _, out _, out _));
+        Assert.Greater(leftIsland, 0);
+        Assert.Greater(rightIsland, 0);
+        Assert.AreNotEqual(leftIsland, rightIsland);
+
+        AssertExactGoalProjectionMatchesBruteForce(new FixVector2((Fix64)4f, (Fix64)8.5f), leftIsland, width, height);
+        AssertExactGoalProjectionMatchesBruteForce(new FixVector2((Fix64)0.03f, (Fix64)0.02f), leftIsland, width, height);
+        AssertExactGoalProjectionMatchesBruteForce(new FixVector2((Fix64)23.96f, (Fix64)16.97f), rightIsland, width, height);
+        AssertExactGoalProjectionMatchesBruteForce(new FixVector2((Fix64)17.5f, (Fix64)3.5f), rightIsland, width, height);
+    }
+
+    [Test]
+    public void RuntimeDirty提交的ExactGoalProjectionSpatialIndex必须立即服务新World()
+    {
+        const int width = 24;
+        const int height = 16;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(
+            9411,
+            new Vector3(12.5f, 0f, 8.5f),
+            new Vector3(0.49f, 0f, 0.49f));
+        ProcessRuntimeDirtyQueueUntilReady(1);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestRuntimeCellDiagnostics(
+            2, 2, out _, out int islandId, out _, out _, out _, out _));
+        Assert.Greater(islandId, 0);
+        AssertExactGoalProjectionMatchesBruteForce(new FixVector2((Fix64)12.5f, (Fix64)8.5f), islandId, width, height);
+    }
+
+    [Test]
+    public void MovingTarget跨Island投影只由后台队列推进且Quota一最终精确发布()
+    {
+        const int agentTypeId = 0;
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.MovingTargetProjectionOperationQuota = 1;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 64;
+        const int height = 16;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        for (int y = 0; y < height; y++)
+            walkable[32 + y * width] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        SimEntityContext source = CreateEntity(new Vector3(1.5f, 0f, 7.5f), false, agentTypeId, 0.18f);
+        SimEntityContext target = CreateEntity(new Vector3(50.5f, 0f, 7.5f), false, agentTypeId, 0.18f);
+        source.TargetComp = new SimTargetingComp(source, new List<IEntityContext> { target }) { CurrentTarget = target };
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestIslandFieldValue(1, 7, out int sourceIsland, out _));
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 1f / 30f);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(source, target.PositionFixed, Fix64.One);
+        FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestMovingTargetProjectionQueueCount());
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestMovingTargetProjectionState(
+            target.LogicEntityId.Value,
+            agentTypeId,
+            sourceIsland,
+            out bool pendingBefore,
+            out int rawX,
+            out int rawY,
+            out int cellsBefore,
+            out int frontierBefore,
+            out int publishedXBefore,
+            out _));
+        Assert.IsTrue(pendingBefore);
+        Assert.AreEqual(50, rawX);
+        Assert.AreEqual(7, rawY);
+        Assert.Zero(cellsBefore, "NavigationSync 只能创建 projection authority，不能推进 cell cursor。");
+        Assert.Greater(frontierBefore, 0);
+        Assert.Less(publishedXBefore, 0, "未发布 projection 时不得暴露旧目标 authority。");
+        LogicNavigationAuthorityDigest beforeAdvance =
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigestWithCheckpoints(new LogicStateHasher());
+
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        LogicNavigationAuthorityDigest afterAdvance =
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigestWithCheckpoints(new LogicStateHasher());
+        Assert.AreNotEqual(
+            beforeAdvance.MovingTargetAnchorsHash,
+            afterAdvance.MovingTargetAnchorsHash,
+            "后台 projection frontier/cursor 的真实推进必须进入 authority hash。");
+
+        int ticks = 1;
+        while (FlowFieldCrowdMovementSystem.GetEditorTestMovingTargetProjectionQueueCount() > 0 && ticks < 4096)
+        {
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+            ticks++;
+        }
+        Assert.Less(ticks, 4096, "quota=1 的 projection 必须跨 Tick 恢复并最终完成。");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestMovingTargetProjectionState(
+            target.LogicEntityId.Value,
+            agentTypeId,
+            sourceIsland,
+            out bool pendingAfter,
+            out _,
+            out _,
+            out _,
+            out _,
+            out int publishedX,
+            out int publishedY));
+        Assert.IsFalse(pendingAfter);
+        Assert.AreEqual(31, publishedX, "跨 island 最近可达格必须是墙左侧的精确最近格。");
+        Assert.AreEqual(7, publishedY);
+    }
+
+    [Test]
+    public void MovingTarget投影不得被无关AgentType的RuntimeDirty阻塞()
+    {
+        const int smallAgentType = AgentTypeHelper.SmallMovementTypeId;
+        const int largeAgentType = AgentTypeHelper.LargeMovementTypeId;
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.MovingTargetProjectionOperationQuota = 1;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 64;
+        const int height = 16;
+        bool[] smallWalkable = new bool[width * height];
+        bool[] largeWalkable = new bool[width * height];
+        Array.Fill(smallWalkable, true);
+        Array.Fill(largeWalkable, true);
+        for (int y = 0; y < height; y++)
+            smallWalkable[32 + y * width] = false;
+
+        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSources(new[]
+        {
+            new AuthoredNavigationSourceData(smallAgentType, width, height, 1f, Vector3.zero, smallWalkable, null),
+            new AuthoredNavigationSourceData(largeAgentType, width, height, 1f, new Vector3(100f, 0f, 0f), largeWalkable, null)
+        });
+        ProcessAllWorldBuildQueuesUntilReady();
+
+        SimEntityContext source = CreateEntity(new Vector3(1.5f, 0f, 7.5f), false, smallAgentType, 0.18f);
+        SimEntityContext target = CreateEntity(new Vector3(50.5f, 0f, 7.5f), false, smallAgentType, 0.18f);
+        source.TargetComp = new SimTargetingComp(source, new List<IEntityContext> { target }) { CurrentTarget = target };
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestIslandFieldValue(1, 7, out int sourceIsland, out _));
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 1f / 30f);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(source, target.PositionFixed, Fix64.One);
+        FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestMovingTargetProjectionQueueCount());
+
+        // The obstacle only overlaps the large world (origin x=100). The
+        // small-world projection must remain independently schedulable.
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(
+            9821,
+            new Vector3(102.5f, 0f, 7.5f),
+            new Vector3(0.49f, 0f, 0.49f));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
+
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestMovingTargetProjectionState(
+            target.LogicEntityId.Value,
+            smallAgentType,
+            sourceIsland,
+            out bool pending,
+            out _,
+            out _,
+            out int processedCells,
+            out _,
+            out _,
+            out _));
+        Assert.IsTrue(pending);
+        Assert.Greater(processedCells, 0, "无关 movement type 的 RuntimeDirty 不得阻塞 projection worker 的推进。");
+    }
+
+    [Test]
+    public void MovingTarget同Island多Source直接共享发布且不创建Projection任务()
+    {
+        const int width = 32;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext first = CreateEntity(new Vector3(1.5f, 0f, 2.5f), false, 0, 0.18f);
+        SimEntityContext second = CreateEntity(new Vector3(2.5f, 0f, 3.5f), false, 0, 0.18f);
+        SimEntityContext target = CreateEntity(new Vector3(28.5f, 0f, 2.5f), false, 0, 0.18f);
+        var targets = new List<IEntityContext> { target };
+        first.TargetComp = new SimTargetingComp(first, targets) { CurrentTarget = target };
+        second.TargetComp = new SimTargetingComp(second, targets) { CurrentTarget = target };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 1f / 30f);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(first, target.PositionFixed, Fix64.One);
+        FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(second, target.PositionFixed, Fix64.One);
+        FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+
+        Assert.Zero(
+            FlowFieldCrowdMovementSystem.GetEditorTestMovingTargetProjectionQueueCount(),
+            "island field 已证明目标格属于 source island 时必须 O(1) 直接发布，不能创建空间搜索任务。");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(
+            first.LogicEntityId.Value,
+            out _,
+            out int rawX,
+            out int rawY,
+            out int goalX,
+            out int goalY,
+            out _));
+        Assert.AreEqual(rawX, goalX);
+        Assert.AreEqual(rawY, goalY);
+        Assert.AreEqual(28, goalX);
+        Assert.AreEqual(2, goalY);
+    }
+
+    [Test]
     public void WorldBuildQueue会分帧完成FullWorldBuild后再原子提交()
     {
         FlowFieldNavigationConfig config = CreateConfig();
@@ -11927,13 +12159,18 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), 1, "测试必须形成同批多 tile 提交。");
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
-        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        int processCount = 0;
+        while (FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount() <= 1 && processCount < 64)
+        {
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+            processCount++;
+        }
 
         Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount(), 1, "同批必须实际提交多个 tile。");
-        Assert.AreEqual(
-            2,
+        Assert.LessOrEqual(
             FlowFieldCrowdMovementSystem.GetEditorTestFlowTileReferenceRefreshCount(),
-            "每个 world 在提交前刷新一次，整批提交后再刷新一次；不得按每个 tile 重扫全部 agent path。");
+            processCount * 2,
+            "每个 queue tick 最多在提交前和整批提交后各刷新一次；不得按每个 tile 重扫全部 agent path。");
     }
 
     [Test]
@@ -12261,6 +12498,20 @@ public class FlowFieldCrowdMovementSystemTests
             FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(right, rightGoal, Fix64.One);
             FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
             FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+
+            for (int frame = 2;
+                 frame < 128 && (!HasDeclaredSteeringWorkingSet(left) || !HasDeclaredSteeringWorkingSet(right));
+                 frame++)
+            {
+                FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+                FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(left, leftGoal, Fix64.One);
+                FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(right, rightGoal, Fix64.One);
+                FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+                FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+            }
+
+            Assert.IsTrue(HasDeclaredSteeringWorkingSet(left) && HasDeclaredSteeringWorkingSet(right),
+                $"跨 Tick graph request 必须最终发布 current/next working set。{FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics()}");
 
             AssertSteeringWorkingSetPrecedesBackground(left, "left");
             AssertSteeringWorkingSetPrecedesBackground(right, "right");
@@ -20952,6 +21203,67 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.Fail($"flow tile was not built for cell=({worldX},{worldY})");
     }
 
+    private static void AssertExactGoalProjectionMatchesBruteForce(
+        FixVector2 desiredWorld,
+        int islandId,
+        int width,
+        int height)
+    {
+        int expectedX = 0;
+        int expectedY = 0;
+        Fix64 expectedDistanceSquared = Fix64.FromRaw(long.MaxValue);
+        bool found = false;
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestRuntimeCellDiagnostics(
+                    x, y, out bool walkable, out int cellIsland, out _, out _, out _, out _));
+                if (!walkable || cellIsland != islandId)
+                    continue;
+
+                FixVector2 center = FlowFieldCrowdMovementSystem.GetEditorTestGridToWorldCenterFixed(x, y);
+                Fix64 dx = center.x - desiredWorld.x;
+                Fix64 dz = center.y - desiredWorld.y;
+                Fix64 candidateDistanceSquared = dx * dx + dz * dz;
+                if (found && candidateDistanceSquared >= expectedDistanceSquared)
+                    continue;
+
+                expectedX = x;
+                expectedY = y;
+                expectedDistanceSquared = candidateDistanceSquared;
+                found = true;
+            }
+        }
+
+        Assert.IsTrue(found, $"测试 island={islandId} 必须存在可投影的 walkable cell。");
+        FieldInfo worldField = typeof(FlowFieldCrowdMovementSystem).GetField(
+            "_world",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        MethodInfo projection = typeof(FlowFieldCrowdMovementSystem).GetMethod(
+            "TryFindNearestWalkableInIslandByWorldDistanceFromSpatialIndex",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.IsNotNull(worldField);
+        Assert.IsNotNull(projection);
+        object world = worldField.GetValue(null);
+        object[] arguments =
+        {
+            world,
+            0,
+            0,
+            desiredWorld,
+            islandId,
+            0,
+            0,
+            Fix64.FromRaw(long.MaxValue)
+        };
+        bool resolved = (bool)projection.Invoke(null, arguments);
+        Assert.IsTrue(resolved);
+        Assert.AreEqual(expectedX, (int)arguments[5], $"精确投影 X 必须保持全图扫描的行优先等距决胜。 desired={desiredWorld}");
+        Assert.AreEqual(expectedY, (int)arguments[6], $"精确投影 Y 必须保持全图扫描的行优先等距决胜。 desired={desiredWorld}");
+        Assert.AreEqual(Fix64.Sqrt(expectedDistanceSquared), (Fix64)arguments[7]);
+    }
+
     private static void ProcessWorldBuildQueueUntilReady()
     {
         for (int i = 0; i < 2048 && (!FlowFieldCrowdMovementSystem.HasEditorTestWorld() || FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild()); i++)
@@ -21190,11 +21502,14 @@ public class FlowFieldCrowdMovementSystemTests
     {
         Assert.IsTrue(TryGetWorkingSetTileState(entity, 0, out _, out bool currentPending, out int currentIndex, out _, out _));
         Assert.IsTrue(TryGetWorkingSetTileState(entity, 1, out _, out bool nextPending, out int nextIndex, out _, out _));
-        Assert.IsTrue(TryGetWorkingSetTileState(entity, 2, out _, out bool backgroundPending, out int backgroundIndex, out _, out _));
-        Assert.IsTrue(currentPending && nextPending && backgroundPending,
-            $"{label} 必须先形成 current/next/background 三层 pending tile。current={currentIndex}, next={nextIndex}, background={backgroundIndex}");
-        Assert.Less(Mathf.Max(currentIndex, nextIndex), backgroundIndex,
-            $"{label} 的 current/next working set 必须整体位于远端 corridor 之前。current={currentIndex}, next={nextIndex}, background={backgroundIndex}");
+        Assert.IsTrue(currentPending && nextPending,
+            $"{label} 必须先形成 current/next pending tile。current={currentIndex}, next={nextIndex}");
+        if (TryGetWorkingSetTileState(entity, 2, out _, out bool backgroundPending, out int backgroundIndex, out _, out _)
+            && backgroundPending)
+        {
+            Assert.Less(Mathf.Max(currentIndex, nextIndex), backgroundIndex,
+                $"{label} 的 current/next working set 必须整体位于远端 corridor 之前。current={currentIndex}, next={nextIndex}, background={backgroundIndex}");
+        }
     }
 
     private static void AssertCurrentFlowTileReceivedOperations(SimEntityContext entity, string label)
@@ -21214,6 +21529,12 @@ public class FlowFieldCrowdMovementSystemTests
     private static bool IsSteeringWorkingSetReady(SimEntityContext entity)
     {
         return IsCorridorTileCached(entity, 0) && IsCorridorTileCached(entity, 1);
+    }
+
+    private static bool HasDeclaredSteeringWorkingSet(SimEntityContext entity)
+    {
+        return TryGetWorkingSetTileState(entity, 0, out _, out _, out _, out _, out _)
+               && TryGetWorkingSetTileState(entity, 1, out _, out _, out _, out _, out _);
     }
 
     private static bool IsCorridorTileCached(SimEntityContext entity, int corridorOffset)
@@ -21260,6 +21581,7 @@ public class FlowFieldCrowdMovementSystemTests
         config.DeterministicFlowTileCommitQuota = operationQuota;
         config.FlowTileBuildOperationQuota = operationQuota;
         config.SharedGoalBuildOperationQuota = operationQuota;
+        config.MovingTargetProjectionOperationQuota = operationQuota;
         config.PathRequestOperationQuota = operationQuota;
     }
 

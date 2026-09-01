@@ -131,11 +131,6 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
                 MainThreadPerfScope.FlowRuntimeRebuildQueue,
                 Stopwatch.GetTimestamp() - sectionStartTicks);
 
-            sectionStartTicks = Stopwatch.GetTimestamp();
-            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
-            MainThreadFrameProfiler.Record(
-                MainThreadPerfScope.FlowTileBuildQueue,
-                Stopwatch.GetTimestamp() - sectionStartTicks);
         }
         finally
         {

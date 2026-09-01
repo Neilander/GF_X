@@ -37,6 +37,9 @@ public class FlowFieldNavigationConfig : ScriptableObject
     [Tooltip("Maximum deterministic shared-goal graph operations processed per logic Tick.")]
     [Min(1)]
     public int SharedGoalBuildOperationQuota = 2048;
+    [Tooltip("Maximum moving-target reachable-goal projection operations processed per logic Tick.")]
+    [Min(1)]
+    public int MovingTargetProjectionOperationQuota = 2048;
     [Tooltip("Maximum deterministic multi-source portal path operations processed per logic Tick.")]
     [Min(1)]
     public int PathRequestOperationQuota = 512;

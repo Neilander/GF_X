@@ -387,20 +387,9 @@ namespace AAAGame.FlowPath
             bool restricted = allowedWidthSectors > 0 || allowedHeightSectors > 0;
             if (restricted && (allowedWidthSectors <= 0 || allowedHeightSectors <= 0))
                 throw new ArgumentException("Flow path graph slice restriction is incomplete.");
-            if (cursor.Stage == 1)
-            {
-                if (!graph.TryGetRange(reverse, cursor.CurrentNode, out FlowPathKernelGraphRange range)
-                    || cursor.EdgeCursor < 0
-                    || cursor.EdgeCursor > range.Count)
-                {
-                    throw new InvalidOperationException(
-                        $"Flow path graph cursor is outside its immutable adjacency range node={cursor.CurrentNode}, offset={cursor.EdgeCursor}.");
-                }
-                cursor.EdgeCursor += range.Start;
-                cursor.EdgeEnd = range.Start + range.Count;
-            }
             int operationCount = 0;
             FlowPathKernelGraphSliceResult result;
+            int capacityRetryCount = 0;
             do
             {
                 ScheduleGraphSlice(
@@ -416,9 +405,10 @@ namespace AAAGame.FlowPath
                 result = CompleteScheduledGraphSlice();
                 operationCount = checked(operationCount + result.OperationCount);
                 cursor = result.Cursor;
-                if (result.StopReason != FlowPathKernelGraphSliceStopReason.QuotaExhausted
-                    || result.OperationCount == 0)
+                if (result.StopReason != FlowPathKernelGraphSliceStopReason.QuotaExhausted)
                     break;
+                if (result.OperationCount == 0 && ++capacityRetryCount > 8)
+                    throw new InvalidOperationException("Flow path graph slice exceeded its capacity retry bound.");
             }
             while (operationCount < operationQuota);
             return new FlowPathKernelGraphSliceResult(

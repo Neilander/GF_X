@@ -527,8 +527,31 @@ public static partial class FlowFieldCrowdMovementSystem
                 out int finalGoalX,
                 out int finalGoalY,
                 out FixVector2 finalGoal,
-                out bool useSectorCorridorPolicy))
+                out bool useSectorCorridorPolicy,
+                out bool pendingProjection))
         {
+            if (pendingProjection)
+            {
+                if (!_world.TryGetSectorId(startX, startY, out int pendingStartSectorId))
+                {
+                    failureReason = $"start sector failed while target projection is pending source={request.Source.CharacterKey} start=({startX},{startY})";
+                    return false;
+                }
+
+                PreparePendingMovingTargetProjectionNavigation(
+                    agent,
+                    request.MovingTargetId,
+                    pendingStartSectorId,
+                    request.InputGoalPosition,
+                    request.MaximumTravelDistance);
+                if (profile)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowPrepareStableGoal,
+                        Stopwatch.GetTimestamp() - phaseStartTicks);
+                }
+                return true;
+            }
             if (profile)
                 MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowPrepareStableGoal, Stopwatch.GetTimestamp() - phaseStartTicks);
             failureReason = $"goal reachability failed source={request.Source.CharacterKey} {BuildGoalResolutionFailure(request.Source, ToWorldVector3(request.InputGoalPosition))}";
@@ -1955,7 +1978,7 @@ public static partial class FlowFieldCrowdMovementSystem
                             cluster?.HeightSectors ?? 0,
                             cursor,
                             operationCapacity - operationCount);
-                        return 1;
+                        return operationCapacity;
                     }
                     if (slice.OperationCount <= 0
                         && slice.StopReason != FlowPathKernelGraphSliceStopReason.TargetSettled)
@@ -1967,7 +1990,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     search.Stage = slice.Cursor.Stage == 0
                         ? IncrementalRestrictedSearchStage.Pop
                         : IncrementalRestrictedSearchStage.Edges;
-                    operationCount += slice.OperationCount;
+                    operationCount++;
                     search.RemainingTargets = slice.RemainingTargets;
                     if (slice.StopReason == FlowPathKernelGraphSliceStopReason.TargetSettled
                         || slice.StopReason == FlowPathKernelGraphSliceStopReason.FrontierEmpty)
@@ -2696,7 +2719,7 @@ public static partial class FlowFieldCrowdMovementSystem
                             0,
                             cursor,
                             operationCapacity - operationCount);
-                        return 1;
+                        return operationCapacity;
                     }
                     if (slice.OperationCount <= 0
                         && slice.StopReason != FlowPathKernelGraphSliceStopReason.TargetSettled)
@@ -2708,7 +2731,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     expansion.Stage = slice.Cursor.Stage == 0
                         ? IncrementalReversePolicyExpansionStage.Pop
                         : IncrementalReversePolicyExpansionStage.Edges;
-                    operationCount += slice.OperationCount;
+                    operationCount++;
                     if (slice.StopReason == FlowPathKernelGraphSliceStopReason.TargetSettled)
                     {
                         expansion.PendingTargetNodes.Clear();
@@ -3435,7 +3458,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 throw new InvalidOperationException(
                     $"Navigation route slice stopped without consuming work. reason={result.StopReason}.");
             }
-            return result.OperationCount;
+            return 1;
         }
 
         if (state.RouteState.TaskCount == 0)
@@ -3479,7 +3502,7 @@ public static partial class FlowFieldCrowdMovementSystem
             (int)RouteExpansionTaskType.TraverseArray,
             (int)RouteExpansionTaskType.BeginConnector,
             operationCapacity);
-        return 1;
+        return operationCapacity;
     }
 
     private static int RegisterRouteSearchAuthority(

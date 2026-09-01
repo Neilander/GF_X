@@ -589,6 +589,7 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(Config.DeterministicFlowTileCommitQuota);
         hasher.Add(Config.FlowTileBuildOperationQuota);
         hasher.Add(Config.SharedGoalBuildOperationQuota);
+        hasher.Add(Config.MovingTargetProjectionOperationQuota);
         hasher.Add(Config.PathRequestOperationQuota);
     }
 
@@ -3315,10 +3316,34 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(anchor.ActiveWorldVersion);
             hasher.Add(anchor.ActiveGoalWorldFixed.x.RawValue);
             hasher.Add(anchor.ActiveGoalWorldFixed.y.RawValue);
+            hasher.Add(anchor.HasPendingProjection);
+            hasher.Add(anchor.PendingProjectionWorldVersion);
+            hasher.Add(anchor.PendingProjectionRawGoalX);
+            hasher.Add(anchor.PendingProjectionRawGoalY);
+            hasher.Add(anchor.PendingProjectionGoalWorldFixed.x.RawValue);
+            hasher.Add(anchor.PendingProjectionGoalWorldFixed.y.RawValue);
+            hasher.Add(anchor.PendingProjectionCellCursor);
+            hasher.Add(anchor.PendingProjectionBestCellIndex);
+            hasher.Add(anchor.PendingProjectionBestDistanceSquared.RawValue);
+            hasher.Add(anchor.PendingProjectionLeafBucketId);
+            hasher.Add(anchor.PendingProjectionLeafCellCursor);
+            hasher.Add(anchor.PendingProjectionNodeHeap.Count);
+            for (int nodeIndex = 0; nodeIndex < anchor.PendingProjectionNodeHeap.Count; nodeIndex++)
+            {
+                hasher.Add(anchor.PendingProjectionNodeHeap[nodeIndex]);
+                hasher.Add(anchor.PendingProjectionNodeLowerBounds[nodeIndex].RawValue);
+            }
             hasher.Add(anchor.HasPinnedSectorCorridorPolicy);
             if (anchor.HasPinnedSectorCorridorPolicy)
                 AddSectorCorridorPolicyKey(hasher, anchor.PinnedSectorCorridorPolicyKey);
             hasher.Add(anchor.LastUsedFrame);
+        }
+        hasher.Add(MovingTargetProjectionQueue.Count);
+        foreach (MovingTargetAnchorKey key in MovingTargetProjectionQueue)
+        {
+            hasher.Add(key.TargetId);
+            hasher.Add(key.AgentTypeId);
+            hasher.Add(key.IslandId);
         }
     }
 
@@ -4280,10 +4305,34 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(anchor.ActiveGoalSectorId);
             hasher.Add(anchor.ActiveWorldVersion);
             AddVector3(hasher, anchor.ActiveGoalWorld);
+            hasher.Add(anchor.HasPendingProjection);
+            hasher.Add(anchor.PendingProjectionWorldVersion);
+            hasher.Add(anchor.PendingProjectionRawGoalX);
+            hasher.Add(anchor.PendingProjectionRawGoalY);
+            hasher.Add(anchor.PendingProjectionGoalWorldFixed.x.RawValue);
+            hasher.Add(anchor.PendingProjectionGoalWorldFixed.y.RawValue);
+            hasher.Add(anchor.PendingProjectionCellCursor);
+            hasher.Add(anchor.PendingProjectionBestCellIndex);
+            hasher.Add(anchor.PendingProjectionBestDistanceSquared.RawValue);
+            hasher.Add(anchor.PendingProjectionLeafBucketId);
+            hasher.Add(anchor.PendingProjectionLeafCellCursor);
+            hasher.Add(anchor.PendingProjectionNodeHeap.Count);
+            for (int nodeIndex = 0; nodeIndex < anchor.PendingProjectionNodeHeap.Count; nodeIndex++)
+            {
+                hasher.Add(anchor.PendingProjectionNodeHeap[nodeIndex]);
+                hasher.Add(anchor.PendingProjectionNodeLowerBounds[nodeIndex].RawValue);
+            }
             hasher.Add(anchor.HasPinnedSectorCorridorPolicy);
             if (anchor.HasPinnedSectorCorridorPolicy)
                 AddSectorCorridorPolicyKey(hasher, anchor.PinnedSectorCorridorPolicyKey);
             hasher.Add(anchor.LastUsedFrame);
+        }
+        hasher.Add(MovingTargetProjectionQueue.Count);
+        foreach (MovingTargetAnchorKey key in MovingTargetProjectionQueue)
+        {
+            hasher.Add(key.TargetId);
+            hasher.Add(key.AgentTypeId);
+            hasher.Add(key.IslandId);
         }
     }
 
