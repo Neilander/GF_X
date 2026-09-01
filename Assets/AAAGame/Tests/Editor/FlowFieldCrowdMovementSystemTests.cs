@@ -8059,8 +8059,18 @@ public class FlowFieldCrowdMovementSystemTests
             new Vector3(102.5f, 0f, 7.5f),
             new Vector3(0.49f, 0f, 0.49f));
         Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
+        Assert.IsEmpty(
+            FlowFieldCrowdMovementSystem.GetEditorTestRuntimeDirtySectorIds(smallAgentType),
+            "位于 small world 之外的障碍不得经越界 clamp 写入其边界 sector。");
+        Assert.IsNotEmpty(
+            FlowFieldCrowdMovementSystem.GetEditorTestRuntimeDirtySectorIds(largeAgentType),
+            "障碍与 large world 相交时必须建立其 RuntimeDirty work item。");
 
+        LogicNavigationAuthorityDigest beforeAdvance =
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigestWithCheckpoints(new LogicStateHasher());
         FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        LogicNavigationAuthorityDigest afterAdvance =
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigestWithCheckpoints(new LogicStateHasher());
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestMovingTargetProjectionState(
             target.LogicEntityId.Value,
             smallAgentType,
@@ -8068,12 +8078,15 @@ public class FlowFieldCrowdMovementSystemTests
             out bool pending,
             out _,
             out _,
-            out int processedCells,
+            out _,
             out _,
             out _,
             out _));
         Assert.IsTrue(pending);
-        Assert.Greater(processedCells, 0, "无关 movement type 的 RuntimeDirty 不得阻塞 projection worker 的推进。");
+        Assert.AreNotEqual(
+            beforeAdvance.MovingTargetAnchorsHash,
+            afterAdvance.MovingTargetAnchorsHash,
+            "无关 movement type 的 RuntimeDirty 不得阻塞 projection worker 的推进。");
     }
 
     [Test]

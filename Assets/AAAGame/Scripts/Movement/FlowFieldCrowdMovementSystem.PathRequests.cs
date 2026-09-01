@@ -4110,6 +4110,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"searchSlices={snapshot.NavigationPathSearchCommandSlices}/{snapshot.NavigationPathSearchCommandOperations}," +
                 $"routeSlices={snapshot.NavigationPathRouteSlices}/{snapshot.NavigationPathRouteSliceOperations}," +
                 $"commits={snapshot.NavigationPathRequestCommits},sourceCommits={snapshot.NavigationPathSourceCommits}," +
+                $"goalProjectionIndex(buildStarts={snapshot.GoalProjectionIndexBuildStarts},scannedCells={snapshot.GoalProjectionIndexScannedCells},fullScans={snapshot.GoalProjectionIndexFullScans},publishes={snapshot.GoalProjectionIndexPublishes})," +
                 $"orchestration=[policyCommit={TicksToMs(snapshot.NavigationPathPolicyCommitTicks):F3}ms," +
                 $"budget={TicksToMs(snapshot.NavigationPathBudgetConsumeTicks):F3}ms," +
                 $"removal={TicksToMs(snapshot.NavigationPathRequestRemovalTicks):F3}ms]," +
@@ -4118,6 +4119,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"hierarchy={snapshot.NavigationPathHierarchyPolicyCreates},materialization={snapshot.NavigationPathMaterializationCreates}," +
                 $"concat={snapshot.NavigationPathImmutableConcatCreates},suffix={snapshot.NavigationPathSharedSuffixCreates},sharedStartRouteHits={snapshot.NavigationPathSharedStartRouteHits},movingGoalCorridorTrimHits={snapshot.NavigationPathMovingGoalCorridorTrimHits}," +
                 $"sharedGoalConnectorBuilds={snapshot.NavigationPathSharedGoalConnectorBuilds},sharedGoalConnectorHits={snapshot.NavigationPathSharedGoalConnectorHits}]," +
+                $"policyShift(calls={snapshot.NavigationPathPolicyShiftCalls},costEntries={snapshot.NavigationPathPolicyShiftCostEntries},openEntries={snapshot.NavigationPathPolicyShiftOpenEntries})," +
                 $"stages=[{BuildEditorNavigationPathStageDiagnostics(snapshot)}]," +
                 $"slowest=[milliseconds={TicksToMs(snapshot.NavigationPathSlowestOperationTicks):F3}," +
                 $"world={snapshot.NavigationPathSlowestWorldVersion},agentType={snapshot.NavigationPathSlowestAgentTypeId}," +
