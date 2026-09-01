@@ -43,6 +43,7 @@ internal static class Lv2PullChasePerformanceRunner
     private static readonly MainThreadPerfScope[] s_ChaseScopes =
     {
         MainThreadPerfScope.LogicFrameTick,
+        MainThreadPerfScope.LogicFrameListenerSnapshot,
         MainThreadPerfScope.LogicFrameListenerCallbacks,
         MainThreadPerfScope.LogicEntityNavigationSync,
         MainThreadPerfScope.FlowNavigationAgentUpdate,
@@ -54,6 +55,14 @@ internal static class Lv2PullChasePerformanceRunner
         MainThreadPerfScope.FlowNavigationRequestSort,
         MainThreadPerfScope.FlowNavigationDemandResolve,
         MainThreadPerfScope.FlowNavigationDemandDispatch,
+        MainThreadPerfScope.FlowNavigationDemandReuse,
+        MainThreadPerfScope.FlowNavigationDemandEnqueue,
+        MainThreadPerfScope.FlowNavigationDemandPathValidation,
+        MainThreadPerfScope.FlowNavigationDemandPathAdvance,
+        MainThreadPerfScope.FlowNavigationDemandPortalParticipation,
+        MainThreadPerfScope.FlowNavigationDemandTileBuilds,
+        MainThreadPerfScope.FlowNavigationDemandRemoveOther,
+        MainThreadPerfScope.FlowNavigationDemandQueueMutation,
         MainThreadPerfScope.FlowNavigationRequestPrune,
         MainThreadPerfScope.FlowNavigationPathAdvance,
         MainThreadPerfScope.FlowNavigationPathInitialize,
@@ -147,6 +156,9 @@ internal static class Lv2PullChasePerformanceRunner
     private static int s_MaxFrame;
     private static double s_MaxLogicMilliseconds;
     private static int s_MaxLogicFrame;
+    private static double s_MaxLogicTickMilliseconds;
+    private static int s_MaxLogicTickRenderFrame;
+    private static readonly double[] s_MaxLogicTickScopeMilliseconds = new double[(int)MainThreadPerfScope.Count];
     private static string s_NavigationBeforeInvade = string.Empty;
     private static string s_NavigationAfterInvade = string.Empty;
     private static string s_LastRetreatDirection = string.Empty;
@@ -752,6 +764,9 @@ internal static class Lv2PullChasePerformanceRunner
         s_MaxFrame = -1;
         s_MaxLogicMilliseconds = 0.0;
         s_MaxLogicFrame = -1;
+        s_MaxLogicTickMilliseconds = 0.0;
+        s_MaxLogicTickRenderFrame = -1;
+        Array.Clear(s_MaxLogicTickScopeMilliseconds, 0, s_MaxLogicTickScopeMilliseconds.Length);
         s_ApproachFrameMilliseconds.Clear();
         s_ApproachLogicMilliseconds.Clear();
         s_RetreatFrameMilliseconds.Clear();
@@ -832,6 +847,18 @@ internal static class Lv2PullChasePerformanceRunner
             s_MaxLogicMilliseconds = logicMs;
             s_MaxLogicFrame = completedFrame;
         }
+        double logicTickMs = MainThreadFrameProfiler.LastCompletedMaxLogicTickMilliseconds;
+        if (logicTickMs > s_MaxLogicTickMilliseconds)
+        {
+            s_MaxLogicTickMilliseconds = logicTickMs;
+            s_MaxLogicTickRenderFrame = completedFrame;
+            for (int i = 0; i < s_ChaseScopes.Length; i++)
+            {
+                MainThreadPerfScope scope = s_ChaseScopes[i];
+                s_MaxLogicTickScopeMilliseconds[(int)scope] =
+                    MainThreadFrameProfiler.GetLastCompletedMaxLogicTickScopeMilliseconds(scope);
+            }
+        }
 
         bool periodic = completedFrame - s_LastPeriodicSampleFrame >= SampleIntervalRenderFrames;
         double pathHandleMilliseconds = MainThreadFrameProfiler.GetLastCompletedScopeMilliseconds(MainThreadPerfScope.FlowPreparePathHandle);
@@ -879,8 +906,8 @@ internal static class Lv2PullChasePerformanceRunner
         s_Samples.Add(
             $"sample render={completedFrame},logic={LogicFrameRuntime.CurrentFrame},state={(RunnerState)SessionState.GetInt(StateKey, 0)}," +
             $"mode={(ScenarioMode)SessionState.GetInt(ModeKey, 0)},frameMs={frameMs:F3},trackedMs={MainThreadFrameProfiler.LastCompletedTrackedMilliseconds:F3}," +
-            $"untrackedMs={MainThreadFrameProfiler.LastCompletedUntrackedMilliseconds:F3},logicMs={logicMs:F3},editorGapMs={updateGapMs:F3}," +
-            $"scopes=[{BuildChaseScopeSample()}],pathRequests=[groups={pathRequestGroups},operations={pathRequestOperations},quota={pathRequestOperationQuota}," +
+            $"untrackedMs={MainThreadFrameProfiler.LastCompletedUntrackedMilliseconds:F3},logicMs={logicMs:F3},maxLogicTickMs={MainThreadFrameProfiler.LastCompletedMaxLogicTickMilliseconds:F3},maxLogicTickFrame={MainThreadFrameProfiler.LastCompletedMaxLogicTickFrame},editorGapMs={updateGapMs:F3}," +
+            $"scopes=[{BuildChaseScopeSample()}],tickScopes=[{BuildCompletedMaxLogicTickScopeSample()}],pathRequests=[groups={pathRequestGroups},operations={pathRequestOperations},quota={pathRequestOperationQuota}," +
             $"commits={pathRequestCommits},sourceCommits={pathRequestSourceCommits},pendingGroups={pendingPathRequestGroups},pendingSources={pendingPathRequestSources}]," +
             $"pathSearch=[{pathSearch}],pathStages=[{pathStages}],navigationSyncStages=[{navigationSyncStages}]," +
             $"startConnectors=[{startConnectors}],chase=[{chase}],navigation=[{navigation}]");
@@ -944,6 +971,33 @@ internal static class Lv2PullChasePerformanceRunner
         {
             lines[i] = $"scopePeak name={s_ChaseScopes[i]},milliseconds={s_ChaseScopePeakMilliseconds[i].ToString("F3", CultureInfo.InvariantCulture)}," +
                        $"render={s_ChaseScopePeakRenderFrames[i]},calls={s_ChaseScopePeakCalls[i]}";
+        }
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string BuildCompletedMaxLogicTickScopeSample()
+    {
+        var builder = new System.Text.StringBuilder(192);
+        for (int i = 0; i < s_ChaseScopes.Length; i++)
+        {
+            MainThreadPerfScope scope = s_ChaseScopes[i];
+            double milliseconds = MainThreadFrameProfiler.GetLastCompletedMaxLogicTickScopeMilliseconds(scope);
+            if (milliseconds <= 0.001)
+                continue;
+            if (builder.Length > 0)
+                builder.Append(',');
+            builder.Append(scope).Append('=').Append(milliseconds.ToString("F3", CultureInfo.InvariantCulture));
+        }
+        return builder.Length > 0 ? builder.ToString() : "none";
+    }
+
+    private static string BuildMaxLogicTickScopeReport()
+    {
+        var lines = new string[s_ChaseScopes.Length];
+        for (int i = 0; i < s_ChaseScopes.Length; i++)
+        {
+            MainThreadPerfScope scope = s_ChaseScopes[i];
+            lines[i] = $"maxTickScope name={scope},milliseconds={MainThreadFrameProfiler.GetLastCompletedMaxLogicTickScopeMilliseconds(scope).ToString("F3", CultureInfo.InvariantCulture)}";
         }
         return string.Join(Environment.NewLine, lines);
     }
@@ -1129,7 +1183,10 @@ internal static class Lv2PullChasePerformanceRunner
             "navigationBeforeInvade=" + s_NavigationBeforeInvade + Environment.NewLine +
             "navigationAfterInvade=" + s_NavigationAfterInvade + Environment.NewLine +
             "finalChase=" + DescribeChaseState(hero, target) + Environment.NewLine +
+            "maxLogicTickMs=" + s_MaxLogicTickMilliseconds.ToString("F3", CultureInfo.InvariantCulture) + Environment.NewLine +
+            "maxLogicTickRenderFrame=" + s_MaxLogicTickRenderFrame + Environment.NewLine +
             "scopePeaks:" + Environment.NewLine + BuildChaseScopePeakReport() + Environment.NewLine +
+            "maxLogicTickScopes:" + Environment.NewLine + BuildMaxLogicTickScopeReport() + Environment.NewLine +
             "samples:" + Environment.NewLine + string.Join(Environment.NewLine, s_Samples) + Environment.NewLine;
         WriteResult(ResultRelativePath, report);
         Log.Info("[Lv2PullChasePerformance] PASS. maxFrameMs={0:F3}, maxLogicMs={1:F3}, samples={2}.", s_MaxFrameMilliseconds, s_MaxLogicMilliseconds, s_Samples.Count);
@@ -1157,11 +1214,15 @@ internal static class Lv2PullChasePerformanceRunner
             "maxFrame=" + s_MaxFrame + Environment.NewLine +
             "maxLogicMs=" + s_MaxLogicMilliseconds.ToString("F3", CultureInfo.InvariantCulture) + Environment.NewLine +
             "maxLogicRenderFrame=" + s_MaxLogicFrame + Environment.NewLine +
+            "maxLogicTickMs=" + s_MaxLogicTickMilliseconds.ToString("F3", CultureInfo.InvariantCulture) + Environment.NewLine +
+            "maxLogicTickRenderFrame=" + s_MaxLogicTickRenderFrame + Environment.NewLine +
             "peakRequiredFlowTileCommits=" + s_PeakRequiredFlowTileCommits + Environment.NewLine +
             "peakFlowTileQueueMutations=" + s_PeakFlowTileQueueMutations + Environment.NewLine +
             "peakPathPortalExpansions=" + s_PeakPathPortalExpansions + Environment.NewLine +
             "navigationFinal=" + FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics() + Environment.NewLine +
             "scopePeaks:" + Environment.NewLine + BuildChaseScopePeakReport() + Environment.NewLine +
+            "maxLogicTickScopes:" + Environment.NewLine + BuildMaxLogicTickScopeReport() + Environment.NewLine +
+            "lastCompletedMaxLogicTickScopes:" + Environment.NewLine + BuildMaxLogicTickScopeReport() + Environment.NewLine +
             "samples:" + Environment.NewLine + string.Join(Environment.NewLine, s_Samples) + Environment.NewLine;
         WriteResult(BuildResultRelativePath, report);
         Log.Info("[Lv2RuntimeDirtyBuildPerformance] PASS. maxFrameMs={0:F3}, maxLogicMs={1:F3}, samples={2}.", s_MaxFrameMilliseconds, s_MaxLogicMilliseconds, s_Samples.Count);

@@ -108,6 +108,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     private IEntityContext _defendRouteTarget;
     private bool _defendTargetRefreshPending;
     private bool _defendTargetEventSubscribed;
+    private readonly List<IEntityContext> _enemyScanCandidates = new List<IEntityContext>(16);
 
     /// <summary>
     /// 领袖通过 EntityRegistry.GetClosestLeader 惰性获取。
@@ -663,18 +664,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
     private bool HasEnemyInScanRange(IEntityContext self)
     {
-        Fix64 r = DetectEnemyRange;
-        Fix64 rSq = r * r;
-        var all = EntityRegistry.AllEntities;
-        for (int i = 0; i < all.Count; i++)
-        {
-            var ent = all[i];
-            if (ent == null || ReferenceEquals(ent, self)) continue;
-            if (!IsValidAttackTarget(self, ent)) continue;
-            FixVector2 d = ent.LogicFramePositionFixed() - self.LogicFramePositionFixed();
-            if (FixVector2.SqrMagnitude(d) <= rSq) return true;
-        }
-        return false;
+        return LogicTargetingSpatialIndexService.HasEnemyInRange(
+            self,
+            DetectEnemyRange,
+            _enemyScanCandidates);
     }
 
     private void TickFollow(IEntityContext self, Fix64 dt)

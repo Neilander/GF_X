@@ -202,7 +202,15 @@ namespace UnityGameFramework.Runtime
         FlowSteeringDiagnostics = 190,
         FlowSteeringFunnelGridLos = 191,
         FlowSteeringFunnelStaticSweep = 192,
-        Count = 194
+        FlowNavigationDemandReuse = 194,
+        FlowNavigationDemandEnqueue = 195,
+        FlowNavigationDemandPathValidation = 196,
+        FlowNavigationDemandPathAdvance = 197,
+        FlowNavigationDemandPortalParticipation = 198,
+        FlowNavigationDemandTileBuilds = 199,
+        FlowNavigationDemandRemoveOther = 200,
+        FlowNavigationDemandQueueMutation = 201,
+        Count = 202
     }
 
     public static class MainThreadFrameProfiler
@@ -220,6 +228,9 @@ namespace UnityGameFramework.Runtime
         private static readonly int[] ScopeCalls = new int[(int)MainThreadPerfScope.Count];
         private static readonly long[] LastCompletedScopeTicks = new long[(int)MainThreadPerfScope.Count];
         private static readonly int[] LastCompletedScopeCalls = new int[(int)MainThreadPerfScope.Count];
+        private static readonly long[] CurrentLogicTickScopeTicks = new long[(int)MainThreadPerfScope.Count];
+        private static readonly long[] CurrentMaxLogicTickScopeTicks = new long[(int)MainThreadPerfScope.Count];
+        private static readonly long[] LastCompletedMaxLogicTickScopeTicks = new long[(int)MainThreadPerfScope.Count];
         private static readonly long[] ScopeAllocatedBytes = new long[(int)MainThreadPerfScope.Count];
         private static readonly long[] IntervalScopeAllocatedBytes = new long[(int)MainThreadPerfScope.Count];
         private static readonly Dictionary<Type, LogicListenerSample> LogicListenerSamples = new Dictionary<Type, LogicListenerSample>();
@@ -256,6 +267,10 @@ namespace UnityGameFramework.Runtime
         private static long _frameStartAllocatedBytes;
         private static int _frameStartCollectionCount;
         private static long _intervalAllocatedBytes;
+        private static long _currentMaxLogicTickTicks;
+        private static ulong _currentLogicTickFrame;
+        private static ulong _currentMaxLogicTickFrame;
+        private static bool _logicTickActive;
 
         public static bool LoggingEnabled { get; set; }
         public static bool ConsoleLoggingEnabled { get; set; } = true;
@@ -264,6 +279,8 @@ namespace UnityGameFramework.Runtime
         public static double LastCompletedTrackedMilliseconds { get; private set; }
         public static double LastCompletedUntrackedMilliseconds { get; private set; }
         public static double LastCompletedLogicFrameMilliseconds { get; private set; }
+        public static double LastCompletedMaxLogicTickMilliseconds { get; private set; }
+        public static ulong LastCompletedMaxLogicTickFrame { get; private set; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetForPlaySession()
@@ -275,8 +292,17 @@ namespace UnityGameFramework.Runtime
             LastCompletedTrackedMilliseconds = 0.0;
             LastCompletedUntrackedMilliseconds = 0.0;
             LastCompletedLogicFrameMilliseconds = 0.0;
+            LastCompletedMaxLogicTickMilliseconds = 0.0;
+            LastCompletedMaxLogicTickFrame = 0;
+            _currentMaxLogicTickTicks = 0L;
+            _currentLogicTickFrame = 0;
+            _currentMaxLogicTickFrame = 0;
             Array.Clear(LastCompletedScopeTicks, 0, LastCompletedScopeTicks.Length);
             Array.Clear(LastCompletedScopeCalls, 0, LastCompletedScopeCalls.Length);
+            Array.Clear(CurrentLogicTickScopeTicks, 0, CurrentLogicTickScopeTicks.Length);
+            Array.Clear(CurrentMaxLogicTickScopeTicks, 0, CurrentMaxLogicTickScopeTicks.Length);
+            Array.Clear(LastCompletedMaxLogicTickScopeTicks, 0, LastCompletedMaxLogicTickScopeTicks.Length);
+            _logicTickActive = false;
         }
 
         public static double GetLastCompletedScopeMilliseconds(MainThreadPerfScope scope)
@@ -293,6 +319,24 @@ namespace UnityGameFramework.Runtime
             if (index < 0 || index >= LastCompletedScopeCalls.Length)
                 throw new ArgumentOutOfRangeException(nameof(scope), scope, "Unknown main thread perf scope.");
             return LastCompletedScopeCalls[index];
+        }
+
+        public static double GetLastCompletedMaxLogicTickScopeMilliseconds(MainThreadPerfScope scope)
+        {
+            int index = (int)scope;
+            if (index < 0 || index >= LastCompletedMaxLogicTickScopeTicks.Length)
+                throw new ArgumentOutOfRangeException(nameof(scope), scope, "Unknown main thread perf scope.");
+            return TicksToMs(LastCompletedMaxLogicTickScopeTicks[index]);
+        }
+
+        public static void BeginLogicTick(ulong logicFrame)
+        {
+            if (!LoggingEnabled)
+                return;
+            EnsureFrame();
+            Array.Clear(CurrentLogicTickScopeTicks, 0, CurrentLogicTickScopeTicks.Length);
+            _currentLogicTickFrame = logicFrame;
+            _logicTickActive = true;
         }
 
         public static void PulseFrame()
@@ -317,6 +361,8 @@ namespace UnityGameFramework.Runtime
 
             ScopeTicks[index] += ticks;
             ScopeCalls[index]++;
+            if (_logicTickActive)
+                CurrentLogicTickScopeTicks[index] += ticks;
             if (allocatedBytes > 0)
                 ScopeAllocatedBytes[index] += allocatedBytes;
         }
@@ -339,10 +385,31 @@ namespace UnityGameFramework.Runtime
             sample.Calls++;
         }
 
+        public static void RecordLogicTickDuration(long ticks)
+        {
+            if (ticks <= 0)
+                return;
+
+            EnsureFrame();
+            bool isNewMaximum = ticks > _currentMaxLogicTickTicks;
+            if (isNewMaximum)
+            {
+                _currentMaxLogicTickTicks = ticks;
+                _currentMaxLogicTickFrame = _currentLogicTickFrame;
+                Array.Copy(CurrentLogicTickScopeTicks, CurrentMaxLogicTickScopeTicks, CurrentLogicTickScopeTicks.Length);
+            }
+            _logicTickActive = false;
+        }
+
         private static void EnsureFrame()
         {
             int frame = Time.frameCount;
             long now = Stopwatch.GetTimestamp();
+            // A logic tick may span multiple render frames in the editor. Keep
+            // all tick scopes on its start frame and roll over only after the
+            // tick has recorded its duration.
+            if (_initialized && _logicTickActive && frame != _frame)
+                return;
             if (!_initialized || frame < _frame)
             {
                 bool frameRolledBack = _initialized;
@@ -353,6 +420,10 @@ namespace UnityGameFramework.Runtime
                 Array.Clear(IntervalScopeAllocatedBytes, 0, IntervalScopeAllocatedBytes.Length);
                 ResetLogicListenerSamples();
                 _intervalAllocatedBytes = 0L;
+                _currentMaxLogicTickTicks = 0L;
+                _currentMaxLogicTickFrame = 0;
+                Array.Clear(CurrentMaxLogicTickScopeTicks, 0, CurrentMaxLogicTickScopeTicks.Length);
+                _logicTickActive = false;
                 _frame = frame;
                 _frameStartTicks = now;
                 _frameStartAllocatedBytes = GC.GetAllocatedBytesForCurrentThread();
@@ -373,6 +444,10 @@ namespace UnityGameFramework.Runtime
             Array.Clear(ScopeCalls, 0, ScopeCalls.Length);
             Array.Clear(ScopeAllocatedBytes, 0, ScopeAllocatedBytes.Length);
             ResetLogicListenerSamples();
+            _currentMaxLogicTickTicks = 0L;
+            _currentMaxLogicTickFrame = 0;
+            Array.Clear(CurrentMaxLogicTickScopeTicks, 0, CurrentMaxLogicTickScopeTicks.Length);
+            _logicTickActive = false;
             _frame = frame;
             _frameStartTicks = now;
             _frameStartAllocatedBytes = GC.GetAllocatedBytesForCurrentThread();
@@ -404,8 +479,11 @@ namespace UnityGameFramework.Runtime
             LastCompletedUntrackedMilliseconds = untrackedMs;
             long logicFrameTicks = ScopeTicks[(int)MainThreadPerfScope.LogicFrameAdvance];
             LastCompletedLogicFrameMilliseconds = TicksToMs(logicFrameTicks);
+            LastCompletedMaxLogicTickMilliseconds = TicksToMs(_currentMaxLogicTickTicks);
+            LastCompletedMaxLogicTickFrame = _currentMaxLogicTickFrame;
             Array.Copy(ScopeTicks, LastCompletedScopeTicks, ScopeTicks.Length);
             Array.Copy(ScopeCalls, LastCompletedScopeCalls, ScopeCalls.Length);
+            Array.Copy(CurrentMaxLogicTickScopeTicks, LastCompletedMaxLogicTickScopeTicks, CurrentMaxLogicTickScopeTicks.Length);
 
             EnsureRecorders();
 

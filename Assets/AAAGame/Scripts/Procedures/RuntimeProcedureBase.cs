@@ -688,6 +688,8 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         }
 
         long tickStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        if (profile)
+            MainThreadFrameProfiler.BeginLogicTick(frame);
         try
         {
             LogicFrameRuntime.Tick(frame);
@@ -696,9 +698,11 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         {
             if (profile)
             {
+                long tickElapsedTicks = Stopwatch.GetTimestamp() - tickStartTicks;
                 MainThreadFrameProfiler.Record(
                     MainThreadPerfScope.LogicFrameTick,
-                    Stopwatch.GetTimestamp() - tickStartTicks);
+                    tickElapsedTicks);
+                MainThreadFrameProfiler.RecordLogicTickDuration(tickElapsedTicks);
             }
         }
         LogicGameEndService.ApplyFrame(frame);

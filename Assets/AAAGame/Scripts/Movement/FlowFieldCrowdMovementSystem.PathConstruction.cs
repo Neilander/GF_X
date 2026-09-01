@@ -2605,13 +2605,16 @@ public static partial class FlowFieldCrowdMovementSystem
         handle = null;
         bool profile = MainThreadFrameProfiler.LoggingEnabled;
         long lookupStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        int policyGoalCellIndex = movingTargetId == int.MinValue
+            ? _world.GetIndex(goalX, goalY)
+            : -1;
         var policyKey = new SectorCorridorPolicyKey(
             _world.Version,
             agentTypeId,
             movingTargetId,
             sourceIslandId,
             goalSectorId,
-            _world.GetIndex(goalX, goalY),
+            policyGoalCellIndex,
             _world.Sectors[goalSectorId].DirtyVersion);
         MovingTargetAnchor pinnedAnchor = null;
         bool policyFound;

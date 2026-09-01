@@ -651,13 +651,19 @@ public static partial class FlowFieldCrowdMovementSystem
         int goalX,
         int goalY)
     {
+        // A moving target's exact cell is final/local binding state.  The
+        // corridor policy is keyed by its stable goal sector so same-sector
+        // target motion reuses the already-built hierarchy authority.
+        int policyGoalCellIndex = requestKey.MovingTargetId == int.MinValue
+            ? _world.GetIndex(goalX, goalY)
+            : -1;
         return new SectorCorridorPolicyKey(
             requestKey.WorldVersion,
             requestKey.AgentTypeId,
             requestKey.MovingTargetId,
             requestKey.SourceIslandId,
             requestKey.GoalSectorId,
-            _world.GetIndex(goalX, goalY),
+            policyGoalCellIndex,
             requestKey.GoalSectorDirtyVersion);
     }
 
@@ -667,7 +673,12 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("Navigation path demand is incomplete.");
         NavigationPathRequestIdentityKey identityKey = CreateNavigationPathRequestIdentityKey(demand);
         NavigationPathRequestKey key = CreateNavigationPathRequestKey(demand);
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         RemoveSourceFromOtherNavigationPathRequests(demand.SourceId, identityKey);
+        if (profile)
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationDemandRemoveOther, Stopwatch.GetTimestamp() - stageStartTicks);
+        stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (!PendingNavigationPathRequests.TryGetValue(identityKey, out NavigationPathRequestJob job))
         {
             job = new NavigationPathRequestJob
@@ -687,6 +698,8 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             throw new InvalidOperationException("A completed navigation path request remained in the pending index.");
         }
+        if (profile)
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationDemandQueueMutation, Stopwatch.GetTimestamp() - stageStartTicks);
 
         NavigationPathSourceJob sourceJob = null;
         for (int i = 0; i < job.Sources.Count; i++)
@@ -724,18 +737,24 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         AgentNavState nav = demand.Agent.NavState;
+        stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         bool canConsumeCommittedPlan = demand.MovingTargetId != int.MinValue
                                        && nav.PathHandle != null
                                        && nav.PathHandle.WorldVersion == _world.Version
                                        && nav.CommittedMovingTargetId == demand.MovingTargetId
                                        && !PathReferencesMissingPortal(nav.PathHandle)
                                        && TryAdvancePathToCurrentSector(demand.Agent, demand.StartSectorId);
+        if (profile)
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationDemandPathValidation, Stopwatch.GetTimestamp() - stageStartTicks);
         if (canConsumeCommittedPlan)
         {
             nav.HasPendingNavigation = false;
             nav.HasPendingNavigationReplacement = true;
             nav.PreparedNavigationGoalFixed = nav.LastGoalWorldFixed;
+            stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             EnqueueSteeringReadDomainFlowTileBuilds(demand.Agent, demand.MaximumTravelDistance);
+            if (profile)
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationDemandTileBuilds, Stopwatch.GetTimestamp() - stageStartTicks);
         }
         else
         {
@@ -3946,6 +3965,8 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static bool TryReuseNavigationPathDemand(NavigationPathDemand demand)
     {
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         PathHandle handle = demand.Agent.NavState.PathHandle;
         bool reusable = handle != null
                         && handle.WorldVersion == _world.Version
@@ -3955,6 +3976,8 @@ public static partial class FlowFieldCrowdMovementSystem
                         && !PathReferencesMissingPortal(handle)
                         && FindSectorIndex(handle, demand.StartSectorId, 0) >= 0
                         && handle.SectorIds[handle.SectorIds.Length - 1] == demand.GoalSectorId;
+        if (profile)
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationDemandPathValidation, Stopwatch.GetTimestamp() - stageStartTicks);
         if (!reusable)
             return false;
         handle.GoalX = demand.GoalX;
@@ -3974,10 +3997,19 @@ public static partial class FlowFieldCrowdMovementSystem
         demand.Agent.NavState.PreparedMaximumTravelDistanceFixed = demand.MaximumTravelDistance;
         demand.Agent.NavState.LastGoalWorldFixed = demand.FinalGoal;
         demand.Agent.NavState.LastGoalWorld = ToWorldVector3(demand.FinalGoal);
+        stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (!TryAdvancePathToCurrentSector(demand.Agent, demand.StartSectorId))
             throw new InvalidOperationException("Reusable navigation path could not advance to its resolved source sector.");
+        if (profile)
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationDemandPathAdvance, Stopwatch.GetTimestamp() - stageStartTicks);
+        stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         UpdateFixedPortalParticipation(demand.Agent);
+        if (profile)
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationDemandPortalParticipation, Stopwatch.GetTimestamp() - stageStartTicks);
+        stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         EnqueueSteeringReadDomainFlowTileBuilds(demand.Agent, demand.MaximumTravelDistance);
+        if (profile)
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationDemandTileBuilds, Stopwatch.GetTimestamp() - stageStartTicks);
         return true;
     }
 

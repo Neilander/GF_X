@@ -11,6 +11,8 @@ public static class LogicTargetingSpatialIndexService
     private static bool s_IsActive;
     private static int s_BuildCount;
     private static int s_CandidateVisitCount;
+    private static ulong s_SnapshotFrame;
+    private static bool s_HasSnapshot;
 
     public static void BeginTargetingPhase()
     {
@@ -21,6 +23,8 @@ public static class LogicTargetingSpatialIndexService
         CompositeWallEntities.Clear();
         s_MaximumIndexedExtent = Fix64.Zero;
         s_CandidateVisitCount = 0;
+        s_SnapshotFrame = LogicFrameRuntime.CurrentFrame;
+        s_HasSnapshot = true;
         IList<IEntityContext> entities = EntityRegistry.AllEntities
             ?? throw new InvalidOperationException("Targeting spatial index cannot read a null entity registry.");
         for (int i = 0; i < entities.Count; i++)
@@ -72,6 +76,8 @@ public static class LogicTargetingSpatialIndexService
         s_MaximumIndexedExtent = Fix64.Zero;
         s_CandidateVisitCount = 0;
         s_BuildCount = 0;
+        s_SnapshotFrame = 0;
+        s_HasSnapshot = false;
     }
 
     public static void CollectCandidates(
@@ -132,6 +138,54 @@ public static class LogicTargetingSpatialIndexService
 
     public static int BuildCount => s_BuildCount;
     public static int CandidateVisitCount => s_CandidateVisitCount;
+
+    public static bool HasEnemyInRange(
+        IEntityContext self,
+        Fix64 range,
+        List<IEntityContext> scratch)
+    {
+        if (self == null)
+            throw new ArgumentNullException(nameof(self));
+        if (range < Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(range));
+        if (scratch == null)
+            throw new ArgumentNullException(nameof(scratch));
+
+        bool temporaryPhase = false;
+        if (!s_IsActive)
+        {
+            if (!s_HasSnapshot || s_SnapshotFrame != LogicFrameRuntime.CurrentFrame)
+            {
+                BeginTargetingPhase();
+                temporaryPhase = true;
+            }
+        }
+
+        try
+        {
+            CollectCandidatesFromActiveIndex(self.LogicFramePositionFixed(), range, scratch);
+            Fix64 rangeSquared = range * range;
+            FixVector2 selfPosition = self.LogicFramePositionFixed();
+            for (int i = 0; i < scratch.Count; i++)
+            {
+                IEntityContext candidate = scratch[i]
+                    ?? throw new InvalidOperationException($"Targeting spatial index found a null candidate at index {i}.");
+                if (ReferenceEquals(candidate, self)
+                    || !WeaponTargetRules.IsValidTargetForCurrentWeapon(self, candidate))
+                    continue;
+                FixVector2 delta = candidate.LogicFramePositionFixed() - selfPosition;
+                if (FixVector2.SqrMagnitude(delta) <= rangeSquared)
+                    return true;
+            }
+
+            return false;
+        }
+        finally
+        {
+            if (temporaryPhase)
+                EndTargetingPhase();
+        }
+    }
 
     private static Fix64 ResolveBoundingExtent(LogicCombatShape shape)
     {

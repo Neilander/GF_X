@@ -2749,8 +2749,16 @@ public static partial class FlowFieldCrowdMovementSystem
                 continue;
 
             phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
-            if (!TryReuseNavigationPathDemand(demand))
+            bool reused = TryReuseNavigationPathDemand(demand);
+            if (profile)
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationDemandReuse, Stopwatch.GetTimestamp() - phaseStartTicks);
+            if (!reused)
+            {
+                phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
                 EnqueueNavigationPathDemand(demand);
+                if (profile)
+                    MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationDemandEnqueue, Stopwatch.GetTimestamp() - phaseStartTicks);
+            }
             _perf.NavigationDemandDispatchCount++;
             if (profile)
             {
