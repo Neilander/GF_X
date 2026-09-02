@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using AAAGame.MiniMap.FOG3;
 using Newtonsoft.Json;
 using UnityEngine;
+using MainThreadFrameProfiler = UnityGameFramework.Runtime.MainThreadFrameProfiler;
+using MainThreadPerfScope = UnityGameFramework.Runtime.MainThreadPerfScope;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace AAAGame.Card
 {
@@ -170,12 +173,20 @@ namespace AAAGame.Card
 
         private static void ConsumeVisibilityDirty()
         {
+            bool profile = MainThreadFrameProfiler.LoggingEnabled;
+            long stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             if (s_ObservedVisibilityResetVersion != s_MapData.VisibilityResetVersion)
             {
                 s_VisibilitySources.Clear();
                 s_ObservedVisibilityResetVersion = s_MapData.VisibilityResetVersion;
                 s_AllEntityVisibilityDirty = true;
                 s_StationaryVisibilityDirty = true;
+            }
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.LogicFrameCommandCardPlacementVisibilityReset,
+                    Stopwatch.GetTimestamp() - stageStartTicks);
             }
 
             if (!s_AllEntityVisibilityDirty && s_DirtyEntityIds.Count == 0 && !s_StationaryVisibilityDirty)
@@ -184,26 +195,63 @@ namespace AAAGame.Card
             ulong explorationVersionBeforeUpdate = s_MapData.ExplorationVersion;
             if (s_AllEntityVisibilityDirty)
             {
+                stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
                 SynchronizeAllEntityVisibilitySources();
+                if (profile)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.LogicFrameCommandCardPlacementAllEntities,
+                        Stopwatch.GetTimestamp() - stageStartTicks);
+                }
                 s_AllEntityVisibilityDirty = false;
                 s_DirtyEntityIds.Clear();
                 s_ContinuouslyMovedEntityIds.Clear();
             }
             else
             {
+                stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
                 SynchronizeDirtyEntityVisibilitySources();
+                if (profile)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.LogicFrameCommandCardPlacementDirtyEntities,
+                        Stopwatch.GetTimestamp() - stageStartTicks);
+                }
                 s_DirtyEntityIds.Clear();
                 s_ContinuouslyMovedEntityIds.Clear();
             }
 
             if (s_StationaryVisibilityDirty)
             {
+                stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
                 SynchronizeStationaryVisibilitySources();
+                if (profile)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.LogicFrameCommandCardPlacementStationary,
+                        Stopwatch.GetTimestamp() - stageStartTicks);
+                }
                 s_StationaryVisibilityDirty = false;
             }
             if (s_MapData.ExplorationVersion != explorationVersionBeforeUpdate)
+            {
+                stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
                 RefreshExplorationDependentVisibilitySources();
+                if (profile)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.LogicFrameCommandCardPlacementExploration,
+                        Stopwatch.GetTimestamp() - stageStartTicks);
+                }
+            }
+            stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             s_MapData.ResolveVisibilityCoverageChanges(ResolveCurrentVisibilitySourceLogicTime());
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.LogicFrameCommandCardPlacementCoverage,
+                    Stopwatch.GetTimestamp() - stageStartTicks);
+            }
         }
 
         private static void SynchronizeAllEntityVisibilitySources()
@@ -233,10 +281,16 @@ namespace AAAGame.Card
         private static void SynchronizeDirtyEntityVisibilitySources()
         {
             bool hasGhostHero = HasPlayerGhostHero(EntityRegistry.AllEntities);
+            bool profile = MainThreadFrameProfiler.LoggingEnabled;
+            long lookupTicks = 0L;
             foreach (int entityId in s_DirtyEntityIds)
             {
+                long lookupStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
                 var logicEntityId = new LogicEntityId(entityId);
-                if (EntityRegistry.TryGet(logicEntityId, out IEntityContext entity))
+                bool found = EntityRegistry.TryGet(logicEntityId, out IEntityContext entity);
+                if (profile)
+                    lookupTicks += Stopwatch.GetTimestamp() - lookupStartTicks;
+                if (found)
                     SynchronizeEntityVisibilitySource(
                         entity,
                         hasGhostHero,
@@ -244,6 +298,10 @@ namespace AAAGame.Card
                 else
                     RemoveEntityVisibilitySources(entityId);
             }
+            if (profile && lookupTicks > 0L)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.LogicFrameCommandCardPlacementDirtyLookup,
+                    lookupTicks);
         }
 
         private static void SynchronizeEntityVisibilitySource(
@@ -652,6 +710,8 @@ namespace AAAGame.Card
                 return;
             }
 
+            bool profile = MainThreadFrameProfiler.LoggingEnabled;
+            long stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             s_NextVisibilityIntervals.Clear();
             s_MapData.CollectVisibleIntervals(
                 state.Position,
@@ -659,8 +719,20 @@ namespace AAAGame.Card
                 state.ViewerHeight,
                 state.RequiredHeight >= 0 ? state.RequiredHeight : null,
                 s_GeometryIntervals);
+            if (profile)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.LogicFrameCommandCardPlacementVisibilityCollect,
+                    Stopwatch.GetTimestamp() - stageStartTicks);
+
+            stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             FilterAndExploreVisibilityIntervals(state, s_NextVisibilityIntervals);
+            if (profile)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.LogicFrameCommandCardPlacementVisibilityFilter,
+                    Stopwatch.GetTimestamp() - stageStartTicks);
+
             double currentSnapshotLogicTime = ResolveCurrentVisibilitySourceLogicTime();
+            stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             if (continuousMovement
                 && cached.HasState
                 && cached.State.Position != state.Position
@@ -678,14 +750,36 @@ namespace AAAGame.Card
                     currentSnapshotLogicTime);
             }
 
+            if (profile)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.LogicFrameCommandCardPlacementVisibilityTransition,
+                    Stopwatch.GetTimestamp() - stageStartTicks);
+
+            stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             ChangeVisibilityIntervals(cached.Intervals, -1);
+            if (profile)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.LogicFrameCommandCardPlacementVisibilityRemoveCoverage,
+                    Stopwatch.GetTimestamp() - stageStartTicks);
+
+            stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             ChangeVisibilityIntervals(s_NextVisibilityIntervals, 1);
+            if (profile)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.LogicFrameCommandCardPlacementVisibilityAddCoverage,
+                    Stopwatch.GetTimestamp() - stageStartTicks);
+
+            stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             cached.Intervals.Clear();
             cached.Intervals.AddRange(s_NextVisibilityIntervals);
             s_NextVisibilityIntervals.Clear();
             cached.State = state;
             cached.SnapshotLogicTime = currentSnapshotLogicTime;
             cached.HasState = true;
+            if (profile)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.LogicFrameCommandCardPlacementVisibilityPublish,
+                    Stopwatch.GetTimestamp() - stageStartTicks);
         }
 
         private static double ResolveCurrentVisibilitySourceLogicTime()

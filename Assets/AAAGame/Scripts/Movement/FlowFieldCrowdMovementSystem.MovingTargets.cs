@@ -1238,7 +1238,8 @@ public static partial class FlowFieldCrowdMovementSystem
         FixVector2 position,
         Fix64 requiredDistance,
         bool includeReservations,
-        out int reservingAgentId)
+        out int reservingAgentId,
+        List<NavigationGoalOccupancyCandidate> cachedCandidates = null)
     {
         long occupancyStartTicks = MainThreadFrameProfiler.LoggingEnabled
             ? Stopwatch.GetTimestamp()
@@ -1252,6 +1253,8 @@ public static partial class FlowFieldCrowdMovementSystem
 
         reservingAgentId = 0;
         Fix64 bestDistanceSq = Fix64.FromRaw(long.MaxValue);
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long reservationStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (includeReservations)
         {
             for (int i = 0; i < NavigationGoalReservations.Count; i++)
@@ -1273,15 +1276,170 @@ public static partial class FlowFieldCrowdMovementSystem
                 reservingAgentId = reservation.SelfId;
             }
         }
+        long reservationTicks = profile ? Stopwatch.GetTimestamp() - reservationStartTicks : 0L;
 
-        EnsureNavigationGoalOccupancyBuckets();
-        float bucketSize = ResolveAgentSpatialBucketSize();
+        long bucketStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        long candidateTicks = 0L;
+        if (cachedCandidates != null)
+        {
+            for (int i = 0; i < cachedCandidates.Count; i++)
+            {
+                NavigationGoalOccupancyCandidate candidate = cachedCandidates[i];
+                long candidateStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+                EvaluateNavigationGoalOccupancyCandidate(
+                    candidate.Agent,
+                    selfId,
+                    ignoredAgentId,
+                    position,
+                    requiredDistance,
+                    ref bestDistanceSq,
+                    ref reservingAgentId,
+                    candidate.UseGoalPosition);
+                if (profile)
+                    candidateTicks += Stopwatch.GetTimestamp() - candidateStartTicks;
+            }
+        }
+        else
+        {
+            long querySetupStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+            EnsureNavigationGoalOccupancyBuckets();
+            float bucketSize = ResolveAgentSpatialBucketSize();
+            Fix64 broadPhaseThreshold = Fix64.Max(requiredDistance, _navigationGoalOccupancyMaximumThreshold);
+            // Add one bucket for boundary-straddling points: two cells in buckets
+            // separated by ceil(d / bucketSize) + 1 can still be within d.
+            int searchRadius = Mathf.Max(1, Mathf.CeilToInt((float)broadPhaseThreshold / bucketSize) + 1);
+            ResolveSpatialBucketCell(ToWorldVector3(position), out int centerCellX, out int centerCellY);
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowCombatApproachOccupancyQuerySetup,
+                    Stopwatch.GetTimestamp() - querySetupStartTicks);
+            }
+
+            for (int bucketY = centerCellY - searchRadius; bucketY <= centerCellY + searchRadius; bucketY++)
+            {
+                for (int bucketX = centerCellX - searchRadius; bucketX <= centerCellX + searchRadius; bucketX++)
+                {
+                    long bucketKey = BuildSpatialBucketKey(bucketX, bucketY);
+                    if (NavigationGoalPositionBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> positionBucket))
+                    {
+                        for (int i = 0; i < positionBucket.Count; i++)
+                        {
+                            long candidateStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+                            EvaluateNavigationGoalOccupancyCandidate(
+                                positionBucket[i],
+                                selfId,
+                                ignoredAgentId,
+                                position,
+                                requiredDistance,
+                                ref bestDistanceSq,
+                                ref reservingAgentId,
+                                useGoalPosition: false);
+                            if (profile)
+                                candidateTicks += Stopwatch.GetTimestamp() - candidateStartTicks;
+                        }
+                    }
+
+                    if (NavigationGoalTargetBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> targetBucket))
+                    {
+                        for (int i = 0; i < targetBucket.Count; i++)
+                        {
+                            long candidateStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+                            EvaluateNavigationGoalOccupancyCandidate(
+                                targetBucket[i],
+                                selfId,
+                                ignoredAgentId,
+                                position,
+                                requiredDistance,
+                                ref bestDistanceSq,
+                                ref reservingAgentId,
+                                useGoalPosition: true);
+                            if (profile)
+                                candidateTicks += Stopwatch.GetTimestamp() - candidateStartTicks;
+                        }
+                    }
+                }
+            }
+        }
+        long bucketTicks = profile ? Stopwatch.GetTimestamp() - bucketStartTicks - candidateTicks : 0L;
+
+        bool occupied = reservingAgentId != 0;
+        if (MainThreadFrameProfiler.LoggingEnabled)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachOccupancy,
+                Stopwatch.GetTimestamp() - occupancyStartTicks);
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachOccupancyReservations,
+                reservationTicks);
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachOccupancyBuckets,
+                bucketTicks);
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachOccupancyCandidate,
+                candidateTicks);
+        }
+        return occupied;
+    }
+
+    private static List<NavigationGoalOccupancyCandidate> GetOrBuildCombatTargetSlotOccupancyCandidates(
+        CombatTargetSlotEntry entry,
+        int slotIndex,
+        FixVector2 position,
+        Fix64 requiredDistance)
+    {
+        if (entry == null)
+            throw new InvalidOperationException("GetOrBuildCombatTargetSlotOccupancyCandidates failed: entry is null.");
+        if (entry.Points == null || slotIndex < 0 || slotIndex >= entry.Points.Length)
+            throw new InvalidOperationException("GetOrBuildCombatTargetSlotOccupancyCandidates failed: slot index is invalid.");
+        if (_world == null)
+            throw new InvalidOperationException("GetOrBuildCombatTargetSlotOccupancyCandidates failed: world is null.");
+
+        int frame = GetFrameCount();
+        int worldVersion = _world.Version;
         Fix64 broadPhaseThreshold = Fix64.Max(requiredDistance, _navigationGoalOccupancyMaximumThreshold);
-        // Add one bucket for boundary-straddling points: two cells in buckets
-        // separated by ceil(d / bucketSize) + 1 can still be within d.
+        if (entry.OccupancyCandidatesBySlot == null
+            || entry.OccupancyCandidatesBySlot.Length != entry.Points.Length
+            || entry.OccupancyCandidateFrame != frame
+            || entry.OccupancyCandidateWorldVersion != worldVersion
+            || entry.OccupancyCandidateThresholdRaw < broadPhaseThreshold.RawValue)
+        {
+            EnsureNavigationGoalOccupancyBuckets();
+            broadPhaseThreshold = Fix64.Max(requiredDistance, _navigationGoalOccupancyMaximumThreshold);
+            if (entry.OccupancyCandidatesBySlot == null
+                || entry.OccupancyCandidatesBySlot.Length != entry.Points.Length)
+            {
+                entry.OccupancyCandidatesBySlot =
+                    new List<NavigationGoalOccupancyCandidate>[entry.Points.Length];
+                entry.OccupancyCandidatesBuiltBySlot = new bool[entry.Points.Length];
+            }
+            else
+            {
+                for (int i = 0; i < entry.OccupancyCandidatesBySlot.Length; i++)
+                    entry.OccupancyCandidatesBySlot[i]?.Clear();
+                if (entry.OccupancyCandidatesBuiltBySlot == null
+                    || entry.OccupancyCandidatesBuiltBySlot.Length != entry.Points.Length)
+                {
+                    entry.OccupancyCandidatesBuiltBySlot = new bool[entry.Points.Length];
+                }
+                else
+                {
+                    Array.Clear(entry.OccupancyCandidatesBuiltBySlot, 0, entry.OccupancyCandidatesBuiltBySlot.Length);
+                }
+            }
+            entry.OccupancyCandidateFrame = frame;
+            entry.OccupancyCandidateWorldVersion = worldVersion;
+            entry.OccupancyCandidateThresholdRaw = broadPhaseThreshold.RawValue;
+        }
+
+        List<NavigationGoalOccupancyCandidate> cached = entry.OccupancyCandidatesBySlot[slotIndex];
+        if (entry.OccupancyCandidatesBuiltBySlot[slotIndex])
+            return cached;
+
+        float bucketSize = ResolveAgentSpatialBucketSize();
         int searchRadius = Mathf.Max(1, Mathf.CeilToInt((float)broadPhaseThreshold / bucketSize) + 1);
         ResolveSpatialBucketCell(ToWorldVector3(position), out int centerCellX, out int centerCellY);
-
+        cached ??= new List<NavigationGoalOccupancyCandidate>(16);
         for (int bucketY = centerCellY - searchRadius; bucketY <= centerCellY + searchRadius; bucketY++)
         {
             for (int bucketX = centerCellX - searchRadius; bucketX <= centerCellX + searchRadius; bucketX++)
@@ -1290,45 +1448,20 @@ public static partial class FlowFieldCrowdMovementSystem
                 if (NavigationGoalPositionBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> positionBucket))
                 {
                     for (int i = 0; i < positionBucket.Count; i++)
-                    {
-                        EvaluateNavigationGoalOccupancyCandidate(
-                            positionBucket[i],
-                            selfId,
-                            ignoredAgentId,
-                            position,
-                            requiredDistance,
-                            ref bestDistanceSq,
-                            ref reservingAgentId,
-                            useGoalPosition: false);
-                    }
+                        cached.Add(new NavigationGoalOccupancyCandidate(positionBucket[i], useGoalPosition: false));
                 }
 
                 if (NavigationGoalTargetBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> targetBucket))
                 {
                     for (int i = 0; i < targetBucket.Count; i++)
-                    {
-                        EvaluateNavigationGoalOccupancyCandidate(
-                            targetBucket[i],
-                            selfId,
-                            ignoredAgentId,
-                            position,
-                            requiredDistance,
-                            ref bestDistanceSq,
-                            ref reservingAgentId,
-                            useGoalPosition: true);
-                    }
+                        cached.Add(new NavigationGoalOccupancyCandidate(targetBucket[i], useGoalPosition: true));
                 }
             }
         }
 
-        bool occupied = reservingAgentId != 0;
-        if (MainThreadFrameProfiler.LoggingEnabled)
-        {
-            MainThreadFrameProfiler.Record(
-                MainThreadPerfScope.FlowCombatApproachOccupancy,
-                Stopwatch.GetTimestamp() - occupancyStartTicks);
-        }
-        return occupied;
+        entry.OccupancyCandidatesBySlot[slotIndex] = cached;
+        entry.OccupancyCandidatesBuiltBySlot[slotIndex] = true;
+        return cached;
     }
 
     private static void EvaluateNavigationGoalOccupancyCandidate(

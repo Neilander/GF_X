@@ -878,9 +878,19 @@ public static partial class FlowFieldCrowdMovementSystem
             return;
         }
 
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long buildStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
         // Spatial state is synchronized once per logical frame before this broad
         // phase. Reusing that snapshot keeps occupancy lookup out of the entity loop.
+        long syncStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
         SyncRegisteredAgentSpatialState(frame);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachOccupancyAgentSync,
+                System.Diagnostics.Stopwatch.GetTimestamp() - syncStartTicks);
+        }
+        long bucketFillStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
         NavigationGoalPositionBuckets.Clear();
         NavigationGoalTargetBuckets.Clear();
         _navigationGoalOccupancyMaximumThreshold = Fix64.Zero;
@@ -907,9 +917,21 @@ public static partial class FlowFieldCrowdMovementSystem
                     agent);
             }
         }
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachOccupancyBucketFill,
+                System.Diagnostics.Stopwatch.GetTimestamp() - bucketFillStartTicks);
+        }
 
         _lastNavigationGoalOccupancyBucketFrame = frame;
         _lastNavigationGoalOccupancyBucketWorldVersion = worldVersion;
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachOccupancyBucketBuild,
+                System.Diagnostics.Stopwatch.GetTimestamp() - buildStartTicks);
+        }
     }
 
     private static List<AgentRuntimeData> CollectNearbyDynamicNeighbors(AgentRuntimeData self, float avoidRadius)

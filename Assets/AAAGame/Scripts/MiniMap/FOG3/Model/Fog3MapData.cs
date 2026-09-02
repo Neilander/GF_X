@@ -3,6 +3,8 @@
 using System;
 using System.IO;
 using System.IO.Compression;
+using MainThreadFrameProfiler = UnityGameFramework.Runtime.MainThreadFrameProfiler;
+using MainThreadPerfScope = UnityGameFramework.Runtime.MainThreadPerfScope;
 
 namespace AAAGame.MiniMap.FOG3
 {
@@ -111,6 +113,7 @@ namespace AAAGame.MiniMap.FOG3
         private readonly System.Collections.Generic.Dictionary<int, PendingVisibilityChangeTime>
             pendingVisibilityChangeTimes;
         private readonly System.Collections.Generic.Dictionary<int, double> dirtyVisibilityChangeLogicTimes;
+        private readonly System.Collections.Generic.Dictionary<VisibilityGeometryCacheKey, Fog3VisibilityRowInterval[]> visibilityGeometryCache;
         private readonly int[] fovVisitStamps;
         private readonly ulong terrainHash;
         private readonly long cellSizeXGridRaw;
@@ -140,6 +143,50 @@ namespace AAAGame.MiniMap.FOG3
             public byte Kinds;
             public double EnterLogicTime;
             public double ExitLogicTime;
+        }
+
+        private readonly struct VisibilityGeometryCacheKey : IEquatable<VisibilityGeometryCacheKey>
+        {
+            public VisibilityGeometryCacheKey(int centerX, int centerY, int range, int viewerHeight, int requiredHeight)
+            {
+                CenterX = centerX;
+                CenterY = centerY;
+                Range = range;
+                ViewerHeight = viewerHeight;
+                RequiredHeight = requiredHeight;
+            }
+
+            private int CenterX { get; }
+            private int CenterY { get; }
+            private int Range { get; }
+            private int ViewerHeight { get; }
+            private int RequiredHeight { get; }
+
+            public bool Equals(VisibilityGeometryCacheKey other)
+            {
+                return CenterX == other.CenterX
+                       && CenterY == other.CenterY
+                       && Range == other.Range
+                       && ViewerHeight == other.ViewerHeight
+                       && RequiredHeight == other.RequiredHeight;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is VisibilityGeometryCacheKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = CenterX;
+                    hash = hash * 397 ^ CenterY;
+                    hash = hash * 397 ^ Range;
+                    hash = hash * 397 ^ ViewerHeight;
+                    return hash * 397 ^ RequiredHeight;
+                }
+            }
         }
 
         public event Action VisibilityReset;
@@ -183,6 +230,7 @@ namespace AAAGame.MiniMap.FOG3
             dirtyCellIndices = new System.Collections.Generic.List<int>();
             pendingVisibilityChangeTimes = new System.Collections.Generic.Dictionary<int, PendingVisibilityChangeTime>();
             dirtyVisibilityChangeLogicTimes = new System.Collections.Generic.Dictionary<int, double>();
+            visibilityGeometryCache = new System.Collections.Generic.Dictionary<VisibilityGeometryCacheKey, Fog3VisibilityRowInterval[]>();
             fovVisitStamps = new int[length];
             walkable = new bool[length];
             platformHeights = new int[length];
@@ -345,44 +393,68 @@ namespace AAAGame.MiniMap.FOG3
         {
             if (double.IsNaN(logicTime) || double.IsInfinity(logicTime) || logicTime < 0d)
                 throw new ArgumentOutOfRangeException(nameof(logicTime), "Fog visibility resolution logic time must be finite and non-negative.");
+            bool profile = MainThreadFrameProfiler.LoggingEnabled;
+            long rowTicks = 0L;
+            long cellTicks = 0L;
             for (int y = 0; y < Height; y++)
             {
+                long rowStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
                 if (!dirtyVisibilityRows[y])
+                {
+                    if (profile)
+                        rowTicks += System.Diagnostics.Stopwatch.GetTimestamp() - rowStartTicks;
                     continue;
+                }
 
                 int rowDifferenceOffset = y * (Width + 1);
                 int cellOffset = y * Width;
                 int coverage = 0;
-                for (int x = 0; x < Width; x++)
+                long cellStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
+                for (int segment = 0; segment < 4; segment++)
                 {
-                    coverage = checked(coverage + visibilityRowDifference[rowDifferenceOffset + x]);
-                    if (coverage < 0)
+                    int segmentMinimumX = segment * Width / 4;
+                    int segmentMaximumX = (segment + 1) * Width / 4;
+                    long segmentStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
+                    for (int x = segmentMinimumX; x < segmentMaximumX; x++)
                     {
-                        throw new InvalidOperationException(
-                            $"Fog visibility coverage became negative at ({x},{y}). coverage={coverage}.");
-                    }
+                        coverage = checked(coverage + visibilityRowDifference[rowDifferenceOffset + x]);
+                        if (coverage < 0)
+                        {
+                            throw new InvalidOperationException(
+                                $"Fog visibility coverage became negative at ({x},{y}). coverage={coverage}.");
+                        }
 
-                    int index = cellOffset + x;
-                    int previousCoverage = visibilityCoverage[index];
-                    visibilityCoverage[index] = coverage;
-                    if ((previousCoverage > 0) == (coverage > 0))
-                        continue;
+                        int index = cellOffset + x;
+                        int previousCoverage = visibilityCoverage[index];
+                        visibilityCoverage[index] = coverage;
+                        if ((previousCoverage > 0) == (coverage > 0))
+                            continue;
 
-                    currentVisibility[index] = coverage > 0 ? 1f : 0f;
-                    MarkDirtyCell(x, y);
-                    if (pendingVisibilityChangeTimes.TryGetValue(index, out PendingVisibilityChangeTime pending)
-                        && coverage > 0
-                        && (pending.Kinds & 1) != 0)
-                    {
-                        dirtyVisibilityChangeLogicTimes[index] = pending.EnterLogicTime;
+                        currentVisibility[index] = coverage > 0 ? 1f : 0f;
+                        MarkDirtyCell(x, y);
+                        if (pendingVisibilityChangeTimes.TryGetValue(index, out PendingVisibilityChangeTime pending)
+                            && coverage > 0
+                            && (pending.Kinds & 1) != 0)
+                        {
+                            dirtyVisibilityChangeLogicTimes[index] = pending.EnterLogicTime;
+                        }
+                        else if (pendingVisibilityChangeTimes.TryGetValue(index, out pending)
+                                 && coverage == 0
+                                 && (pending.Kinds & 2) != 0)
+                        {
+                            dirtyVisibilityChangeLogicTimes[index] = pending.ExitLogicTime;
+                        }
                     }
-                    else if (pendingVisibilityChangeTimes.TryGetValue(index, out pending)
-                             && coverage == 0
-                             && (pending.Kinds & 2) != 0)
-                    {
-                        dirtyVisibilityChangeLogicTimes[index] = pending.ExitLogicTime;
-                    }
+                    if (profile)
+                        MainThreadFrameProfiler.Record(
+                            (MainThreadPerfScope)((int)MainThreadPerfScope.FogVisibilityCoverageCellsSegment0 + segment),
+                            System.Diagnostics.Stopwatch.GetTimestamp() - segmentStartTicks);
                 }
+                long rowCellTicks = profile
+                    ? System.Diagnostics.Stopwatch.GetTimestamp() - cellStartTicks
+                    : 0L;
+                if (profile)
+                    cellTicks += rowCellTicks;
 
                 if (coverage + visibilityRowDifference[rowDifferenceOffset + Width] != 0)
                 {
@@ -390,9 +462,20 @@ namespace AAAGame.MiniMap.FOG3
                         $"Fog visibility row {y} has an unbalanced difference sum.");
                 }
                 dirtyVisibilityRows[y] = false;
+                if (profile)
+                    rowTicks += System.Diagnostics.Stopwatch.GetTimestamp() - rowStartTicks - rowCellTicks;
             }
 
+            long pendingStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
             pendingVisibilityChangeTimes.Clear();
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FogVisibilityCoverageRows, rowTicks);
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FogVisibilityCoverageCells, cellTicks);
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FogVisibilityCoveragePending,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - pendingStartTicks);
+            }
             VisibilityResolutionLogicTime = logicTime;
         }
 
@@ -414,10 +497,75 @@ namespace AAAGame.MiniMap.FOG3
             if (!WorldToGrid(viewerPosition, out int centerX, out int centerY))
                 throw new ArgumentOutOfRangeException(nameof(viewerPosition));
 
+            bool profile = MainThreadFrameProfiler.LoggingEnabled;
+            long stageStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
             intervals.Clear();
-            int visitStamp = AcquireFovVisitStamp();
-            TryMarkFovCell(centerX, centerY, viewerPosition, radius * radius, requiredHeight, visitStamp);
             int range = GetCellRangeForRadius(radius);
+            var cacheKey = new VisibilityGeometryCacheKey(
+                centerX,
+                centerY,
+                range,
+                viewerHeight,
+                requiredHeight ?? -1);
+            if (!visibilityGeometryCache.TryGetValue(cacheKey, out Fog3VisibilityRowInterval[] geometryIntervals))
+            {
+                geometryIntervals = BuildVisibilityGeometryIntervals(
+                    centerX,
+                    centerY,
+                    range,
+                    viewerHeight,
+                    requiredHeight);
+                visibilityGeometryCache.Add(cacheKey, geometryIntervals);
+            }
+            if (profile)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FogVisibilityCollectCenter,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
+
+            stageStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
+            Fix64 radiusSquared = radius * radius;
+            for (int intervalIndex = 0; intervalIndex < geometryIntervals.Length; intervalIndex++)
+            {
+                Fog3VisibilityRowInterval geometryInterval = geometryIntervals[intervalIndex];
+                int visibleStart = -1;
+                for (int x = geometryInterval.MinimumX; x <= geometryInterval.MaximumX; x++)
+                {
+                    FixVector2 cellCenter = GetCellCenterFixed(x, geometryInterval.Y);
+                    bool insideRadius = FixVector2.SqrMagnitude(cellCenter - viewerPosition) <= radiusSquared;
+                    if (insideRadius)
+                    {
+                        if (visibleStart < 0)
+                            visibleStart = x;
+                    }
+                    else if (visibleStart >= 0)
+                    {
+                        intervals.Add(new Fog3VisibilityRowInterval(geometryInterval.Y, visibleStart, x - 1));
+                        visibleStart = -1;
+                    }
+                }
+                if (visibleStart >= 0)
+                    intervals.Add(new Fog3VisibilityRowInterval(
+                        geometryInterval.Y,
+                        visibleStart,
+                        geometryInterval.MaximumX));
+            }
+            if (profile)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FogVisibilityCollectIntervals,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
+        }
+
+        private Fog3VisibilityRowInterval[] BuildVisibilityGeometryIntervals(
+            int centerX,
+            int centerY,
+            int range,
+            int viewerHeight,
+            int? requiredHeight)
+        {
+            int visitStamp = AcquireFovVisitStamp();
+            FixVector2 geometryViewerPosition = GetCellCenterFixed(centerX, centerY);
+            Fix64 geometryRadiusSquared = Fix64.FromRaw(long.MaxValue);
+            TryMarkFovCell(centerX, centerY, geometryViewerPosition, geometryRadiusSquared, requiredHeight, visitStamp);
             for (int octant = 0; octant < 8; octant++)
             {
                 CastVisibilityOctant(
@@ -427,14 +575,15 @@ namespace AAAGame.MiniMap.FOG3
                     Fix64.One,
                     Fix64.Zero,
                     range,
-                    viewerPosition,
-                    radius * radius,
+                    geometryViewerPosition,
+                    geometryRadiusSquared,
                     viewerHeight,
                     requiredHeight,
                     visitStamp,
                     octant);
             }
 
+            var result = new System.Collections.Generic.List<Fog3VisibilityRowInterval>();
             int minimumY = Math.Max(0, centerY - range);
             int maximumY = Math.Min(Height - 1, centerY + range);
             int minimumX = Math.Max(0, centerX - range);
@@ -451,10 +600,11 @@ namespace AAAGame.MiniMap.FOG3
                     int intervalStart = x;
                     while (x < maximumX && fovVisitStamps[GetIndex(x + 1, y)] == visitStamp)
                         x++;
-                    intervals.Add(new Fog3VisibilityRowInterval(y, intervalStart, x));
+                    result.Add(new Fog3VisibilityRowInterval(y, intervalStart, x));
                     x++;
                 }
             }
+            return result.ToArray();
         }
 
         public void AddVisibility(int x, int y, float intensity)

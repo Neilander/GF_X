@@ -233,6 +233,7 @@ public static class LogicFrameRuntime
         try
         {
             long callbacksStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
+            long listenerTicks = 0L;
             for (int i = 0; i < s_TickSnapshot.Count; i++)
             {
                 ListenerEntry entry = s_TickSnapshot[i];
@@ -252,16 +253,31 @@ public static class LogicFrameRuntime
                 }
                 finally
                 {
+                    long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - listenerStartTicks;
+                    listenerTicks += elapsedTicks;
                     MainThreadFrameProfiler.RecordLogicFrameListener(
                         entry.Listener.GetType(),
-                        System.Diagnostics.Stopwatch.GetTimestamp() - listenerStartTicks);
+                        elapsedTicks);
                 }
             }
             if (profile)
             {
+                long callbacksElapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - callbacksStartTicks;
+                long unattributedTicks = callbacksElapsedTicks - listenerTicks;
+                if (unattributedTicks < 0L)
+                {
+                    throw new InvalidOperationException(
+                        $"LogicFrameRuntime.Tick listener timing is inconsistent. callbacks={callbacksElapsedTicks}, listeners={listenerTicks}.");
+                }
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.LogicFrameListenerAttributed,
+                    listenerTicks);
                 MainThreadFrameProfiler.Record(
                     MainThreadPerfScope.LogicFrameListenerCallbacks,
-                    System.Diagnostics.Stopwatch.GetTimestamp() - callbacksStartTicks);
+                    callbacksElapsedTicks);
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.LogicFrameListenerUnattributed,
+                    unattributedTicks);
             }
 
         }

@@ -1077,6 +1077,12 @@ public static partial class FlowFieldCrowdMovementSystem
         public long NavigationPathMaterializeImmutableCopyTicks;
         public long NavigationPathMaterializeHashTicks;
         public long NavigationPathMaterializePublishTicks;
+        public long NavigationPathMaterializePublishSuffixTicks;
+        public long NavigationPathMaterializePublishSuffixResolveTicks;
+        public long NavigationPathMaterializePublishSuffixValidationTicks;
+        public long NavigationPathMaterializePublishSuffixInsertTicks;
+        public long NavigationPathMaterializePublishSuffixBookkeepingTicks;
+        public long NavigationPathMaterializePublishSuffixFinalizeTicks;
         public long NavigationPathLocalBindingTicks;
         public long NavigationPathCompleteTicks;
         public long NavigationPathSlowestOperationTicks;

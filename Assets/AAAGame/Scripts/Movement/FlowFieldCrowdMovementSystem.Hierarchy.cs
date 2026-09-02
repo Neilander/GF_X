@@ -278,10 +278,34 @@ public static partial class FlowFieldCrowdMovementSystem
 
         public void Dispose()
         {
+            bool profile = MainThreadFrameProfiler.LoggingEnabled;
+            long customizationStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             foreach (PortalHierarchyDownwardCustomization customization in DownwardCustomizations.Values)
                 customization?.Dispose();
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyDisposeHierarchyCustomizations,
+                    Stopwatch.GetTimestamp() - customizationStartTicks);
+            }
+
+            long customizationClearStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             DownwardCustomizations.Clear();
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyDisposeHierarchyCustomizationClear,
+                    Stopwatch.GetTimestamp() - customizationClearStartTicks);
+            }
+
+            long searchStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             SearchState.Dispose();
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyDisposeHierarchySearchStates,
+                    Stopwatch.GetTimestamp() - searchStartTicks);
+            }
         }
     }
 
@@ -391,8 +415,16 @@ public static partial class FlowFieldCrowdMovementSystem
 
         public void Dispose()
         {
+            bool profile = MainThreadFrameProfiler.LoggingEnabled;
+            long disposeStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             SearchState?.Dispose();
             SearchState = null;
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyDisposeDownwardSearchStates,
+                    Stopwatch.GetTimestamp() - disposeStartTicks);
+            }
         }
 
         public void RequireSingleAuthority()
@@ -1718,52 +1750,75 @@ public static partial class FlowFieldCrowdMovementSystem
             MainThreadFrameProfiler.Record(
                 MainThreadPerfScope.FlowCorridorPolicyGoalConnector,
                 Stopwatch.GetTimestamp() - connectorStartTicks);
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyAnchorRebindBuild,
+                Stopwatch.GetTimestamp() - connectorStartTicks);
         }
 
         bool hasUniformDelta = false;
         long uniformDelta = 0L;
         var replacementConnectors = new Dictionary<int, PortalHierarchyConnector>(ownerPolicy.HierarchyPolicies.Count);
-        foreach (KeyValuePair<int, PortalHierarchyReversePolicy> pair in ownerPolicy.HierarchyPolicies)
+        long boundaryStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        try
         {
-            int levelArrayIndex = pair.Key;
-            PortalHierarchyReversePolicy existing = pair.Value
-                ?? throw new InvalidOperationException($"Moving-target hierarchy policy contains a null level={levelArrayIndex + 1}.");
-            PortalHierarchyConnector replacement = ResolvePortalHierarchyConnectorAtLevel(
-                highestConnector,
-                levelArrayIndex);
-            if (!ArePortalHierarchyGoalBoundaryCostsUniformlyShifted(
-                    hierarchy,
-                    levelArrayIndex,
-                    existing.GoalSectorId,
-                    existing.GoalConnector,
-                    goalSectorId,
-                    replacement,
-                    out long levelDelta))
+            foreach (KeyValuePair<int, PortalHierarchyReversePolicy> pair in ownerPolicy.HierarchyPolicies)
             {
-                return false;
+                int levelArrayIndex = pair.Key;
+                PortalHierarchyReversePolicy existing = pair.Value
+                    ?? throw new InvalidOperationException($"Moving-target hierarchy policy contains a null level={levelArrayIndex + 1}.");
+                PortalHierarchyConnector replacement = ResolvePortalHierarchyConnectorAtLevel(
+                    highestConnector,
+                    levelArrayIndex);
+                if (!ArePortalHierarchyGoalBoundaryCostsUniformlyShifted(
+                        hierarchy,
+                        levelArrayIndex,
+                        existing.GoalSectorId,
+                        existing.GoalConnector,
+                        goalSectorId,
+                        replacement,
+                        out long levelDelta))
+                {
+                    return false;
+                }
+                if (!hasUniformDelta)
+                {
+                    uniformDelta = levelDelta;
+                    hasUniformDelta = true;
+                }
+                else if (levelDelta != uniformDelta)
+                {
+                    throw new InvalidOperationException(
+                        $"Moving-target hierarchy connector uniform shift differs between levels expected={uniformDelta}, actual={levelDelta}, level={levelArrayIndex + 1}.");
+                }
+                replacementConnectors.Add(levelArrayIndex, replacement);
             }
-            if (!hasUniformDelta)
+        }
+        finally
+        {
+            if (profile)
             {
-                uniformDelta = levelDelta;
-                hasUniformDelta = true;
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyAnchorRebindBoundary,
+                    Stopwatch.GetTimestamp() - boundaryStartTicks);
             }
-            else if (levelDelta != uniformDelta)
-            {
-                throw new InvalidOperationException(
-                    $"Moving-target hierarchy connector uniform shift differs between levels expected={uniformDelta}, actual={levelDelta}, level={levelArrayIndex + 1}.");
-            }
-            replacementConnectors.Add(levelArrayIndex, replacement);
         }
         if (!hasUniformDelta)
             return false;
 
+        long importStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         PortalHierarchyConnector importedHighestConnector = ImportCompletedPortalHierarchyConnector(
             highestConnector);
         var importedConnectors = new Dictionary<int, PortalHierarchyConnector>(replacementConnectors.Count);
         foreach (int levelArrayIndex in replacementConnectors.Keys)
             importedConnectors.Add(
-                levelArrayIndex,
-                ResolvePortalHierarchyConnectorAtLevel(importedHighestConnector, levelArrayIndex));
+                 levelArrayIndex,
+                 ResolvePortalHierarchyConnectorAtLevel(importedHighestConnector, levelArrayIndex));
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyAnchorRebindImport,
+                Stopwatch.GetTimestamp() - importStartTicks);
+        }
 
         var previousConnectors = new HashSet<PortalHierarchyConnector>();
         foreach (PortalHierarchyReversePolicy existing in ownerPolicy.HierarchyPolicies.Values)
@@ -1775,6 +1830,7 @@ public static partial class FlowFieldCrowdMovementSystem
                  connector = connector.Child)
                 previousConnectors.Add(connector);
         }
+        long shiftStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         foreach (KeyValuePair<int, PortalHierarchyReversePolicy> pair in ownerPolicy.HierarchyPolicies)
         {
             PortalHierarchyReversePolicy existing = pair.Value;
@@ -1788,15 +1844,28 @@ public static partial class FlowFieldCrowdMovementSystem
             existing.L0WitnessesByStartNode.Clear();
             existing.L0WitnessesAuthorityContentHash = 0UL;
         }
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyAnchorRebindShift,
+                Stopwatch.GetTimestamp() - shiftStartTicks);
+        }
         var importedConnectorSet = new HashSet<PortalHierarchyConnector>();
         for (PortalHierarchyConnector connector = importedHighestConnector;
              connector != null;
              connector = connector.Child)
             importedConnectorSet.Add(connector);
+        long disposeStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         foreach (PortalHierarchyConnector previous in previousConnectors)
         {
             if (!importedConnectorSet.Contains(previous))
                 previous.Dispose();
+        }
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyAnchorRebindDispose,
+                Stopwatch.GetTimestamp() - disposeStartTicks);
         }
         return true;
     }

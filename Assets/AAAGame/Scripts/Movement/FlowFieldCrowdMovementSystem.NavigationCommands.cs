@@ -325,8 +325,17 @@ public static partial class FlowFieldCrowdMovementSystem
         int targetY,
         Fix64 requiredClearance)
     {
-        if (CombatTargetSlotCache.TryGetValue(key, out CombatTargetSlotEntry cached)
-            && cached?.Points != null)
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long lookupStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        bool cacheHit = CombatTargetSlotCache.TryGetValue(key, out CombatTargetSlotEntry cached)
+                        && cached?.Points != null;
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachSlotCacheLookup,
+                Stopwatch.GetTimestamp() - lookupStartTicks);
+        }
+        if (cacheHit)
         {
             _perf.CombatApproachSlotCacheHits++;
             cached.LastUsedFrame = GetFrameCount();
@@ -338,6 +347,8 @@ public static partial class FlowFieldCrowdMovementSystem
             ? Stopwatch.GetTimestamp()
             : 0L;
         List<FixVector2> points = new List<FixVector2>(Mathf.Max(4, ringCount * candidateCount));
+        List<FixVector2> candidateDirectionsNormalized = new List<FixVector2>(points.Capacity);
+        List<Fix64> targetDistanceErrors = new List<Fix64>(points.Capacity);
         List<int> cellX = new List<int>(points.Capacity);
         List<int> cellY = new List<int>(points.Capacity);
         List<int> islandIds = new List<int>(points.Capacity);
@@ -346,6 +357,10 @@ public static partial class FlowFieldCrowdMovementSystem
         int rejectedClearance = 0;
         int rejectedNoLos = 0;
         bool targetLineCellValid = _world.IsWalkable(targetX, targetY);
+        long generateStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        long clearanceTicks = 0L;
+        long lineOfSightTicks = 0L;
+        long deduplicateTicks = 0L;
 
         FixVector2 targetPointFixed = targetPoint;
         Fix64 spacing = Fix64.Max(Fix64.FromRaw(205), ringSpacing);
@@ -381,25 +396,43 @@ public static partial class FlowFieldCrowdMovementSystem
                 }
 
                 FixVector2 worldPoint = candidate;
-                if (!IsNavigationPointClearFixed(
-                        _world,
-                        worldPoint,
-                        ResolveNavigationQueryClearanceFixed(_world, requiredClearance),
-                        includeRuntimeObstacleOverlay: true))
+                long segmentStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+                bool clear = IsNavigationPointClearFixed(
+                    _world,
+                    worldPoint,
+                    ResolveNavigationQueryClearanceFixed(_world, requiredClearance),
+                    includeRuntimeObstacleOverlay: true);
+                if (profile)
+                    clearanceTicks += Stopwatch.GetTimestamp() - segmentStartTicks;
+                if (!clear)
                 {
                     rejectedClearance++;
                     continue;
                 }
 
+                bool lineOfSightPass = true;
                 if (targetLineCellValid
-                    && ResolveIslandIdForDiagnostics(_world, targetX, targetY) == islandId
-                    && !HasSoftCostTolerantGridLineOfSight(_world, x, y, targetX, targetY, maxAllowedCost: 15))
+                    && ResolveIslandIdForDiagnostics(_world, targetX, targetY) == islandId)
+                {
+                    segmentStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+                    lineOfSightPass = HasSoftCostTolerantGridLineOfSight(
+                        _world,
+                        x,
+                        y,
+                        targetX,
+                        targetY,
+                        maxAllowedCost: 15);
+                    if (profile)
+                        lineOfSightTicks += Stopwatch.GetTimestamp() - segmentStartTicks;
+                }
+                if (!lineOfSightPass)
                 {
                     rejectedNoLos++;
                     continue;
                 }
 
                 bool duplicate = false;
+                segmentStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
                 for (int existing = 0; existing < points.Count; existing++)
                 {
                     if (points[existing].x.RawValue == worldPoint.x.RawValue
@@ -409,20 +442,36 @@ public static partial class FlowFieldCrowdMovementSystem
                         break;
                     }
                 }
+                if (profile)
+                    deduplicateTicks += Stopwatch.GetTimestamp() - segmentStartTicks;
                 if (duplicate)
                     continue;
 
                 points.Add(worldPoint);
+                candidateDirectionsNormalized.Add((worldPoint - targetPointFixed).GetNormalized());
+                targetDistanceErrors.Add(Fix64.Abs(FixVector2.Distance(worldPoint, targetPointFixed) - standOff));
                 cellX.Add(x);
                 cellY.Add(y);
                 islandIds.Add(islandId);
             }
         }
 
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachSlotGenerate,
+                Stopwatch.GetTimestamp() - generateStartTicks - clearanceTicks - lineOfSightTicks - deduplicateTicks);
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowCombatApproachSlotClearance, clearanceTicks);
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowCombatApproachSlotLineOfSight, lineOfSightTicks);
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowCombatApproachSlotDeduplicate, deduplicateTicks);
+        }
+
         CombatTargetSlotEntry entry = new CombatTargetSlotEntry
         {
             TargetPoint = targetPointFixed,
             Points = points.ToArray(),
+            CandidateDirectionsNormalized = candidateDirectionsNormalized.ToArray(),
+            TargetDistanceErrors = targetDistanceErrors.ToArray(),
             CellX = cellX.ToArray(),
             CellY = cellY.ToArray(),
             IslandIds = islandIds.ToArray(),

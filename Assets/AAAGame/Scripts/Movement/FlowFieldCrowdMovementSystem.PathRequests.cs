@@ -490,6 +490,8 @@ public static partial class FlowFieldCrowdMovementSystem
             return false;
         }
 
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long agentPreparationStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         agent.PositionFixed = request.Source.LogicFramePositionFixed();
         agent.Position = ToWorldVector3(agent.PositionFixed);
         agent.RadiusFixed = ResolveCollisionRadiusFixed(request.Source);
@@ -500,7 +502,11 @@ public static partial class FlowFieldCrowdMovementSystem
             failureReason = $"world unavailable source={request.Source.CharacterKey} agentType={agent.AgentTypeId}";
             return false;
         }
-        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        if (profile)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationDemandAgentPreparation,
+                Stopwatch.GetTimestamp() - agentPreparationStartTicks);
+
         long phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (!TryResolveStartCellForReachabilityFixed(
                 request.Source,
@@ -559,6 +565,7 @@ public static partial class FlowFieldCrowdMovementSystem
         }
         if (profile)
             MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowPrepareStableGoal, Stopwatch.GetTimestamp() - phaseStartTicks);
+        long sectorValidationStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (!_world.TryGetSectorId(startX, startY, out int startSectorId))
         {
             failureReason = $"start sector failed source={request.Source.CharacterKey} start=({startX},{startY})";
@@ -589,7 +596,12 @@ public static partial class FlowFieldCrowdMovementSystem
             failureReason = $"route goal sector failed source={request.Source.CharacterKey} goal=({goalX},{goalY})";
             return false;
         }
+        if (profile)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationDemandSectorValidation,
+                Stopwatch.GetTimestamp() - sectorValidationStartTicks);
 
+        long assemblyStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         agent.NavState.CurrentCell = new Vector2Int(startX, startY);
         agent.NavState.CurrentSectorId = startSectorId;
         agent.NavState.HasGoal = true;
@@ -614,6 +626,10 @@ public static partial class FlowFieldCrowdMovementSystem
             FinalGoal = finalGoal,
             MaximumTravelDistance = request.MaximumTravelDistance
         };
+        if (profile)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationDemandAssembly,
+                Stopwatch.GetTimestamp() - assemblyStartTicks);
         return true;
     }
 
@@ -701,6 +717,7 @@ public static partial class FlowFieldCrowdMovementSystem
         if (profile)
             MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationDemandQueueMutation, Stopwatch.GetTimestamp() - stageStartTicks);
 
+        long sourceBindingStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         NavigationPathSourceJob sourceJob = null;
         for (int i = 0; i < job.Sources.Count; i++)
         {
@@ -735,6 +752,10 @@ public static partial class FlowFieldCrowdMovementSystem
             sourceJob.LatestDemand = demand;
             sourceJob.LastRequestedFrame = GetFrameCount();
         }
+        if (profile)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationDemandSourceBinding,
+                Stopwatch.GetTimestamp() - sourceBindingStartTicks);
 
         AgentNavState nav = demand.Agent.NavState;
         stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
@@ -746,6 +767,7 @@ public static partial class FlowFieldCrowdMovementSystem
                                        && TryAdvancePathToCurrentSector(demand.Agent, demand.StartSectorId);
         if (profile)
             MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationDemandPathValidation, Stopwatch.GetTimestamp() - stageStartTicks);
+        long snapshotPublishStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (canConsumeCommittedPlan)
         {
             nav.HasPendingNavigation = false;
@@ -767,6 +789,10 @@ public static partial class FlowFieldCrowdMovementSystem
         nav.PreparedNavigationFrame = GetFrameCount();
         nav.PreparedInputGoalFixed = demand.InputGoal;
         nav.PreparedMaximumTravelDistanceFixed = demand.MaximumTravelDistance;
+        if (profile)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationDemandSnapshotPublish,
+                Stopwatch.GetTimestamp() - snapshotPublishStartTicks);
     }
 
     private static void ResetNavigationPathSourceJobForLatestStart(NavigationPathSourceJob source)
@@ -965,22 +991,41 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
-    private static void ProcessNavigationPathRequestQueue()
+    private static void ProcessNavigationPathRequestQueue(
+        ref long processingTicksTotal,
+        ref long queueLoopTicksTotal,
+        ref long commitLoopTicksTotal)
     {
         if (_world == null)
             throw new InvalidOperationException("Navigation path request processing requires an active world.");
+        bool profileProcessing = MainThreadFrameProfiler.LoggingEnabled;
+        long processingStartTicks = profileProcessing ? Stopwatch.GetTimestamp() : 0L;
         int fairShareQuota = Math.Min(
             NavigationPathRequestFairShareOperationQuota,
             _remainingNavigationWorkOperations);
         if (fairShareQuota <= 0)
+        {
+            if (profileProcessing)
+            {
+                long elapsedTicks = Stopwatch.GetTimestamp() - processingStartTicks;
+                processingTicksTotal += elapsedTicks;
+            }
             return;
+        }
 
         // Round-robin the pending state machines.  The previous implementation
         // drained one job until the global quota was exhausted, which made a
         // single synchronous Burst graph slice a frame-sized stall and delayed
         // every other source.  A visit commits only the mutation made by that
         // bounded slice; no state is recomputed or discarded between visits.
+        long queueLoopStartTicks = MainThreadFrameProfiler.LoggingEnabled
+            ? Stopwatch.GetTimestamp()
+            : 0L;
         NavigationPathRequestsBlockedByPendingSlice.Clear();
+        long budgetAccountingTicks = 0L;
+        long eligibilityTicks = 0L;
+        long sliceDispatchTicks = 0L;
+        long sliceDispatchStageTicks = 0L;
         while (!IsNavigationWorkBudgetExhausted())
         {
             bool progressed = false;
@@ -1001,17 +1046,31 @@ public static partial class FlowFieldCrowdMovementSystem
                     node = next;
                     continue;
                 }
-                if (NavigationPathRequestsBlockedByPendingSlice.Contains(job))
+                long eligibilityStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                    ? Stopwatch.GetTimestamp()
+                    : 0L;
+                bool blockedByPendingSlice = NavigationPathRequestsBlockedByPendingSlice.Contains(job);
+                bool blockedByEarlierOwner = false;
+                bool blockedByOtherSource = false;
+                if (!blockedByPendingSlice)
+                {
+                    blockedByEarlierOwner = IsNavigationPathRequestBlockedByEarlierGraphOwner(job);
+                    if (!blockedByEarlierOwner)
+                        blockedByOtherSource = IsNavigationPathRequestBlockedByOtherSourcePendingSlice(job);
+                }
+                if (MainThreadFrameProfiler.LoggingEnabled)
+                    eligibilityTicks += Stopwatch.GetTimestamp() - eligibilityStartTicks;
+                if (blockedByPendingSlice)
                 {
                     node = next;
                     continue;
                 }
-                if (IsNavigationPathRequestBlockedByEarlierGraphOwner(job))
+                if (blockedByEarlierOwner)
                 {
                     node = next;
                     continue;
                 }
-                if (IsNavigationPathRequestBlockedByOtherSourcePendingSlice(job))
+                if (blockedByOtherSource)
                 {
                     node = next;
                     continue;
@@ -1023,10 +1082,16 @@ public static partial class FlowFieldCrowdMovementSystem
                 int operationCapacity = Math.Min(
                     fairShareQuota,
                     _remainingNavigationWorkOperations);
+                long sliceStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                    ? Stopwatch.GetTimestamp()
+                    : 0L;
                 int operationCount = AdvanceNavigationPathRequestSlice(
                     job,
                     ref policyMutationStarted,
-                    operationCapacity);
+                    operationCapacity,
+                    ref sliceDispatchStageTicks);
+                if (MainThreadFrameProfiler.LoggingEnabled)
+                    sliceDispatchTicks += Stopwatch.GetTimestamp() - sliceStartTicks;
                 if (operationCount <= 0
                     || (!scheduledSliceBeforeAdvance && operationCount > operationCapacity))
                 {
@@ -1047,8 +1112,9 @@ public static partial class FlowFieldCrowdMovementSystem
                     IsBudgetExpired(0L, 0);
                 if (MainThreadFrameProfiler.LoggingEnabled)
                 {
-                    _perf.NavigationPathBudgetConsumeTicks +=
-                        Stopwatch.GetTimestamp() - budgetStartTicks;
+                    long elapsedTicks = Stopwatch.GetTimestamp() - budgetStartTicks;
+                    _perf.NavigationPathBudgetConsumeTicks += elapsedTicks;
+                    budgetAccountingTicks += elapsedTicks;
                 }
 
                 // A route slice owns its native state until the worker has
@@ -1064,10 +1130,57 @@ public static partial class FlowFieldCrowdMovementSystem
                 break;
         }
         NavigationPathRequestsBlockedByPendingSlice.Clear();
+        long queueLoopElapsedTicks = 0L;
+        if (MainThreadFrameProfiler.LoggingEnabled)
+        {
+            queueLoopElapsedTicks = Stopwatch.GetTimestamp() - queueLoopStartTicks;
+            queueLoopTicksTotal += queueLoopElapsedTicks;
+            long queueLoopUnattributedTicks = queueLoopElapsedTicks
+                                               - eligibilityTicks
+                                               - sliceDispatchTicks
+                                               - budgetAccountingTicks;
+            if (queueLoopUnattributedTicks < 0L)
+            {
+                throw new InvalidOperationException(
+                    $"Navigation path queue loop timing is inconsistent. total={queueLoopElapsedTicks}, eligibility={eligibilityTicks}, dispatch={sliceDispatchTicks}, budget={budgetAccountingTicks}.");
+            }
+            if (queueLoopUnattributedTicks > 0L)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathQueueLoopUnattributed,
+                    queueLoopUnattributedTicks);
+            }
+            if (eligibilityTicks > 0L)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathQueueEligibility,
+                    eligibilityTicks);
+            if (sliceDispatchTicks > 0L)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathSliceDispatch,
+                    sliceDispatchTicks);
+            long dispatchUnattributedTicks = sliceDispatchTicks - sliceDispatchStageTicks;
+            if (dispatchUnattributedTicks < 0L)
+            {
+                throw new InvalidOperationException(
+                    $"Navigation path slice dispatch timing is inconsistent. dispatch={sliceDispatchTicks}, stages={sliceDispatchStageTicks}.");
+            }
+            if (dispatchUnattributedTicks > 0L)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathSliceDispatchUnattributed,
+                    dispatchUnattributedTicks);
+        }
+        if (MainThreadFrameProfiler.LoggingEnabled && budgetAccountingTicks > 0L)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationPathBudgetAccounting,
+                budgetAccountingTicks);
+        }
 
+        long commitLoopStartTicks = profileProcessing ? Stopwatch.GetTimestamp() : 0L;
         // Commit each policy at most once for this world pass.  Keeping the
         // mutation flag on the request preserves the transaction across fair
         // share visits without multiplying authority refreshes per source.
+        long policyCommitTicks = 0L;
         LinkedListNode<NavigationPathRequestJob> commitNode = NavigationPathRequestQueue.First;
         while (commitNode != null)
         {
@@ -1089,14 +1202,22 @@ public static partial class FlowFieldCrowdMovementSystem
                 {
                     if (MainThreadFrameProfiler.LoggingEnabled)
                     {
-                        _perf.NavigationPathPolicyCommitTicks +=
-                            Stopwatch.GetTimestamp() - commitStartTicks;
+                        long elapsedTicks = Stopwatch.GetTimestamp() - commitStartTicks;
+                        _perf.NavigationPathPolicyCommitTicks += elapsedTicks;
+                        policyCommitTicks += elapsedTicks;
                     }
                 }
             }
             commitNode = next;
         }
+        if (MainThreadFrameProfiler.LoggingEnabled && policyCommitTicks > 0L)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationPathPolicyCommit,
+                policyCommitTicks);
+        }
 
+        long requestRemovalTicks = 0L;
         LinkedListNode<NavigationPathRequestJob> removeNode = NavigationPathRequestQueue.First;
         while (removeNode != null)
         {
@@ -1116,12 +1237,36 @@ public static partial class FlowFieldCrowdMovementSystem
                 {
                     if (MainThreadFrameProfiler.LoggingEnabled)
                     {
-                        _perf.NavigationPathRequestRemovalTicks +=
-                            Stopwatch.GetTimestamp() - removalStartTicks;
+                        long elapsedTicks = Stopwatch.GetTimestamp() - removalStartTicks;
+                        _perf.NavigationPathRequestRemovalTicks += elapsedTicks;
+                        requestRemovalTicks += elapsedTicks;
                     }
                 }
             }
             removeNode = next;
+        }
+        if (MainThreadFrameProfiler.LoggingEnabled && requestRemovalTicks > 0L)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationPathRequestRemoval,
+                requestRemovalTicks);
+        }
+        if (profileProcessing)
+        {
+            long commitLoopTicks = Stopwatch.GetTimestamp() - commitLoopStartTicks;
+            commitLoopTicksTotal += commitLoopTicks;
+            if (commitLoopTicks > 0L)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathQueueCommitLoop,
+                    commitLoopTicks);
+            long processingTicks = Stopwatch.GetTimestamp() - processingStartTicks;
+            processingTicksTotal += processingTicks;
+            long processingUnattributedTicks = processingTicks - queueLoopElapsedTicks - commitLoopTicks;
+            if (processingUnattributedTicks < 0L)
+            {
+                throw new InvalidOperationException(
+                    $"Navigation path queue processing timing is inconsistent. total={processingTicks}, queueLoop={queueLoopElapsedTicks}, commitLoop={commitLoopTicks}.");
+            }
         }
     }
 
@@ -1343,39 +1488,129 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         NavigationWorld previousWorld = _world;
         WorldRuntimeState previousState = _activeWorldState;
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long processStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        long stateEnumerationStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        long stateEnumerationTicks = 0L;
+        long activationTicks = 0L;
+        long queueProcessingTicks = 0L;
+        long queueLoopTicks = 0L;
+        long queueCommitLoopTicks = 0L;
         var states = new List<WorldRuntimeState>(WorldStates.Values);
         states.Sort((left, right) => left.AgentTypeId.CompareTo(right.AgentTypeId));
+        if (profile)
+        {
+            stateEnumerationTicks = Stopwatch.GetTimestamp() - stateEnumerationStartTicks;
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationPathWorldStateEnumeration,
+                stateEnumerationTicks);
+        }
         try
         {
             for (int i = 0; i < states.Count && !IsNavigationWorkBudgetExhausted(); i++)
             {
+                long activationStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                    ? Stopwatch.GetTimestamp()
+                    : 0L;
                 ActivateFlowBuildQueueWorld(states[i]);
-                ProcessNavigationPathRequestQueue();
+                if (MainThreadFrameProfiler.LoggingEnabled)
+                {
+                    long elapsedTicks = Stopwatch.GetTimestamp() - activationStartTicks;
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowNavigationPathWorldActivation,
+                        elapsedTicks);
+                    activationTicks += elapsedTicks;
+                }
+                ProcessNavigationPathRequestQueue(
+                    ref queueProcessingTicks,
+                    ref queueLoopTicks,
+                    ref queueCommitLoopTicks);
             }
         }
         finally
         {
+            long restoreStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             _world = previousWorld;
             _activeWorldState = previousState;
+            long restoreTicks = profile ? Stopwatch.GetTimestamp() - restoreStartTicks : 0L;
+            if (profile && restoreTicks > 0L)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathWorldRestore,
+                    restoreTicks);
+            if (profile)
+            {
+                long processTicks = Stopwatch.GetTimestamp() - processStartTicks;
+                long queueProcessingUnattributedTicks = queueProcessingTicks
+                                                         - queueLoopTicks
+                                                         - queueCommitLoopTicks;
+                if (queueProcessingUnattributedTicks < 0L)
+                {
+                    throw new InvalidOperationException(
+                        $"Navigation path queue aggregate timing is inconsistent. total={queueProcessingTicks}, queueLoop={queueLoopTicks}, commitLoop={queueCommitLoopTicks}.");
+                }
+                if (queueProcessingUnattributedTicks > 0L)
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowNavigationPathQueueProcessingUnattributed,
+                        queueProcessingUnattributedTicks);
+                long knownTicks = stateEnumerationTicks
+                                  + activationTicks
+                                  + queueLoopTicks
+                                  + queueCommitLoopTicks
+                                  + queueProcessingUnattributedTicks
+                                  + restoreTicks;
+                long outerUnattributedTicks = processTicks - knownTicks;
+                if (outerUnattributedTicks < 0L)
+                {
+                    throw new InvalidOperationException(
+                        $"Navigation path world processing timing is inconsistent. total={processTicks}, known={knownTicks}, activation={activationTicks}, queue={queueProcessingTicks}.");
+                }
+                if (outerUnattributedTicks > 0L)
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowNavigationPathWorldOuterUnattributed,
+                        outerUnattributedTicks);
+            }
         }
     }
 
     private static int AdvanceNavigationPathRequestSlice(
         NavigationPathRequestJob job,
         ref bool policyMutationStarted,
-        int operationCapacity)
+        int operationCapacity,
+        ref long stageElapsedTicks)
     {
         if (operationCapacity <= 0)
             throw new ArgumentOutOfRangeException(nameof(operationCapacity));
         if (job.SourceCursor >= job.Sources.Count)
         {
-            if (RestartCompletedNavigationPathSourceMergesForLatestStarts(job, ref policyMutationStarted))
+            bool recordTerminalTiming = MainThreadFrameProfiler.LoggingEnabled;
+            long terminalStartTicks = recordTerminalTiming ? Stopwatch.GetTimestamp() : 0L;
+            try
+            {
+                if (RestartCompletedNavigationPathSourceMergesForLatestStarts(job, ref policyMutationStarted))
+                    return 1;
+                CommitNavigationPathRequest(job);
+                job.Complete = true;
                 return 1;
-            CommitNavigationPathRequest(job);
-            job.Complete = true;
-            return 1;
+            }
+            finally
+            {
+                if (recordTerminalTiming)
+                {
+                    long elapsedTicks = Stopwatch.GetTimestamp() - terminalStartTicks;
+                    stageElapsedTicks += elapsedTicks;
+                    RecordNavigationPathRequestStage(
+                        NavigationPathSourceStage.Complete,
+                        1,
+                        elapsedTicks);
+                    RecordNavigationPathSliceDispatchStage(
+                        NavigationPathSourceStage.Complete,
+                        elapsedTicks);
+                }
+            }
         }
 
+        bool profileDispatchParts = MainThreadFrameProfiler.LoggingEnabled;
+        long dispatchPreparationStartTicks = profileDispatchParts ? Stopwatch.GetTimestamp() : 0L;
         NavigationPathSourceJob source = job.Sources[job.SourceCursor];
         NavigationPathSourceStage stage = source.Stage;
         IncrementalRouteMaterializationStage materializationStage = source.Materialization?.Stage
@@ -1387,6 +1622,10 @@ public static partial class FlowFieldCrowdMovementSystem
             if (!routeState.HasPendingSlice && routeState.TaskCount > 0)
                 routeTaskType = routeState.Peek().Type;
         }
+        if (profileDispatchParts)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationPathSliceDispatchPreparation,
+                Stopwatch.GetTimestamp() - dispatchPreparationStartTicks);
         bool recordTiming = MainThreadFrameProfiler.LoggingEnabled;
         long startTicks = recordTiming ? Stopwatch.GetTimestamp() : 0L;
         int operationCount = 1;
@@ -1444,9 +1683,14 @@ public static partial class FlowFieldCrowdMovementSystem
         }
         finally
         {
+            long dispatchFinalizationStartTicks = recordTiming ? Stopwatch.GetTimestamp() : 0L;
             long elapsedTicks = recordTiming ? Stopwatch.GetTimestamp() - startTicks : 0L;
             if (recordTiming)
+            {
+                stageElapsedTicks += elapsedTicks;
                 RecordNavigationPathRequestStage(stage, operationCount, elapsedTicks);
+                RecordNavigationPathSliceDispatchStage(stage, elapsedTicks);
+            }
             else
                 RecordNavigationPathRequestStage(stage, operationCount, 0L);
             if (elapsedTicks > _perf.NavigationPathSlowestOperationTicks)
@@ -1464,8 +1708,53 @@ public static partial class FlowFieldCrowdMovementSystem
                     ? routeTaskType
                     : -1;
             }
+            if (recordTiming)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathSliceDispatchFinalization,
+                    Stopwatch.GetTimestamp() - dispatchFinalizationStartTicks);
         }
         return operationCount;
+    }
+
+    private static void RecordNavigationPathSliceDispatchStage(
+        NavigationPathSourceStage stage,
+        long elapsedTicks)
+    {
+        if (elapsedTicks <= 0L)
+            return;
+
+        MainThreadPerfScope scope;
+        switch (stage)
+        {
+            case NavigationPathSourceStage.Initialize:
+                scope = MainThreadPerfScope.FlowNavigationPathSliceInitialize;
+                break;
+            case NavigationPathSourceStage.BuildGoalConnector:
+                scope = MainThreadPerfScope.FlowNavigationPathSliceGoalConnector;
+                break;
+            case NavigationPathSourceStage.CreateHierarchyPolicy:
+                scope = MainThreadPerfScope.FlowNavigationPathSliceCreateHierarchy;
+                break;
+            case NavigationPathSourceStage.ExpandHierarchyPolicy:
+                scope = MainThreadPerfScope.FlowNavigationPathSliceExpandHierarchy;
+                break;
+            case NavigationPathSourceStage.BuildDownwardCustomization:
+                scope = MainThreadPerfScope.FlowNavigationPathSliceDownward;
+                break;
+            case NavigationPathSourceStage.ExpandL0Policy:
+                scope = MainThreadPerfScope.FlowNavigationPathSliceL0;
+                break;
+            case NavigationPathSourceStage.MaterializeRoute:
+                scope = MainThreadPerfScope.FlowNavigationPathSliceMaterialize;
+                break;
+            case NavigationPathSourceStage.Complete:
+                scope = MainThreadPerfScope.FlowNavigationPathSliceComplete;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(stage), stage, "Unknown navigation path source stage.");
+        }
+
+        MainThreadFrameProfiler.Record(scope, elapsedTicks);
     }
 
     private static void RecordNavigationPathRequestStage(
@@ -1537,6 +1826,51 @@ public static partial class FlowFieldCrowdMovementSystem
         MainThreadFrameProfiler.Record(
             MainThreadPerfScope.FlowNavigationPathMaterialize,
             _perf.NavigationPathMaterializeTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializeStageInitialize,
+            _perf.NavigationPathMaterializeInitializeTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializeStageStartPortal,
+            _perf.NavigationPathMaterializeStartPortalTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializeStageDownward,
+            _perf.NavigationPathMaterializeDownwardTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializeStagePolicy,
+            _perf.NavigationPathMaterializePolicyTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializeStageGoalConnector,
+            _perf.NavigationPathMaterializeGoalConnectorTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializeStageConversion,
+            _perf.NavigationPathMaterializeConversionTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializeStageImmutableCopy,
+            _perf.NavigationPathMaterializeImmutableCopyTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializeStageHash,
+            _perf.NavigationPathMaterializeHashTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializeStagePublish,
+            _perf.NavigationPathMaterializePublishTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializePublishSuffix,
+            _perf.NavigationPathMaterializePublishSuffixTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializePublishSuffixResolve,
+            _perf.NavigationPathMaterializePublishSuffixResolveTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializePublishSuffixValidation,
+            _perf.NavigationPathMaterializePublishSuffixValidationTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializePublishSuffixInsert,
+            _perf.NavigationPathMaterializePublishSuffixInsertTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializePublishSuffixBookkeeping,
+            _perf.NavigationPathMaterializePublishSuffixBookkeepingTicks);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.FlowNavigationPathMaterializePublishSuffixFinalize,
+            _perf.NavigationPathMaterializePublishSuffixFinalizeTicks);
         MainThreadFrameProfiler.Record(
             MainThreadPerfScope.FlowNavigationPathComplete,
             _perf.NavigationPathCompleteTicks);
@@ -2103,7 +2437,16 @@ public static partial class FlowFieldCrowdMovementSystem
                         }
                         while (operationCount < operationCapacity
                                && search.SourceInitializationCursor < search.SourceNodes.Count);
+                        long commandStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                            ? Stopwatch.GetTimestamp()
+                            : 0L;
                         int executed = ExecuteNavigationPathSearchCommandSlice(search.KernelState, out _, out _);
+                        if (MainThreadFrameProfiler.LoggingEnabled)
+                        {
+                            MainThreadFrameProfiler.Record(
+                                MainThreadPerfScope.FlowNavigationPathSearchCommandExecute,
+                                Stopwatch.GetTimestamp() - commandStartTicks);
+                        }
                         if (executed <= 0)
                             throw new InvalidOperationException("Incremental restricted search source slice executed no commands.");
                         continue;
@@ -2135,10 +2478,22 @@ public static partial class FlowFieldCrowdMovementSystem
                     {
                         if (!search.KernelState.IsPendingGraphSliceCompleted)
                             return 1;
+                        long completeStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                            ? Stopwatch.GetTimestamp()
+                            : 0L;
                         slice = search.KernelState.CompleteScheduledGraphSlice();
+                        if (MainThreadFrameProfiler.LoggingEnabled)
+                        {
+                            MainThreadFrameProfiler.Record(
+                                MainThreadPerfScope.FlowNavigationPathSearchComplete,
+                                Stopwatch.GetTimestamp() - completeStartTicks);
+                        }
                     }
                     else
                     {
+                        long scheduleStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                            ? Stopwatch.GetTimestamp()
+                            : 0L;
                         search.KernelState.ScheduleGraphSlice(
                             graph,
                             search.Reverse,
@@ -2149,6 +2504,12 @@ public static partial class FlowFieldCrowdMovementSystem
                             cluster?.HeightSectors ?? 0,
                             cursor,
                             operationCapacity - operationCount);
+                        if (MainThreadFrameProfiler.LoggingEnabled)
+                        {
+                            MainThreadFrameProfiler.Record(
+                                MainThreadPerfScope.FlowNavigationPathSearchSchedule,
+                                Stopwatch.GetTimestamp() - scheduleStartTicks);
+                        }
                         return operationCapacity;
                     }
                     if (slice.OperationCount <= 0
@@ -2306,12 +2667,18 @@ public static partial class FlowFieldCrowdMovementSystem
                 if (source.RestrictedSourceCollectionCursor < goalSector.PortalIds.Count)
                 {
                     int portalId = goalSector.PortalIds[source.RestrictedSourceCollectionCursor++];
+                    bool profileGoalInput = MainThreadFrameProfiler.LoggingEnabled;
+                    long goalInputStartTicks = profileGoalInput ? Stopwatch.GetTimestamp() : 0L;
                     long cost = ResolveDeterministicGoalSectorPortalAccessCost(
                         goalSector,
                         job.Key.GoalSectorId,
                         portalId,
                         job.Policy.GoalCellIndex % _world.Width,
                         job.Policy.GoalCellIndex / _world.Width);
+                    if (profileGoalInput)
+                        MainThreadFrameProfiler.Record(
+                            MainThreadPerfScope.FlowNavigationGoalConnectorInputCollection,
+                            Stopwatch.GetTimestamp() - goalInputStartTicks);
                     if (cost == long.MaxValue)
                         return 1;
                     source.RestrictedSourceNodes.Add(EncodePortalNode(job.Key.GoalSectorId, portalId));
@@ -2336,10 +2703,16 @@ public static partial class FlowFieldCrowdMovementSystem
                 EndRestrictedInputCollection(source);
                 return 1;
             }
+            bool profileGoalSearch = MainThreadFrameProfiler.LoggingEnabled;
+            long goalSearchStartTicks = profileGoalSearch ? Stopwatch.GetTimestamp() : 0L;
             int operationCount = AdvanceIncrementalRestrictedPortalSearchSlice(
                 source.RestrictedSearch,
                 operationCapacity,
                 out bool complete);
+            if (profileGoalSearch)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationGoalConnectorSearchSlice,
+                    Stopwatch.GetTimestamp() - goalSearchStartTicks);
             if (!complete)
                 return operationCount;
             source.GoalConnector = new PortalHierarchyConnector
@@ -2395,10 +2768,16 @@ public static partial class FlowFieldCrowdMovementSystem
             EndRestrictedInputCollection(source);
             return 1;
         }
+        bool profileUpperSearch = MainThreadFrameProfiler.LoggingEnabled;
+        long upperSearchStartTicks = profileUpperSearch ? Stopwatch.GetTimestamp() : 0L;
         int upperOperationCount = AdvanceIncrementalRestrictedPortalSearchSlice(
             source.RestrictedSearch,
             operationCapacity,
             out bool upperComplete);
+        if (profileUpperSearch)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationGoalConnectorSearchSlice,
+                Stopwatch.GetTimestamp() - upperSearchStartTicks);
         if (!upperComplete)
             return upperOperationCount;
         source.GoalConnector = new PortalHierarchyConnector
@@ -2753,7 +3132,16 @@ public static partial class FlowFieldCrowdMovementSystem
                     if (commandCount > 0)
                     {
                         BeginHashedPortalHierarchyPolicyMutation(job.Policy, ref policyMutationStarted);
+                        long commandStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                            ? Stopwatch.GetTimestamp()
+                            : 0L;
                         int executed = ExecuteNavigationPathSearchCommandSlice(searchState, out _, out _);
+                        if (MainThreadFrameProfiler.LoggingEnabled)
+                        {
+                            MainThreadFrameProfiler.Record(
+                                MainThreadPerfScope.FlowNavigationPathSearchCommandExecute,
+                                Stopwatch.GetTimestamp() - commandStartTicks);
+                        }
                         if (executed != commandCount)
                         {
                             throw new InvalidOperationException(
@@ -2850,7 +3238,16 @@ public static partial class FlowFieldCrowdMovementSystem
                     {
                         if (!searchState.IsPendingGraphSliceCompleted)
                             return 1;
+                        long completeStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                            ? Stopwatch.GetTimestamp()
+                            : 0L;
                         slice = searchState.CompleteScheduledGraphSlice();
+                        if (MainThreadFrameProfiler.LoggingEnabled)
+                        {
+                            MainThreadFrameProfiler.Record(
+                                MainThreadPerfScope.FlowNavigationPathSearchComplete,
+                                Stopwatch.GetTimestamp() - completeStartTicks);
+                        }
                     }
                     else
                     {
@@ -2880,6 +3277,9 @@ public static partial class FlowFieldCrowdMovementSystem
                             CurrentCost = expansion.CurrentCost,
                             EdgeCursor = expansion.EdgeCursor
                         };
+                        long scheduleStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                            ? Stopwatch.GetTimestamp()
+                            : 0L;
                         searchState.ScheduleGraphSlice(
                             graph,
                             reverse: true,
@@ -2890,6 +3290,12 @@ public static partial class FlowFieldCrowdMovementSystem
                             0,
                             cursor,
                             operationCapacity - operationCount);
+                        if (MainThreadFrameProfiler.LoggingEnabled)
+                        {
+                            MainThreadFrameProfiler.Record(
+                                MainThreadPerfScope.FlowNavigationPathSearchSchedule,
+                                Stopwatch.GetTimestamp() - scheduleStartTicks);
+                        }
                         return operationCapacity;
                     }
                     if (slice.OperationCount <= 0
@@ -2960,7 +3366,15 @@ public static partial class FlowFieldCrowdMovementSystem
             _perf.NavigationPathMaterializationCreates++;
         }
         IncrementalRouteMaterialization state = source.Materialization;
+        bool profileMerge = MainThreadFrameProfiler.LoggingEnabled;
+        long mergeStartTicks = profileMerge ? Stopwatch.GetTimestamp() : 0L;
         TryMergeNavigationRouteIntoSharedSuffix(job, source, state);
+        if (profileMerge)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationPathMaterializeSharedSuffixMerge,
+                Stopwatch.GetTimestamp() - mergeStartTicks);
+        }
         IncrementalRouteMaterializationStage operationStage = state.Stage;
         bool recordTiming = MainThreadFrameProfiler.LoggingEnabled;
         long startTicks = recordTiming ? Stopwatch.GetTimestamp() : 0L;
@@ -3837,13 +4251,28 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         if (state.ImmutableSectorIds == null)
         {
+            bool profile = MainThreadFrameProfiler.LoggingEnabled;
             int immutableSectorCount = state.MergedSuffix == null
                 ? state.RouteState.ConvertedSectorCount
                 : state.RouteState.ConvertedSectorCount - 1;
             if (immutableSectorCount < 0)
                 throw new InvalidOperationException("Navigation merged route prefix has no terminal merge sector.");
+            long sectorCopyStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             state.ImmutableSectorIds = state.RouteState.CopyConvertedSectors(immutableSectorCount);
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathMaterializeImmutableSectorCopy,
+                    Stopwatch.GetTimestamp() - sectorCopyStartTicks);
+            }
+            long portalCopyStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             state.ImmutablePortalIds = state.RouteState.CopyConvertedPortals();
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathMaterializeImmutablePortalCopy,
+                    Stopwatch.GetTimestamp() - portalCopyStartTicks);
+            }
         }
 
         if (state.RouteSectorIds == null)
@@ -3855,6 +4284,8 @@ public static partial class FlowFieldCrowdMovementSystem
             }
             else
             {
+                bool profile = MainThreadFrameProfiler.LoggingEnabled;
+                long concatStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
                 state.RouteSectorIds = ImmutableRouteSequence.Concat(
                     state.ImmutableSectorIds,
                     state.ImmutableSectorIds.Length,
@@ -3866,26 +4297,56 @@ public static partial class FlowFieldCrowdMovementSystem
                     state.MergedSuffix.PortalIds,
                     state.MergedSuffix.PortalStartIndex);
                 _perf.NavigationPathImmutableConcatCreates += 2;
+                if (profile)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowNavigationPathMaterializeImmutableConcat,
+                        Stopwatch.GetTimestamp() - concatStartTicks);
+                }
             }
+            bool profileValidation = MainThreadFrameProfiler.LoggingEnabled;
+            long validationStartTicks = profileValidation ? Stopwatch.GetTimestamp() : 0L;
             if (state.RouteSectorIds.Length == 0
                 || state.RoutePortalIds.Length + 1 != state.RouteSectorIds.Length)
             {
                 throw new InvalidOperationException("Navigation immutable segmented route is inconsistent.");
             }
+            if (profileValidation)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathMaterializeImmutableValidation,
+                    Stopwatch.GetTimestamp() - validationStartTicks);
+            }
+            bool profileHash = MainThreadFrameProfiler.LoggingEnabled;
+            long hashStartTicks = profileHash ? Stopwatch.GetTimestamp() : 0L;
             state.PathAuthorityHash = ComputeSectorPathAuthorityContentHash(
-                state.PathKey,
-                new SectorPathCacheEntry
-                {
-                    SectorIds = state.RouteSectorIds,
-                    PortalIds = state.RoutePortalIds
-                });
+                    state.PathKey,
+                    new SectorPathCacheEntry
+                    {
+                        SectorIds = state.RouteSectorIds,
+                        PortalIds = state.RoutePortalIds
+                    });
+            if (profileHash)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathMaterializeImmutableHash,
+                    Stopwatch.GetTimestamp() - hashStartTicks);
+            }
         }
         if (source.HierarchyLevelArrayIndex >= 0 && state.MergedSuffix == null)
         {
+            bool profileWitnessHasher = MainThreadFrameProfiler.LoggingEnabled;
+            long witnessHasherStartTicks = profileWitnessHasher ? Stopwatch.GetTimestamp() : 0L;
             state.WitnessAuthorityHasher = new LogicStateHasher();
             state.WitnessAuthorityHasher.Add(0x50484C305749544EUL);
             state.WitnessAuthorityHasher.Add(state.BestStartNode);
             state.WitnessAuthorityHasher.Add(state.ImmutableSectorIds.Length);
+            if (profileWitnessHasher)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathMaterializeImmutableWitnessHasher,
+                    Stopwatch.GetTimestamp() - witnessHasherStartTicks);
+            }
         }
         state.AuthorityHashCursor = 0;
         state.HashingPortalIds = false;
@@ -3939,6 +4400,8 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             if (source.HierarchyLevelArrayIndex >= 0 && state.MergedSuffix == null)
             {
+                bool profile = MainThreadFrameProfiler.LoggingEnabled;
+                long witnessStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
                 int[] witnessSectorIds = state.ImmutableSectorIds
                     ?? throw new InvalidOperationException("Navigation hierarchy witness sector array is missing.");
                 int[] witnessPortalIds = state.ImmutablePortalIds
@@ -3949,20 +4412,42 @@ public static partial class FlowFieldCrowdMovementSystem
                     SectorIds = witnessSectorIds,
                     PortalIds = witnessPortalIds
                 };
+                long witnessValidationStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
                 ValidatePortalHierarchyL0Witness(
                     witness,
                     state.BestStartNode,
                     source.Demand.StartSectorId,
                     job.Key.GoalSectorId);
+                if (profile)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowNavigationPathMaterializePublishWitnessValidation,
+                        Stopwatch.GetTimestamp() - witnessValidationStartTicks);
+                }
                 witness.AuthorityContentHash = state.WitnessAuthorityHash;
+                long witnessMutationStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
                 BeginHashedPortalHierarchyPolicyMutation(job.Policy, ref policyMutationStarted);
                 source.HierarchyPolicy.L0WitnessesByStartNode.Add(state.BestStartNode, witness);
                 source.HierarchyPolicy.L0WitnessesAuthorityContentHash ^=
                     ComputePortalHierarchyL0WitnessEntryAuthorityToken(
                         state.BestStartNode,
                         witness.AuthorityContentHash);
+                if (profile)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowNavigationPathMaterializePublishWitnessMutation,
+                        Stopwatch.GetTimestamp() - witnessMutationStartTicks);
+                }
+                if (profile)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowNavigationPathMaterializePublishWitness,
+                        Stopwatch.GetTimestamp() - witnessStartTicks);
+                }
             }
 
+            bool profileCache = MainThreadFrameProfiler.LoggingEnabled;
+            long cacheStartTicks = profileCache ? Stopwatch.GetTimestamp() : 0L;
             SetSectorPathCacheEntryWithAuthorityHash(
                 state.PathKey,
                 new SectorPathCacheEntry
@@ -3972,7 +4457,22 @@ public static partial class FlowFieldCrowdMovementSystem
                     LastUsedFrame = GetFrameCount()
                 },
                 state.PathAuthorityHash);
+            if (profileCache)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathMaterializePublishCache,
+                    Stopwatch.GetTimestamp() - cacheStartTicks);
+            }
+            bool profileTrim = MainThreadFrameProfiler.LoggingEnabled;
+            long trimStartTicks = profileTrim ? Stopwatch.GetTimestamp() : 0L;
             TrimSectorPathCache();
+            if (profileTrim)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathMaterializePublishTrim,
+                    Stopwatch.GetTimestamp() - trimStartTicks);
+            }
+            long handleStartTicks = profileTrim ? Stopwatch.GetTimestamp() : 0L;
             source.Handle = new PathHandle
             {
                 HandleId = _nextPathHandleId++,
@@ -3986,6 +4486,12 @@ public static partial class FlowFieldCrowdMovementSystem
             source.Handle.BuildSource = source.HierarchyLevelArrayIndex >= 0
                 ? $"portalHierarchyPolicyL{_world.Hierarchy.Levels[source.HierarchyLevelArrayIndex].Level}:pathRequest"
                 : "sectorCorridorPolicy:pathRequest";
+            if (profileTrim)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathMaterializePublishHandle,
+                    Stopwatch.GetTimestamp() - handleStartTicks);
+            }
             state.SharedSuffixRegistrationCursor = 0;
             state.SharedSuffixSectorPathIndex = 0;
             return;
@@ -3993,7 +4499,11 @@ public static partial class FlowFieldCrowdMovementSystem
 
         if (state.SharedSuffixRegistrationCursor < state.RouteState.L0NodeCount)
         {
+            bool profile = MainThreadFrameProfiler.LoggingEnabled;
+            long suffixStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             RegisterNavigationSharedRouteSuffixOneOperation(job, state, sectorIds, portalIds);
+            if (profile)
+                _perf.NavigationPathMaterializePublishSuffixTicks += Stopwatch.GetTimestamp() - suffixStartTicks;
             return;
         }
         state.Stage = IncrementalRouteMaterializationStage.Complete;
@@ -4007,8 +4517,14 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         if (state.RouteState.L0NodeCount == 0)
             throw new InvalidOperationException("Navigation shared route registration has no L0 nodes.");
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long bookkeepingStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         int index = state.SharedSuffixRegistrationCursor;
         int sectorPathIndex = state.SharedSuffixSectorPathIndex;
+        if (profile)
+            _perf.NavigationPathMaterializePublishSuffixBookkeepingTicks +=
+                Stopwatch.GetTimestamp() - bookkeepingStartTicks;
+        long resolveStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         int node = state.RouteState.GetL0Node(index);
         if (index > 0)
         {
@@ -4036,7 +4552,11 @@ public static partial class FlowFieldCrowdMovementSystem
             sectorPathIndex,
             portalIds,
             sectorPathIndex);
+        if (profile)
+            _perf.NavigationPathMaterializePublishSuffixResolveTicks +=
+                Stopwatch.GetTimestamp() - resolveStartTicks;
         _perf.NavigationPathSharedSuffixCreates++;
+        long validationStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (job.SharedRouteSuffixes.TryGetValue(node, out NavigationSharedRouteSuffix existing))
         {
             if (!job.SharedRouteMergeIndex.Contains(node))
@@ -4058,9 +4578,16 @@ public static partial class FlowFieldCrowdMovementSystem
                 throw new InvalidOperationException(
                     $"Navigation shared route tree contains conflicting suffixes node={FormatRouteNode(node)}.");
             }
+            if (profile)
+                _perf.NavigationPathMaterializePublishSuffixValidationTicks +=
+                    Stopwatch.GetTimestamp() - validationStartTicks;
         }
         else
         {
+            if (profile)
+                _perf.NavigationPathMaterializePublishSuffixValidationTicks +=
+                    Stopwatch.GetTimestamp() - validationStartTicks;
+            long insertStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             job.SharedRouteSuffixes.Add(node, suffix);
             if (!job.SharedRouteMergeIndex.Add(node))
             {
@@ -4069,9 +4596,16 @@ public static partial class FlowFieldCrowdMovementSystem
             }
             job.SharedRouteSuffixesAuthorityContentHash ^=
                 ComputeNavigationSharedRouteSuffixAuthorityToken(node, suffix);
+            if (profile)
+                _perf.NavigationPathMaterializePublishSuffixInsertTicks +=
+                    Stopwatch.GetTimestamp() - insertStartTicks;
         }
+        long finalizeStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         state.SharedSuffixSectorPathIndex = sectorPathIndex;
         state.SharedSuffixRegistrationCursor++;
+        if (profile)
+            _perf.NavigationPathMaterializePublishSuffixFinalizeTicks +=
+                Stopwatch.GetTimestamp() - finalizeStartTicks;
     }
 
     private static void CommitNavigationPathRequest(NavigationPathRequestJob job)
@@ -4111,7 +4645,6 @@ public static partial class FlowFieldCrowdMovementSystem
                     $"snapshotSector={demand.StartSectorId}, latestSector={latestDemand.StartSectorId}.");
             }
             UpdateFixedPortalParticipation(demand.Agent);
-            EnqueueSteeringReadDomainFlowTileBuilds(demand.Agent, latestDemand.MaximumTravelDistance);
         }
     }
 

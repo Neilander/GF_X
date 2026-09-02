@@ -934,7 +934,17 @@ public static partial class FlowFieldCrowdMovementSystem
 
         public void Dispose()
         {
+            bool profile = MainThreadFrameProfiler.LoggingEnabled;
+            long searchStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             SearchState.Dispose();
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyDisposeSearchState,
+                    Stopwatch.GetTimestamp() - searchStartTicks);
+            }
+
+            long connectorStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             var connectors = new HashSet<PortalHierarchyConnector>();
             foreach (PortalHierarchyReversePolicy policy in HierarchyPolicies.Values)
             {
@@ -946,9 +956,31 @@ public static partial class FlowFieldCrowdMovementSystem
                         connector.Dispose();
                 }
             }
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyDisposeConnectors,
+                    Stopwatch.GetTimestamp() - connectorStartTicks);
+            }
+
+            long policyStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             foreach (PortalHierarchyReversePolicy policy in HierarchyPolicies.Values)
                 policy?.Dispose();
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyDisposeHierarchyPolicies,
+                    Stopwatch.GetTimestamp() - policyStartTicks);
+            }
+
+            long policyClearStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             HierarchyPolicies.Clear();
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyDisposeHierarchyPolicyClear,
+                    Stopwatch.GetTimestamp() - policyClearStartTicks);
+            }
         }
     }
 
@@ -2199,11 +2231,34 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         public FixVector2 TargetPoint;
         public FixVector2[] Points;
+        public FixVector2[] CandidateDirectionsNormalized;
+        public Fix64[] TargetDistanceErrors;
         public int[] CellX;
         public int[] CellY;
         public int[] IslandIds;
         public int LastUsedFrame;
         public string BuildSummary;
+
+        // Runtime-only broad-phase snapshots. These are deliberately excluded
+        // from deterministic state: they cache the current frame's agent
+        // references, while reservations and exact distance checks remain live.
+        public int OccupancyCandidateFrame = int.MinValue;
+        public int OccupancyCandidateWorldVersion = int.MinValue;
+        public long OccupancyCandidateThresholdRaw = long.MinValue;
+        public List<NavigationGoalOccupancyCandidate>[] OccupancyCandidatesBySlot;
+        public bool[] OccupancyCandidatesBuiltBySlot;
+    }
+
+    private readonly struct NavigationGoalOccupancyCandidate
+    {
+        public readonly AgentRuntimeData Agent;
+        public readonly bool UseGoalPosition;
+
+        public NavigationGoalOccupancyCandidate(AgentRuntimeData agent, bool useGoalPosition)
+        {
+            Agent = agent;
+            UseGoalPosition = useGoalPosition;
+        }
     }
 
     private readonly struct AttackAreaCandidateCacheKey : IEquatable<AttackAreaCandidateCacheKey>

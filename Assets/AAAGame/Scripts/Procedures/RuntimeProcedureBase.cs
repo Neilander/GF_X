@@ -654,11 +654,28 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         {
         bool profile = MainThreadFrameProfiler.LoggingEnabled;
         long commandsStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        long commandSectionStartTicks;
         LogicTimeControlService.BeginFrame(frame);
         LogicFactionVisionService.Advance(LogicFrameRuntime.FixedDeltaTime);
         inputFrame = logicInputManager.SealLogicInputFrame(frame, cutoffRealtime);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.LogicFrameCommandTimeAndInput,
+                Stopwatch.GetTimestamp() - commandsStartTicks);
+        }
+
+        commandSectionStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         LogicInGameValueCommandService.ApplyFrame(frame);
         LogicTeleportCommandService.ApplyFrame(frame);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.LogicFrameCommandValueTeleport,
+                Stopwatch.GetTimestamp() - commandSectionStartTicks);
+        }
+
+        commandSectionStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (LogicCardPlacementAuthority.IsWorldBound)
         {
             LogicCardPlacementAuthority.ApplyFrame(frame);
@@ -667,19 +684,73 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         {
             throw new InvalidOperationException("Card runtime is bound without a logic card-placement world.");
         }
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.LogicFrameCommandCardPlacement,
+                Stopwatch.GetTimestamp() - commandSectionStartTicks);
+        }
+
+        commandSectionStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         LogicCardCommandService.ApplyFrame(frame);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.LogicFrameCommandCard,
+                Stopwatch.GetTimestamp() - commandSectionStartTicks);
+        }
+
+        commandSectionStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         LogicSkillSlotCommandService.ApplyFrame(frame);
         LogicPhaseCommandService.ApplyFrame(frame);
         LogicSkillCastCommandService.ApplyFrame(frame);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.LogicFrameCommandSkills,
+                Stopwatch.GetTimestamp() - commandSectionStartTicks);
+        }
+
+        commandSectionStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         LogicMovementRegionConstraintService.ApplyFrame(frame);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.LogicFrameCommandMovementConstraint,
+                Stopwatch.GetTimestamp() - commandSectionStartTicks);
+        }
+
         if (cardSetup == null)
             throw new ArgumentNullException(nameof(cardSetup));
+        commandSectionStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         cardSetup.ApplyLogicFrame(frame);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.LogicFrameCommandCardSetup,
+                Stopwatch.GetTimestamp() - commandSectionStartTicks);
+        }
+
+        commandSectionStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         LogicInteractionCommandService.ApplyFrame(frame);
         LogicTechEffectCommandService.ApplyFrame(frame);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.LogicFrameCommandInteractionTech,
+                Stopwatch.GetTimestamp() - commandSectionStartTicks);
+        }
+
+        commandSectionStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         DefendPhaseRuntime.ApplyScheduledSpawnRequests(frame);
         LogicEntityLifecycleService.ApplyFrame(frame);
         LogicObstacleCommandService.ApplyFrame(frame);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.LogicFrameCommandSpawnLifecycleObstacle,
+                Stopwatch.GetTimestamp() - commandSectionStartTicks);
+        }
         if (profile)
         {
             MainThreadFrameProfiler.Record(

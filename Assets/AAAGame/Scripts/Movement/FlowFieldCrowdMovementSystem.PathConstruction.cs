@@ -2797,14 +2797,28 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         if (anchor == null)
             throw new ArgumentNullException(nameof(anchor));
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (!anchor.HasPinnedSectorCorridorPolicy)
         {
             if (SectorCorridorPolicies.TryGetValue(requestedKey, out policy))
             {
                 PinMovingTargetSectorCorridorPolicy(anchor, requestedKey);
+                if (profile)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowMovingTargetPolicyAnchorLookup,
+                        Stopwatch.GetTimestamp() - phaseStartTicks);
+                }
                 return true;
             }
             policy = null;
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyAnchorLookup,
+                    Stopwatch.GetTimestamp() - phaseStartTicks);
+            }
             return false;
         }
 
@@ -2814,7 +2828,19 @@ public static partial class FlowFieldCrowdMovementSystem
             anchor.HasPinnedSectorCorridorPolicy = false;
             anchor.PinnedSectorCorridorPolicyKey = default;
             policy = null;
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyAnchorLookup,
+                    Stopwatch.GetTimestamp() - phaseStartTicks);
+            }
             return false;
+        }
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyAnchorLookup,
+                Stopwatch.GetTimestamp() - phaseStartTicks);
         }
         if (pinnedKey.Equals(requestedKey))
             return true;
@@ -2824,26 +2850,55 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"Moving-target corridor policy changed exact goal before its previous authority transaction committed target={anchor.Key.TargetId}, oldGoal={pinnedKey.GoalCellIndex}, newGoal={requestedKey.GoalCellIndex}.");
         }
 
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         SectorCorridorPolicy detached = DetachSectorCorridorPolicy(pinnedKey);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyAnchorDetach,
+                Stopwatch.GetTimestamp() - phaseStartTicks);
+        }
         if (!ReferenceEquals(detached, policy))
             throw new InvalidOperationException("Moving-target corridor policy detach returned a different authority instance.");
         anchor.HasPinnedSectorCorridorPolicy = false;
         anchor.PinnedSectorCorridorPolicyKey = default;
-        if (!TryRebindSectorCorridorPolicyExactGoal(policy, goalSectorId, goalX, goalY))
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        bool rebound = TryRebindSectorCorridorPolicyExactGoal(policy, goalSectorId, goalX, goalY);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyAnchorRebind,
+                Stopwatch.GetTimestamp() - phaseStartTicks);
+        }
+        if (!rebound)
         {
             _perf.SectorCorridorExactGoalReplacements++;
+            long disposeStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             policy.Dispose();
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyAnchorReplacementDispose,
+                    Stopwatch.GetTimestamp() - disposeStartTicks);
+            }
             policy = null;
             return false;
         }
         _perf.SectorCorridorExactGoalRebinds++;
 
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         policy.GoalSectorId = goalSectorId;
         policy.GoalCellIndex = _world.GetIndex(goalX, goalY);
         policy.GoalSectorDirtyVersion = _world.Sectors[goalSectorId].DirtyVersion;
         policy.LastUsedFrame = GetFrameCount();
         SetSectorCorridorPolicy(requestedKey, policy);
         PinMovingTargetSectorCorridorPolicy(anchor, requestedKey);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyAnchorPublish,
+                Stopwatch.GetTimestamp() - phaseStartTicks);
+        }
         return true;
     }
 
@@ -2865,47 +2920,76 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         if (policy == null)
             throw new ArgumentNullException(nameof(policy));
-        if (policy.GoalSectorDirtyVersion != _world.Sectors[policy.GoalSectorId].DirtyVersion
-            || _world.Sectors[goalSectorId].DirtyVersion != policy.GoalSectorDirtyVersion)
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long validationStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        bool hasHierarchyPolicies;
+        try
         {
-            return false;
+            if (policy.GoalSectorDirtyVersion != _world.Sectors[policy.GoalSectorId].DirtyVersion
+                || _world.Sectors[goalSectorId].DirtyVersion != policy.GoalSectorDirtyVersion)
+            {
+                return false;
+            }
+            hasHierarchyPolicies = policy.HierarchyPolicies.Count > 0;
+            if (!hasHierarchyPolicies && policy.GoalSectorId != goalSectorId)
+                return false;
         }
-        if (policy.HierarchyPolicies.Count > 0)
+        finally
+        {
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyAnchorRebindSectorValidation,
+                    Stopwatch.GetTimestamp() - validationStartTicks);
+            }
+        }
+        if (hasHierarchyPolicies)
             return TryRebindPortalHierarchyReversePoliciesExactGoal(policy, goalSectorId, goalX, goalY);
-        if (policy.GoalSectorId != goalSectorId)
-            return false;
 
         SectorData goalSector = _world.Sectors[goalSectorId];
         bool hasDelta = false;
         long delta = 0L;
-        for (int i = 0; i < goalSector.PortalIds.Count; i++)
+        long accessStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        try
         {
-            int portalId = goalSector.PortalIds[i];
-            long previous = ResolveDeterministicGoalSectorPortalAccessCost(
-                goalSector,
-                goalSectorId,
-                portalId,
-                policy.GoalCellIndex % _world.Width,
-                policy.GoalCellIndex / _world.Width);
-            long next = ResolveDeterministicGoalSectorPortalAccessCost(
-                goalSector,
-                goalSectorId,
-                portalId,
-                goalX,
-                goalY);
-            if ((previous == long.MaxValue) != (next == long.MaxValue))
-                return false;
-            if (previous == long.MaxValue)
-                continue;
-            long candidateDelta = checked(next - previous);
-            if (!hasDelta)
+            for (int i = 0; i < goalSector.PortalIds.Count; i++)
             {
-                delta = candidateDelta;
-                hasDelta = true;
+                int portalId = goalSector.PortalIds[i];
+                long previous = ResolveDeterministicGoalSectorPortalAccessCost(
+                    goalSector,
+                    goalSectorId,
+                    portalId,
+                    policy.GoalCellIndex % _world.Width,
+                    policy.GoalCellIndex / _world.Width);
+                long next = ResolveDeterministicGoalSectorPortalAccessCost(
+                    goalSector,
+                    goalSectorId,
+                    portalId,
+                    goalX,
+                    goalY);
+                if ((previous == long.MaxValue) != (next == long.MaxValue))
+                    return false;
+                if (previous == long.MaxValue)
+                    continue;
+                long candidateDelta = checked(next - previous);
+                if (!hasDelta)
+                {
+                    delta = candidateDelta;
+                    hasDelta = true;
+                }
+                else if (candidateDelta != delta)
+                {
+                    return false;
+                }
             }
-            else if (candidateDelta != delta)
+        }
+        finally
+        {
+            if (profile)
             {
-                return false;
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyAnchorRebindSectorAccess,
+                    Stopwatch.GetTimestamp() - accessStartTicks);
             }
         }
         if (!hasDelta)
@@ -2915,7 +2999,14 @@ public static partial class FlowFieldCrowdMovementSystem
             _perf.NavigationPathPolicyShiftCostEntries + policy.SearchState.CostCount);
         _perf.NavigationPathPolicyShiftOpenEntries = checked(
             _perf.NavigationPathPolicyShiftOpenEntries + policy.SearchState.OpenCount);
+        long shiftStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         policy.SearchState.ShiftCosts(delta);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyAnchorRebindSectorShift,
+                Stopwatch.GetTimestamp() - shiftStartTicks);
+        }
         return true;
     }
 
