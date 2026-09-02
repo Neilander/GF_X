@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using MainThreadFrameProfiler = UnityGameFramework.Runtime.MainThreadFrameProfiler;
@@ -104,10 +105,17 @@ namespace AAAGame.MiniMap.FOG3
         private readonly int[] platformHeights;
         private readonly bool[] slopeMask;
         private readonly Fog3SlopeCellInfo[] slopeCells;
+        private readonly Fix64[] cellCenterXFixed;
+        private readonly long[] cellCenterXGridRaw;
+        private readonly Fix64[] cellCenterYFixed;
+        private readonly int[] cellCenterVisionHeights;
         private readonly float[] currentVisibility;
-        private readonly int[] visibilityCoverage;
         private readonly int[] visibilityRowDifference;
         private readonly bool[] dirtyVisibilityRows;
+        private readonly System.Collections.Generic.List<int>[] visibilityRowEventPositions;
+        private readonly System.Collections.Generic.List<CoverageSegment>[] visibilityCoverageSegments;
+        private readonly System.Collections.Generic.List<int> coverageBreakpointScratch;
+        private readonly System.Collections.Generic.List<CoverageSegment> coverageSegmentScratch;
         private readonly bool[] dirtyCellFlags;
         private readonly System.Collections.Generic.List<int> dirtyCellIndices;
         private readonly System.Collections.Generic.Dictionary<int, PendingVisibilityChangeTime>
@@ -143,6 +151,24 @@ namespace AAAGame.MiniMap.FOG3
             public byte Kinds;
             public double EnterLogicTime;
             public double ExitLogicTime;
+        }
+
+        private readonly struct CoverageSegment
+        {
+            public CoverageSegment(int minimumX, int maximumX, int coverage)
+            {
+                if (minimumX > maximumX)
+                    throw new ArgumentOutOfRangeException(nameof(minimumX));
+                if (coverage <= 0)
+                    throw new ArgumentOutOfRangeException(nameof(coverage));
+                MinimumX = minimumX;
+                MaximumX = maximumX;
+                Coverage = coverage;
+            }
+
+            public int MinimumX { get; }
+            public int MaximumX { get; }
+            public int Coverage { get; }
         }
 
         private readonly struct VisibilityGeometryCacheKey : IEquatable<VisibilityGeometryCacheKey>
@@ -223,9 +249,12 @@ namespace AAAGame.MiniMap.FOG3
             int length = checked(Width * Height);
             explored = new bool[length];
             currentVisibility = new float[length];
-            visibilityCoverage = new int[length];
             visibilityRowDifference = new int[checked((Width + 1) * Height)];
             dirtyVisibilityRows = new bool[Height];
+            visibilityRowEventPositions = new System.Collections.Generic.List<int>[Height];
+            visibilityCoverageSegments = new System.Collections.Generic.List<CoverageSegment>[Height];
+            coverageBreakpointScratch = new System.Collections.Generic.List<int>();
+            coverageSegmentScratch = new System.Collections.Generic.List<CoverageSegment>();
             dirtyCellFlags = new bool[length];
             dirtyCellIndices = new System.Collections.Generic.List<int>();
             pendingVisibilityChangeTimes = new System.Collections.Generic.Dictionary<int, PendingVisibilityChangeTime>();
@@ -236,24 +265,42 @@ namespace AAAGame.MiniMap.FOG3
             platformHeights = new int[length];
             slopeMask = new bool[length];
             slopeCells = new Fog3SlopeCellInfo[length];
+            cellCenterXFixed = new Fix64[Width];
+            cellCenterXGridRaw = new long[Width];
+            cellCenterYFixed = new Fix64[Height];
+            cellCenterVisionHeights = new int[length];
+            for (int x = 0; x < Width; x++)
+            {
+                long centerXRaw = ResolveCellCenterRaw(x, originXGridRaw, cellSizeXGridRaw, maximumXGridRaw);
+                cellCenterXGridRaw[x] = centerXRaw;
+                cellCenterXFixed[x] = NavigationGridFixedMath.GridRawToFix64(centerXRaw);
+            }
             for (int y = 0; y < Height; y++)
             {
                 long centerYRaw = ResolveCellCenterRaw(y, originZGridRaw, cellSizeYGridRaw, maximumZGridRaw);
+                cellCenterYFixed[y] = NavigationGridFixedMath.GridRawToFix64(centerYRaw);
                 int terrainY = Math.Min(
                     terrainInfo.Height - 1,
                     NavigationGridFixedMath.GridRawToCell(centerYRaw, originZGridRaw, terrainCellSizeGridRaw));
                 for (int x = 0; x < Width; x++)
                 {
-                    long centerXRaw = ResolveCellCenterRaw(x, originXGridRaw, cellSizeXGridRaw, maximumXGridRaw);
                     int terrainX = Math.Min(
                         terrainInfo.Width - 1,
-                        NavigationGridFixedMath.GridRawToCell(centerXRaw, originXGridRaw, terrainCellSizeGridRaw));
+                        NavigationGridFixedMath.GridRawToCell(cellCenterXGridRaw[x], originXGridRaw, terrainCellSizeGridRaw));
                     int index = x + y * Width;
                     int terrainIndex = terrainX + terrainY * terrainInfo.Width;
                     walkable[index] = terrainInfo.WalkableMask[terrainIndex];
                     platformHeights[index] = terrainInfo.PlatformHeights[terrainIndex];
                     slopeMask[index] = terrainInfo.SlopeMask[terrainIndex];
                     slopeCells[index] = terrainInfo.SlopeCells[terrainIndex];
+                }
+            }
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                {
+                    int index = x + y * Width;
+                    cellCenterVisionHeights[index] = ResolveVisionHeightAtCellCenter(x, y, index);
                 }
             }
             terrainHash = ComputeTerrainHash();
@@ -310,11 +357,11 @@ namespace AAAGame.MiniMap.FOG3
                 if (currentVisibility[i] > 0f)
                     MarkDirtyCell(i % Width, i / Width);
                 currentVisibility[i] = 0f;
-                visibilityCoverage[i] = 0;
             }
 
             Array.Clear(visibilityRowDifference, 0, visibilityRowDifference.Length);
             Array.Clear(dirtyVisibilityRows, 0, dirtyVisibilityRows.Length);
+            ClearCoverageSegments();
             pendingVisibilityChangeTimes.Clear();
             dirtyVisibilityChangeLogicTimes.Clear();
             visibilityResetVersion = checked(visibilityResetVersion + 1);
@@ -351,6 +398,14 @@ namespace AAAGame.MiniMap.FOG3
                 visibilityRowDifference[rowOffset + interval.MinimumX] + delta);
             visibilityRowDifference[rowOffset + interval.MaximumX + 1] = checked(
                 visibilityRowDifference[rowOffset + interval.MaximumX + 1] - delta);
+            List<int> eventPositions = visibilityRowEventPositions[interval.Y];
+            if (eventPositions == null)
+            {
+                eventPositions = new List<int>(4);
+                visibilityRowEventPositions[interval.Y] = eventPositions;
+            }
+            eventPositions.Add(interval.MinimumX);
+            eventPositions.Add(interval.MaximumX + 1);
             dirtyVisibilityRows[interval.Y] = true;
         }
 
@@ -407,60 +462,16 @@ namespace AAAGame.MiniMap.FOG3
                 }
 
                 int rowDifferenceOffset = y * (Width + 1);
-                int cellOffset = y * Width;
-                int coverage = 0;
                 long cellStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
-                for (int segment = 0; segment < 4; segment++)
-                {
-                    int segmentMinimumX = segment * Width / 4;
-                    int segmentMaximumX = (segment + 1) * Width / 4;
-                    long segmentStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
-                    for (int x = segmentMinimumX; x < segmentMaximumX; x++)
-                    {
-                        coverage = checked(coverage + visibilityRowDifference[rowDifferenceOffset + x]);
-                        if (coverage < 0)
-                        {
-                            throw new InvalidOperationException(
-                                $"Fog visibility coverage became negative at ({x},{y}). coverage={coverage}.");
-                        }
-
-                        int index = cellOffset + x;
-                        int previousCoverage = visibilityCoverage[index];
-                        visibilityCoverage[index] = coverage;
-                        if ((previousCoverage > 0) == (coverage > 0))
-                            continue;
-
-                        currentVisibility[index] = coverage > 0 ? 1f : 0f;
-                        MarkDirtyCell(x, y);
-                        if (pendingVisibilityChangeTimes.TryGetValue(index, out PendingVisibilityChangeTime pending)
-                            && coverage > 0
-                            && (pending.Kinds & 1) != 0)
-                        {
-                            dirtyVisibilityChangeLogicTimes[index] = pending.EnterLogicTime;
-                        }
-                        else if (pendingVisibilityChangeTimes.TryGetValue(index, out pending)
-                                 && coverage == 0
-                                 && (pending.Kinds & 2) != 0)
-                        {
-                            dirtyVisibilityChangeLogicTimes[index] = pending.ExitLogicTime;
-                        }
-                    }
-                    if (profile)
-                        MainThreadFrameProfiler.Record(
-                            (MainThreadPerfScope)((int)MainThreadPerfScope.FogVisibilityCoverageCellsSegment0 + segment),
-                            System.Diagnostics.Stopwatch.GetTimestamp() - segmentStartTicks);
-                }
+                ResolveVisibilityCoverageRow(y, rowDifferenceOffset);
                 long rowCellTicks = profile
                     ? System.Diagnostics.Stopwatch.GetTimestamp() - cellStartTicks
                     : 0L;
                 if (profile)
                     cellTicks += rowCellTicks;
 
-                if (coverage + visibilityRowDifference[rowDifferenceOffset + Width] != 0)
-                {
-                    throw new InvalidOperationException(
-                        $"Fog visibility row {y} has an unbalanced difference sum.");
-                }
+                List<int> eventPositions = visibilityRowEventPositions[y];
+                eventPositions.Clear();
                 dirtyVisibilityRows[y] = false;
                 if (profile)
                     rowTicks += System.Diagnostics.Stopwatch.GetTimestamp() - rowStartTicks - rowCellTicks;
@@ -477,6 +488,178 @@ namespace AAAGame.MiniMap.FOG3
                     System.Diagnostics.Stopwatch.GetTimestamp() - pendingStartTicks);
             }
             VisibilityResolutionLogicTime = logicTime;
+        }
+
+        private void ResolveVisibilityCoverageRow(int y, int rowDifferenceOffset)
+        {
+            List<int> eventPositions = visibilityRowEventPositions[y];
+            if (eventPositions == null || eventPositions.Count == 0)
+                throw new InvalidOperationException($"Fog visibility row {y} is dirty without coverage events.");
+
+            List<CoverageSegment> previousSegments = visibilityCoverageSegments[y];
+            coverageBreakpointScratch.Clear();
+            coverageBreakpointScratch.Add(0);
+            coverageBreakpointScratch.Add(Width);
+            for (int i = 0; i < eventPositions.Count; i++)
+            {
+                int x = eventPositions[i];
+                if (x < 0 || x > Width)
+                    throw new InvalidOperationException($"Fog visibility row {y} has an invalid event position {x}.");
+                coverageBreakpointScratch.Add(x);
+            }
+            if (previousSegments != null)
+            {
+                for (int i = 0; i < previousSegments.Count; i++)
+                {
+                    CoverageSegment segment = previousSegments[i];
+                    coverageBreakpointScratch.Add(segment.MinimumX);
+                    coverageBreakpointScratch.Add(segment.MaximumX + 1);
+                }
+            }
+
+            coverageBreakpointScratch.Sort();
+            int breakpointCount = 0;
+            for (int i = 0; i < coverageBreakpointScratch.Count; i++)
+            {
+                int x = coverageBreakpointScratch[i];
+                if (breakpointCount == 0 || coverageBreakpointScratch[breakpointCount - 1] != x)
+                    coverageBreakpointScratch[breakpointCount++] = x;
+            }
+
+            coverageSegmentScratch.Clear();
+            int previousSegmentIndex = 0;
+            int coverage = 0;
+            for (int breakpointIndex = 0; breakpointIndex < breakpointCount - 1; breakpointIndex++)
+            {
+                int minimumX = coverageBreakpointScratch[breakpointIndex];
+                int maximumX = coverageBreakpointScratch[breakpointIndex + 1] - 1;
+                coverage = checked(coverage + visibilityRowDifference[rowDifferenceOffset + minimumX]);
+                if (coverage < 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Fog visibility coverage became negative at ({minimumX},{y}). coverage={coverage}.");
+                }
+
+                int previousCoverage = ResolveCoverageSegmentAt(previousSegments, ref previousSegmentIndex, minimumX);
+                bool previousVisible = previousCoverage > 0;
+                bool nextVisible = coverage > 0;
+                if (previousVisible != nextVisible)
+                    ApplyVisibilityStateRange(y, minimumX, maximumX, nextVisible, coverage);
+                AppendCoverageSegment(coverageSegmentScratch, minimumX, maximumX, coverage);
+            }
+
+            coverage = checked(coverage + visibilityRowDifference[rowDifferenceOffset + Width]);
+            if (coverage != 0)
+                throw new InvalidOperationException($"Fog visibility row {y} has an unbalanced difference sum.");
+
+            if (previousSegments == null)
+            {
+                if (coverageSegmentScratch.Count > 0)
+                    visibilityCoverageSegments[y] = new List<CoverageSegment>(coverageSegmentScratch);
+            }
+            else
+            {
+                previousSegments.Clear();
+                previousSegments.AddRange(coverageSegmentScratch);
+                if (previousSegments.Count == 0)
+                    visibilityCoverageSegments[y] = null;
+            }
+        }
+
+        private static int ResolveCoverageSegmentAt(
+            List<CoverageSegment> segments,
+            ref int segmentIndex,
+            int x)
+        {
+            if (segments == null)
+                return 0;
+            while (segmentIndex < segments.Count && segments[segmentIndex].MaximumX < x)
+                segmentIndex++;
+            if (segmentIndex < segments.Count)
+            {
+                CoverageSegment segment = segments[segmentIndex];
+                if (segment.MinimumX <= x)
+                    return segment.Coverage;
+            }
+            return 0;
+        }
+
+        private static void AppendCoverageSegment(
+            List<CoverageSegment> destination,
+            int minimumX,
+            int maximumX,
+            int coverage)
+        {
+            if (coverage <= 0 || minimumX > maximumX)
+                return;
+            if (destination.Count > 0)
+            {
+                CoverageSegment previous = destination[destination.Count - 1];
+                if (previous.MaximumX + 1 == minimumX && previous.Coverage == coverage)
+                {
+                    destination[destination.Count - 1] = new CoverageSegment(
+                        previous.MinimumX,
+                        maximumX,
+                        coverage);
+                    return;
+                }
+            }
+            destination.Add(new CoverageSegment(minimumX, maximumX, coverage));
+        }
+
+        private void ApplyVisibilityStateRange(
+            int y,
+            int minimumX,
+            int maximumX,
+            bool visible,
+            int coverage)
+        {
+            if (minimumX > maximumX)
+                return;
+            if (!IsDirty)
+            {
+                dirtyMinimumX = minimumX;
+                dirtyMaximumX = maximumX;
+                dirtyMinimumY = y;
+                dirtyMaximumY = y;
+                IsDirty = true;
+            }
+            else
+            {
+                dirtyMinimumX = Math.Min(dirtyMinimumX, minimumX);
+                dirtyMaximumX = Math.Max(dirtyMaximumX, maximumX);
+                dirtyMinimumY = Math.Min(dirtyMinimumY, y);
+                dirtyMaximumY = Math.Max(dirtyMaximumY, y);
+            }
+
+            int offset = y * Width;
+            for (int x = minimumX; x <= maximumX; x++)
+            {
+                int index = offset + x;
+                currentVisibility[index] = visible ? 1f : 0f;
+                if (pendingVisibilityChangeTimes.TryGetValue(index, out PendingVisibilityChangeTime pending))
+                {
+                    if (visible && (pending.Kinds & 1) != 0)
+                        dirtyVisibilityChangeLogicTimes[index] = pending.EnterLogicTime;
+                    else if (!visible && (pending.Kinds & 2) != 0)
+                        dirtyVisibilityChangeLogicTimes[index] = pending.ExitLogicTime;
+                }
+
+                if (dirtyCellFlags[index])
+                    continue;
+                dirtyCellFlags[index] = true;
+                dirtyCellIndices.Add(index);
+            }
+        }
+
+        private void ClearCoverageSegments()
+        {
+            for (int y = 0; y < visibilityCoverageSegments.Length; y++)
+            {
+                visibilityCoverageSegments[y]?.Clear();
+                visibilityCoverageSegments[y] = null;
+                visibilityRowEventPositions[y]?.Clear();
+            }
         }
 
         public void CollectVisibleIntervals(
@@ -527,27 +710,23 @@ namespace AAAGame.MiniMap.FOG3
             for (int intervalIndex = 0; intervalIndex < geometryIntervals.Length; intervalIndex++)
             {
                 Fog3VisibilityRowInterval geometryInterval = geometryIntervals[intervalIndex];
-                int visibleStart = -1;
-                for (int x = geometryInterval.MinimumX; x <= geometryInterval.MaximumX; x++)
-                {
-                    FixVector2 cellCenter = GetCellCenterFixed(x, geometryInterval.Y);
-                    bool insideRadius = FixVector2.SqrMagnitude(cellCenter - viewerPosition) <= radiusSquared;
-                    if (insideRadius)
-                    {
-                        if (visibleStart < 0)
-                            visibleStart = x;
-                    }
-                    else if (visibleStart >= 0)
-                    {
-                        intervals.Add(new Fog3VisibilityRowInterval(geometryInterval.Y, visibleStart, x - 1));
-                        visibleStart = -1;
-                    }
-                }
-                if (visibleStart >= 0)
+                Fix64 deltaY = cellCenterYFixed[geometryInterval.Y] - viewerPosition.y;
+                Fix64 horizontalSquared = radiusSquared - deltaY * deltaY;
+                if (horizontalSquared < Fix64.Zero)
+                    continue;
+
+                Fix64 horizontalRadius = horizontalSquared == Fix64.Zero
+                    ? Fix64.Zero
+                    : Fix64.Sqrt(horizontalSquared);
+                int minimumX = LowerBoundCellCenterX(viewerPosition.x - horizontalRadius);
+                int maximumXExclusive = UpperBoundCellCenterX(viewerPosition.x + horizontalRadius);
+                minimumX = Math.Max(minimumX, geometryInterval.MinimumX);
+                maximumXExclusive = Math.Min(maximumXExclusive, geometryInterval.MaximumX + 1);
+                if (minimumX < maximumXExclusive)
                     intervals.Add(new Fog3VisibilityRowInterval(
                         geometryInterval.Y,
-                        visibleStart,
-                        geometryInterval.MaximumX));
+                        minimumX,
+                        maximumXExclusive - 1));
             }
             if (profile)
                 MainThreadFrameProfiler.Record(
@@ -666,11 +845,11 @@ namespace AAAGame.MiniMap.FOG3
             {
                 explored[i] = false;
                 currentVisibility[i] = 0f;
-                visibilityCoverage[i] = 0;
             }
 
             Array.Clear(visibilityRowDifference, 0, visibilityRowDifference.Length);
             Array.Clear(dirtyVisibilityRows, 0, dirtyVisibilityRows.Length);
+            ClearCoverageSegments();
             visibilityResetVersion = checked(visibilityResetVersion + 1);
             VisibilityReset?.Invoke();
 
@@ -731,10 +910,12 @@ namespace AAAGame.MiniMap.FOG3
             {
                 explored[i] = (exploredBits[i >> 3] & (1 << (i & 7))) != 0;
                 currentVisibility[i] = 0f;
-                visibilityCoverage[i] = 0;
                 if (explored[i])
                     AddExplorationDigest(i);
             }
+            Array.Clear(visibilityRowDifference, 0, visibilityRowDifference.Length);
+            Array.Clear(dirtyVisibilityRows, 0, dirtyVisibilityRows.Length);
+            ClearCoverageSegments();
             explorationVersion = checked(explorationVersion + 1);
             lastExplorationCheckpoint = checkpoint;
             lastCheckpointExplorationVersion = explorationVersion;
@@ -814,6 +995,37 @@ namespace AAAGame.MiniMap.FOG3
                     terrainCellSizeGridRaw)
                 : NavigationGridFixedMath.ResolveCellFraction(
                     NavigationGridFixedMath.Fix64ToGridRaw(worldPosition.y),
+                    lowerYRaw,
+                    terrainCellSizeGridRaw);
+            if (slope.DirectionX < 0 || slope.DirectionY < 0)
+                progress = Fix64.One - progress;
+
+            Fix64 height = ((Fix64)slope.BaseHeightNumerator + progress * (Fix64)slope.Rise) / (Fix64)slope.Run;
+            return (int)Fix64.Floor(height);
+        }
+
+        private int ResolveVisionHeightAtCellCenter(int x, int y, int index)
+        {
+            int platformHeight = platformHeights[index];
+            if (platformHeight < 0)
+                return -1;
+            if (!slopeMask[index])
+                return platformHeight;
+
+            Fog3SlopeCellInfo slope = slopeCells[index];
+            Fix64 centerX = cellCenterXFixed[x];
+            Fix64 centerY = cellCenterYFixed[y];
+            int terrainX = NavigationGridFixedMath.WorldToGridCell(centerX, originXGridRaw, terrainCellSizeGridRaw);
+            int terrainY = NavigationGridFixedMath.WorldToGridCell(centerY, originZGridRaw, terrainCellSizeGridRaw);
+            long lowerXRaw = checked(originXGridRaw + checked((long)terrainX * terrainCellSizeGridRaw));
+            long lowerYRaw = checked(originZGridRaw + checked((long)terrainY * terrainCellSizeGridRaw));
+            Fix64 progress = slope.DirectionX != 0
+                ? NavigationGridFixedMath.ResolveCellFraction(
+                    NavigationGridFixedMath.Fix64ToGridRaw(centerX),
+                    lowerXRaw,
+                    terrainCellSizeGridRaw)
+                : NavigationGridFixedMath.ResolveCellFraction(
+                    NavigationGridFixedMath.Fix64ToGridRaw(centerY),
                     lowerYRaw,
                     terrainCellSizeGridRaw);
             if (slope.DirectionX < 0 || slope.DirectionY < 0)
@@ -934,11 +1146,39 @@ namespace AAAGame.MiniMap.FOG3
             if (!IsValidCell(gridX, gridY))
                 throw new ArgumentOutOfRangeException(nameof(gridX), $"Fog cell ({gridX},{gridY}) is outside {Width}x{Height}.");
 
-            long centerXRaw = ResolveCellCenterRaw(gridX, originXGridRaw, cellSizeXGridRaw, maximumXGridRaw);
-            long centerYRaw = ResolveCellCenterRaw(gridY, originZGridRaw, cellSizeYGridRaw, maximumZGridRaw);
-            return new FixVector2(
-                NavigationGridFixedMath.GridRawToFix64(centerXRaw),
-                NavigationGridFixedMath.GridRawToFix64(centerYRaw));
+            return new FixVector2(cellCenterXFixed[gridX], cellCenterYFixed[gridY]);
+        }
+
+        private int LowerBoundCellCenterX(Fix64 value)
+        {
+            int minimum = 0;
+            int maximum = cellCenterXFixed.Length;
+            while (minimum < maximum)
+            {
+                int middle = minimum + ((maximum - minimum) >> 1);
+                if (cellCenterXFixed[middle] < value)
+                    minimum = middle + 1;
+                else
+                    maximum = middle;
+            }
+
+            return minimum;
+        }
+
+        private int UpperBoundCellCenterX(Fix64 value)
+        {
+            int minimum = 0;
+            int maximum = cellCenterXFixed.Length;
+            while (minimum < maximum)
+            {
+                int middle = minimum + ((maximum - minimum) >> 1);
+                if (cellCenterXFixed[middle] <= value)
+                    minimum = middle + 1;
+                else
+                    maximum = middle;
+            }
+
+            return minimum;
         }
 
         public int GetCellRangeForRadius(Fix64 radius)
@@ -1164,16 +1404,23 @@ namespace AAAGame.MiniMap.FOG3
             int? requiredHeight,
             int visitStamp)
         {
-            if (!IsValidCell(x, y) || !walkable[GetIndex(x, y)])
+            if (!IsValidCell(x, y))
                 return;
-            if (requiredHeight.HasValue && platformHeights[GetIndex(x, y)] < 0)
+            int index = GetIndex(x, y);
+            if (!walkable[index])
                 return;
-            FixVector2 center = GetCellCenterFixed(x, y);
-            if (FixVector2.SqrMagnitude(center - viewerPosition) > radiusSquared)
+            if (requiredHeight.HasValue && platformHeights[index] < 0)
                 return;
-            if (requiredHeight.HasValue && GetVisionHeight(center) != requiredHeight.Value)
+            if (radiusSquared.RawValue != long.MaxValue)
+            {
+                Fix64 deltaX = cellCenterXFixed[x] - viewerPosition.x;
+                Fix64 deltaY = cellCenterYFixed[y] - viewerPosition.y;
+                if (deltaX * deltaX + deltaY * deltaY > radiusSquared)
+                    return;
+            }
+            if (requiredHeight.HasValue && cellCenterVisionHeights[index] != requiredHeight.Value)
                 return;
-            fovVisitStamps[GetIndex(x, y)] = visitStamp;
+            fovVisitStamps[index] = visitStamp;
         }
 
         private static void ResolveOctantCell(

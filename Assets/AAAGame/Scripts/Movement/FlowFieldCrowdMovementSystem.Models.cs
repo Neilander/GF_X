@@ -2245,6 +2245,9 @@ public static partial class FlowFieldCrowdMovementSystem
         public int OccupancyCandidateFrame = int.MinValue;
         public int OccupancyCandidateWorldVersion = int.MinValue;
         public long OccupancyCandidateThresholdRaw = long.MinValue;
+        public int OccupancyCandidatesPreparedFrame = int.MinValue;
+        public int OccupancyCandidatesPreparedWorldVersion = int.MinValue;
+        public long OccupancyCandidatesPreparedThresholdRaw = long.MinValue;
         public List<NavigationGoalOccupancyCandidate>[] OccupancyCandidatesBySlot;
         public bool[] OccupancyCandidatesBuiltBySlot;
     }
@@ -2267,37 +2270,32 @@ public static partial class FlowFieldCrowdMovementSystem
         public readonly int TopologyVersion;
         public readonly int AgentTypeId;
         public readonly LogicCombatShapeKind ShapeKind;
-        public readonly long CenterXRaw;
-        public readonly long CenterYRaw;
+        public readonly int TargetCellX;
+        public readonly int TargetCellY;
         public readonly long RadiusRaw;
         public readonly long HalfExtentXRaw;
         public readonly long HalfExtentYRaw;
         public readonly long AttackRangeRaw;
-        public readonly long NavigationClearanceRaw;
-        public readonly long MinimumSurfaceDistanceRaw;
 
         public AttackAreaCandidateCacheKey(
             int worldVersion,
             int topologyVersion,
             int agentTypeId,
             LogicCombatShape targetShape,
-            int targetSectorId,
-            Fix64 attackRange,
-            Fix64 navigationClearance,
-            Fix64 minimumSurfaceDistance)
+            int targetCellX,
+            int targetCellY,
+            Fix64 attackRange)
         {
             WorldVersion = worldVersion;
             TopologyVersion = topologyVersion;
             AgentTypeId = agentTypeId;
             ShapeKind = targetShape.Kind;
-            CenterXRaw = targetShape.Center.x.RawValue;
-            CenterYRaw = targetShape.Center.y.RawValue;
+            TargetCellX = targetCellX;
+            TargetCellY = targetCellY;
             RadiusRaw = targetShape.Radius.RawValue;
             HalfExtentXRaw = targetShape.HalfExtents.x.RawValue;
             HalfExtentYRaw = targetShape.HalfExtents.y.RawValue;
             AttackRangeRaw = attackRange.RawValue;
-            NavigationClearanceRaw = navigationClearance.RawValue;
-            MinimumSurfaceDistanceRaw = minimumSurfaceDistance.RawValue;
         }
 
         public bool Equals(AttackAreaCandidateCacheKey other)
@@ -2306,14 +2304,12 @@ public static partial class FlowFieldCrowdMovementSystem
                    && TopologyVersion == other.TopologyVersion
                    && AgentTypeId == other.AgentTypeId
                    && ShapeKind == other.ShapeKind
-                   && CenterXRaw == other.CenterXRaw
-                   && CenterYRaw == other.CenterYRaw
+                   && TargetCellX == other.TargetCellX
+                   && TargetCellY == other.TargetCellY
                    && RadiusRaw == other.RadiusRaw
                    && HalfExtentXRaw == other.HalfExtentXRaw
                    && HalfExtentYRaw == other.HalfExtentYRaw
-                   && AttackRangeRaw == other.AttackRangeRaw
-                   && NavigationClearanceRaw == other.NavigationClearanceRaw
-                   && MinimumSurfaceDistanceRaw == other.MinimumSurfaceDistanceRaw;
+                   && AttackRangeRaw == other.AttackRangeRaw;
         }
 
         public override bool Equals(object obj)
@@ -2329,14 +2325,12 @@ public static partial class FlowFieldCrowdMovementSystem
                 hash = (hash * 397) ^ TopologyVersion;
                 hash = (hash * 397) ^ AgentTypeId;
                 hash = (hash * 397) ^ (int)ShapeKind;
-                hash = (hash * 397) ^ CenterXRaw.GetHashCode();
-                hash = (hash * 397) ^ CenterYRaw.GetHashCode();
+                hash = (hash * 397) ^ TargetCellX;
+                hash = (hash * 397) ^ TargetCellY;
                 hash = (hash * 397) ^ RadiusRaw.GetHashCode();
                 hash = (hash * 397) ^ HalfExtentXRaw.GetHashCode();
                 hash = (hash * 397) ^ HalfExtentYRaw.GetHashCode();
                 hash = (hash * 397) ^ AttackRangeRaw.GetHashCode();
-                hash = (hash * 397) ^ NavigationClearanceRaw.GetHashCode();
-                hash = (hash * 397) ^ MinimumSurfaceDistanceRaw.GetHashCode();
                 return hash;
             }
         }

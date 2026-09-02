@@ -1745,9 +1745,6 @@ public static partial class FlowFieldCrowdMovementSystem
             failureReason = $"attack area center outside grid center={targetShape.Center}";
             return false;
         }
-        if (!_world.TryGetSectorId(targetX, targetY, out int targetSectorId))
-            throw new InvalidOperationException($"Targeting attack-area target cell has no sector target=({targetX},{targetY}).");
-
         Fix64 extentX;
         Fix64 extentY;
         switch (targetShape.Kind)
@@ -1770,7 +1767,6 @@ public static partial class FlowFieldCrowdMovementSystem
         int radiusY = Math.Max(
             1,
             NavigationGridFixedMath.DivideCeilingByCellSize(extentY + attackRange, _world.CellSizeGridRaw) + 1);
-        Fix64 navigationClearance = ResolveNavigationQueryClearanceFixed(_world, agent.RadiusFixed);
         Fix64 minimumSurfaceDistance = keepAgentClearOfTargetSurface
             ? agent.RadiusFixed + Fix64.FromRaw(205)
             : Fix64.Zero;
@@ -1784,10 +1780,9 @@ public static partial class FlowFieldCrowdMovementSystem
             _navigationTopologyVersion,
             ResolvePreferredAgentTypeId(agent.AgentTypeId),
             targetShape,
-            targetSectorId,
-            attackRange,
-            navigationClearance,
-            minimumSurfaceDistance);
+            targetX,
+            targetY,
+            attackRange);
         MainThreadFrameProfiler.Record(
             MainThreadPerfScope.FlowAttackAreaSetup,
             Stopwatch.GetTimestamp() - setupStartTicks);
@@ -1797,8 +1792,6 @@ public static partial class FlowFieldCrowdMovementSystem
             cacheEntry = BuildAttackAreaCandidateCacheEntry(
                 targetShape,
                 attackRange,
-                minimumSurfaceDistance,
-                navigationClearance,
                 targetX,
                 targetY,
                 radiusX + 2,
@@ -1892,14 +1885,19 @@ public static partial class FlowFieldCrowdMovementSystem
     private static AttackAreaCandidateCacheEntry BuildAttackAreaCandidateCacheEntry(
         LogicCombatShape targetShape,
         Fix64 attackRange,
-        Fix64 minimumSurfaceDistance,
-        Fix64 navigationClearance,
         int targetX,
         int targetY,
         int radiusX,
         int radiusY)
     {
         var entry = new AttackAreaCandidateCacheEntry();
+        if (_world == null)
+            throw new InvalidOperationException("BuildAttackAreaCandidateCacheEntry requires an active world.");
+        int expectedCellCount = checked(_world.Width * _world.Height);
+        if (_world.IslandIds == null || _world.IslandIds.Length != expectedCellCount)
+            throw new InvalidOperationException(
+                $"BuildAttackAreaCandidateCacheEntry requires world island ids. world={_world.Version} " +
+                $"agentType={_world.AgentTypeId} expected={expectedCellCount} actual={_world.IslandIds?.Length ?? -1}.");
         long scanStartTicks = Stopwatch.GetTimestamp();
         try
         {
@@ -1912,7 +1910,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
                     FixVector2 candidatePoint = _world.GridToWorldCenterFixed(x, y);
 
-                    int islandId = ResolveIslandIdForDiagnostics(_world, x, y);
+                    int islandId = _world.IslandIds[_world.GetIndex(x, y)];
                     if (!entry.ByIsland.TryGetValue(islandId, out AttackAreaIslandCandidates islandCandidates))
                     {
                         islandCandidates = new AttackAreaIslandCandidates();
@@ -2340,6 +2338,7 @@ public static partial class FlowFieldCrowdMovementSystem
         long scoreTicks = 0L;
         long scoreArithmeticTicks = 0L;
         long occupancyPhaseTicks = 0L;
+        PrepareCombatTargetSlotOccupancyCandidates(entry, requiredClearance, startIsland);
         for (int i = 0; i < entry.Points.Length; i++)
         {
             _perf.CombatApproachScoredCandidates++;
@@ -2348,12 +2347,9 @@ public static partial class FlowFieldCrowdMovementSystem
             _perf.CombatApproachSameIslandCandidates++;
 
             FixVector2 candidate = entry.Points[i];
-            List<NavigationGoalOccupancyCandidate> occupancyCandidates =
-                GetOrBuildCombatTargetSlotOccupancyCandidates(
-                    entry,
-                    i,
-                    candidate,
-                    requiredClearance);
+            List<NavigationGoalOccupancyCandidate> occupancyCandidates = entry.OccupancyCandidatesBySlot[i]
+                ?? throw new InvalidOperationException(
+                    $"Combat approach occupancy cache missing same-island slot index={i} island={startIsland}.");
             long occupancyStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             bool occupied = IsNavigationGoalOccupiedByOtherFixed(
                 selfId,
@@ -2371,44 +2367,34 @@ public static partial class FlowFieldCrowdMovementSystem
                 availableSlotCount++;
             long scoreCandidateStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             long arithmeticStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
-            FixVector2 candidateDirection = entry.CandidateDirectionsNormalized[i];
-            long subStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
-            Fix64 anglePenalty = ResolveCombatAnglePenaltyNormalized(candidateDirection, toTargetFromSelf);
-            if (profile)
-            {
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowCombatApproachScoreAngle,
-                    Stopwatch.GetTimestamp() - subStartTicks);
-            }
-            subStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             Fix64 distanceToSelf = FixVector2.Distance(selfFramePosition, candidate);
-            if (profile)
-            {
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowCombatApproachScoreSelfDistance,
-                    Stopwatch.GetTimestamp() - subStartTicks);
-            }
-            subStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             Fix64 distanceToTargetError = entry.TargetDistanceErrors[i];
-            if (profile)
-            {
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowCombatApproachScoreTargetDistance,
-                    Stopwatch.GetTimestamp() - subStartTicks);
-            }
-            Fix64 score = distanceToSelf + distanceToTargetError * (Fix64)3 + anglePenalty;
+            Fix64 lowerBoundScore = distanceToSelf + distanceToTargetError * (Fix64)3;
             if (occupied)
-                score += (Fix64)1000;
+                lowerBoundScore += (Fix64)1000;
+
+            // Angle penalty is non-negative. If the distance/radius lower
+            // bound cannot beat the current best score, skipping Atan2 is
+            // exact and avoids the dominant per-candidate transcendental.
+            if (lowerBoundScore >= bestScore)
+            {
+                if (profile)
+                {
+                    scoreArithmeticTicks += Stopwatch.GetTimestamp() - arithmeticStartTicks;
+                    scoreTicks += Stopwatch.GetTimestamp() - scoreCandidateStartTicks;
+                }
+                continue;
+            }
+
+            FixVector2 candidateDirection = entry.CandidateDirectionsNormalized[i];
+            Fix64 anglePenalty = ResolveCombatAnglePenaltyNormalized(candidateDirection, toTargetFromSelf);
+            Fix64 score = lowerBoundScore + anglePenalty;
             if (profile)
                 scoreArithmeticTicks += Stopwatch.GetTimestamp() - arithmeticStartTicks;
-            subStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             if (score >= bestScore)
             {
                 if (profile)
                 {
-                    MainThreadFrameProfiler.Record(
-                        MainThreadPerfScope.FlowCombatApproachScoreSelection,
-                        Stopwatch.GetTimestamp() - subStartTicks);
                     scoreTicks += Stopwatch.GetTimestamp() - scoreCandidateStartTicks;
                 }
                 continue;
@@ -2420,9 +2406,6 @@ public static partial class FlowFieldCrowdMovementSystem
             bestBlockingAgentId = blockingAgentId;
             if (profile)
             {
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowCombatApproachScoreSelection,
-                    Stopwatch.GetTimestamp() - subStartTicks);
                 scoreTicks += Stopwatch.GetTimestamp() - scoreCandidateStartTicks;
             }
         }

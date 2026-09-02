@@ -1371,6 +1371,7 @@ namespace AAAGame.FlowPath
         private NativeArray<FlowPathKernelWitnessEdge> m_Edges;
         private NativeArray<FlowPathKernelWitnessEdge> m_RouteEdges;
         private NativeArray<int> m_WitnessNodes;
+        private NativeParallelHashMap<FlowPathKernelRouteEdgeKey, int> m_RouteEdgeLookup;
 
         public FlowPathKernelWitnessIndex(
             FlowPathKernelWitnessEdge[] edges,
@@ -1393,13 +1394,31 @@ namespace AAAGame.FlowPath
             m_Edges = new NativeArray<FlowPathKernelWitnessEdge>(edges, Allocator.Persistent);
             m_RouteEdges = new NativeArray<FlowPathKernelWitnessEdge>(routeEdges, Allocator.Persistent);
             m_WitnessNodes = new NativeArray<int>(witnessNodes, Allocator.Persistent);
+            m_RouteEdgeLookup = new NativeParallelHashMap<FlowPathKernelRouteEdgeKey, int>(
+                Math.Max(1, routeEdges.Length),
+                Allocator.Persistent);
+            for (int i = 0; i < routeEdges.Length; i++)
+            {
+                FlowPathKernelWitnessEdge edge = routeEdges[i];
+                if (!m_RouteEdgeLookup.TryAdd(
+                        new FlowPathKernelRouteEdgeKey(edge.LevelIndex, edge.FromNode, edge.ToNode),
+                        i))
+                {
+                    throw new InvalidOperationException(
+                        $"Flow path route witness index failed to index edge. level={edge.LevelIndex}, from={edge.FromNode}, to={edge.ToNode}.");
+                }
+            }
         }
 
-        public bool IsCreated => m_Edges.IsCreated && m_RouteEdges.IsCreated && m_WitnessNodes.IsCreated;
+        public bool IsCreated => m_Edges.IsCreated
+                                 && m_RouteEdges.IsCreated
+                                 && m_WitnessNodes.IsCreated
+                                 && m_RouteEdgeLookup.IsCreated;
         public int EdgeCount => m_Edges.IsCreated ? m_Edges.Length : 0;
         internal NativeArray<FlowPathKernelWitnessEdge> Edges => m_Edges;
         internal NativeArray<FlowPathKernelWitnessEdge> RouteEdges => m_RouteEdges;
         internal NativeArray<int> WitnessNodes => m_WitnessNodes;
+        internal NativeParallelHashMap<FlowPathKernelRouteEdgeKey, int> RouteEdgeLookup => m_RouteEdgeLookup;
 
         public void Dispose()
         {
@@ -1409,6 +1428,8 @@ namespace AAAGame.FlowPath
                 m_RouteEdges.Dispose();
             if (m_WitnessNodes.IsCreated)
                 m_WitnessNodes.Dispose();
+            if (m_RouteEdgeLookup.IsCreated)
+                m_RouteEdgeLookup.Dispose();
         }
 
         private static int CompareRouteEdges(FlowPathKernelWitnessEdge left, FlowPathKernelWitnessEdge right)
@@ -1418,6 +1439,43 @@ namespace AAAGame.FlowPath
                 return order;
             order = left.FromNode.CompareTo(right.FromNode);
             return order != 0 ? order : left.ToNode.CompareTo(right.ToNode);
+        }
+    }
+
+    internal readonly struct FlowPathKernelRouteEdgeKey : IEquatable<FlowPathKernelRouteEdgeKey>
+    {
+        public readonly int LevelIndex;
+        public readonly int FromNode;
+        public readonly int ToNode;
+
+        public FlowPathKernelRouteEdgeKey(int levelIndex, int fromNode, int toNode)
+        {
+            LevelIndex = levelIndex;
+            FromNode = fromNode;
+            ToNode = toNode;
+        }
+
+        public bool Equals(FlowPathKernelRouteEdgeKey other)
+        {
+            return LevelIndex == other.LevelIndex
+                   && FromNode == other.FromNode
+                   && ToNode == other.ToNode;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is FlowPathKernelRouteEdgeKey other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = LevelIndex;
+                hash = (hash * 397) ^ FromNode;
+                hash = (hash * 397) ^ ToNode;
+                return hash;
+            }
         }
     }
 
@@ -1762,6 +1820,7 @@ namespace AAAGame.FlowPath
                 SuccessorCount = search.PreviousCount,
                 Previous = search.PreviousMap,
                 RouteEdges = witnessIndex.RouteEdges,
+                RouteEdgeLookup = witnessIndex.RouteEdgeLookup,
                 WitnessNodes = witnessIndex.WitnessNodes,
                 MergeNodes = mergeIndex.Nodes,
                 Tasks = m_Tasks,
@@ -2036,6 +2095,7 @@ namespace AAAGame.FlowPath
             [ReadOnly] public NativeArray<FlowPathKernelWitnessEdge> RouteEdges;
             [ReadOnly] public NativeArray<int> WitnessNodes;
             [ReadOnly] public NativeParallelHashSet<int> MergeNodes;
+            [ReadOnly] public NativeParallelHashMap<FlowPathKernelRouteEdgeKey, int> RouteEdgeLookup;
             public NativeList<FlowPathKernelRouteTask> Tasks;
             public NativeList<int> L0Nodes;
             public NativeReference<int> LastLogicalNode;
@@ -2182,28 +2242,9 @@ namespace AAAGame.FlowPath
                         }
                         else
                         {
-                            int low = 0;
-                            int high = RouteEdges.Length - 1;
-                            int found = -1;
-                            while (low <= high)
-                            {
-                                int middle = low + ((high - low) >> 1);
-                                int order = CompareRouteEdge(
-                                    RouteEdges[middle],
-                                    edgeLevelIndex,
-                                    task.FromNode,
-                                    task.ToNode);
-                                if (order < 0)
-                                    low = middle + 1;
-                                else if (order > 0)
-                                    high = middle - 1;
-                                else
-                                {
-                                    found = middle;
-                                    break;
-                                }
-                            }
-                            if (found < 0)
+                            if (!RouteEdgeLookup.TryGetValue(
+                                    new FlowPathKernelRouteEdgeKey(edgeLevelIndex, task.FromNode, task.ToNode),
+                                    out int found))
                             {
                                 Error.Value = 4;
                                 break;

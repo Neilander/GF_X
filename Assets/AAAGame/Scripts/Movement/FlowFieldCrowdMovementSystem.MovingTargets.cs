@@ -1464,6 +1464,42 @@ public static partial class FlowFieldCrowdMovementSystem
         return cached;
     }
 
+    private static void PrepareCombatTargetSlotOccupancyCandidates(
+        CombatTargetSlotEntry entry,
+        Fix64 requiredDistance,
+        int startIsland)
+    {
+        if (entry == null || entry.Points == null || entry.IslandIds == null)
+            throw new InvalidOperationException("PrepareCombatTargetSlotOccupancyCandidates received an incomplete entry.");
+        if (entry.Points.Length != entry.IslandIds.Length)
+            throw new InvalidOperationException("Combat target slot entry point/island arrays are inconsistent.");
+        if (_world == null)
+            throw new InvalidOperationException("PrepareCombatTargetSlotOccupancyCandidates requires an active world.");
+
+        int frame = GetFrameCount();
+        int worldVersion = _world.Version;
+        Fix64 threshold = Fix64.Max(requiredDistance, _navigationGoalOccupancyMaximumThreshold);
+        if (entry.OccupancyCandidatesPreparedFrame == frame
+            && entry.OccupancyCandidatesPreparedWorldVersion == worldVersion
+            && entry.OccupancyCandidatesPreparedThresholdRaw >= threshold.RawValue)
+            return;
+
+        for (int slot = 0; slot < entry.Points.Length; slot++)
+        {
+            if (entry.IslandIds[slot] != startIsland)
+                continue;
+            GetOrBuildCombatTargetSlotOccupancyCandidates(
+                entry,
+                slot,
+                entry.Points[slot],
+                requiredDistance);
+        }
+
+        entry.OccupancyCandidatesPreparedFrame = frame;
+        entry.OccupancyCandidatesPreparedWorldVersion = worldVersion;
+        entry.OccupancyCandidatesPreparedThresholdRaw = threshold.RawValue;
+    }
+
     private static void EvaluateNavigationGoalOccupancyCandidate(
         AgentRuntimeData other,
         int selfId,

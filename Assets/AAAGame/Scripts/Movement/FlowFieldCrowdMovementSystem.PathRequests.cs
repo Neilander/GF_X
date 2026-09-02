@@ -2664,7 +2664,9 @@ public static partial class FlowFieldCrowdMovementSystem
                     BeginRestrictedInputCollection(source);
                     return 1;
                 }
-                if (source.RestrictedSourceCollectionCursor < goalSector.PortalIds.Count)
+                int collectionOperations = 0;
+                while (collectionOperations < operationCapacity
+                       && source.RestrictedSourceCollectionCursor < goalSector.PortalIds.Count)
                 {
                     int portalId = goalSector.PortalIds[source.RestrictedSourceCollectionCursor++];
                     bool profileGoalInput = MainThreadFrameProfiler.LoggingEnabled;
@@ -2679,18 +2681,24 @@ public static partial class FlowFieldCrowdMovementSystem
                         MainThreadFrameProfiler.Record(
                             MainThreadPerfScope.FlowNavigationGoalConnectorInputCollection,
                             Stopwatch.GetTimestamp() - goalInputStartTicks);
-                    if (cost == long.MaxValue)
-                        return 1;
-                    source.RestrictedSourceNodes.Add(EncodePortalNode(job.Key.GoalSectorId, portalId));
-                    source.RestrictedSourceCosts.Add(cost);
-                    return 1;
+                    if (cost != long.MaxValue)
+                    {
+                        source.RestrictedSourceNodes.Add(EncodePortalNode(job.Key.GoalSectorId, portalId));
+                        source.RestrictedSourceCosts.Add(cost);
+                    }
+                    collectionOperations++;
                 }
-                if (source.RestrictedTargetCollectionCursor < cluster.BoundaryNodes.Length)
+                while (collectionOperations < operationCapacity
+                       && source.RestrictedSourceCollectionCursor >= goalSector.PortalIds.Count
+                       && source.RestrictedTargetCollectionCursor < cluster.BoundaryNodes.Length)
                 {
                     source.RestrictedTargetNodes.Add(
                         cluster.BoundaryNodes[source.RestrictedTargetCollectionCursor++]);
-                    return 1;
+                    collectionOperations++;
                 }
+                if (source.RestrictedSourceCollectionCursor < goalSector.PortalIds.Count
+                    || source.RestrictedTargetCollectionCursor < cluster.BoundaryNodes.Length)
+                    return collectionOperations;
                 source.RestrictedSearch = CreateIncrementalRestrictedPortalSearch(
                     _world,
                     cluster,
@@ -2701,7 +2709,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     source.RestrictedTargetNodes.ToArray());
                 source.RestrictedSearch.MaterializeResultOnComplete = false;
                 EndRestrictedInputCollection(source);
-                return 1;
+                return Math.Max(1, collectionOperations);
             }
             bool profileGoalSearch = MainThreadFrameProfiler.LoggingEnabled;
             long goalSearchStartTicks = profileGoalSearch ? Stopwatch.GetTimestamp() : 0L;
@@ -2739,23 +2747,31 @@ public static partial class FlowFieldCrowdMovementSystem
                 BeginRestrictedInputCollection(source);
                 return 1;
             }
-            if (source.RestrictedSourceCollectionCursor < childCluster.BoundaryNodes.Length)
+            int collectionOperations = 0;
+            while (collectionOperations < operationCapacity
+                   && source.RestrictedSourceCollectionCursor < childCluster.BoundaryNodes.Length)
             {
                 int node = childCluster.BoundaryNodes[source.RestrictedSourceCollectionCursor++];
-                if (!source.GoalConnector.TryGetCost(node, out long cost))
-                    return 1;
-                if (!source.GoalConnector.ContainsSettled(node))
-                    throw new InvalidOperationException("Navigation child goal connector exposed an unsettled boundary.");
-                source.RestrictedSourceNodes.Add(node);
-                source.RestrictedSourceCosts.Add(cost);
-                return 1;
+                if (source.GoalConnector.TryGetCost(node, out long cost))
+                {
+                    if (!source.GoalConnector.ContainsSettled(node))
+                        throw new InvalidOperationException("Navigation child goal connector exposed an unsettled boundary.");
+                    source.RestrictedSourceNodes.Add(node);
+                    source.RestrictedSourceCosts.Add(cost);
+                }
+                collectionOperations++;
             }
-            if (source.RestrictedTargetCollectionCursor < targetCluster.BoundaryNodes.Length)
+            while (collectionOperations < operationCapacity
+                   && source.RestrictedSourceCollectionCursor >= childCluster.BoundaryNodes.Length
+                   && source.RestrictedTargetCollectionCursor < targetCluster.BoundaryNodes.Length)
             {
                 source.RestrictedTargetNodes.Add(
                     targetCluster.BoundaryNodes[source.RestrictedTargetCollectionCursor++]);
-                return 1;
+                collectionOperations++;
             }
+            if (source.RestrictedSourceCollectionCursor < childCluster.BoundaryNodes.Length
+                || source.RestrictedTargetCollectionCursor < targetCluster.BoundaryNodes.Length)
+                return collectionOperations;
             source.RestrictedSearch = CreateIncrementalRestrictedPortalSearch(
                 _world,
                 targetCluster,
@@ -2766,7 +2782,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 source.RestrictedTargetNodes.ToArray());
             source.RestrictedSearch.MaterializeResultOnComplete = false;
             EndRestrictedInputCollection(source);
-            return 1;
+            return Math.Max(1, collectionOperations);
         }
         bool profileUpperSearch = MainThreadFrameProfiler.LoggingEnabled;
         long upperSearchStartTicks = profileUpperSearch ? Stopwatch.GetTimestamp() : 0L;

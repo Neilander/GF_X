@@ -52,6 +52,70 @@ public sealed class Fog3StageCheckpointTests
     }
 
     [Test]
+    public void VisibilityIntervals_RowBoundsMatchPerCellFixedDistanceReference()
+    {
+        Fog3MapData map = new Fog3MapData(CreateFlatTerrain(4, 4, 1f), (Fix64)0.1f);
+        var intervals = new System.Collections.Generic.List<Fog3VisibilityRowInterval>();
+        var cases = new[]
+        {
+            (new FixVector2((Fix64)1.037f, (Fix64)1.127f), (Fix64)0.05f),
+            (new FixVector2((Fix64)2.55f, (Fix64)0.15f), (Fix64)0.37f),
+            (new FixVector2((Fix64)3.73f, (Fix64)2.61f), (Fix64)1.25f),
+        };
+
+        for (int caseIndex = 0; caseIndex < cases.Length; caseIndex++)
+        {
+            FixVector2 viewerPosition = cases[caseIndex].Item1;
+            Fix64 radius = cases[caseIndex].Item2;
+            Fix64 radiusSquared = radius * radius;
+            map.CollectVisibleIntervals(viewerPosition, radius, 0, null, intervals);
+            var actual = new bool[map.Width * map.Height];
+            for (int intervalIndex = 0; intervalIndex < intervals.Count; intervalIndex++)
+            {
+                Fog3VisibilityRowInterval interval = intervals[intervalIndex];
+                for (int x = interval.MinimumX; x <= interval.MaximumX; x++)
+                    actual[x + interval.Y * map.Width] = true;
+            }
+
+            for (int y = 0; y < map.Height; y++)
+            {
+                for (int x = 0; x < map.Width; x++)
+                {
+                    FixVector2 center = map.GetCellCenterFixed(x, y);
+                    bool expected = FixVector2.SqrMagnitude(center - viewerPosition) <= radiusSquared;
+                    Assert.AreEqual(
+                        expected,
+                        actual[x + y * map.Width],
+                        $"case={caseIndex}, cell=({x},{y})");
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void VisibilityCoverage_OverlapsAndRemovalsDirtyOnlyChangedVisibilityCells()
+    {
+        Fog3MapData map = new Fog3MapData(CreateFlatTerrain(2, 1, 1f), (Fix64)0.1f);
+
+        map.ChangeVisibilityCoverage(new Fog3VisibilityRowInterval(0, 2, 8), 1);
+        map.ChangeVisibilityCoverage(new Fog3VisibilityRowInterval(0, 5, 12), 1);
+        map.ChangeVisibilityCoverage(new Fog3VisibilityRowInterval(0, 15, 17), 1);
+        map.ResolveVisibilityCoverageChanges(1d);
+        AssertVisibilityAndDirtyCells(map, 0, new[] { (2, 12), (15, 17) }, new[] { (2, 12), (15, 17) });
+
+        map.MarkClean();
+        map.ChangeVisibilityCoverage(new Fog3VisibilityRowInterval(0, 2, 8), -1);
+        map.ResolveVisibilityCoverageChanges(2d);
+        AssertVisibilityAndDirtyCells(map, 0, new[] { (5, 12), (15, 17) }, new[] { (2, 4) });
+
+        map.MarkClean();
+        map.ChangeVisibilityCoverage(new Fog3VisibilityRowInterval(0, 5, 12), -1);
+        map.ChangeVisibilityCoverage(new Fog3VisibilityRowInterval(0, 15, 17), -1);
+        map.ResolveVisibilityCoverageChanges(3d);
+        AssertVisibilityAndDirtyCells(map, 0, System.Array.Empty<(int, int)>(), new[] { (5, 12), (15, 17) });
+    }
+
+    [Test]
     public void WorldOverlay_TextureUsesLogicGridResolutionInsteadOfTerrainGridResolution()
     {
         GameObject viewObject = new GameObject("Fog3IndependentLogicGridView");
@@ -1412,5 +1476,45 @@ public sealed class Fog3StageCheckpointTests
         for (int i = 0; i < walkable.Length; i++)
             walkable[i] = true;
         return new Fog3TerrainInfo(width, height, cellSize, Vector3.zero, walkable, "IndependentFogGridTest");
+    }
+
+    private static void AssertVisibilityAndDirtyCells(
+        Fog3MapData map,
+        int y,
+        (int minimumX, int maximumX)[] visibleRanges,
+        (int minimumX, int maximumX)[] dirtyRanges)
+    {
+        for (int x = 0; x < map.Width; x++)
+        {
+            bool expectedVisible = ContainsRange(visibleRanges, x);
+            Assert.AreEqual(expectedVisible ? 1f : 0f, map.GetVisibility(x, y));
+        }
+
+        var expectedDirty = new System.Collections.Generic.HashSet<int>();
+        for (int rangeIndex = 0; rangeIndex < dirtyRanges.Length; rangeIndex++)
+        {
+            for (int x = dirtyRanges[rangeIndex].minimumX; x <= dirtyRanges[rangeIndex].maximumX; x++)
+                expectedDirty.Add(x + y * map.Width);
+        }
+
+        Assert.AreEqual(expectedDirty.Count, map.DirtyCellCount);
+        var actualDirty = new System.Collections.Generic.HashSet<int>();
+        for (int dirtyIndex = 0; dirtyIndex < map.DirtyCellCount; dirtyIndex++)
+        {
+            map.GetDirtyCell(dirtyIndex, out int x, out int dirtyY);
+            Assert.AreEqual(y, dirtyY);
+            actualDirty.Add(x + dirtyY * map.Width);
+        }
+        CollectionAssert.AreEquivalent(expectedDirty, actualDirty);
+    }
+
+    private static bool ContainsRange((int minimumX, int maximumX)[] ranges, int x)
+    {
+        for (int rangeIndex = 0; rangeIndex < ranges.Length; rangeIndex++)
+        {
+            if (x >= ranges[rangeIndex].minimumX && x <= ranges[rangeIndex].maximumX)
+                return true;
+        }
+        return false;
     }
 }
