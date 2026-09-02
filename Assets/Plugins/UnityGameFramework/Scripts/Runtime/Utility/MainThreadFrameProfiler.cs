@@ -210,7 +210,19 @@ namespace UnityGameFramework.Runtime
         FlowNavigationDemandTileBuilds = 199,
         FlowNavigationDemandRemoveOther = 200,
         FlowNavigationDemandQueueMutation = 201,
-        Count = 202
+        EntityBrainCombat = 202,
+        FlowCombatApproach = 203,
+        FlowCombatApproachOccupancy = 204,
+        FlowCombatApproachCoreSetup = 205,
+        FlowCombatApproachSlotCache = 206,
+        FlowCombatApproachSlotCacheBuild = 207,
+        FlowCombatApproachScore = 208,
+        FlowCombatApproachExpanded = 209,
+        FlowCombatApproachFinalize = 210,
+        FlowCombatApproachPreResolve = 211,
+        FlowCombatApproachCore = 212,
+        FlowCombatApproachDirectionSetup = 213,
+        Count = 214
     }
 
     public static class MainThreadFrameProfiler
@@ -235,6 +247,9 @@ namespace UnityGameFramework.Runtime
         private static readonly long[] IntervalScopeAllocatedBytes = new long[(int)MainThreadPerfScope.Count];
         private static readonly Dictionary<Type, LogicListenerSample> LogicListenerSamples = new Dictionary<Type, LogicListenerSample>();
         private static readonly List<LogicListenerSample> LogicListenerSortBuffer = new List<LogicListenerSample>();
+        private static readonly Dictionary<Type, long> CurrentLogicTickListenerTicks = new Dictionary<Type, long>();
+        private static readonly Dictionary<Type, long> LastCompletedMaxLogicTickListenerTicks = new Dictionary<Type, long>();
+        private static readonly List<LogicListenerTypeSample> LogicListenerTypeSortBuffer = new List<LogicListenerTypeSample>();
         private static readonly ProfilerMarkerSampler[] MarkerSamplers =
         {
             new ProfilerMarkerSampler(ProfilerCategory.Internal, "PlayerLoop"),
@@ -302,6 +317,8 @@ namespace UnityGameFramework.Runtime
             Array.Clear(CurrentLogicTickScopeTicks, 0, CurrentLogicTickScopeTicks.Length);
             Array.Clear(CurrentMaxLogicTickScopeTicks, 0, CurrentMaxLogicTickScopeTicks.Length);
             Array.Clear(LastCompletedMaxLogicTickScopeTicks, 0, LastCompletedMaxLogicTickScopeTicks.Length);
+            CurrentLogicTickListenerTicks.Clear();
+            LastCompletedMaxLogicTickListenerTicks.Clear();
             _logicTickActive = false;
         }
 
@@ -329,12 +346,41 @@ namespace UnityGameFramework.Runtime
             return TicksToMs(LastCompletedMaxLogicTickScopeTicks[index]);
         }
 
+        public static string GetLastCompletedMaxLogicTickListenerSummary()
+        {
+            if (LastCompletedMaxLogicTickListenerTicks.Count == 0)
+                return "none";
+
+            LogicListenerTypeSortBuffer.Clear();
+            foreach (KeyValuePair<Type, long> entry in LastCompletedMaxLogicTickListenerTicks)
+            {
+                if (entry.Value > 0L)
+                    LogicListenerTypeSortBuffer.Add(new LogicListenerTypeSample(entry.Key, entry.Value));
+            }
+            LogicListenerTypeSortBuffer.Sort(CompareLogicListenerTypeSamples);
+
+            var builder = new System.Text.StringBuilder(192);
+            int count = Math.Min(12, LogicListenerTypeSortBuffer.Count);
+            for (int i = 0; i < count; i++)
+            {
+                if (builder.Length > 0)
+                    builder.Append(',');
+                LogicListenerTypeSample sample = LogicListenerTypeSortBuffer[i];
+                builder.Append(sample.ListenerType.FullName)
+                    .Append('=')
+                    .Append(TicksToMs(sample.Ticks).ToString("F3", System.Globalization.CultureInfo.InvariantCulture))
+                    .Append("ms");
+            }
+            return builder.Length > 0 ? builder.ToString() : "none";
+        }
+
         public static void BeginLogicTick(ulong logicFrame)
         {
             if (!LoggingEnabled)
                 return;
             EnsureFrame();
             Array.Clear(CurrentLogicTickScopeTicks, 0, CurrentLogicTickScopeTicks.Length);
+            CurrentLogicTickListenerTicks.Clear();
             _currentLogicTickFrame = logicFrame;
             _logicTickActive = true;
         }
@@ -383,6 +429,11 @@ namespace UnityGameFramework.Runtime
 
             sample.Ticks += ticks;
             sample.Calls++;
+            if (_logicTickActive)
+            {
+                CurrentLogicTickListenerTicks.TryGetValue(listenerType, out long currentTicks);
+                CurrentLogicTickListenerTicks[listenerType] = currentTicks + ticks;
+            }
         }
 
         public static void RecordLogicTickDuration(long ticks)
@@ -397,6 +448,9 @@ namespace UnityGameFramework.Runtime
                 _currentMaxLogicTickTicks = ticks;
                 _currentMaxLogicTickFrame = _currentLogicTickFrame;
                 Array.Copy(CurrentLogicTickScopeTicks, CurrentMaxLogicTickScopeTicks, CurrentLogicTickScopeTicks.Length);
+                LastCompletedMaxLogicTickListenerTicks.Clear();
+                foreach (KeyValuePair<Type, long> entry in CurrentLogicTickListenerTicks)
+                    LastCompletedMaxLogicTickListenerTicks[entry.Key] = entry.Value;
             }
             _logicTickActive = false;
         }
@@ -665,6 +719,14 @@ namespace UnityGameFramework.Runtime
                 : string.CompareOrdinal(left.ListenerType.FullName, right.ListenerType.FullName);
         }
 
+        private static int CompareLogicListenerTypeSamples(LogicListenerTypeSample left, LogicListenerTypeSample right)
+        {
+            int ticksComparison = right.Ticks.CompareTo(left.Ticks);
+            return ticksComparison != 0
+                ? ticksComparison
+                : string.CompareOrdinal(left.ListenerType.FullName, right.ListenerType.FullName);
+        }
+
         private static void ResetLogicListenerSamples()
         {
             foreach (LogicListenerSample sample in LogicListenerSamples.Values)
@@ -684,6 +746,18 @@ namespace UnityGameFramework.Runtime
             public Type ListenerType { get; }
             public long Ticks;
             public int Calls;
+        }
+
+        private sealed class LogicListenerTypeSample
+        {
+            public readonly Type ListenerType;
+            public readonly long Ticks;
+
+            public LogicListenerTypeSample(Type listenerType, long ticks)
+            {
+                ListenerType = listenerType ?? throw new ArgumentNullException(nameof(listenerType));
+                Ticks = ticks;
+            }
         }
 
         private struct ProfilerMarkerSampler

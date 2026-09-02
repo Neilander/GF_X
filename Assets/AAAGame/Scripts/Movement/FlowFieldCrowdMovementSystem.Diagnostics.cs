@@ -1008,6 +1008,15 @@ public static partial class FlowFieldCrowdMovementSystem
                $"ownerResolve={TicksToMs(_perf.FixedPortalOwnerResolveTicks):F3}ms";
     }
 
+    public static string GetEditorTestFrameCombatApproachDiagnostics()
+    {
+        return $"calls={_perf.CombatApproachCalls},cacheHits={_perf.CombatApproachSlotCacheHits}," +
+               $"cacheBuilds={_perf.CombatApproachSlotCacheBuilds},scored={_perf.CombatApproachScoredCandidates}," +
+               $"sameIsland={_perf.CombatApproachSameIslandCandidates},expandedCalls={_perf.CombatApproachExpandedCalls}," +
+               $"expandedCandidates={_perf.CombatApproachExpandedCandidates},successes={_perf.CombatApproachSuccesses}," +
+               $"noSlotFailures={_perf.CombatApproachNoSlotFailures}";
+    }
+
     public static int GetEditorTestFramePathPortalGraphNodeExpansionCount()
     {
         return _perf.PathPortalGraphNodeExpansions;

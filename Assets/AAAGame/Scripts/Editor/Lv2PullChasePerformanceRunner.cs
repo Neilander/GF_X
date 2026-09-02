@@ -45,6 +45,8 @@ internal static class Lv2PullChasePerformanceRunner
         MainThreadPerfScope.LogicFrameTick,
         MainThreadPerfScope.LogicFrameListenerSnapshot,
         MainThreadPerfScope.LogicFrameListenerCallbacks,
+        MainThreadPerfScope.LogicEntityFrameSetup,
+        MainThreadPerfScope.LogicEntityBaseAndBuffs,
         MainThreadPerfScope.LogicEntityNavigationSync,
         MainThreadPerfScope.FlowNavigationAgentUpdate,
         MainThreadPerfScope.FlowNavigationInactiveClear,
@@ -75,8 +77,14 @@ internal static class Lv2PullChasePerformanceRunner
         MainThreadPerfScope.FlowNavigationPathComplete,
         MainThreadPerfScope.LogicEntityBrain,
         MainThreadPerfScope.LogicEntityTargeting,
+        MainThreadPerfScope.LogicEntityProjectile,
+        MainThreadPerfScope.LogicEntityAttack,
+        MainThreadPerfScope.LogicEntityDamageResolve,
         MainThreadPerfScope.LogicEntityMoveIntent,
         MainThreadPerfScope.LogicEntityMoveResolve,
+        MainThreadPerfScope.LogicEntityMoveCommit,
+        MainThreadPerfScope.LogicEntityPostUpdate,
+        MainThreadPerfScope.LogicEntityFrameComplete,
         MainThreadPerfScope.CharacterMovePrepare,
         MainThreadPerfScope.FlowGroupMove,
         MainThreadPerfScope.FlowWorldBuildQueue,
@@ -139,6 +147,18 @@ internal static class Lv2PullChasePerformanceRunner
         MainThreadPerfScope.CharacterTargetingReachability,
         MainThreadPerfScope.CharacterTargetingWallDetour,
         MainThreadPerfScope.FlowAttackAreaScan,
+        MainThreadPerfScope.EntityBrainCombat,
+        MainThreadPerfScope.FlowCombatApproach,
+        MainThreadPerfScope.FlowCombatApproachOccupancy,
+        MainThreadPerfScope.FlowCombatApproachCoreSetup,
+        MainThreadPerfScope.FlowCombatApproachSlotCache,
+        MainThreadPerfScope.FlowCombatApproachSlotCacheBuild,
+        MainThreadPerfScope.FlowCombatApproachScore,
+        MainThreadPerfScope.FlowCombatApproachExpanded,
+        MainThreadPerfScope.FlowCombatApproachFinalize,
+        MainThreadPerfScope.FlowCombatApproachPreResolve,
+        MainThreadPerfScope.FlowCombatApproachCore,
+        MainThreadPerfScope.FlowCombatApproachDirectionSetup,
     };
     private static readonly double[] s_ChaseScopePeakMilliseconds = new double[s_ChaseScopes.Length];
     private static readonly int[] s_ChaseScopePeakRenderFrames = new int[s_ChaseScopes.Length];
@@ -897,6 +917,9 @@ internal static class Lv2PullChasePerformanceRunner
         string navigationSyncStages = EditorApplication.isPlaying
             ? FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationSyncStageDiagnostics()
             : string.Empty;
+        string combatApproach = EditorApplication.isPlaying
+            ? FlowFieldCrowdMovementSystem.GetEditorTestFrameCombatApproachDiagnostics()
+            : string.Empty;
         string startConnectors = EditorApplication.isPlaying
             ? FlowFieldCrowdMovementSystem.GetEditorTestHierarchyStartConnectorDiagnostics(completedFrame)
             : string.Empty;
@@ -910,6 +933,8 @@ internal static class Lv2PullChasePerformanceRunner
             $"scopes=[{BuildChaseScopeSample()}],tickScopes=[{BuildCompletedMaxLogicTickScopeSample()}],pathRequests=[groups={pathRequestGroups},operations={pathRequestOperations},quota={pathRequestOperationQuota}," +
             $"commits={pathRequestCommits},sourceCommits={pathRequestSourceCommits},pendingGroups={pendingPathRequestGroups},pendingSources={pendingPathRequestSources}]," +
             $"pathSearch=[{pathSearch}],pathStages=[{pathStages}],navigationSyncStages=[{navigationSyncStages}]," +
+            $"combatApproach=[{combatApproach}]," +
+            $"maxTickListeners=[{MainThreadFrameProfiler.GetLastCompletedMaxLogicTickListenerSummary()}]," +
             $"startConnectors=[{startConnectors}],chase=[{chase}],navigation=[{navigation}]");
     }
 

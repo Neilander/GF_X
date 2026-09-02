@@ -328,10 +328,15 @@ public static partial class FlowFieldCrowdMovementSystem
         if (CombatTargetSlotCache.TryGetValue(key, out CombatTargetSlotEntry cached)
             && cached?.Points != null)
         {
+            _perf.CombatApproachSlotCacheHits++;
             cached.LastUsedFrame = GetFrameCount();
             return cached;
         }
 
+        _perf.CombatApproachSlotCacheBuilds++;
+        long buildStartTicks = MainThreadFrameProfiler.LoggingEnabled
+            ? Stopwatch.GetTimestamp()
+            : 0L;
         List<FixVector2> points = new List<FixVector2>(Mathf.Max(4, ringCount * candidateCount));
         List<int> cellX = new List<int>(points.Capacity);
         List<int> cellY = new List<int>(points.Capacity);
@@ -427,6 +432,12 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"rejectedOutside={rejectedOutside} rejectedBlocked={rejectedBlocked} rejectedClearance={rejectedClearance} rejectedNoLos={rejectedNoLos}"
         };
         CombatTargetSlotCache[key] = entry;
+        if (MainThreadFrameProfiler.LoggingEnabled)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachSlotCacheBuild,
+                Stopwatch.GetTimestamp() - buildStartTicks);
+        }
         return entry;
     }
 

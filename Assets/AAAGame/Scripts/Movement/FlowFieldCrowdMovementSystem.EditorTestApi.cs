@@ -152,7 +152,13 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         WorldBuildJob job = GetRequiredSingleEditorTestWorldBuildJob();
         job.PendingPortalAccessEntries ??= new List<PendingSectorPortalAccess>();
-        job.PendingPortalAccessEntries.Add(new PendingSectorPortalAccess(701, 702, 703, true));
+        job.PendingPortalAccessEntries.Add(new PendingSectorPortalAccess(
+            701,
+            702,
+            703,
+            true,
+            null,
+            new[] { 1 }));
     }
 
     public static void AddEditorTestOnlyRuntimeDirtyProcessedBoundaryProbe()

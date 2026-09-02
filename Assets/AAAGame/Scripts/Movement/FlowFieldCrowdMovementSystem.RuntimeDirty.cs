@@ -1813,7 +1813,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     job.PortalGraphAnalyticNonClearRejectCount++;
 
                 PendingSectorPortalAccess pending = analytic
-                    ? AddPendingAnalyticSectorPortalAccess(job.PendingPortalAccessEntries, sector, fromPortalId)
+                    ? AddPendingAnalyticSectorPortalAccess(world, job.PendingPortalAccessEntries, sector, fromPortalId)
                     : AddPendingPrebuiltDeterministicSectorPortalAccess(
                         world,
                         job.PendingPortalAccessEntries,

@@ -138,6 +138,7 @@ public static class LogicTargetingSpatialIndexService
 
     public static int BuildCount => s_BuildCount;
     public static int CandidateVisitCount => s_CandidateVisitCount;
+    public static bool IsActive => s_IsActive;
 
     public static bool HasEnemyInRange(
         IEntityContext self,

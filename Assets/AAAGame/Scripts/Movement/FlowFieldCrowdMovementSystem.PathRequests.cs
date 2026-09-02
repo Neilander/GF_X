@@ -1006,6 +1006,16 @@ public static partial class FlowFieldCrowdMovementSystem
                     node = next;
                     continue;
                 }
+                if (IsNavigationPathRequestBlockedByEarlierGraphOwner(job))
+                {
+                    node = next;
+                    continue;
+                }
+                if (IsNavigationPathRequestBlockedByOtherSourcePendingSlice(job))
+                {
+                    node = next;
+                    continue;
+                }
 
                 progressed = true;
                 bool scheduledSliceBeforeAdvance = HasNavigationPathRequestScheduledSlice(job);
@@ -1115,6 +1125,96 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
+    private static bool IsNavigationPathRequestBlockedByEarlierGraphOwner(
+        NavigationPathRequestJob job)
+    {
+        if (job == null)
+            throw new ArgumentNullException(nameof(job));
+
+        for (LinkedListNode<NavigationPathRequestJob> node = NavigationPathRequestQueue.First;
+             node != null;
+             node = node.Next)
+        {
+            NavigationPathRequestJob candidate = node.Value
+                ?? throw new InvalidOperationException("Navigation path request queue contains a null job.");
+            if (ReferenceEquals(candidate, job))
+                return false;
+            if (HasPendingGraphSearchState(candidate)
+                && SharesSearchStateWithPendingGraph(candidate, job))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool HasPendingGraphSearchState(NavigationPathRequestJob job)
+    {
+        if (job == null)
+            throw new ArgumentNullException(nameof(job));
+        if (job.Policy?.SearchState?.HasPendingGraphSlice == true)
+            return true;
+        for (int i = 0; i < job.Sources.Count; i++)
+        {
+            NavigationPathSourceJob source = job.Sources[i]
+                ?? throw new InvalidOperationException("Navigation path request contains a null source job.");
+            if (source.RestrictedSearch?.KernelState?.HasPendingGraphSlice == true
+                || source.HierarchyPolicy?.SearchState?.HasPendingGraphSlice == true)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool SharesSearchStateWithPendingGraph(
+        NavigationPathRequestJob owner,
+        NavigationPathRequestJob candidate)
+    {
+        if (owner == null || candidate == null)
+            throw new ArgumentNullException(owner == null ? nameof(owner) : nameof(candidate));
+
+        if (owner.Policy?.SearchState?.HasPendingGraphSlice == true
+            && JobUsesSearchState(candidate, owner.Policy.SearchState))
+        {
+            return true;
+        }
+
+        for (int i = 0; i < owner.Sources.Count; i++)
+        {
+            NavigationPathSourceJob source = owner.Sources[i]
+                ?? throw new InvalidOperationException("Navigation path request contains a null source job.");
+            FlowPathKernelSearchState restricted = source.RestrictedSearch?.KernelState;
+            if (restricted?.HasPendingGraphSlice == true && JobUsesSearchState(candidate, restricted))
+                return true;
+            FlowPathKernelSearchState hierarchy = source.HierarchyPolicy?.SearchState;
+            if (hierarchy?.HasPendingGraphSlice == true && JobUsesSearchState(candidate, hierarchy))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool JobUsesSearchState(
+        NavigationPathRequestJob job,
+        FlowPathKernelSearchState state)
+    {
+        if (job == null || state == null)
+            return false;
+        if (ReferenceEquals(job.Policy?.SearchState, state))
+            return true;
+        for (int i = 0; i < job.Sources.Count; i++)
+        {
+            NavigationPathSourceJob source = job.Sources[i]
+                ?? throw new InvalidOperationException("Navigation path request contains a null source job.");
+            if (ReferenceEquals(source.RestrictedSearch?.KernelState, state)
+                || ReferenceEquals(source.HierarchyPolicy?.SearchState, state))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static bool IsNavigationPathRequestBlockedByPendingSlice(NavigationPathRequestJob job)
     {
         if (job == null || job.Complete || job.SourceCursor >= job.Sources.Count)
@@ -1125,7 +1225,59 @@ public static partial class FlowFieldCrowdMovementSystem
         bool routePending = materialization != null
                             && materialization.RouteState.HasPendingSlice
                             && !materialization.RouteState.IsPendingSliceCompleted;
-        return routePending || IsNavigationPathSourceBlockedByPendingGraph(job, source);
+        if (routePending || IsNavigationPathSourceBlockedByPendingGraph(job, source))
+            return true;
+
+        // A hierarchy/L0 policy search is shared by all sources in the
+        // request. If another source owns its scheduled graph slice, keep the
+        // request parked until that source completes the slice; otherwise a
+        // later source could read the shared search state while the job owns it.
+        if (HasPendingGraphSearchState(job) && !IsNavigationPathSourcePendingGraphOwner(job, source))
+            return true;
+        return false;
+    }
+
+    private static bool IsNavigationPathRequestBlockedByOtherSourcePendingSlice(
+        NavigationPathRequestJob job)
+    {
+        if (job == null || job.Complete || job.SourceCursor >= job.Sources.Count)
+            return false;
+        NavigationPathSourceJob current = job.Sources[job.SourceCursor]
+            ?? throw new InvalidOperationException("Navigation path request contains a null source job.");
+        if (IsNavigationPathSourcePendingGraphOwner(job, current)
+            || (current.Materialization?.RouteState?.HasPendingSlice == true))
+        {
+            return false;
+        }
+        if (HasPendingGraphSearchState(job))
+            return true;
+        for (int i = 0; i < job.Sources.Count; i++)
+        {
+            NavigationPathSourceJob source = job.Sources[i]
+                ?? throw new InvalidOperationException("Navigation path request contains a null source job.");
+            if (source.Materialization?.RouteState?.HasPendingSlice == true)
+                return true;
+        }
+        return false;
+    }
+
+    private static bool IsNavigationPathSourcePendingGraphOwner(
+        NavigationPathRequestJob job,
+        NavigationPathSourceJob source)
+    {
+        if (job == null || source == null || source.ReversePolicyExpansion == null)
+            return source?.RestrictedSearch?.KernelState?.HasPendingGraphSlice == true;
+
+        IncrementalReversePolicyExpansion expansion = source.ReversePolicyExpansion;
+        bool expansionCanOwn = expansion.Stage == IncrementalReversePolicyExpansionStage.Pop
+                               || expansion.Stage == IncrementalReversePolicyExpansionStage.Edges
+                               || expansion.Stage == IncrementalReversePolicyExpansionStage.Crossing;
+        if (!expansionCanOwn)
+            return false;
+        FlowPathKernelSearchState search = expansion.Hierarchy
+            ? source.HierarchyPolicy?.SearchState
+            : job.Policy?.SearchState;
+        return search?.HasPendingGraphSlice == true;
     }
 
     private static bool HasNavigationPathRequestScheduledSlice(NavigationPathRequestJob job)

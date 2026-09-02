@@ -457,6 +457,186 @@ public static partial class FlowFieldCrowdMovementSystem
         return integration;
     }
 
+    private static int[] BuildDeterministicPortalTargetSlotIndices(
+        NavigationWorld world,
+        SectorData sector,
+        PortalData portal,
+        long[] integration)
+    {
+        if (world == null)
+            throw new InvalidOperationException("BuildDeterministicPortalTargetSlotIndices failed: world is null.");
+        if (sector == null)
+            throw new InvalidOperationException("BuildDeterministicPortalTargetSlotIndices failed: sector is null.");
+        if (portal == null)
+            throw new InvalidOperationException("BuildDeterministicPortalTargetSlotIndices failed: portal is null.");
+        if (integration != null && integration.Length != sector.Width * sector.Height)
+            throw new InvalidOperationException("BuildDeterministicPortalTargetSlotIndices failed: integration size mismatch.");
+
+        Vector2Int[] portalCells = GetPortalCellsForSector(portal, sector.SectorId);
+        if (portalCells == null || portalCells.Length == 0)
+            throw new InvalidOperationException($"BuildDeterministicPortalTargetSlotIndices failed: portal has no cells sector={sector.SectorId} portal={portal.PortalId}.");
+
+        int count = sector.Width * sector.Height;
+        if (integration == null)
+        {
+            int[] analyticSlots = new int[count];
+            for (int localIndex = 0; localIndex < count; localIndex++)
+            {
+                int worldX = sector.StartX + localIndex % sector.Width;
+                int worldY = sector.StartY + localIndex / sector.Width;
+                analyticSlots[localIndex] = ResolveDeterministicAnalyticPortalTargetSlotIndex(
+                    world,
+                    sector,
+                    portal,
+                    portalCells,
+                    worldX,
+                    worldY);
+            }
+            return analyticSlots;
+        }
+
+        long[] costs = integration;
+        int[] orderedIndices = new int[count];
+        long[] orderedCosts = new long[count];
+        for (int i = 0; i < count; i++)
+        {
+            orderedIndices[i] = i;
+            orderedCosts[i] = costs[i];
+        }
+        Array.Sort(orderedCosts, orderedIndices);
+
+        int[] slots = new int[count];
+        for (int orderIndex = 0; orderIndex < count; orderIndex++)
+        {
+            int localIndex = orderedIndices[orderIndex];
+            long currentCost = orderedCosts[orderIndex];
+            if (currentCost == long.MaxValue)
+            {
+                slots[localIndex] = -1;
+                continue;
+            }
+
+            int worldX = sector.StartX + localIndex % sector.Width;
+            int worldY = sector.StartY + localIndex / sector.Width;
+            int portalSlot = FindPortalCellIndex(portalCells, worldX, worldY);
+            if (portalSlot >= 0)
+            {
+                slots[localIndex] = portalSlot + 1;
+                continue;
+            }
+
+            if (!TryResolveLowestPortalAccessNeighborForBuild(
+                    world,
+                    sector,
+                    costs,
+                    worldX,
+                    worldY,
+                    currentCost,
+                    out int directionIndex,
+                    out _))
+            {
+                throw new InvalidOperationException(
+                    $"BuildDeterministicPortalTargetSlotIndices failed: reachable cell has no descending neighbor cell=({worldX},{worldY}) sector={sector.SectorId} portal={portal.PortalId} cost={currentCost}.");
+            }
+
+            int nextX = worldX + NeighborOffsetX[directionIndex];
+            int nextY = worldY + NeighborOffsetY[directionIndex];
+            int nextIndex = GetSectorLocalIndex(sector, nextX, nextY);
+            if (costs[nextIndex] >= currentCost || slots[nextIndex] <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"BuildDeterministicPortalTargetSlotIndices failed: descending neighbor has no resolved slot cell=({worldX},{worldY}) next=({nextX},{nextY}) sector={sector.SectorId} portal={portal.PortalId}.");
+            }
+            slots[localIndex] = slots[nextIndex];
+        }
+
+        return slots;
+    }
+
+    private static int FindPortalCellIndex(Vector2Int[] portalCells, int worldX, int worldY)
+    {
+        for (int i = 0; i < portalCells.Length; i++)
+        {
+            if (portalCells[i].x == worldX && portalCells[i].y == worldY)
+                return i;
+        }
+
+        return -1;
+    }
+
+    private static int ResolveDeterministicAnalyticPortalTargetSlotIndex(
+        NavigationWorld world,
+        SectorData sector,
+        PortalData portal,
+        Vector2Int[] portalCells,
+        int worldX,
+        int worldY)
+    {
+        if (!IsInsideSector(sector, worldX, worldY) || !world.IsWalkable(worldX, worldY))
+            return -1;
+
+        long bestCost = long.MaxValue;
+        int bestSlot = -1;
+        for (int i = 0; i < portalCells.Length; i++)
+        {
+            Vector2Int portalCell = portalCells[i];
+            if (!IsInsideSector(sector, portalCell.x, portalCell.y) || !world.IsWalkable(portalCell.x, portalCell.y))
+                continue;
+
+            int dx = Math.Abs(portalCell.x - worldX);
+            int dy = Math.Abs(portalCell.y - worldY);
+            int diagonalSteps = Math.Min(dx, dy);
+            int cardinalSteps = Math.Max(dx, dy) - diagonalSteps;
+            long distanceCost = checked((long)diagonalSteps * 5793L + (long)cardinalSteps * DeterministicPortalCostScale);
+            long cost = AddDeterministicPortalCosts(
+                distanceCost,
+                ResolveDeterministicPortalCenterSeedCost(portal, portalCell));
+            if (cost >= bestCost)
+                continue;
+            bestCost = cost;
+            bestSlot = i;
+        }
+
+        if (bestSlot < 0)
+            return -1;
+        return bestSlot + 1;
+    }
+
+    private static bool TryResolveLowestPortalAccessNeighborForBuild(
+        NavigationWorld world,
+        SectorData sector,
+        long[] costs,
+        int worldX,
+        int worldY,
+        long currentCost,
+        out int bestDirectionIndex,
+        out long bestCost)
+    {
+        bestDirectionIndex = -1;
+        bestCost = currentCost;
+        for (int i = 0; i < NeighborOffsetX.Length; i++)
+        {
+            int nextX = worldX + NeighborOffsetX[i];
+            int nextY = worldY + NeighborOffsetY[i];
+            if (!IsInsideSector(sector, nextX, nextY)
+                || !CanTraverseNeighborCells(world, worldX, worldY, nextX, nextY)
+                || (NeighborOffsetX[i] != 0
+                    && NeighborOffsetY[i] != 0
+                    && !IsDiagonalPassable(world, worldX, worldY, nextX, nextY)))
+            {
+                continue;
+            }
+
+            long nextCost = costs[GetSectorLocalIndex(sector, nextX, nextY)];
+            if (nextCost >= bestCost)
+                continue;
+            bestCost = nextCost;
+            bestDirectionIndex = i;
+        }
+
+        return bestDirectionIndex >= 0;
+    }
+
     private static bool IsInsideSector(SectorData sector, int worldX, int worldY)
     {
         return worldX >= sector.StartX

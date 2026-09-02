@@ -1,5 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using MainThreadFrameProfiler = UnityGameFramework.Runtime.MainThreadFrameProfiler;
+using MainThreadPerfScope = UnityGameFramework.Runtime.MainThreadPerfScope;
 
 /// <summary>
 /// 小兵 AI Brain：基于 Steering Behaviors 的流体移动。
@@ -299,7 +301,18 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 TickFollow(self, dt);
                 break;
             case SoldierState.Combat:
-                TickCombat(self, dt);
+                {
+                    long combatStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                        ? System.Diagnostics.Stopwatch.GetTimestamp()
+                        : 0L;
+                    TickCombat(self, dt);
+                    if (MainThreadFrameProfiler.LoggingEnabled)
+                    {
+                        MainThreadFrameProfiler.Record(
+                            MainThreadPerfScope.EntityBrainCombat,
+                            System.Diagnostics.Stopwatch.GetTimestamp() - combatStartTicks);
+                    }
+                }
                 break;
             case SoldierState.Returning:
                 TickReturning(self, dt);
@@ -792,11 +805,31 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         }
         else
         {
-            if (!TryResolveCombatApproachPoint(
+            long approachStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                ? System.Diagnostics.Stopwatch.GetTimestamp()
+                : 0L;
+            bool approachResolved;
+            FixVector2 reachableApproachPoint;
+            string reachFailure;
+            FlowFieldCrowdMovementSystem.NavigationQueryFailureKind failureKind;
+            try
+            {
+                approachResolved = TryResolveCombatApproachPoint(
                     self,
-                    out FixVector2 reachableApproachPoint,
-                    out string reachFailure,
-                    out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind failureKind))
+                    out reachableApproachPoint,
+                    out reachFailure,
+                    out failureKind);
+            }
+            finally
+            {
+                if (MainThreadFrameProfiler.LoggingEnabled)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowCombatApproach,
+                        System.Diagnostics.Stopwatch.GetTimestamp() - approachStartTicks);
+                }
+            }
+            if (!approachResolved)
             {
                 if (failureKind == FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.PendingRuntimeUpdate)
                 {
@@ -876,6 +909,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         out string failureReason,
         out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind failureKind)
     {
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long preResolveStartTicks = profile
+            ? System.Diagnostics.Stopwatch.GetTimestamp()
+            : 0L;
         approachPoint = FixVector2.Zero;
         failureReason = string.Empty;
         failureKind = FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.None;
@@ -967,7 +1004,16 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             cachedFailureReason,
             cachedFailureKind);
 
-        if (!FlowFieldCrowdMovementSystem.TryResolveCombatApproachPointFixed(
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachPreResolve,
+                System.Diagnostics.Stopwatch.GetTimestamp() - preResolveStartTicks);
+        }
+        long coreStartTicks = profile
+            ? System.Diagnostics.Stopwatch.GetTimestamp()
+            : 0L;
+        bool coreResolved = FlowFieldCrowdMovementSystem.TryResolveCombatApproachPointFixed(
                 self,
                 enemy,
                 targetPoint,
@@ -979,7 +1025,14 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 requiredClearance,
                 out FixVector2 resolvedApproachPoint,
                 out failureReason,
-                out failureKind))
+                out failureKind);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachCore,
+                System.Diagnostics.Stopwatch.GetTimestamp() - coreStartTicks);
+        }
+        if (!coreResolved)
         {
             return false;
         }

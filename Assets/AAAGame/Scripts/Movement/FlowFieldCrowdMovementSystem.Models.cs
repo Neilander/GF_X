@@ -996,6 +996,9 @@ public static partial class FlowFieldCrowdMovementSystem
     private sealed class SectorPortalAccessEntry
     {
         public long[] DeterministicIntegration;
+        // Each cell stores the portal-side slot selected by the deterministic
+        // descending access-field gradient (encoded slot + 1; zero is unreachable).
+        public int[] DeterministicPortalTargetSlotIndices;
         public int LastUsedFrame;
         public bool IsAnalyticClearSector;
         public int SectorId;
@@ -1090,19 +1093,22 @@ public static partial class FlowFieldCrowdMovementSystem
         public readonly int SectorDirtyVersion;
         public readonly bool IsAnalyticClearSector;
         public long[] DeterministicIntegration;
+        public int[] DeterministicPortalTargetSlotIndices;
 
         public PendingSectorPortalAccess(
             int sectorId,
             int portalId,
             int sectorDirtyVersion,
             bool isAnalyticClearSector,
-            long[] deterministicIntegration = null)
+            long[] deterministicIntegration = null,
+            int[] deterministicPortalTargetSlotIndices = null)
         {
             SectorId = sectorId;
             PortalId = portalId;
             SectorDirtyVersion = sectorDirtyVersion;
             IsAnalyticClearSector = isAnalyticClearSector;
             DeterministicIntegration = deterministicIntegration;
+            DeterministicPortalTargetSlotIndices = deterministicPortalTargetSlotIndices;
         }
     }
 

@@ -166,41 +166,60 @@ public static class MAEntityLogicFrameSystem
         int phaseExecutionCount = 0;
         MAEntityLogicFramePhase completedPhase = default;
         LogicDamageEventService.BeginFrame(frame);
-        for (int phaseValue = 0; phaseValue < (int)MAEntityLogicFramePhase.Count; phaseValue++)
+        bool targetingSpatialIndexActive = false;
+        try
         {
-            MAEntityLogicFramePhase phase = (MAEntityLogicFramePhase)phaseValue;
-            long phaseStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
-            bool targetingPhase = phase == MAEntityLogicFramePhase.Targeting;
-            if (targetingPhase)
-                LogicFactionVisionService.BeginTargetingPhase();
-            try
+            for (int phaseValue = 0; phaseValue < (int)MAEntityLogicFramePhase.Count; phaseValue++)
             {
-                for (int entityIndex = 0; entityIndex < s_FrameEntities.Count; entityIndex++)
+                MAEntityLogicFramePhase phase = (MAEntityLogicFramePhase)phaseValue;
+                long phaseStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
+                if (phase == MAEntityLogicFramePhase.Brain)
                 {
-                    s_FrameEntities[entityIndex].ExecuteLogicFramePhase(phase, deltaTime);
-                    phaseExecutionCount++;
+                    LogicTargetingSpatialIndexService.BeginTargetingPhase();
+                    targetingSpatialIndexActive = true;
                 }
-            }
-            finally
-            {
+                bool targetingPhase = phase == MAEntityLogicFramePhase.Targeting;
                 if (targetingPhase)
-                    LogicFactionVisionService.EndTargetingPhase();
+                    LogicFactionVisionService.BeginTargetingVisibilityPhaseUsingActiveSpatialIndex();
+                try
+                {
+                    for (int entityIndex = 0; entityIndex < s_FrameEntities.Count; entityIndex++)
+                    {
+                        s_FrameEntities[entityIndex].ExecuteLogicFramePhase(phase, deltaTime);
+                        phaseExecutionCount++;
+                    }
+                }
+                finally
+                {
+                    if (targetingPhase)
+                        LogicFactionVisionService.EndTargetingVisibilityPhaseUsingActiveSpatialIndex();
+                }
+                if (phase == MAEntityLogicFramePhase.NavigationSync && GroupMoveManager.HasInstance)
+                    GroupMoveManager.Instance.CommitNavigationSyncSnapshot();
+                if (phase == MAEntityLogicFramePhase.Projectile)
+                    LogicProjectileService.AdvanceFrame(frame, deltaTime);
+                if (phase == MAEntityLogicFramePhase.DamageResolve)
+                    LogicDamageEventService.ApplyFrame(frame);
+                if (phase == MAEntityLogicFramePhase.MoveResolve)
+                    LogicAgentCollisionShadowService.SolveFrame(frame, snapshot, s_FrameEntities);
+                if (targetingPhase)
+                {
+                    LogicTargetingSpatialIndexService.EndTargetingPhase();
+                    targetingSpatialIndexActive = false;
+                }
+                if (profile)
+                {
+                    MainThreadFrameProfiler.Record(
+                        ResolvePhasePerfScope(phase),
+                        System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks);
+                }
+                completedPhase = phase;
             }
-            if (phase == MAEntityLogicFramePhase.NavigationSync && GroupMoveManager.HasInstance)
-                GroupMoveManager.Instance.CommitNavigationSyncSnapshot();
-            if (phase == MAEntityLogicFramePhase.Projectile)
-                LogicProjectileService.AdvanceFrame(frame, deltaTime);
-            if (phase == MAEntityLogicFramePhase.DamageResolve)
-                LogicDamageEventService.ApplyFrame(frame);
-            if (phase == MAEntityLogicFramePhase.MoveResolve)
-                LogicAgentCollisionShadowService.SolveFrame(frame, snapshot, s_FrameEntities);
-            if (profile)
-            {
-                MainThreadFrameProfiler.Record(
-                    ResolvePhasePerfScope(phase),
-                    System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks);
-            }
-            completedPhase = phase;
+        }
+        finally
+        {
+            if (targetingSpatialIndexActive)
+                LogicTargetingSpatialIndexService.EndTargetingPhase();
         }
 
         long completeStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;

@@ -1029,6 +1029,15 @@ public static partial class FlowFieldCrowdMovementSystem
         public int GoalProjectionIndexPublishes;
         public int NavigationConstraintCalls;
         public int NavigationConstraintBlocked;
+        public int CombatApproachCalls;
+        public int CombatApproachSlotCacheHits;
+        public int CombatApproachSlotCacheBuilds;
+        public int CombatApproachScoredCandidates;
+        public int CombatApproachSameIslandCandidates;
+        public int CombatApproachExpandedCalls;
+        public int CombatApproachExpandedCandidates;
+        public int CombatApproachSuccesses;
+        public int CombatApproachNoSlotFailures;
         public long FrameStartTicks;
         public long FrameTicks;
         public long PathStartPortalCheckTicks;

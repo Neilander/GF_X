@@ -1240,6 +1240,9 @@ public static partial class FlowFieldCrowdMovementSystem
         bool includeReservations,
         out int reservingAgentId)
     {
+        long occupancyStartTicks = MainThreadFrameProfiler.LoggingEnabled
+            ? Stopwatch.GetTimestamp()
+            : 0L;
         int frame = GetFrameCount();
         if (_navigationGoalReservationFrame != frame)
         {
@@ -1318,7 +1321,14 @@ public static partial class FlowFieldCrowdMovementSystem
             }
         }
 
-        return reservingAgentId != 0;
+        bool occupied = reservingAgentId != 0;
+        if (MainThreadFrameProfiler.LoggingEnabled)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachOccupancy,
+                Stopwatch.GetTimestamp() - occupancyStartTicks);
+        }
+        return occupied;
     }
 
     private static void EvaluateNavigationGoalOccupancyCandidate(

@@ -2121,6 +2121,9 @@ public static partial class FlowFieldCrowdMovementSystem
         out string failureReason,
         out NavigationQueryFailureKind failureKind)
     {
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        _perf.CombatApproachCalls++;
         approachPoint = targetPoint;
         failureReason = string.Empty;
         failureKind = NavigationQueryFailureKind.None;
@@ -2188,6 +2191,13 @@ public static partial class FlowFieldCrowdMovementSystem
             navigationClearance,
             ringCount,
             candidateCount);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachCoreSetup,
+                Stopwatch.GetTimestamp() - phaseStartTicks);
+        }
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         CombatTargetSlotEntry entry = GetOrBuildCombatTargetSlotEntry(
             key,
             targetPoint,
@@ -2199,13 +2209,26 @@ public static partial class FlowFieldCrowdMovementSystem
             targetX,
             targetY,
             navigationClearance);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachSlotCache,
+                Stopwatch.GetTimestamp() - phaseStartTicks);
+        }
         if (entry == null || entry.Points == null)
             throw new InvalidOperationException("TryResolveCombatApproachPoint failed: combat target slot entry is invalid.");
 
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         FixVector2 toTargetFromSelf = selfFramePosition - targetPointFixed;
         if (FixVector2.SqrMagnitude(toTargetFromSelf) <= Fix64.FromRaw(1))
             toTargetFromSelf = new FixVector2(Fix64.Zero, Fix64.One);
         toTargetFromSelf = toTargetFromSelf.GetNormalized();
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachDirectionSetup,
+                Stopwatch.GetTimestamp() - phaseStartTicks);
+        }
 
         int ignoredTargetId = ResolveAgentId(target);
         Fix64 bestScore = Fix64.FromRaw(long.MaxValue);
@@ -2214,10 +2237,13 @@ public static partial class FlowFieldCrowdMovementSystem
         int bestBlockingAgentId = 0;
         int occupiedSlotCount = 0;
         int availableSlotCount = 0;
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         for (int i = 0; i < entry.Points.Length; i++)
         {
+            _perf.CombatApproachScoredCandidates++;
             if (entry.IslandIds[i] != startIsland)
                 continue;
+            _perf.CombatApproachSameIslandCandidates++;
 
             FixVector2 candidate = entry.Points[i];
             bool occupied = IsNavigationGoalOccupiedByOtherFixed(
@@ -2245,6 +2271,12 @@ public static partial class FlowFieldCrowdMovementSystem
             bestIndex = i;
             bestOccupied = occupied;
             bestBlockingAgentId = blockingAgentId;
+        }
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachScore,
+                Stopwatch.GetTimestamp() - phaseStartTicks);
         }
 
         bool usedExpandedSlot = false;
@@ -2277,6 +2309,7 @@ public static partial class FlowFieldCrowdMovementSystem
             }
             else
             {
+                _perf.CombatApproachNoSlotFailures++;
                 failureReason =
                     $"no combat approach slot in start island target={target.CharacterKey} start=({startX},{startY}) startIsland={startIsland} " +
                     $"targetPoint={targetPoint} standOff=[{minimumStandOff:F3},{standOff:F3}] slots={entry.Points.Length} build={entry.BuildSummary} " +
@@ -2318,6 +2351,7 @@ public static partial class FlowFieldCrowdMovementSystem
             usedExpandedSlot = true;
         }
 
+        phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         RegisterNavigationGoalReservationFixed(selfId, approachPoint, requiredClearance);
         if (GameDebugSettings.IsEnabled(DebugCategory.Move)
             && GameDebugSettings.ShouldLogMovementForCharacter(self.CharacterKey)
@@ -2331,7 +2365,14 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"standOff=[{minimumStandOff:F3},{standOff:F3}] availableSlots={availableSlotCount} occupiedSlots={occupiedSlotCount} " +
                 $"expanded={usedExpandedSlot} expandedRing={expandedRing}");
         }
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachFinalize,
+                Stopwatch.GetTimestamp() - phaseStartTicks);
+        }
 
+        _perf.CombatApproachSuccesses++;
         return true;
     }
 
@@ -2386,6 +2427,10 @@ public static partial class FlowFieldCrowdMovementSystem
         out int selectedRing,
         out Fix64 selectedScore)
     {
+        _perf.CombatApproachExpandedCalls++;
+        long expandedStartTicks = MainThreadFrameProfiler.LoggingEnabled
+            ? Stopwatch.GetTimestamp()
+            : 0L;
         approachPoint = targetPoint;
         selectedRing = -1;
         selectedScore = Fix64.FromRaw(long.MaxValue);
@@ -2406,6 +2451,7 @@ public static partial class FlowFieldCrowdMovementSystem
             Fix64 radius = Fix64.Max(minimumRadius, standOff - (Fix64)ring * spacing);
             for (int i = 0; i < samplesPerRing; i++)
             {
+                _perf.CombatApproachExpandedCandidates++;
                 FixVector2 direction = ResolveCombatSampleDirection(i, samplesPerRing, halfStep: true);
                 FixVector2 candidate = targetPointFixed + direction * radius;
                 if (!_world.WorldToGridFixed(candidate, out int x, out int y))
@@ -2451,10 +2497,25 @@ public static partial class FlowFieldCrowdMovementSystem
             }
 
             if (selectedRing == ring)
+            {
+                if (MainThreadFrameProfiler.LoggingEnabled)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowCombatApproachExpanded,
+                        Stopwatch.GetTimestamp() - expandedStartTicks);
+                }
                 return true;
+            }
         }
 
-        return selectedRing >= 0;
+        bool resolved = selectedRing >= 0;
+        if (MainThreadFrameProfiler.LoggingEnabled)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachExpanded,
+                Stopwatch.GetTimestamp() - expandedStartTicks);
+        }
+        return resolved;
     }
 
     private static FixVector2 ResolveCombatSampleDirection(int index, int sampleCount, bool halfStep)

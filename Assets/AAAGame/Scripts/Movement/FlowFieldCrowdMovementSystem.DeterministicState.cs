@@ -1234,6 +1234,7 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(key.PortalId);
         hasher.Add(key.SectorDirtyVersion);
         AddLongArray(hasher, entry.DeterministicIntegration);
+        AddIntArray(hasher, entry.DeterministicPortalTargetSlotIndices);
         hasher.Add(entry.IsAnalyticClearSector);
         hasher.Add(entry.SectorId);
         hasher.Add(entry.PortalId);
@@ -2721,6 +2722,7 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(entry.SectorDirtyVersion);
             hasher.Add(entry.IsAnalyticClearSector);
             AddLongArray(hasher, entry.DeterministicIntegration);
+            AddIntArray(hasher, entry.DeterministicPortalTargetSlotIndices);
         }
     }
 
@@ -4197,6 +4199,7 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(key.SectorDirtyVersion);
             SectorPortalAccessEntry entry = SectorPortalAccessCache[key];
             AddLongArray(hasher, entry.DeterministicIntegration);
+            AddIntArray(hasher, entry.DeterministicPortalTargetSlotIndices);
             hasher.Add(entry.LastUsedFrame);
             hasher.Add(entry.IsAnalyticClearSector);
         }

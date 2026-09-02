@@ -1669,13 +1669,20 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"cell=({worldX},{worldY}), portal={portal.PortalId}, sector={key.SectorId}.");
         }
 
-        int recommendedPortalSlotIndex = ResolvePendingPortalTargetSlotIndex(
-            sector,
-            access,
-            currentCells,
-            worldX,
-            worldY,
-            portalAccessCost);
+        int localIndex = GetSectorLocalIndex(sector, worldX, worldY);
+        if (access.DeterministicPortalTargetSlotIndices == null
+            || access.DeterministicPortalTargetSlotIndices.Length != sector.Width * sector.Height)
+        {
+            throw new InvalidOperationException(
+                $"ResolvePendingPortalVelocityFixed failed: portal target slot field is invalid sector={sector.SectorId} portal={portal.PortalId}.");
+        }
+        int encodedPortalSlot = access.DeterministicPortalTargetSlotIndices[localIndex];
+        if (encodedPortalSlot <= 0 || encodedPortalSlot > currentCells.Length)
+        {
+            throw new InvalidOperationException(
+                $"ResolvePendingPortalVelocityFixed failed: portal target slot field is unreachable or invalid cell=({worldX},{worldY}) slot={encodedPortalSlot} sector={sector.SectorId} portal={portal.PortalId}.");
+        }
+        int recommendedPortalSlotIndex = encodedPortalSlot - 1;
         int previousWorldVersion = agent.NavState.PortalTraversalWorldVersion;
         int previousSectorId = agent.NavState.PortalTraversalSectorId;
         int previousPortalId = agent.NavState.PortalTraversalId;
@@ -1693,6 +1700,14 @@ public static partial class FlowFieldCrowdMovementSystem
             $"previousTraversal=({previousWorldVersion},{previousSectorId},{previousPortalId},{previousSlotIndex},committed={previousCommitted}) " +
             $"currentCells={FormatGoalCells(currentCells)} oppositeCells={FormatGoalCells(oppositeCells)} " +
             $"selectedOpposite=({selectedOppositeCell.x},{selectedOppositeCell.y}) cell=({worldX},{worldY})";
+        if (access.IsAnalyticClearSector)
+        {
+            FixVector2 portalCellCenter = _world.GridToWorldCenterFixed(
+                currentCells[portalSlotIndex].x,
+                currentCells[portalSlotIndex].y);
+            portalTraversalDiagnostic += $" analyticTargetRaw=({portalCellCenter.x.RawValue},{portalCellCenter.y.RawValue})";
+            return ResolveFixedVelocityToTargetWithinTick(position, portalCellCenter, maxSpeed);
+        }
         if (!TryResolveLowestPortalAccessNeighbor(
                 sector,
                 access,
@@ -2624,49 +2639,6 @@ public static partial class FlowFieldCrowdMovementSystem
         nav.PortalTraversalSlotIndex = slotIndex;
         nav.PortalTraversalHasCommittedTileSlot = hasCommittedTileSlot;
         return slotIndex;
-    }
-
-    private static int ResolvePendingPortalTargetSlotIndex(
-        SectorData sector,
-        SectorPortalAccessEntry access,
-        Vector2Int[] portalCells,
-        int startX,
-        int startY,
-        long startCost)
-    {
-        int worldX = startX;
-        int worldY = startY;
-        long currentCost = startCost;
-        int guard = sector.Width * sector.Height + 1;
-        while (guard-- > 0)
-        {
-            for (int i = 0; i < portalCells.Length; i++)
-            {
-                if (portalCells[i].x == worldX && portalCells[i].y == worldY)
-                    return i;
-            }
-
-            if (!TryResolveLowestPortalAccessNeighbor(
-                    sector,
-                    access,
-                    worldX,
-                    worldY,
-                    currentCost,
-                    out int directionIndex,
-                    out long nextCost))
-            {
-                throw new InvalidOperationException(
-                    $"ResolvePendingPortalTargetSlotIndex failed: portal access field has no descending neighbor " +
-                    $"cell=({worldX},{worldY}), cost={currentCost}, portal={access.PortalId}, sector={sector.SectorId}.");
-            }
-
-            worldX += NeighborOffsetX[directionIndex];
-            worldY += NeighborOffsetY[directionIndex];
-            currentCost = nextCost;
-        }
-
-        throw new InvalidOperationException(
-            $"ResolvePendingPortalTargetSlotIndex failed: portal access path contains a cycle portal={access.PortalId}, sector={sector.SectorId}.");
     }
 
     private static bool TryResolveLowestPortalAccessNeighbor(

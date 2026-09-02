@@ -146,9 +146,15 @@ public static partial class FlowFieldCrowdMovementSystem
                     throw new InvalidOperationException($"RebuildDeterministicPortalTransitionCosts failed: access entry missing sector={sector.SectorId} portal={portalId}.");
                 }
 
+                PortalData portal = GetPortalById(world, portalId);
                 entry.DeterministicIntegration = entry.IsAnalyticClearSector
                     ? null
-                    : BuildDeterministicPortalAccessIntegration(world, sector, GetPortalById(world, portalId));
+                    : BuildDeterministicPortalAccessIntegration(world, sector, portal);
+                entry.DeterministicPortalTargetSlotIndices = BuildDeterministicPortalTargetSlotIndices(
+                    world,
+                    sector,
+                    portal,
+                    entry.DeterministicIntegration);
             }
         }
 
@@ -212,9 +218,15 @@ public static partial class FlowFieldCrowdMovementSystem
                 }
 
                 ReturnPortalAccessIntegrationArray(entry.DeterministicIntegration);
+                PortalData portal = GetPortalById(world, portalId);
                 entry.DeterministicIntegration = entry.IsAnalyticClearSector
                     ? null
-                    : BuildDeterministicPortalAccessIntegration(world, sector, GetPortalById(world, portalId));
+                    : BuildDeterministicPortalAccessIntegration(world, sector, portal);
+                entry.DeterministicPortalTargetSlotIndices = BuildDeterministicPortalTargetSlotIndices(
+                    world,
+                    sector,
+                    portal,
+                    entry.DeterministicIntegration);
                 RefreshSectorPortalAccessAuthorityContentHash(key, entry);
             }
         }
@@ -287,20 +299,26 @@ public static partial class FlowFieldCrowdMovementSystem
     }
 
     private static PendingSectorPortalAccess AddPendingAnalyticSectorPortalAccess(
+        NavigationWorld world,
         List<PendingSectorPortalAccess> pendingEntries,
         SectorData sector,
         int portalId)
     {
+        if (world == null)
+            throw new InvalidOperationException("AddPendingAnalyticSectorPortalAccess failed: world is null.");
         if (pendingEntries == null)
             throw new InvalidOperationException("AddPendingAnalyticSectorPortalAccess failed: pendingEntries is null.");
         if (sector == null)
             throw new InvalidOperationException("AddPendingAnalyticSectorPortalAccess failed: sector is null.");
 
+        PortalData portal = GetPortalById(world, portalId);
         var pending = new PendingSectorPortalAccess(
             sector.SectorId,
             portalId,
             sector.DirtyVersion,
-            true);
+            true,
+            null,
+            BuildDeterministicPortalTargetSlotIndices(world, sector, portal, null));
         pendingEntries.Add(pending);
         return pending;
     }
@@ -318,16 +336,16 @@ public static partial class FlowFieldCrowdMovementSystem
         if (sector == null)
             throw new InvalidOperationException("AddPendingPrebuiltDeterministicSectorPortalAccess failed: sector is null.");
 
-        long[] integration = BuildDeterministicPortalAccessIntegration(
-            world,
-            sector,
-            GetPortalById(world, portalId));
+        PortalData portal = GetPortalById(world, portalId);
+        long[] integration = BuildDeterministicPortalAccessIntegration(world, sector, portal);
+        int[] targetSlots = BuildDeterministicPortalTargetSlotIndices(world, sector, portal, integration);
         var pending = new PendingSectorPortalAccess(
             sector.SectorId,
             portalId,
             sector.DirtyVersion,
             false,
-            integration);
+            integration,
+            targetSlots);
         pendingEntries.Add(pending);
         return pending;
     }
@@ -348,6 +366,7 @@ public static partial class FlowFieldCrowdMovementSystem
         var entry = new SectorPortalAccessEntry
         {
             DeterministicIntegration = pending.DeterministicIntegration,
+            DeterministicPortalTargetSlotIndices = pending.DeterministicPortalTargetSlotIndices,
             IsAnalyticClearSector = pending.IsAnalyticClearSector,
             SectorId = pending.SectorId,
             PortalId = pending.PortalId,
@@ -394,6 +413,7 @@ public static partial class FlowFieldCrowdMovementSystem
             var entry = new SectorPortalAccessEntry
             {
                 DeterministicIntegration = pending.DeterministicIntegration,
+                DeterministicPortalTargetSlotIndices = pending.DeterministicPortalTargetSlotIndices,
                 IsAnalyticClearSector = pending.IsAnalyticClearSector,
                 SectorId = pending.SectorId,
                 PortalId = pending.PortalId,
@@ -404,6 +424,7 @@ public static partial class FlowFieldCrowdMovementSystem
             if (entriesAreFinalized)
                 RefreshSectorPortalAccessAuthorityContentHash(key, entry);
             pending.DeterministicIntegration = null;
+            pending.DeterministicPortalTargetSlotIndices = null;
         }
 
         TrimSectorPortalAccessCache();
@@ -443,6 +464,11 @@ public static partial class FlowFieldCrowdMovementSystem
             {
                 throw new InvalidOperationException(
                     $"ValidatePendingSectorPortalAccessCoverage failed: deterministic integration is missing stage={stage} sector={pending.SectorId} portal={pending.PortalId}.");
+            }
+            if (pending.DeterministicPortalTargetSlotIndices == null)
+            {
+                throw new InvalidOperationException(
+                    $"ValidatePendingSectorPortalAccessCoverage failed: portal target slot field is missing stage={stage} sector={pending.SectorId} portal={pending.PortalId}.");
             }
 
             var key = new SectorPortalAccessKey(world.Version, pending.SectorId, pending.PortalId, pending.SectorDirtyVersion);
@@ -514,6 +540,11 @@ public static partial class FlowFieldCrowdMovementSystem
         return new SectorPortalAccessEntry
         {
             IsAnalyticClearSector = CanUseAnalyticPortalAccess(world, sector, portalId),
+            DeterministicPortalTargetSlotIndices = BuildDeterministicPortalTargetSlotIndices(
+                world,
+                sector,
+                portal,
+                null),
             SectorId = sectorId,
             PortalId = portalId,
             SectorDirtyVersion = sector.DirtyVersion,
@@ -526,9 +557,12 @@ public static partial class FlowFieldCrowdMovementSystem
         if (entry == null)
             return false;
         if (entry.IsAnalyticClearSector)
-            return entry.SectorId >= 0 && entry.PortalId >= 0;
+            return entry.SectorId >= 0
+                   && entry.PortalId >= 0
+                   && entry.DeterministicPortalTargetSlotIndices != null;
 
-        return entry.DeterministicIntegration != null;
+        return entry.DeterministicIntegration != null
+               && entry.DeterministicPortalTargetSlotIndices != null;
     }
 
     private static void ValidateSectorPortalAccessCoverage(NavigationWorld world, HashSet<int> sectorIds, string stage)

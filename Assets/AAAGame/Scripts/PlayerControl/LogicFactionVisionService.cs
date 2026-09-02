@@ -80,6 +80,15 @@ public static class LogicFactionVisionService
         if (s_TargetingPhaseCacheActive)
             throw new InvalidOperationException("Faction visibility targeting-phase cache is already active.");
         LogicTargetingSpatialIndexService.BeginTargetingPhase();
+        BeginTargetingVisibilityPhaseUsingActiveSpatialIndex();
+    }
+
+    public static void BeginTargetingVisibilityPhaseUsingActiveSpatialIndex()
+    {
+        if (s_TargetingPhaseCacheActive)
+            throw new InvalidOperationException("Faction visibility targeting-phase cache is already active.");
+        if (!LogicTargetingSpatialIndexService.IsActive)
+            throw new InvalidOperationException("Faction visibility targeting phase requires an active spatial index.");
         s_PlayerVisibilityCache.Clear();
         s_EnemyVisibilityCache.Clear();
         s_TargetingPhaseCacheActive = true;
@@ -87,9 +96,16 @@ public static class LogicFactionVisionService
 
     public static void EndTargetingPhase()
     {
+        EndTargetingVisibilityPhaseUsingActiveSpatialIndex();
+        LogicTargetingSpatialIndexService.EndTargetingPhase();
+    }
+
+    public static void EndTargetingVisibilityPhaseUsingActiveSpatialIndex()
+    {
         if (!s_TargetingPhaseCacheActive)
             throw new InvalidOperationException("Faction visibility targeting-phase cache is not active.");
-        LogicTargetingSpatialIndexService.EndTargetingPhase();
+        if (!LogicTargetingSpatialIndexService.IsActive)
+            throw new InvalidOperationException("Faction visibility targeting phase lost its spatial index.");
         s_TargetingPhaseCacheActive = false;
     }
 

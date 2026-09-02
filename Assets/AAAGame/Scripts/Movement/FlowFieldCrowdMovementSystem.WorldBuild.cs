@@ -450,7 +450,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     job.PortalGraphAnalyticNonClearRejectCount++;
 
                 if (analytic)
-                    AddPendingAnalyticSectorPortalAccess(job.PendingPortalAccessEntries, sector, fromPortalId);
+                    AddPendingAnalyticSectorPortalAccess(world, job.PendingPortalAccessEntries, sector, fromPortalId);
                 else
                     AddPendingPrebuiltDeterministicSectorPortalAccess(
                         world,
