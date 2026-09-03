@@ -965,6 +965,7 @@ public static partial class FlowFieldCrowdMovementSystem
                $"portalNodes={_perf.PathPortalGraphNodeExpansions},transitionScans={_perf.PathPortalGraphOutgoingTransitionScans}," +
                $"transitionHits={_perf.PathPortalGraphOutgoingTransitionHits},stableInitial={_perf.StableGoalRefreshInitial}," +
                $"stableCell={_perf.StableGoalRefreshCellDelta},policyQueries={_perf.SectorCorridorPolicyQueries}," +
+               $"movingAnchorBatchHits={_perf.MovingTargetAnchorBatchHits},movingAnchorBatchMisses={_perf.MovingTargetAnchorBatchMisses}," +
                $"policyRebinds={_perf.SectorCorridorExactGoalRebinds},policyReplacements={_perf.SectorCorridorExactGoalReplacements}," +
                $"policyMs={TicksToMs(_perf.SectorCorridorPolicyTicks):F3},policyCount={SectorCorridorPolicies.Count}," +
                $"startConnectorHits={_perf.HierarchyStartConnectorCacheHits},startConnectorMisses={_perf.HierarchyStartConnectorCacheMisses}," +

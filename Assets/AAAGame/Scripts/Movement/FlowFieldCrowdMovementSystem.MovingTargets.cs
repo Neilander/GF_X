@@ -14,6 +14,9 @@ public static partial class FlowFieldCrowdMovementSystem
         AgentRuntimeData agent,
         IEntityContext self,
         FixVector2 rawGoalPosition,
+        int startX,
+        int startY,
+        int startIsland,
         out int goalX,
         out int goalY,
         out FixVector2 stableGoalPosition,
@@ -48,7 +51,7 @@ public static partial class FlowFieldCrowdMovementSystem
             bool hasExplicitTargetGoal =
                 FixVector2.SqrMagnitude(targetOffset) > targetMatchDistance * targetMatchDistance;
             useRawGoal = hasExplicitTargetGoal
-                         && ShouldUseExactMovingTargetGoalFixed(self, rawGoalPosition);
+                         && ShouldUseExactMovingTargetGoalFixed(rawGoalPosition, startX, startY);
         }
         if (profileStableGoal)
             MainThreadFrameProfiler.Record(
@@ -95,12 +98,9 @@ public static partial class FlowFieldCrowdMovementSystem
         long anchorLookupStartTicks = profileAnchorLookup ? Stopwatch.GetTimestamp() : 0L;
         int anchorRawGoalX = 0;
         int anchorRawGoalY = 0;
-        int startX = 0;
-        int startY = 0;
-        int startIsland = -1;
         bool anchorInputResolved = _world.WorldToGridFixed(currentTargetFramePosition, out anchorRawGoalX, out anchorRawGoalY)
                                    && _world.TryGetSectorId(anchorRawGoalX, anchorRawGoalY, out _)
-                                   && TryResolveStartCellForReachabilityFixed(self, out startX, out startY, out startIsland);
+                                   && startIsland >= 0;
         if (profileAnchorLookup)
         {
             MainThreadFrameProfiler.Record(
@@ -118,71 +118,138 @@ public static partial class FlowFieldCrowdMovementSystem
         int targetId = ResolveAgentId(currentTarget);
         int agentTypeId = ResolvePreferredAgentTypeId(agent.AgentTypeId);
         MovingTargetAnchorKey anchorKey = new MovingTargetAnchorKey(targetId, agentTypeId, startIsland);
-        if (!MovingTargetAnchors.TryGetValue(anchorKey, out MovingTargetAnchor anchor))
+        MovingTargetAnchor anchor;
+        MovingTargetAnchorBatchResolution batchResolution = null;
+        bool navigationSyncBatchActive = _collectedNavigationSyncFrame == GetFrameCount()
+                                         && CollectedNavigationSyncRequests.Count > 0;
+        bool batchResolutionHit = navigationSyncBatchActive
+            && MovingTargetAnchorBatchResolutions.TryGetValue(
+                anchorKey,
+                out batchResolution)
+            && batchResolution.RawGoalX == anchorRawGoalX
+            && batchResolution.RawGoalY == anchorRawGoalY
+            && batchResolution.WorldVersion == _world.Version;
+        if (batchResolutionHit)
+            _perf.MovingTargetAnchorBatchHits++;
+        else
+            _perf.MovingTargetAnchorBatchMisses++;
+        if (batchResolutionHit)
         {
-            anchor = new MovingTargetAnchor { Key = anchorKey };
-            MovingTargetAnchors.Add(anchorKey, anchor);
-        }
-        anchor.LastUsedFrame = GetFrameCount();
-        if (profileStableGoal)
-            MainThreadFrameProfiler.Record(
-                MainThreadPerfScope.FlowMovingTargetPolicyAnchorDictionary,
-                Stopwatch.GetTimestamp() - anchorDictionaryStartTicks);
-
-        long anchorGoalStateStartTicks = profileStableGoal ? Stopwatch.GetTimestamp() : 0L;
-        bool hasStableGoal = anchor.ActiveGoalX >= 0
-                             && anchor.ActiveGoalY >= 0
-                             && anchor.ActiveWorldVersion == _world.Version;
-        bool hasCurrentProjection = anchor.ReachabilityWorldVersion == _world.Version
-                                    && anchor.ReachabilityRawGoalX == anchorRawGoalX
-                                    && anchor.ReachabilityRawGoalY == anchorRawGoalY;
-        if (!hasCurrentProjection)
-        {
-            int rawGoalIsland = _world.IsWalkable(anchorRawGoalX, anchorRawGoalY)
-                ? ResolveIslandId(_world, anchorRawGoalX, anchorRawGoalY)
-                : -1;
-            if (rawGoalIsland == startIsland)
+            anchor = batchResolution.Anchor
+                     ?? throw new InvalidOperationException(
+                         $"Moving-target batch resolution has no anchor key=({anchorKey.TargetId},{anchorKey.AgentTypeId},{anchorKey.IslandId}).");
+            anchor.LastUsedFrame = GetFrameCount();
+            if (profileStableGoal)
             {
-                CancelMovingTargetProjectionTask(anchor);
-                bool profileAnchorPublish = MainThreadFrameProfiler.LoggingEnabled;
-                long anchorPublishStartTicks = profileAnchorPublish ? Stopwatch.GetTimestamp() : 0L;
-                PublishDirectMovingTargetProjection(
-                    anchor,
-                    _world,
-                    anchorRawGoalX,
-                    anchorRawGoalY,
-                    currentTargetFramePosition);
-                if (profileAnchorPublish)
-                {
-                    MainThreadFrameProfiler.Record(
-                        MainThreadPerfScope.FlowMovingTargetPolicyAnchorPublish,
-                        Stopwatch.GetTimestamp() - anchorPublishStartTicks);
-                }
-                hasStableGoal = true;
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyAnchorDictionary,
+                    Stopwatch.GetTimestamp() - anchorDictionaryStartTicks);
             }
-            else
+            if (batchResolution.PendingProjection)
             {
-                RequestMovingTargetAnchorProjection(
-                    anchor,
-                    _world,
-                    anchorRawGoalX,
-                    anchorRawGoalY,
-                    currentTargetFramePosition);
                 pendingProjection = true;
                 return false;
             }
 
-            _perf.StableGoalRefreshCellDelta++;
-        }
-        else
-        {
             _perf.StableGoalReuse++;
             _perf.StableGoalReachabilityReuse++;
+            if (profileStableGoal)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyAnchorGoalState,
+                    Stopwatch.GetTimestamp() - anchorStateStartTicks);
+            }
         }
-        if (profileStableGoal)
-            MainThreadFrameProfiler.Record(
-                MainThreadPerfScope.FlowMovingTargetPolicyAnchorGoalState,
-                Stopwatch.GetTimestamp() - anchorGoalStateStartTicks);
+        else if (!MovingTargetAnchors.TryGetValue(anchorKey, out anchor))
+        {
+            anchor = new MovingTargetAnchor { Key = anchorKey };
+            MovingTargetAnchors.Add(anchorKey, anchor);
+        }
+        if (!batchResolutionHit)
+        {
+            anchor.LastUsedFrame = GetFrameCount();
+            if (profileStableGoal)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyAnchorDictionary,
+                    Stopwatch.GetTimestamp() - anchorDictionaryStartTicks);
+            }
+
+            long anchorGoalStateStartTicks = profileStableGoal ? Stopwatch.GetTimestamp() : 0L;
+            bool hasCurrentProjection = anchor.ReachabilityWorldVersion == _world.Version
+                                        && anchor.ReachabilityRawGoalX == anchorRawGoalX
+                                        && anchor.ReachabilityRawGoalY == anchorRawGoalY;
+            if (!hasCurrentProjection)
+            {
+                int rawGoalIsland = _world.IsWalkable(anchorRawGoalX, anchorRawGoalY)
+                    ? ResolveIslandId(_world, anchorRawGoalX, anchorRawGoalY)
+                    : -1;
+                if (rawGoalIsland == startIsland)
+                {
+                    CancelMovingTargetProjectionTask(anchor);
+                    bool profileAnchorPublish = MainThreadFrameProfiler.LoggingEnabled;
+                    long anchorPublishStartTicks = profileAnchorPublish ? Stopwatch.GetTimestamp() : 0L;
+                    PublishDirectMovingTargetProjection(
+                        anchor,
+                        _world,
+                        anchorRawGoalX,
+                        anchorRawGoalY,
+                        currentTargetFramePosition);
+                    if (profileAnchorPublish)
+                    {
+                        MainThreadFrameProfiler.Record(
+                            MainThreadPerfScope.FlowMovingTargetPolicyAnchorPublish,
+                            Stopwatch.GetTimestamp() - anchorPublishStartTicks);
+                    }
+                }
+                else
+                {
+                    RequestMovingTargetAnchorProjection(
+                        anchor,
+                        _world,
+                        anchorRawGoalX,
+                        anchorRawGoalY,
+                        currentTargetFramePosition);
+                    if (navigationSyncBatchActive)
+                    {
+                        MovingTargetAnchorBatchResolutions[anchorKey] = new MovingTargetAnchorBatchResolution
+                        {
+                            Anchor = anchor,
+                            RawGoalX = anchorRawGoalX,
+                            RawGoalY = anchorRawGoalY,
+                            WorldVersion = _world.Version,
+                            PendingProjection = true
+                        };
+                    }
+                    pendingProjection = true;
+                    return false;
+                }
+
+                _perf.StableGoalRefreshCellDelta++;
+            }
+            else
+            {
+                _perf.StableGoalReuse++;
+                _perf.StableGoalReachabilityReuse++;
+            }
+            if (navigationSyncBatchActive)
+            {
+                MovingTargetAnchorBatchResolutions[anchorKey] = new MovingTargetAnchorBatchResolution
+                {
+                    Anchor = anchor,
+                    RawGoalX = anchorRawGoalX,
+                    RawGoalY = anchorRawGoalY,
+                    WorldVersion = _world.Version,
+                    PendingProjection = false
+                };
+            }
+            if (profileStableGoal)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyAnchorGoalState,
+                    Stopwatch.GetTimestamp() - anchorGoalStateStartTicks);
+            }
+        }
 
         long anchorNavStateStartTicks = profileStableGoal ? Stopwatch.GetTimestamp() : 0L;
         agent.NavState.StableGoalTargetId = targetId;
@@ -241,12 +308,12 @@ public static partial class FlowFieldCrowdMovementSystem
     }
 
     private static bool ShouldUseExactMovingTargetGoalFixed(
-        IEntityContext self,
-        FixVector2 rawGoalPosition)
+        FixVector2 rawGoalPosition,
+        int startX,
+        int startY)
     {
         if (!_world.WorldToGridFixed(rawGoalPosition, out int rawGoalX, out int rawGoalY)
-            || !_world.TryGetSectorId(rawGoalX, rawGoalY, out _)
-            || !TryResolveStartCellForReachabilityFixed(self, out int startX, out int startY, out _))
+            || !_world.TryGetSectorId(rawGoalX, rawGoalY, out _))
         {
             return true;
         }

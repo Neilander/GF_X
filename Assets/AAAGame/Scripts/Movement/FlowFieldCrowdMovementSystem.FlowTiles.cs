@@ -988,6 +988,8 @@ public static partial class FlowFieldCrowdMovementSystem
         public int StableGoalReuse;
         public int StableGoalRefreshInitial;
         public int StableGoalRefreshCellDelta;
+        public int MovingTargetAnchorBatchHits;
+        public int MovingTargetAnchorBatchMisses;
         public int SectorCorridorPolicyAuthorityHashRefreshes;
         public int SectorCorridorGoalConnectorBuilds;
         public int SectorCorridorExactGoalRebinds;

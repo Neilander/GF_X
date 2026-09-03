@@ -409,20 +409,7 @@ namespace UnityGameFramework.Runtime
         FlowCombatApproachOccupancyBucketIncremental = 398,
         FlowCombatApproachOccupancyPrepareInitialization = 399,
         FlowCombatApproachOccupancyPrepareCacheState = 400,
-        FlowNavigationPathEligibilityPendingSet = 401,
-        FlowNavigationPathEligibilityEarlierGraphOwner = 402,
-        FlowNavigationPathEligibilityOtherSource = 403,
-        FlowNavigationGoalConnectorStateLookup = 404,
-        FlowNavigationGoalConnectorCollectionBatch = 405,
-        FlowNavigationGoalConnectorSearchCreate = 406,
-        FlowNavigationGoalConnectorPublish = 407,
-        FlowNavigationRestrictedSearchTargetInitialization = 408,
-        FlowNavigationRestrictedSearchSourceInitialization = 409,
-        FlowNavigationRestrictedSearchGraphPreparation = 410,
-        FlowNavigationRestrictedSearchGraphStateApply = 411,
-        FlowNavigationRestrictedSearchStateConstruction = 412,
-        FlowNavigationRestrictedSearchObjectConstruction = 413,
-        Count = 414
+        Count = 401
     }
 
     public static class MainThreadFrameProfiler

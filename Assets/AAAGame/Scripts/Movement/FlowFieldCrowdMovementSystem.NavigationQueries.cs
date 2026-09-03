@@ -3005,6 +3005,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         long demandBatchStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         long sectionStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        MovingTargetAnchorBatchResolutions.Clear();
         CollectedNavigationSyncRequests.Sort(CompareNavigationSyncRequests);
         if (profile)
         {
@@ -3060,6 +3061,8 @@ public static partial class FlowFieldCrowdMovementSystem
                     elapsedTicks);
             }
         }
+
+        MovingTargetAnchorBatchResolutions.Clear();
 
         sectionStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         PruneInactiveNavigationPathRequestSources(frame);

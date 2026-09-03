@@ -103,6 +103,8 @@ public static partial class FlowFieldCrowdMovementSystem
     private static bool _staticCollisionObstacleSnapshotDirty = true;
     private static readonly Dictionary<int, CostStamp> CostStamps = new Dictionary<int, CostStamp>();
     private static readonly Dictionary<MovingTargetAnchorKey, MovingTargetAnchor> MovingTargetAnchors = new Dictionary<MovingTargetAnchorKey, MovingTargetAnchor>(64);
+    private static readonly Dictionary<MovingTargetAnchorKey, MovingTargetAnchorBatchResolution> MovingTargetAnchorBatchResolutions =
+        new Dictionary<MovingTargetAnchorKey, MovingTargetAnchorBatchResolution>(64);
     private static readonly LinkedList<MovingTargetAnchorKey> MovingTargetProjectionQueue =
         new LinkedList<MovingTargetAnchorKey>();
     private static readonly HashSet<MovingTargetAnchorKey> PendingMovingTargetProjectionKeys =
@@ -302,6 +304,7 @@ public static partial class FlowFieldCrowdMovementSystem
         _staticCollisionObstacleSnapshotDirty = true;
         ClearCostStamps();
         MovingTargetAnchors.Clear();
+        MovingTargetAnchorBatchResolutions.Clear();
         MovingTargetProjectionQueue.Clear();
         PendingMovingTargetProjectionKeys.Clear();
         CombatTargetSlotCache.Clear();

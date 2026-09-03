@@ -2255,6 +2255,15 @@ public static partial class FlowFieldCrowdMovementSystem
         public List<NavigationGoalOccupancyCandidate> OccupancyCandidatesShared;
     }
 
+    private sealed class MovingTargetAnchorBatchResolution
+    {
+        public MovingTargetAnchor Anchor;
+        public int RawGoalX;
+        public int RawGoalY;
+        public int WorldVersion;
+        public bool PendingProjection;
+    }
+
     private readonly struct NavigationGoalOccupancyCandidate
     {
         public readonly AgentRuntimeData Agent;

@@ -539,6 +539,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 agent,
                 request.Source,
                 request.InputGoalPosition,
+                startX,
+                startY,
+                sourceIslandId,
                 out int goalX,
                 out int goalY,
                 out FixVector2 stableGoal,
@@ -1152,38 +1155,20 @@ public static partial class FlowFieldCrowdMovementSystem
                 long eligibilityStartTicks = MainThreadFrameProfiler.LoggingEnabled
                     ? Stopwatch.GetTimestamp()
                     : 0L;
-                long eligibilityPartStartTicks = MainThreadFrameProfiler.LoggingEnabled
-                    ? Stopwatch.GetTimestamp()
-                    : 0L;
                 bool blockedByPendingSlice = NavigationPathRequestsBlockedByPendingSlice.Contains(job);
-                if (MainThreadFrameProfiler.LoggingEnabled)
-                    MainThreadFrameProfiler.Record(
-                        MainThreadPerfScope.FlowNavigationPathEligibilityPendingSet,
-                        Stopwatch.GetTimestamp() - eligibilityPartStartTicks);
                 bool blockedByEarlierOwner = false;
                 bool blockedByOtherSource = false;
+                bool blockedBySharedGoalConnector = false;
                 if (!blockedByPendingSlice)
                 {
-                    eligibilityPartStartTicks = MainThreadFrameProfiler.LoggingEnabled
-                        ? Stopwatch.GetTimestamp()
-                        : 0L;
                     blockedByEarlierOwner = IsNavigationPathRequestBlockedByEarlierGraphOwner(job);
-                    if (MainThreadFrameProfiler.LoggingEnabled)
-                        MainThreadFrameProfiler.Record(
-                            MainThreadPerfScope.FlowNavigationPathEligibilityEarlierGraphOwner,
-                            Stopwatch.GetTimestamp() - eligibilityPartStartTicks);
                     if (!blockedByEarlierOwner)
                     {
-                        eligibilityPartStartTicks = MainThreadFrameProfiler.LoggingEnabled
-                            ? Stopwatch.GetTimestamp()
-                            : 0L;
                         blockedByOtherSource = IsNavigationPathRequestBlockedByOtherSourcePendingSlice(job);
-                        if (MainThreadFrameProfiler.LoggingEnabled)
-                            MainThreadFrameProfiler.Record(
-                                MainThreadPerfScope.FlowNavigationPathEligibilityOtherSource,
-                                Stopwatch.GetTimestamp() - eligibilityPartStartTicks);
                     }
                 }
+                if (!blockedByPendingSlice && !blockedByEarlierOwner && !blockedByOtherSource)
+                    blockedBySharedGoalConnector = IsNavigationPathSourceBlockedBySharedGoalConnector(job);
                 if (MainThreadFrameProfiler.LoggingEnabled)
                     eligibilityTicks += Stopwatch.GetTimestamp() - eligibilityStartTicks;
                 if (blockedByPendingSlice)
@@ -1197,6 +1182,11 @@ public static partial class FlowFieldCrowdMovementSystem
                     continue;
                 }
                 if (blockedByOtherSource)
+                {
+                    node = next;
+                    continue;
+                }
+                if (blockedBySharedGoalConnector)
                 {
                     node = next;
                     continue;
@@ -1530,6 +1520,33 @@ public static partial class FlowFieldCrowdMovementSystem
                 return true;
         }
         return false;
+    }
+
+    private static bool IsNavigationPathSourceBlockedBySharedGoalConnector(
+        NavigationPathRequestJob job)
+    {
+        if (job == null || job.Complete || job.SourceCursor >= job.Sources.Count)
+            return false;
+
+        NavigationPathSourceJob source = job.Sources[job.SourceCursor]
+            ?? throw new InvalidOperationException("Navigation path request contains a null source job.");
+        if (source.Stage != NavigationPathSourceStage.BuildGoalConnector
+            || source.HierarchyLevelArrayIndex < 0
+            || job.SharedGoalConnectors.ContainsKey(source.HierarchyLevelArrayIndex))
+        {
+            return false;
+        }
+
+        int depth = source.HierarchyLevelArrayIndex;
+        if (!job.SharedGoalConnectorBuildLevels.Contains(depth))
+            return false;
+        if (!job.SharedGoalConnectorBuilderSourceIds.TryGetValue(depth, out int builderSourceId))
+        {
+            throw new InvalidOperationException(
+                $"Navigation shared goal connector build has no deterministic builder depth={depth} target={job.Key.MovingTargetId}.");
+        }
+
+        return builderSourceId != source.Demand.SourceId;
     }
 
     private static bool IsNavigationPathSourcePendingGraphOwner(
@@ -2477,18 +2494,8 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new ArgumentException("Incremental restricted search sources are invalid.");
         if (targetNodes == null || targetNodes.Count == 0)
             throw new ArgumentException("Incremental restricted search targets are empty.");
-        long stateConstructionStartTicks = MainThreadFrameProfiler.LoggingEnabled
-            ? Stopwatch.GetTimestamp()
-            : 0L;
         FlowPathKernelSearchState kernelState = new FlowPathKernelSearchState(
             Math.Max(16, checked(world.Portals.Length * 2)));
-        if (MainThreadFrameProfiler.LoggingEnabled)
-            MainThreadFrameProfiler.Record(
-                MainThreadPerfScope.FlowNavigationRestrictedSearchStateConstruction,
-                Stopwatch.GetTimestamp() - stateConstructionStartTicks);
-        long objectConstructionStartTicks = MainThreadFrameProfiler.LoggingEnabled
-            ? Stopwatch.GetTimestamp()
-            : 0L;
         var search = new IncrementalRestrictedPortalSearch
         {
             World = world,
@@ -2502,10 +2509,6 @@ public static partial class FlowFieldCrowdMovementSystem
             Stage = IncrementalRestrictedSearchStage.InitializeTargets,
             KernelState = kernelState
         };
-        if (MainThreadFrameProfiler.LoggingEnabled)
-            MainThreadFrameProfiler.Record(
-                MainThreadPerfScope.FlowNavigationRestrictedSearchObjectConstruction,
-                Stopwatch.GetTimestamp() - objectConstructionStartTicks);
         _perf.NavigationPathRestrictedSearchCreates++;
         return search;
     }
@@ -2574,16 +2577,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 case IncrementalRestrictedSearchStage.InitializeTargets:
                     if (search.TargetInitializationCursor < search.TargetNodeSequence.Count)
                     {
-                        long targetInitializationStartTicks = MainThreadFrameProfiler.LoggingEnabled
-                            ? Stopwatch.GetTimestamp()
-                            : 0L;
                         int target = search.TargetNodeSequence[search.TargetInitializationCursor++];
                         if (!search.TargetNodes.Add(target))
                             throw new InvalidOperationException("Incremental restricted search contains a duplicate target.");
-                        if (MainThreadFrameProfiler.LoggingEnabled)
-                            MainThreadFrameProfiler.Record(
-                                MainThreadPerfScope.FlowNavigationRestrictedSearchTargetInitialization,
-                                Stopwatch.GetTimestamp() - targetInitializationStartTicks);
                     }
                     else
                     {
@@ -2595,9 +2591,6 @@ public static partial class FlowFieldCrowdMovementSystem
                 case IncrementalRestrictedSearchStage.InitializeSources:
                     if (search.SourceInitializationCursor < search.SourceNodes.Count)
                     {
-                        long sourceInitializationStartTicks = MainThreadFrameProfiler.LoggingEnabled
-                            ? Stopwatch.GetTimestamp()
-                            : 0L;
                         search.KernelState.BeginCommandSlice();
                         do
                         {
@@ -2614,20 +2607,7 @@ public static partial class FlowFieldCrowdMovementSystem
                         }
                         while (operationCount < operationCapacity
                                && search.SourceInitializationCursor < search.SourceNodes.Count);
-                        if (MainThreadFrameProfiler.LoggingEnabled)
-                            MainThreadFrameProfiler.Record(
-                                MainThreadPerfScope.FlowNavigationRestrictedSearchSourceInitialization,
-                                Stopwatch.GetTimestamp() - sourceInitializationStartTicks);
-                        long commandStartTicks = MainThreadFrameProfiler.LoggingEnabled
-                            ? Stopwatch.GetTimestamp()
-                            : 0L;
                         int executed = ExecuteNavigationPathSearchCommandSlice(search.KernelState, out _, out _);
-                        if (MainThreadFrameProfiler.LoggingEnabled)
-                        {
-                            MainThreadFrameProfiler.Record(
-                                MainThreadPerfScope.FlowNavigationPathSearchCommandExecute,
-                                Stopwatch.GetTimestamp() - commandStartTicks);
-                        }
                         if (executed <= 0)
                             throw new InvalidOperationException("Incremental restricted search source slice executed no commands.");
                         continue;
@@ -2643,9 +2623,6 @@ public static partial class FlowFieldCrowdMovementSystem
                 case IncrementalRestrictedSearchStage.Crossing:
                 case IncrementalRestrictedSearchStage.Edges:
                 {
-                    long graphPreparationStartTicks = MainThreadFrameProfiler.LoggingEnabled
-                        ? Stopwatch.GetTimestamp()
-                        : 0L;
                     FlowPathKernelGraphIndex graph = ResolveFlowPathKernelSearchGraphIndex(
                         search.World,
                         search.LowerLevel);
@@ -2657,31 +2634,15 @@ public static partial class FlowFieldCrowdMovementSystem
                         EdgeCursor = search.EdgeCursor
                     };
                     PortalHierarchyCluster cluster = search.ContainingCluster;
-                    if (MainThreadFrameProfiler.LoggingEnabled)
-                        MainThreadFrameProfiler.Record(
-                            MainThreadPerfScope.FlowNavigationRestrictedSearchGraphPreparation,
-                            Stopwatch.GetTimestamp() - graphPreparationStartTicks);
                     FlowPathKernelGraphSliceResult slice;
                     if (search.KernelState.HasPendingGraphSlice)
                     {
                         if (!search.KernelState.IsPendingGraphSliceCompleted)
                             return 1;
-                        long completeStartTicks = MainThreadFrameProfiler.LoggingEnabled
-                            ? Stopwatch.GetTimestamp()
-                            : 0L;
                         slice = search.KernelState.CompleteScheduledGraphSlice();
-                        if (MainThreadFrameProfiler.LoggingEnabled)
-                        {
-                            MainThreadFrameProfiler.Record(
-                                MainThreadPerfScope.FlowNavigationPathSearchComplete,
-                                Stopwatch.GetTimestamp() - completeStartTicks);
-                        }
                     }
                     else
                     {
-                        long scheduleStartTicks = MainThreadFrameProfiler.LoggingEnabled
-                            ? Stopwatch.GetTimestamp()
-                            : 0L;
                         search.KernelState.ScheduleGraphSlice(
                             graph,
                             search.Reverse,
@@ -2692,21 +2653,12 @@ public static partial class FlowFieldCrowdMovementSystem
                             cluster?.HeightSectors ?? 0,
                             cursor,
                             operationCapacity - operationCount);
-                        if (MainThreadFrameProfiler.LoggingEnabled)
-                        {
-                            MainThreadFrameProfiler.Record(
-                                MainThreadPerfScope.FlowNavigationPathSearchSchedule,
-                                Stopwatch.GetTimestamp() - scheduleStartTicks);
-                        }
                         return operationCapacity;
                     }
                     if (slice.OperationCount <= 0
                         && slice.StopReason != FlowPathKernelGraphSliceStopReason.TargetSettled)
                         throw new InvalidOperationException("Incremental restricted graph slice consumed no operations.");
                         RecordNavigationPathGraphSlice(slice.OperationCount);
-                        long graphStateApplyStartTicks = MainThreadFrameProfiler.LoggingEnabled
-                            ? Stopwatch.GetTimestamp()
-                            : 0L;
                         search.CurrentNode = slice.Cursor.CurrentNode;
                     search.CurrentCost = slice.Cursor.CurrentCost;
                     search.EdgeCursor = slice.Cursor.EdgeCursor;
@@ -2722,10 +2674,6 @@ public static partial class FlowFieldCrowdMovementSystem
                         search.Stage = IncrementalRestrictedSearchStage.Complete;
                             complete = true;
                         }
-                        if (MainThreadFrameProfiler.LoggingEnabled)
-                            MainThreadFrameProfiler.Record(
-                                MainThreadPerfScope.FlowNavigationRestrictedSearchGraphStateApply,
-                                Stopwatch.GetTimestamp() - graphStateApplyStartTicks);
                         return operationCount;
                 }
 
@@ -2785,8 +2733,6 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("Navigation goal connector advance requires a resolved hierarchy level.");
 
         int sharedDepth = source.HierarchyLevelArrayIndex;
-        bool profileGoalConnectorParts = MainThreadFrameProfiler.LoggingEnabled;
-        long stateLookupStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
         if (job.SharedGoalConnectors.TryGetValue(sharedDepth, out PortalHierarchyConnector sharedConnector))
         {
             if (sharedConnector == null)
@@ -2796,10 +2742,6 @@ public static partial class FlowFieldCrowdMovementSystem
             source.GoalConnector = sharedConnector;
             source.NextGoalConnectorLevel = sharedDepth + 1;
             _perf.NavigationPathSharedGoalConnectorHits++;
-            if (profileGoalConnectorParts)
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationGoalConnectorPublish,
-                    Stopwatch.GetTimestamp() - stateLookupStartTicks);
             return 1;
         }
 
@@ -2812,10 +2754,6 @@ public static partial class FlowFieldCrowdMovementSystem
             // The first deterministic source owns construction.  Other
             // sources remain pending until that target-side authority is
             // complete; they must not create a duplicate search.
-            if (profileGoalConnectorParts)
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationGoalConnectorStateLookup,
-                    Stopwatch.GetTimestamp() - stateLookupStartTicks);
             return 1;
         }
 
@@ -2834,16 +2772,10 @@ public static partial class FlowFieldCrowdMovementSystem
             _perf.NavigationPathSharedGoalConnectorBuilds++;
         }
 
-        if (profileGoalConnectorParts)
-            MainThreadFrameProfiler.Record(
-                MainThreadPerfScope.FlowNavigationGoalConnectorStateLookup,
-                Stopwatch.GetTimestamp() - stateLookupStartTicks);
-
         PortalHierarchy hierarchy = _world.Hierarchy
             ?? throw new InvalidOperationException("Navigation path request requires a committed hierarchy.");
         if (source.NextGoalConnectorLevel > source.HierarchyLevelArrayIndex)
         {
-            long publishStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
             if (source.GoalConnector == null)
                 throw new InvalidOperationException("Navigation goal connector reached completion without an authority.");
             if (!job.SharedGoalConnectors.ContainsKey(sharedDepth))
@@ -2859,26 +2791,16 @@ public static partial class FlowFieldCrowdMovementSystem
                 job.SharedGoalConnectorBuilderSourceIds.Remove(sharedDepth);
             }
             source.Stage = NavigationPathSourceStage.CreateHierarchyPolicy;
-            if (profileGoalConnectorParts)
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationGoalConnectorPublish,
-                    Stopwatch.GetTimestamp() - publishStartTicks);
             return 1;
         }
 
         if (source.GoalConnector == null)
         {
-            long lookupStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
             PortalHierarchyLevel level = hierarchy.Levels[0];
             PortalHierarchyCluster cluster = level.Clusters[
                 ResolveHierarchyClusterId(_world, level, job.Key.GoalSectorId)];
-            if (profileGoalConnectorParts)
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationGoalConnectorStateLookup,
-                    Stopwatch.GetTimestamp() - lookupStartTicks);
             if (source.RestrictedSearch == null)
             {
-                long collectionStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
                 SectorData goalSector = _world.Sectors[job.Key.GoalSectorId];
                 if (!source.RestrictedInputCollectionActive)
                 {
@@ -2920,13 +2842,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 if (source.RestrictedSourceCollectionCursor < goalSector.PortalIds.Count
                     || source.RestrictedTargetCollectionCursor < cluster.BoundaryNodes.Length)
                 {
-                    if (profileGoalConnectorParts)
-                        MainThreadFrameProfiler.Record(
-                            MainThreadPerfScope.FlowNavigationGoalConnectorCollectionBatch,
-                            Stopwatch.GetTimestamp() - collectionStartTicks);
                     return collectionOperations;
                 }
-                long searchCreateStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
                 source.RestrictedSearch = CreateIncrementalRestrictedPortalSearch(
                     _world,
                     cluster,
@@ -2937,15 +2854,6 @@ public static partial class FlowFieldCrowdMovementSystem
                     source.RestrictedTargetNodes.ToArray());
                 source.RestrictedSearch.MaterializeResultOnComplete = false;
                 EndRestrictedInputCollection(source);
-                if (profileGoalConnectorParts)
-                {
-                    MainThreadFrameProfiler.Record(
-                        MainThreadPerfScope.FlowNavigationGoalConnectorCollectionBatch,
-                        Stopwatch.GetTimestamp() - collectionStartTicks);
-                    MainThreadFrameProfiler.Record(
-                        MainThreadPerfScope.FlowNavigationGoalConnectorSearchCreate,
-                        Stopwatch.GetTimestamp() - searchCreateStartTicks);
-                }
                 return Math.Max(1, collectionOperations);
             }
             bool profileGoalSearch = MainThreadFrameProfiler.LoggingEnabled;
@@ -2960,7 +2868,6 @@ public static partial class FlowFieldCrowdMovementSystem
                     Stopwatch.GetTimestamp() - goalSearchStartTicks);
             if (!complete)
                 return operationCount;
-            long publishStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
             source.GoalConnector = new PortalHierarchyConnector
             {
                 TargetLevelIndex = 0,
@@ -2969,32 +2876,22 @@ public static partial class FlowFieldCrowdMovementSystem
             source.RestrictedSearch.KernelState = null;
             source.RestrictedSearch = null;
             source.NextGoalConnectorLevel = 1;
-            if (profileGoalConnectorParts)
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationGoalConnectorPublish,
-                    Stopwatch.GetTimestamp() - publishStartTicks);
             return operationCount;
         }
 
         if (source.RestrictedSearch == null)
         {
-            long lookupStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
             PortalHierarchyLevel targetLevel = hierarchy.Levels[source.NextGoalConnectorLevel];
             PortalHierarchyCluster targetCluster = targetLevel.Clusters[
                 ResolveHierarchyClusterId(_world, targetLevel, job.Key.GoalSectorId)];
             PortalHierarchyLevel lowerLevel = hierarchy.Levels[source.NextGoalConnectorLevel - 1];
             PortalHierarchyCluster childCluster = lowerLevel.Clusters[
                 ResolveHierarchyClusterId(_world, lowerLevel, job.Key.GoalSectorId)];
-            if (profileGoalConnectorParts)
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationGoalConnectorStateLookup,
-                    Stopwatch.GetTimestamp() - lookupStartTicks);
             if (!source.RestrictedInputCollectionActive)
             {
                 BeginRestrictedInputCollection(source);
                 return 1;
             }
-            long collectionStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
             int collectionOperations = 0;
             while (collectionOperations < operationCapacity
                    && source.RestrictedSourceCollectionCursor < childCluster.BoundaryNodes.Length)
@@ -3020,13 +2917,8 @@ public static partial class FlowFieldCrowdMovementSystem
             if (source.RestrictedSourceCollectionCursor < childCluster.BoundaryNodes.Length
                 || source.RestrictedTargetCollectionCursor < targetCluster.BoundaryNodes.Length)
             {
-                if (profileGoalConnectorParts)
-                    MainThreadFrameProfiler.Record(
-                        MainThreadPerfScope.FlowNavigationGoalConnectorCollectionBatch,
-                        Stopwatch.GetTimestamp() - collectionStartTicks);
                 return collectionOperations;
             }
-            long searchCreateStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
             source.RestrictedSearch = CreateIncrementalRestrictedPortalSearch(
                 _world,
                 targetCluster,
@@ -3037,15 +2929,6 @@ public static partial class FlowFieldCrowdMovementSystem
                 source.RestrictedTargetNodes.ToArray());
             source.RestrictedSearch.MaterializeResultOnComplete = false;
             EndRestrictedInputCollection(source);
-            if (profileGoalConnectorParts)
-            {
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationGoalConnectorCollectionBatch,
-                    Stopwatch.GetTimestamp() - collectionStartTicks);
-                MainThreadFrameProfiler.Record(
-                    MainThreadPerfScope.FlowNavigationGoalConnectorSearchCreate,
-                    Stopwatch.GetTimestamp() - searchCreateStartTicks);
-            }
             return Math.Max(1, collectionOperations);
         }
         bool profileUpperSearch = MainThreadFrameProfiler.LoggingEnabled;
@@ -3060,7 +2943,6 @@ public static partial class FlowFieldCrowdMovementSystem
                 Stopwatch.GetTimestamp() - upperSearchStartTicks);
         if (!upperComplete)
             return upperOperationCount;
-        long upperPublishStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
         source.GoalConnector = new PortalHierarchyConnector
         {
             TargetLevelIndex = source.NextGoalConnectorLevel,
@@ -3070,10 +2952,6 @@ public static partial class FlowFieldCrowdMovementSystem
         source.RestrictedSearch.KernelState = null;
         source.RestrictedSearch = null;
         source.NextGoalConnectorLevel++;
-        if (profileGoalConnectorParts)
-            MainThreadFrameProfiler.Record(
-                MainThreadPerfScope.FlowNavigationGoalConnectorPublish,
-                Stopwatch.GetTimestamp() - upperPublishStartTicks);
         return upperOperationCount;
     }
 
