@@ -102,7 +102,7 @@ public static partial class FlowFieldCrowdMovementSystem
         Array.Empty<LogicStaticCollisionObstacle>();
     private static bool _staticCollisionObstacleSnapshotDirty = true;
     private static readonly Dictionary<int, CostStamp> CostStamps = new Dictionary<int, CostStamp>();
-    private static readonly Dictionary<MovingTargetAnchorKey, MovingTargetAnchor> MovingTargetAnchors = new Dictionary<MovingTargetAnchorKey, MovingTargetAnchor>();
+    private static readonly Dictionary<MovingTargetAnchorKey, MovingTargetAnchor> MovingTargetAnchors = new Dictionary<MovingTargetAnchorKey, MovingTargetAnchor>(64);
     private static readonly LinkedList<MovingTargetAnchorKey> MovingTargetProjectionQueue =
         new LinkedList<MovingTargetAnchorKey>();
     private static readonly HashSet<MovingTargetAnchorKey> PendingMovingTargetProjectionKeys =
@@ -147,7 +147,9 @@ public static partial class FlowFieldCrowdMovementSystem
     private static bool s_NavigationDistancePrewarmCompleted;
     private static bool s_NavigationDistancePrewarmCompletionMayHaveChanged;
     private static readonly List<int> SharedGoalPruneScratch = new List<int>(256);
-    private static readonly Dictionary<CombatTargetSlotKey, CombatTargetSlotEntry> CombatTargetSlotCache = new Dictionary<CombatTargetSlotKey, CombatTargetSlotEntry>();
+    private static readonly Dictionary<CombatTargetSlotKey, CombatTargetSlotEntry> CombatTargetSlotCache = new Dictionary<CombatTargetSlotKey, CombatTargetSlotEntry>(64);
+    private static readonly List<NavigationGoalOccupancyCandidate> EmptyNavigationGoalOccupancyCandidates =
+        new List<NavigationGoalOccupancyCandidate>(0);
     private static readonly Dictionary<AttackAreaCandidateCacheKey, AttackAreaCandidateCacheEntry> AttackAreaCandidateCache =
         new Dictionary<AttackAreaCandidateCacheKey, AttackAreaCandidateCacheEntry>();
     private static int _attackAreaCandidateCacheFrame = int.MinValue;
@@ -178,8 +180,12 @@ public static partial class FlowFieldCrowdMovementSystem
     // Goal occupancy used to scan every registered agent for every candidate point.
     // Keep separate position/goal indexes so the exact Fix64 distance test remains
     // authoritative while the broad phase is bounded by the local bucket window.
-    private static readonly Dictionary<long, List<AgentRuntimeData>> NavigationGoalPositionBuckets = new Dictionary<long, List<AgentRuntimeData>>();
-    private static readonly Dictionary<long, List<AgentRuntimeData>> NavigationGoalTargetBuckets = new Dictionary<long, List<AgentRuntimeData>>();
+    private static readonly Dictionary<long, List<AgentRuntimeData>> NavigationGoalPositionBuckets = new Dictionary<long, List<AgentRuntimeData>>(128);
+    private static readonly Dictionary<long, List<AgentRuntimeData>> NavigationGoalTargetBuckets = new Dictionary<long, List<AgentRuntimeData>>(128);
+    private static readonly Dictionary<int, long> NavigationGoalPositionBucketByAgent = new Dictionary<int, long>(128);
+    private static readonly Dictionary<int, long> NavigationGoalTargetBucketByAgent = new Dictionary<int, long>(128);
+    private static readonly Stack<List<AgentRuntimeData>> NavigationGoalBucketListPool =
+        new Stack<List<AgentRuntimeData>>(128);
     private static readonly List<AgentRuntimeData> NearbyAgentScratch = new List<AgentRuntimeData>(32);
     private static readonly List<AgentRuntimeData> CombatClusterScratch = new List<AgentRuntimeData>(16);
     private static readonly List<NavigationGoalReservation> NavigationGoalReservations = new List<NavigationGoalReservation>(128);
@@ -235,6 +241,10 @@ public static partial class FlowFieldCrowdMovementSystem
     private static int _lastAgentSpatialBucketWorldVersion = -1;
     private static int _lastNavigationGoalOccupancyBucketFrame = -1;
     private static int _lastNavigationGoalOccupancyBucketWorldVersion = -1;
+    private static int _navigationGoalOccupancyBucketGeometryGeneration;
+    private static bool _navigationGoalOccupancyBucketGeometryInitialized;
+    private static float _navigationGoalOccupancyBucketGeometrySize;
+    private static Vector3 _navigationGoalOccupancyBucketGeometryOrigin;
     private static Fix64 _navigationGoalOccupancyMaximumThreshold = Fix64.Zero;
     private static int _lastAgentRegistrySyncFrame = -1;
     private static int _lastOverlapDiagnosticsFrame = -1;
@@ -283,8 +293,7 @@ public static partial class FlowFieldCrowdMovementSystem
         ClearNavigationPathRequests();
         _collectedNavigationSyncFrame = -1;
         AgentSpatialBuckets.Clear();
-        NavigationGoalPositionBuckets.Clear();
-        NavigationGoalTargetBuckets.Clear();
+        ResetNavigationGoalOccupancyBuckets();
         NearbyAgentScratch.Clear();
         CircleObstacles.Clear();
         BoxObstacles.Clear();
@@ -375,6 +384,8 @@ public static partial class FlowFieldCrowdMovementSystem
         _lastAgentSpatialBucketWorldVersion = -1;
         _lastNavigationGoalOccupancyBucketFrame = -1;
         _lastNavigationGoalOccupancyBucketWorldVersion = -1;
+        _navigationGoalOccupancyBucketGeometryGeneration = 0;
+        _navigationGoalOccupancyBucketGeometryInitialized = false;
         _navigationGoalOccupancyMaximumThreshold = Fix64.Zero;
         _lastAgentRegistrySyncFrame = -1;
         _lastOverlapDiagnosticsFrame = -1;
@@ -465,8 +476,7 @@ public static partial class FlowFieldCrowdMovementSystem
         Agents.Clear();
         OrderedAgentIds.Clear();
         AgentSpatialBuckets.Clear();
-        NavigationGoalPositionBuckets.Clear();
-        NavigationGoalTargetBuckets.Clear();
+        ResetNavigationGoalOccupancyBuckets();
         NearbyAgentScratch.Clear();
         MovingTargetAnchors.Clear();
         MovingTargetProjectionQueue.Clear();
@@ -482,6 +492,8 @@ public static partial class FlowFieldCrowdMovementSystem
         _lastAgentSpatialBucketWorldVersion = -1;
         _lastNavigationGoalOccupancyBucketFrame = -1;
         _lastNavigationGoalOccupancyBucketWorldVersion = -1;
+        _navigationGoalOccupancyBucketGeometryGeneration = 0;
+        _navigationGoalOccupancyBucketGeometryInitialized = false;
         _navigationGoalOccupancyMaximumThreshold = Fix64.Zero;
     }
 

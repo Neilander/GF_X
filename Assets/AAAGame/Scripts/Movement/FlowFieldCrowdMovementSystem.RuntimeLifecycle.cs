@@ -120,8 +120,7 @@ public static partial class FlowFieldCrowdMovementSystem
         PendingFixedCorridorParticipantAgentIdsByWorld.Clear();
         FixedCorridorLookupByWorldVersion.Clear();
         AgentSpatialBuckets.Clear();
-        NavigationGoalPositionBuckets.Clear();
-        NavigationGoalTargetBuckets.Clear();
+        ResetNavigationGoalOccupancyBuckets();
         NearbyAgentScratch.Clear();
         _lastAgentSpatialBucketFrame = -1;
         _lastAgentSpatialBucketWorldVersion = -1;

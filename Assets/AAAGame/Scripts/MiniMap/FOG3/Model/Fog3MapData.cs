@@ -745,8 +745,14 @@ namespace AAAGame.MiniMap.FOG3
             FixVector2 geometryViewerPosition = GetCellCenterFixed(centerX, centerY);
             Fix64 geometryRadiusSquared = Fix64.FromRaw(long.MaxValue);
             TryMarkFovCell(centerX, centerY, geometryViewerPosition, geometryRadiusSquared, requiredHeight, visitStamp);
+            long octantsStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                ? System.Diagnostics.Stopwatch.GetTimestamp()
+                : 0L;
             for (int octant = 0; octant < 8; octant++)
             {
+                long octantStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                    ? System.Diagnostics.Stopwatch.GetTimestamp()
+                    : 0L;
                 CastVisibilityOctant(
                     centerX,
                     centerY,
@@ -760,8 +766,33 @@ namespace AAAGame.MiniMap.FOG3
                     requiredHeight,
                     visitStamp,
                     octant);
+                if (MainThreadFrameProfiler.LoggingEnabled)
+                {
+                    MainThreadPerfScope octantScope = octant switch
+                    {
+                        0 => MainThreadPerfScope.FogVisibilityCollectOctant0,
+                        1 => MainThreadPerfScope.FogVisibilityCollectOctant1,
+                        2 => MainThreadPerfScope.FogVisibilityCollectOctant2,
+                        3 => MainThreadPerfScope.FogVisibilityCollectOctant3,
+                        4 => MainThreadPerfScope.FogVisibilityCollectOctant4,
+                        5 => MainThreadPerfScope.FogVisibilityCollectOctant5,
+                        6 => MainThreadPerfScope.FogVisibilityCollectOctant6,
+                        7 => MainThreadPerfScope.FogVisibilityCollectOctant7,
+                        _ => throw new InvalidOperationException($"Invalid FOV octant={octant}.")
+                    };
+                    MainThreadFrameProfiler.Record(
+                        octantScope,
+                        System.Diagnostics.Stopwatch.GetTimestamp() - octantStartTicks);
+                }
             }
+            if (MainThreadFrameProfiler.LoggingEnabled)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FogVisibilityCollectOctants,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - octantsStartTicks);
 
+            long geometryIntervalsStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                ? System.Diagnostics.Stopwatch.GetTimestamp()
+                : 0L;
             var result = new System.Collections.Generic.List<Fog3VisibilityRowInterval>();
             int minimumY = Math.Max(0, centerY - range);
             int maximumY = Math.Min(Height - 1, centerY + range);
@@ -783,6 +814,10 @@ namespace AAAGame.MiniMap.FOG3
                     x++;
                 }
             }
+            if (MainThreadFrameProfiler.LoggingEnabled)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FogVisibilityCollectGeometryIntervals,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - geometryIntervalsStartTicks);
             return result.ToArray();
         }
 

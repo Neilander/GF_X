@@ -363,17 +363,20 @@ public static partial class FlowFieldCrowdMovementSystem
         long deduplicateTicks = 0L;
 
         FixVector2 targetPointFixed = targetPoint;
+        int targetIslandId = targetLineCellValid
+            ? ResolveIslandIdForDiagnostics(_world, targetX, targetY)
+            : -1;
         Fix64 spacing = Fix64.Max(Fix64.FromRaw(205), ringSpacing);
         Fix64 maximumRadius = Fix64.Max(Fix64.FromRaw(205), standOff);
         Fix64 minimumRadius = Fix64.Clamp(minimumStandOff, Fix64.FromRaw(205), maximumRadius);
         int inwardSteps = checked((int)(long)Fix64.Ceiling(Fix64.Max(Fix64.Zero, standOff - minimumRadius) / spacing));
         int generatedRingCount = Mathf.Max(Mathf.Max(1, ringCount), inwardSteps + 1);
+        int samplesPerRing = Mathf.Max(4, candidateCount);
         for (int ring = 0; ring < generatedRingCount; ring++)
         {
             Fix64 radius = Fix64.Max(minimumRadius, standOff - (Fix64)ring * spacing);
-            for (int i = 0; i < Mathf.Max(4, candidateCount); i++)
+            for (int i = 0; i < samplesPerRing; i++)
             {
-                int samplesPerRing = Mathf.Max(4, candidateCount);
                 FixVector2 direction = ResolveCombatSampleDirection(i, samplesPerRing, halfStep: false);
                 FixVector2 candidate = targetPointFixed + direction * radius;
                 if (!_world.WorldToGridFixed(candidate, out int x, out int y))
@@ -412,7 +415,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
                 bool lineOfSightPass = true;
                 if (targetLineCellValid
-                    && ResolveIslandIdForDiagnostics(_world, targetX, targetY) == islandId)
+                    && targetIslandId == islandId)
                 {
                     segmentStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
                     lineOfSightPass = HasSoftCostTolerantGridLineOfSight(
@@ -466,6 +469,7 @@ public static partial class FlowFieldCrowdMovementSystem
             MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowCombatApproachSlotDeduplicate, deduplicateTicks);
         }
 
+        long arrayMaterializeStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         CombatTargetSlotEntry entry = new CombatTargetSlotEntry
         {
             TargetPoint = targetPointFixed,
@@ -480,7 +484,20 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"built={points.Count} rings={generatedRingCount} radius=[{minimumRadius:F3},{standOff:F3}] " +
                 $"rejectedOutside={rejectedOutside} rejectedBlocked={rejectedBlocked} rejectedClearance={rejectedClearance} rejectedNoLos={rejectedNoLos}"
         };
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachSlotCacheArrayMaterialize,
+                Stopwatch.GetTimestamp() - arrayMaterializeStartTicks);
+        }
+        long publishStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         CombatTargetSlotCache[key] = entry;
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachSlotCachePublish,
+                Stopwatch.GetTimestamp() - publishStartTicks);
+        }
         if (MainThreadFrameProfiler.LoggingEnabled)
         {
             MainThreadFrameProfiler.Record(

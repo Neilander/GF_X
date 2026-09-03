@@ -2244,12 +2244,15 @@ public static partial class FlowFieldCrowdMovementSystem
         // references, while reservations and exact distance checks remain live.
         public int OccupancyCandidateFrame = int.MinValue;
         public int OccupancyCandidateWorldVersion = int.MinValue;
+        public int OccupancyCandidateBucketGeneration = int.MinValue;
         public long OccupancyCandidateThresholdRaw = long.MinValue;
         public int OccupancyCandidatesPreparedFrame = int.MinValue;
         public int OccupancyCandidatesPreparedWorldVersion = int.MinValue;
+        public int OccupancyCandidatesPreparedBucketGeneration = int.MinValue;
         public long OccupancyCandidatesPreparedThresholdRaw = long.MinValue;
         public List<NavigationGoalOccupancyCandidate>[] OccupancyCandidatesBySlot;
         public bool[] OccupancyCandidatesBuiltBySlot;
+        public List<NavigationGoalOccupancyCandidate> OccupancyCandidatesShared;
     }
 
     private readonly struct NavigationGoalOccupancyCandidate

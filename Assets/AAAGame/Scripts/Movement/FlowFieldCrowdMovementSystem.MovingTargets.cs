@@ -32,6 +32,8 @@ public static partial class FlowFieldCrowdMovementSystem
         useSectorCorridorPolicy = false;
         pendingProjection = false;
         IEntityContext currentTarget = self?.TargetComp?.CurrentTarget;
+        bool profileStableGoal = MainThreadFrameProfiler.LoggingEnabled;
+        long classificationStartTicks = profileStableGoal ? Stopwatch.GetTimestamp() : 0L;
         bool useRawGoal = currentTarget == null
                           || ReferenceEquals(currentTarget, self)
                           || !IsNavigationMovingTarget(currentTarget);
@@ -48,6 +50,10 @@ public static partial class FlowFieldCrowdMovementSystem
             useRawGoal = hasExplicitTargetGoal
                          && ShouldUseExactMovingTargetGoalFixed(self, rawGoalPosition);
         }
+        if (profileStableGoal)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyClassification,
+                Stopwatch.GetTimestamp() - classificationStartTicks);
 
         if (useRawGoal && !hasMovingTarget)
         {
@@ -85,12 +91,29 @@ public static partial class FlowFieldCrowdMovementSystem
             return true;
         }
 
-        if (!_world.WorldToGridFixed(currentTargetFramePosition, out int anchorRawGoalX, out int anchorRawGoalY)
-            || !_world.TryGetSectorId(anchorRawGoalX, anchorRawGoalY, out _)
-            || !TryResolveStartCellForReachabilityFixed(self, out int startX, out int startY, out int startIsland))
+        bool profileAnchorLookup = MainThreadFrameProfiler.LoggingEnabled;
+        long anchorLookupStartTicks = profileAnchorLookup ? Stopwatch.GetTimestamp() : 0L;
+        int anchorRawGoalX = 0;
+        int anchorRawGoalY = 0;
+        int startX = 0;
+        int startY = 0;
+        int startIsland = -1;
+        bool anchorInputResolved = _world.WorldToGridFixed(currentTargetFramePosition, out anchorRawGoalX, out anchorRawGoalY)
+                                   && _world.TryGetSectorId(anchorRawGoalX, anchorRawGoalY, out _)
+                                   && TryResolveStartCellForReachabilityFixed(self, out startX, out startY, out startIsland);
+        if (profileAnchorLookup)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyAnchorLookup,
+                Stopwatch.GetTimestamp() - anchorLookupStartTicks);
+        }
+        if (!anchorInputResolved)
         {
             return false;
         }
+
+        long anchorStateStartTicks = profileStableGoal ? Stopwatch.GetTimestamp() : 0L;
+        long anchorDictionaryStartTicks = profileStableGoal ? Stopwatch.GetTimestamp() : 0L;
 
         int targetId = ResolveAgentId(currentTarget);
         int agentTypeId = ResolvePreferredAgentTypeId(agent.AgentTypeId);
@@ -101,7 +124,12 @@ public static partial class FlowFieldCrowdMovementSystem
             MovingTargetAnchors.Add(anchorKey, anchor);
         }
         anchor.LastUsedFrame = GetFrameCount();
+        if (profileStableGoal)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyAnchorDictionary,
+                Stopwatch.GetTimestamp() - anchorDictionaryStartTicks);
 
+        long anchorGoalStateStartTicks = profileStableGoal ? Stopwatch.GetTimestamp() : 0L;
         bool hasStableGoal = anchor.ActiveGoalX >= 0
                              && anchor.ActiveGoalY >= 0
                              && anchor.ActiveWorldVersion == _world.Version;
@@ -116,12 +144,20 @@ public static partial class FlowFieldCrowdMovementSystem
             if (rawGoalIsland == startIsland)
             {
                 CancelMovingTargetProjectionTask(anchor);
+                bool profileAnchorPublish = MainThreadFrameProfiler.LoggingEnabled;
+                long anchorPublishStartTicks = profileAnchorPublish ? Stopwatch.GetTimestamp() : 0L;
                 PublishDirectMovingTargetProjection(
                     anchor,
                     _world,
                     anchorRawGoalX,
                     anchorRawGoalY,
                     currentTargetFramePosition);
+                if (profileAnchorPublish)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowMovingTargetPolicyAnchorPublish,
+                        Stopwatch.GetTimestamp() - anchorPublishStartTicks);
+                }
                 hasStableGoal = true;
             }
             else
@@ -143,7 +179,12 @@ public static partial class FlowFieldCrowdMovementSystem
             _perf.StableGoalReuse++;
             _perf.StableGoalReachabilityReuse++;
         }
+        if (profileStableGoal)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyAnchorGoalState,
+                Stopwatch.GetTimestamp() - anchorGoalStateStartTicks);
 
+        long anchorNavStateStartTicks = profileStableGoal ? Stopwatch.GetTimestamp() : 0L;
         agent.NavState.StableGoalTargetId = targetId;
         agent.NavState.StableGoalRawX = anchor.RawGoalX;
         agent.NavState.StableGoalRawY = anchor.RawGoalY;
@@ -155,8 +196,17 @@ public static partial class FlowFieldCrowdMovementSystem
         goalX = anchor.ActiveGoalX;
         goalY = anchor.ActiveGoalY;
         stableGoalPosition = anchor.ActiveGoalWorldFixed;
+        if (profileStableGoal)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyAnchorNavState,
+                Stopwatch.GetTimestamp() - anchorNavStateStartTicks);
+        if (profileStableGoal)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowMovingTargetPolicyAnchorState,
+                Stopwatch.GetTimestamp() - anchorStateStartTicks);
         if (useRawGoal)
         {
+            long finalGoalStartTicks = profileStableGoal ? Stopwatch.GetTimestamp() : 0L;
             if (!TryResolveReachableNavigationPointCellFixed(
                     self,
                     rawGoalPosition,
@@ -178,6 +228,10 @@ public static partial class FlowFieldCrowdMovementSystem
             finalGoalX = reachableGoalX;
             finalGoalY = reachableGoalY;
             finalGoalPosition = reachableGoalWorld;
+            if (profileStableGoal)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowMovingTargetPolicyFinalGoalResolution,
+                    Stopwatch.GetTimestamp() - finalGoalStartTicks);
             return true;
         }
         finalGoalX = goalX;
@@ -1396,16 +1450,83 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("GetOrBuildCombatTargetSlotOccupancyCandidates failed: world is null.");
 
         int frame = GetFrameCount();
+        if (_lastNavigationGoalOccupancyBucketFrame != frame
+            || _lastNavigationGoalOccupancyBucketWorldVersion != _navigationGoalOccupancyBucketGeometryGeneration)
+        {
+            throw new InvalidOperationException(
+                $"GetOrBuildCombatTargetSlotOccupancyCandidates requires a published occupancy bucket snapshot. frame={frame} " +
+                $"bucketFrame={_lastNavigationGoalOccupancyBucketFrame} bucketGeneration={_navigationGoalOccupancyBucketGeometryGeneration} " +
+                $"publishedGeneration={_lastNavigationGoalOccupancyBucketWorldVersion}.");
+        }
         int worldVersion = _world.Version;
+        int bucketGeneration = _navigationGoalOccupancyBucketGeometryGeneration;
         Fix64 broadPhaseThreshold = Fix64.Max(requiredDistance, _navigationGoalOccupancyMaximumThreshold);
+        long cacheStateStartTicks = MainThreadFrameProfiler.LoggingEnabled
+            ? Stopwatch.GetTimestamp()
+            : 0L;
         if (entry.OccupancyCandidatesBySlot == null
             || entry.OccupancyCandidatesBySlot.Length != entry.Points.Length
             || entry.OccupancyCandidateFrame != frame
-            || entry.OccupancyCandidateWorldVersion != worldVersion
+            || entry.OccupancyCandidateBucketGeneration != bucketGeneration
             || entry.OccupancyCandidateThresholdRaw < broadPhaseThreshold.RawValue)
         {
-            EnsureNavigationGoalOccupancyBuckets();
             broadPhaseThreshold = Fix64.Max(requiredDistance, _navigationGoalOccupancyMaximumThreshold);
+            List<NavigationGoalOccupancyCandidate> sharedCandidates = entry.OccupancyCandidatesShared;
+            if (sharedCandidates == null)
+                sharedCandidates = new List<NavigationGoalOccupancyCandidate>(Mathf.Max(OrderedAgentIds.Count, 4));
+            else
+                sharedCandidates.Clear();
+
+            long snapshotStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                ? Stopwatch.GetTimestamp()
+                : 0L;
+            float bucketSize = ResolveAgentSpatialBucketSize();
+            int searchRadius = Mathf.Max(1, Mathf.CeilToInt((float)broadPhaseThreshold / bucketSize) + 1);
+            int minimumBucketX = int.MaxValue;
+            int maximumBucketX = int.MinValue;
+            int minimumBucketY = int.MaxValue;
+            int maximumBucketY = int.MinValue;
+            for (int pointIndex = 0; pointIndex < entry.Points.Length; pointIndex++)
+            {
+                ResolveSpatialBucketCell(
+                    ToWorldVector3(entry.Points[pointIndex]),
+                    out int bucketX,
+                    out int bucketY);
+                minimumBucketX = Mathf.Min(minimumBucketX, bucketX);
+                maximumBucketX = Mathf.Max(maximumBucketX, bucketX);
+                minimumBucketY = Mathf.Min(minimumBucketY, bucketY);
+                maximumBucketY = Mathf.Max(maximumBucketY, bucketY);
+            }
+            if (minimumBucketX == int.MaxValue)
+                throw new InvalidOperationException("GetOrBuildCombatTargetSlotOccupancyCandidates failed: slot entry has no points.");
+
+            // All slot neighborhoods overlap around one target. Scan their
+            // union once, then keep the established exact distance predicate
+            // as the per-slot authority.
+            for (int bucketY = minimumBucketY - searchRadius; bucketY <= maximumBucketY + searchRadius; bucketY++)
+            {
+                for (int bucketX = minimumBucketX - searchRadius; bucketX <= maximumBucketX + searchRadius; bucketX++)
+                {
+                    long bucketKey = BuildSpatialBucketKey(bucketX, bucketY);
+                    if (NavigationGoalPositionBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> positionBucket))
+                    {
+                        for (int i = 0; i < positionBucket.Count; i++)
+                            sharedCandidates.Add(new NavigationGoalOccupancyCandidate(positionBucket[i], useGoalPosition: false));
+                    }
+                    if (NavigationGoalTargetBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> targetBucket))
+                    {
+                        for (int i = 0; i < targetBucket.Count; i++)
+                            sharedCandidates.Add(new NavigationGoalOccupancyCandidate(targetBucket[i], useGoalPosition: true));
+                    }
+                }
+            }
+            if (MainThreadFrameProfiler.LoggingEnabled)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowCombatApproachOccupancySnapshot,
+                    Stopwatch.GetTimestamp() - snapshotStartTicks);
+            }
+            entry.OccupancyCandidatesShared = sharedCandidates;
             if (entry.OccupancyCandidatesBySlot == null
                 || entry.OccupancyCandidatesBySlot.Length != entry.Points.Length)
             {
@@ -1415,8 +1536,6 @@ public static partial class FlowFieldCrowdMovementSystem
             }
             else
             {
-                for (int i = 0; i < entry.OccupancyCandidatesBySlot.Length; i++)
-                    entry.OccupancyCandidatesBySlot[i]?.Clear();
                 if (entry.OccupancyCandidatesBuiltBySlot == null
                     || entry.OccupancyCandidatesBuiltBySlot.Length != entry.Points.Length)
                 {
@@ -1429,39 +1548,51 @@ public static partial class FlowFieldCrowdMovementSystem
             }
             entry.OccupancyCandidateFrame = frame;
             entry.OccupancyCandidateWorldVersion = worldVersion;
+            entry.OccupancyCandidateBucketGeneration = bucketGeneration;
             entry.OccupancyCandidateThresholdRaw = broadPhaseThreshold.RawValue;
         }
+        if (MainThreadFrameProfiler.LoggingEnabled)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachOccupancyPrepareCacheState,
+                Stopwatch.GetTimestamp() - cacheStateStartTicks);
 
         List<NavigationGoalOccupancyCandidate> cached = entry.OccupancyCandidatesBySlot[slotIndex];
         if (entry.OccupancyCandidatesBuiltBySlot[slotIndex])
             return cached;
 
-        float bucketSize = ResolveAgentSpatialBucketSize();
-        int searchRadius = Mathf.Max(1, Mathf.CeilToInt((float)broadPhaseThreshold / bucketSize) + 1);
-        ResolveSpatialBucketCell(ToWorldVector3(position), out int centerCellX, out int centerCellY);
-        cached ??= new List<NavigationGoalOccupancyCandidate>(16);
-        for (int bucketY = centerCellY - searchRadius; bucketY <= centerCellY + searchRadius; bucketY++)
+        long slotFilterStartTicks = MainThreadFrameProfiler.LoggingEnabled
+            ? Stopwatch.GetTimestamp()
+            : 0L;
+        List<NavigationGoalOccupancyCandidate> occupancySnapshot = entry.OccupancyCandidatesShared
+            ?? throw new InvalidOperationException(
+                "GetOrBuildCombatTargetSlotOccupancyCandidates failed: shared candidate snapshot is missing.");
+        if (ReferenceEquals(cached, EmptyNavigationGoalOccupancyCandidates))
+            cached = null;
+        else
+            cached?.Clear();
+        Fix64 broadPhaseThresholdSquared = broadPhaseThreshold * broadPhaseThreshold;
+        for (int candidateIndex = 0; candidateIndex < occupancySnapshot.Count; candidateIndex++)
         {
-            for (int bucketX = centerCellX - searchRadius; bucketX <= centerCellX + searchRadius; bucketX++)
+            NavigationGoalOccupancyCandidate candidate = occupancySnapshot[candidateIndex];
+            FixVector2 candidatePosition = candidate.UseGoalPosition
+                ? candidate.Agent.NavState.LastGoalWorldFixed
+                : candidate.Agent.PositionFixed;
+            if (FixVector2.SqrMagnitude(candidatePosition - position) <= broadPhaseThresholdSquared)
             {
-                long bucketKey = BuildSpatialBucketKey(bucketX, bucketY);
-                if (NavigationGoalPositionBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> positionBucket))
-                {
-                    for (int i = 0; i < positionBucket.Count; i++)
-                        cached.Add(new NavigationGoalOccupancyCandidate(positionBucket[i], useGoalPosition: false));
-                }
-
-                if (NavigationGoalTargetBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> targetBucket))
-                {
-                    for (int i = 0; i < targetBucket.Count; i++)
-                        cached.Add(new NavigationGoalOccupancyCandidate(targetBucket[i], useGoalPosition: true));
-                }
+                cached ??= new List<NavigationGoalOccupancyCandidate>(Mathf.Min(occupancySnapshot.Count, 16));
+                cached.Add(candidate);
             }
         }
+        if (MainThreadFrameProfiler.LoggingEnabled)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachOccupancySlotFilter,
+                Stopwatch.GetTimestamp() - slotFilterStartTicks);
+        }
 
-        entry.OccupancyCandidatesBySlot[slotIndex] = cached;
+        entry.OccupancyCandidatesBySlot[slotIndex] = cached ?? EmptyNavigationGoalOccupancyCandidates;
         entry.OccupancyCandidatesBuiltBySlot[slotIndex] = true;
-        return cached;
+        return entry.OccupancyCandidatesBySlot[slotIndex];
     }
 
     private static void PrepareCombatTargetSlotOccupancyCandidates(
@@ -1478,25 +1609,108 @@ public static partial class FlowFieldCrowdMovementSystem
 
         int frame = GetFrameCount();
         int worldVersion = _world.Version;
+        // Publish the frame's immutable occupancy snapshot before evaluating
+        // the prepared-threshold guard.  Building it lazily from the first
+        // slot used to raise the maximum threshold after the guard had
+        // captured it, causing the same entry to iterate every slot again.
+        EnsureNavigationGoalOccupancyBuckets();
         Fix64 threshold = Fix64.Max(requiredDistance, _navigationGoalOccupancyMaximumThreshold);
+        long guardStartTicks = MainThreadFrameProfiler.LoggingEnabled
+            ? Stopwatch.GetTimestamp()
+            : 0L;
         if (entry.OccupancyCandidatesPreparedFrame == frame
-            && entry.OccupancyCandidatesPreparedWorldVersion == worldVersion
+            && entry.OccupancyCandidatesPreparedBucketGeneration == _navigationGoalOccupancyBucketGeometryGeneration
             && entry.OccupancyCandidatesPreparedThresholdRaw >= threshold.RawValue)
+        {
+            if (MainThreadFrameProfiler.LoggingEnabled)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowCombatApproachOccupancyPrepareGuard,
+                    Stopwatch.GetTimestamp() - guardStartTicks);
             return;
+        }
+        if (MainThreadFrameProfiler.LoggingEnabled)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachOccupancyPrepareGuard,
+                Stopwatch.GetTimestamp() - guardStartTicks);
 
+        long iterationStartTicks = MainThreadFrameProfiler.LoggingEnabled
+            ? Stopwatch.GetTimestamp()
+            : 0L;
+        bool snapshotInitialized = false;
+        Fix64 broadPhaseThresholdSquared = threshold * threshold;
+        long slotLookupStartTicks = MainThreadFrameProfiler.LoggingEnabled
+            ? Stopwatch.GetTimestamp()
+            : 0L;
         for (int slot = 0; slot < entry.Points.Length; slot++)
         {
             if (entry.IslandIds[slot] != startIsland)
                 continue;
-            GetOrBuildCombatTargetSlotOccupancyCandidates(
-                entry,
-                slot,
-                entry.Points[slot],
-                requiredDistance);
+            if (!snapshotInitialized)
+            {
+                // The first slot initializes the frame/world snapshot and
+                // the per-slot arrays. Subsequent slots stay in this method so
+                // they do not repeat GetOrBuild's cache guards and setup.
+                long initializationStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                    ? Stopwatch.GetTimestamp()
+                    : 0L;
+                GetOrBuildCombatTargetSlotOccupancyCandidates(
+                    entry,
+                    slot,
+                    entry.Points[slot],
+                    requiredDistance);
+                if (MainThreadFrameProfiler.LoggingEnabled)
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowCombatApproachOccupancyPrepareInitialization,
+                        Stopwatch.GetTimestamp() - initializationStartTicks);
+                snapshotInitialized = true;
+            }
+            else if (!entry.OccupancyCandidatesBuiltBySlot[slot])
+            {
+                List<NavigationGoalOccupancyCandidate> occupancySnapshot = entry.OccupancyCandidatesShared
+                    ?? throw new InvalidOperationException(
+                        "PrepareCombatTargetSlotOccupancyCandidates failed: shared candidate snapshot is missing.");
+                List<NavigationGoalOccupancyCandidate> cached = entry.OccupancyCandidatesBySlot[slot];
+                if (ReferenceEquals(cached, EmptyNavigationGoalOccupancyCandidates))
+                    cached = null;
+                else
+                    cached?.Clear();
+                long slotFilterStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                    ? Stopwatch.GetTimestamp()
+                    : 0L;
+                FixVector2 slotPosition = entry.Points[slot];
+                for (int candidateIndex = 0; candidateIndex < occupancySnapshot.Count; candidateIndex++)
+                {
+                    NavigationGoalOccupancyCandidate candidate = occupancySnapshot[candidateIndex];
+                    FixVector2 candidatePosition = candidate.UseGoalPosition
+                        ? candidate.Agent.NavState.LastGoalWorldFixed
+                        : candidate.Agent.PositionFixed;
+                    if (FixVector2.SqrMagnitude(candidatePosition - slotPosition) <= broadPhaseThresholdSquared)
+                    {
+                        cached ??= new List<NavigationGoalOccupancyCandidate>(Mathf.Min(occupancySnapshot.Count, 16));
+                        cached.Add(candidate);
+                    }
+                }
+                if (MainThreadFrameProfiler.LoggingEnabled)
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowCombatApproachOccupancySlotFilter,
+                        Stopwatch.GetTimestamp() - slotFilterStartTicks);
+                entry.OccupancyCandidatesBySlot[slot] = cached ?? EmptyNavigationGoalOccupancyCandidates;
+                entry.OccupancyCandidatesBuiltBySlot[slot] = true;
+            }
+        }
+        if (MainThreadFrameProfiler.LoggingEnabled)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachOccupancyPrepareIteration,
+                Stopwatch.GetTimestamp() - iterationStartTicks);
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachOccupancyPrepareSlotLookup,
+                Stopwatch.GetTimestamp() - slotLookupStartTicks);
         }
 
         entry.OccupancyCandidatesPreparedFrame = frame;
         entry.OccupancyCandidatesPreparedWorldVersion = worldVersion;
+        entry.OccupancyCandidatesPreparedBucketGeneration = _navigationGoalOccupancyBucketGeometryGeneration;
         entry.OccupancyCandidatesPreparedThresholdRaw = threshold.RawValue;
     }
 

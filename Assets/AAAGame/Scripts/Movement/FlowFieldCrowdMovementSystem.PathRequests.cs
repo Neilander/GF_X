@@ -347,6 +347,10 @@ public static partial class FlowFieldCrowdMovementSystem
         public SectorCorridorPolicyKey PolicyKey;
         public SectorCorridorPolicy Policy;
         public readonly List<NavigationPathSourceJob> Sources = new List<NavigationPathSourceJob>(8);
+        // Derived lookup for source rebinding. Sources remains the ordered
+        // authority used by the state machine and digest.
+        public readonly Dictionary<int, NavigationPathSourceJob> SourcesById =
+            new Dictionary<int, NavigationPathSourceJob>(8);
         public readonly Dictionary<int, NavigationSharedRouteSuffix> SharedRouteSuffixes =
             new Dictionary<int, NavigationSharedRouteSuffix>(32);
         // Goal-side reverse connectors are target authority.  They are shared
@@ -360,6 +364,9 @@ public static partial class FlowFieldCrowdMovementSystem
             new Dictionary<int, int>(4);
         public readonly FlowPathKernelRouteMergeIndex SharedRouteMergeIndex =
             new FlowPathKernelRouteMergeIndex(32);
+        // Derived dispatch index.  The request queue remains the authority;
+        // this index only locates the owning job for a source in O(1).
+        public LinkedListNode<NavigationPathRequestJob> QueueNode;
         public ulong SharedRouteSuffixesAuthorityContentHash;
         public int SourceCursor;
         public int GoalX;
@@ -374,6 +381,9 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly Dictionary<NavigationPathRequestIdentityKey, NavigationPathRequestJob>
         PendingNavigationPathRequests =
             new Dictionary<NavigationPathRequestIdentityKey, NavigationPathRequestJob>();
+    private static readonly Dictionary<int, NavigationPathRequestJob>
+        NavigationPathRequestBySourceId =
+            new Dictionary<int, NavigationPathRequestJob>();
 #if UNITY_EDITOR
     private const int EditorNavigationPathTickDiagnosticCapacity = 512;
     private static readonly Queue<FlowPerfAccumulator> EditorNavigationPathTickDiagnostics =
@@ -385,6 +395,8 @@ public static partial class FlowFieldCrowdMovementSystem
         PrepareLocalDictionaryCode(
             new NavigationPathRequestIdentityKey(1, 2, 3, 4, 5),
             default(NavigationPathRequestJob));
+        PrepareLocalDictionaryCode(1, default(NavigationPathRequestJob));
+        PrepareLocalDictionaryCode(1, default(NavigationPathSourceJob));
         PrepareLocalDictionaryCode(1, default(NavigationSharedRouteSuffix));
         PrepareLocalDictionaryCode(1, 2L);
         PrepareLocalDictionaryCode(1, 2);
@@ -695,8 +707,15 @@ public static partial class FlowFieldCrowdMovementSystem
         if (profile)
             MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationDemandRemoveOther, Stopwatch.GetTimestamp() - stageStartTicks);
         stageStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
-        if (!PendingNavigationPathRequests.TryGetValue(identityKey, out NavigationPathRequestJob job))
+        long queueLookupStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        bool hasExistingJob = PendingNavigationPathRequests.TryGetValue(identityKey, out NavigationPathRequestJob job);
+        if (profile)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationDemandQueueLookup,
+                Stopwatch.GetTimestamp() - queueLookupStartTicks);
+        if (!hasExistingJob)
         {
+            long queueCreateStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             job = new NavigationPathRequestJob
             {
                 IdentityKey = identityKey,
@@ -707,8 +726,12 @@ public static partial class FlowFieldCrowdMovementSystem
                 StableGoal = demand.StableGoal
             };
             PendingNavigationPathRequests.Add(identityKey, job);
-            NavigationPathRequestQueue.AddLast(job);
+            job.QueueNode = NavigationPathRequestQueue.AddLast(job);
             _perf.NavigationPathRequestGroups++;
+            if (profile)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationDemandQueueCreate,
+                    Stopwatch.GetTimestamp() - queueCreateStartTicks);
         }
         else if (job.Complete)
         {
@@ -718,17 +741,15 @@ public static partial class FlowFieldCrowdMovementSystem
             MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationDemandQueueMutation, Stopwatch.GetTimestamp() - stageStartTicks);
 
         long sourceBindingStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
-        NavigationPathSourceJob sourceJob = null;
-        for (int i = 0; i < job.Sources.Count; i++)
+        long sourceLookupStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        bool hasExistingSource = job.SourcesById.TryGetValue(demand.SourceId, out NavigationPathSourceJob sourceJob);
+        if (profile)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationDemandSourceLookup,
+                Stopwatch.GetTimestamp() - sourceLookupStartTicks);
+        if (!hasExistingSource)
         {
-            if (job.Sources[i].Demand.SourceId == demand.SourceId)
-            {
-                sourceJob = job.Sources[i];
-                break;
-            }
-        }
-        if (sourceJob == null)
-        {
+            long sourceInsertStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             _perf.NavigationPathRequestSourceAdds++;
             sourceJob = new NavigationPathSourceJob
             {
@@ -737,18 +758,55 @@ public static partial class FlowFieldCrowdMovementSystem
                 LastRequestedFrame = GetFrameCount(),
                 Stage = NavigationPathSourceStage.Initialize
             };
-            int insertionIndex = job.Sources.BinarySearch(
-                sourceJob,
-                NavigationPathSourceJobComparer.Instance);
-            if (insertionIndex >= 0)
-                throw new InvalidOperationException("Navigation path request contains a duplicate source id.");
-            insertionIndex = ~insertionIndex;
+            int insertionIndex;
+            if (job.Sources.Count == 0)
+            {
+                insertionIndex = 0;
+            }
+            else
+            {
+                NavigationPathSourceJob lastSource = job.Sources[job.Sources.Count - 1];
+                if (lastSource?.Demand == null)
+                    throw new InvalidOperationException("Navigation path request contains an invalid source at its tail.");
+                if (lastSource.Demand.SourceId < demand.SourceId)
+                {
+                    // ResolveCollectedNavigationSyncRequests sorts sources by
+                    // id within a request group, so the common path appends
+                    // without a second binary search and list shift.
+                    insertionIndex = job.Sources.Count;
+                }
+                else
+                {
+                    insertionIndex = job.Sources.BinarySearch(
+                        sourceJob,
+                        NavigationPathSourceJobComparer.Instance);
+                    if (insertionIndex >= 0)
+                        throw new InvalidOperationException("Navigation path request contains a duplicate source id.");
+                    insertionIndex = ~insertionIndex;
+                }
+            }
             job.Sources.Insert(insertionIndex, sourceJob);
+            if (!job.SourcesById.TryAdd(demand.SourceId, sourceJob))
+                throw new InvalidOperationException(
+                    $"Navigation path request contains duplicate source index id={demand.SourceId}.");
+            if (!NavigationPathRequestBySourceId.TryAdd(demand.SourceId, job))
+                throw new InvalidOperationException(
+                    $"Navigation path source dispatch index already contains source={demand.SourceId}.");
             if (insertionIndex < job.SourceCursor)
                 job.SourceCursor = insertionIndex;
+            if (profile)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationDemandSourceInsert,
+                    Stopwatch.GetTimestamp() - sourceInsertStartTicks);
         }
         else
         {
+            if (!NavigationPathRequestBySourceId.TryGetValue(demand.SourceId, out NavigationPathRequestJob indexedJob)
+                || !ReferenceEquals(indexedJob, job))
+            {
+                throw new InvalidOperationException(
+                    $"Navigation path source dispatch index disagrees with bound job source={demand.SourceId}.");
+            }
             sourceJob.LatestDemand = demand;
             sourceJob.LastRequestedFrame = GetFrameCount();
         }
@@ -816,54 +874,77 @@ public static partial class FlowFieldCrowdMovementSystem
         int sourceId,
         NavigationPathRequestIdentityKey retainedKey)
     {
-        LinkedListNode<NavigationPathRequestJob> node = NavigationPathRequestQueue.First;
-        while (node != null)
+        if (!NavigationPathRequestBySourceId.TryGetValue(sourceId, out NavigationPathRequestJob job))
+            return;
+        if (job == null || job.QueueNode == null || job.QueueNode.List != NavigationPathRequestQueue)
+            throw new InvalidOperationException(
+                $"Navigation path source dispatch index is stale source={sourceId}.");
+        if (job.IdentityKey.Equals(retainedKey))
+            return;
+
+        int sourceIndex = -1;
+        for (int i = 0; i < job.Sources.Count; i++)
         {
-            LinkedListNode<NavigationPathRequestJob> next = node.Next;
-            NavigationPathRequestJob job = node.Value;
-            if (job == null)
-                throw new InvalidOperationException("Navigation path request queue contains a null job.");
-            if (!job.IdentityKey.Equals(retainedKey))
+            NavigationPathSourceJob source = job.Sources[i]
+                ?? throw new InvalidOperationException("Navigation path request contains a null source job.");
+            if (source.Demand == null)
+                throw new InvalidOperationException("Navigation path request source has no demand.");
+            if (source.Demand.SourceId == sourceId)
             {
-                for (int i = job.Sources.Count - 1; i >= 0; i--)
-                {
-                    if (job.Sources[i].Demand.SourceId == sourceId)
-                    {
-                        DisposeNavigationPathSourceTransientState(job.Sources[i]);
-                        job.Sources.RemoveAt(i);
-                        if (i < job.SourceCursor)
-                            job.SourceCursor--;
-                    }
-                }
-                if (job.Sources.Count == 0)
-                    RemoveNavigationPathRequestNode(node);
+                if (sourceIndex >= 0)
+                    throw new InvalidOperationException(
+                        $"Navigation path request contains duplicate source id={sourceId}.");
+                sourceIndex = i;
             }
-            node = next;
         }
+        if (sourceIndex < 0)
+            throw new InvalidOperationException(
+                $"Navigation path source dispatch index has no matching source id={sourceId}.");
+
+        NavigationPathSourceJob removed = job.Sources[sourceIndex];
+        DisposeNavigationPathSourceTransientState(removed);
+        job.Sources.RemoveAt(sourceIndex);
+        if (!job.SourcesById.Remove(sourceId))
+            throw new InvalidOperationException(
+                $"Navigation path request source index is missing source={sourceId}.");
+        NavigationPathRequestBySourceId.Remove(sourceId);
+        if (sourceIndex < job.SourceCursor)
+            job.SourceCursor--;
+        if (job.Sources.Count == 0)
+            RemoveNavigationPathRequestNode(job.QueueNode);
     }
 
     private static void CancelNavigationPathRequestsForSource(int sourceId)
     {
-        LinkedListNode<NavigationPathRequestJob> node = NavigationPathRequestQueue.First;
-        while (node != null)
+        if (!NavigationPathRequestBySourceId.TryGetValue(sourceId, out NavigationPathRequestJob job))
+            return;
+        if (job == null || job.QueueNode == null || job.QueueNode.List != NavigationPathRequestQueue)
+            throw new InvalidOperationException(
+                $"Navigation path source dispatch index is stale while cancelling source={sourceId}.");
+        int sourceIndex = -1;
+        for (int i = 0; i < job.Sources.Count; i++)
         {
-            LinkedListNode<NavigationPathRequestJob> next = node.Next;
-            NavigationPathRequestJob job = node.Value;
-            if (job == null)
-                throw new InvalidOperationException("Navigation path request queue contains a null job.");
-            for (int i = job.Sources.Count - 1; i >= 0; i--)
+            NavigationPathSourceJob source = job.Sources[i]
+                ?? throw new InvalidOperationException("Navigation path request contains a null source job.");
+            if (source.Demand?.SourceId == sourceId)
             {
-                if (job.Sources[i].Demand.SourceId != sourceId)
-                    continue;
-                DisposeNavigationPathSourceTransientState(job.Sources[i]);
-                job.Sources.RemoveAt(i);
-                if (i < job.SourceCursor)
-                    job.SourceCursor--;
+                sourceIndex = i;
+                break;
             }
-            if (job.Sources.Count == 0)
-                RemoveNavigationPathRequestNode(node);
-            node = next;
         }
+        if (sourceIndex < 0)
+            throw new InvalidOperationException(
+                $"Navigation path source dispatch index has no source while cancelling source={sourceId}.");
+        DisposeNavigationPathSourceTransientState(job.Sources[sourceIndex]);
+        job.Sources.RemoveAt(sourceIndex);
+        if (!job.SourcesById.Remove(sourceId))
+            throw new InvalidOperationException(
+                $"Navigation path request source index is missing cancelled source={sourceId}.");
+        NavigationPathRequestBySourceId.Remove(sourceId);
+        if (sourceIndex < job.SourceCursor)
+            job.SourceCursor--;
+        if (job.Sources.Count == 0)
+            RemoveNavigationPathRequestNode(job.QueueNode);
     }
 
     private static void PruneInactiveNavigationPathRequestSources(int frame)
@@ -880,6 +961,12 @@ public static partial class FlowFieldCrowdMovementSystem
                 NavigationPathSourceJob source = job.Sources[i];
                 if (source.LastRequestedFrame == frame)
                     continue;
+                if (!job.SourcesById.Remove(source.Demand.SourceId))
+                    throw new InvalidOperationException(
+                        $"Navigation path request source index is missing pruned source={source.Demand.SourceId}.");
+                if (!NavigationPathRequestBySourceId.Remove(source.Demand.SourceId))
+                    throw new InvalidOperationException(
+                        $"Navigation path source dispatch index is missing pruned source={source.Demand.SourceId}.");
                 source.Demand.Agent.NavState.HasPendingNavigation = false;
                 source.Demand.Agent.NavState.HasPendingNavigationReplacement = false;
                 DisposeNavigationPathSourceTransientState(source);
@@ -898,12 +985,28 @@ public static partial class FlowFieldCrowdMovementSystem
         NavigationPathRequestJob job = node?.Value
             ?? throw new InvalidOperationException("Cannot remove a null navigation path request node.");
         for (int i = 0; i < job.Sources.Count; i++)
+        {
+            NavigationPathSourceJob source = job.Sources[i]
+                ?? throw new InvalidOperationException("Navigation path request contains a null source job.");
+            if (source.Demand == null)
+                throw new InvalidOperationException("Navigation path request source has no demand.");
+            if (!NavigationPathRequestBySourceId.Remove(source.Demand.SourceId))
+                throw new InvalidOperationException(
+                    $"Navigation path source dispatch index is missing source={source.Demand.SourceId}.");
+            if (!job.SourcesById.Remove(source.Demand.SourceId))
+                throw new InvalidOperationException(
+                    $"Navigation path request source index is missing source={source.Demand.SourceId}.");
             DisposeNavigationPathSourceTransientState(job.Sources[i]);
+        }
+        if (job.SourcesById.Count != 0)
+            throw new InvalidOperationException("Navigation path request source index contains stale entries.");
+        job.SourcesById.Clear();
         DisposeSharedGoalConnectorAuthorities(job);
         job.SharedRouteMergeIndex.Dispose();
         if (!PendingNavigationPathRequests.Remove(job.IdentityKey))
             throw new InvalidOperationException("Navigation path request pending index is inconsistent.");
         NavigationPathRequestQueue.Remove(node);
+        job.QueueNode = null;
     }
 
     private static void DisposeSharedGoalConnectorAuthorities(NavigationPathRequestJob job)
@@ -1049,14 +1152,37 @@ public static partial class FlowFieldCrowdMovementSystem
                 long eligibilityStartTicks = MainThreadFrameProfiler.LoggingEnabled
                     ? Stopwatch.GetTimestamp()
                     : 0L;
+                long eligibilityPartStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                    ? Stopwatch.GetTimestamp()
+                    : 0L;
                 bool blockedByPendingSlice = NavigationPathRequestsBlockedByPendingSlice.Contains(job);
+                if (MainThreadFrameProfiler.LoggingEnabled)
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowNavigationPathEligibilityPendingSet,
+                        Stopwatch.GetTimestamp() - eligibilityPartStartTicks);
                 bool blockedByEarlierOwner = false;
                 bool blockedByOtherSource = false;
                 if (!blockedByPendingSlice)
                 {
+                    eligibilityPartStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                        ? Stopwatch.GetTimestamp()
+                        : 0L;
                     blockedByEarlierOwner = IsNavigationPathRequestBlockedByEarlierGraphOwner(job);
+                    if (MainThreadFrameProfiler.LoggingEnabled)
+                        MainThreadFrameProfiler.Record(
+                            MainThreadPerfScope.FlowNavigationPathEligibilityEarlierGraphOwner,
+                            Stopwatch.GetTimestamp() - eligibilityPartStartTicks);
                     if (!blockedByEarlierOwner)
+                    {
+                        eligibilityPartStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                            ? Stopwatch.GetTimestamp()
+                            : 0L;
                         blockedByOtherSource = IsNavigationPathRequestBlockedByOtherSourcePendingSlice(job);
+                        if (MainThreadFrameProfiler.LoggingEnabled)
+                            MainThreadFrameProfiler.Record(
+                                MainThreadPerfScope.FlowNavigationPathEligibilityOtherSource,
+                                Stopwatch.GetTimestamp() - eligibilityPartStartTicks);
+                    }
                 }
                 if (MainThreadFrameProfiler.LoggingEnabled)
                     eligibilityTicks += Stopwatch.GetTimestamp() - eligibilityStartTicks;
@@ -2179,7 +2305,12 @@ public static partial class FlowFieldCrowdMovementSystem
                     job.GoalX,
                     job.GoalY);
             if (profile)
+            {
                 _perf.NavigationPathInitializeSameSectorTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathInitializeSameSector,
+                    Stopwatch.GetTimestamp() - phaseStartTicks);
+            }
             source.Stage = connected
                 ? NavigationPathSourceStage.MaterializeRoute
                 : NavigationPathSourceStage.ExpandL0Policy;
@@ -2189,15 +2320,25 @@ public static partial class FlowFieldCrowdMovementSystem
         long policyStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         EnsureNavigationPathRequestPolicy(job);
         if (profile)
+        {
             _perf.NavigationPathInitializePolicyTicks += Stopwatch.GetTimestamp() - policyStartTicks;
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationPathInitializePolicy,
+                Stopwatch.GetTimestamp() - policyStartTicks);
+        }
         long hierarchyResolveStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         source.HierarchyLevelArrayIndex = ResolveHighestRequiredPortalHierarchyLevelIndex(
             _world,
             demand.StartSectorId,
             job.Key.GoalSectorId);
         if (profile)
+        {
             _perf.NavigationPathInitializeHierarchyResolveTicks +=
                 Stopwatch.GetTimestamp() - hierarchyResolveStartTicks;
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationPathInitializeHierarchyResolve,
+                Stopwatch.GetTimestamp() - hierarchyResolveStartTicks);
+        }
         if (source.HierarchyLevelArrayIndex < 0)
         {
             source.Stage = NavigationPathSourceStage.ExpandL0Policy;
@@ -2213,8 +2354,13 @@ public static partial class FlowFieldCrowdMovementSystem
             source.NextDownwardLevel = source.HierarchyLevelArrayIndex;
             source.Stage = NavigationPathSourceStage.ExpandHierarchyPolicy;
             if (profile)
+            {
                 _perf.NavigationPathInitializeHierarchySelectionTicks +=
                     Stopwatch.GetTimestamp() - hierarchySelectionStartTicks;
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathInitializeHierarchySelection,
+                    Stopwatch.GetTimestamp() - hierarchySelectionStartTicks);
+            }
             return;
         }
 
@@ -2231,8 +2377,13 @@ public static partial class FlowFieldCrowdMovementSystem
         source.NextGoalConnectorLevel = lowerConnector == null ? 0 : lowerConnector.TargetLevelIndex + 1;
         source.Stage = NavigationPathSourceStage.BuildGoalConnector;
         if (profile)
+        {
             _perf.NavigationPathInitializeHierarchySelectionTicks +=
                 Stopwatch.GetTimestamp() - hierarchySelectionStartTicks;
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationPathInitializeHierarchySelection,
+                Stopwatch.GetTimestamp() - hierarchySelectionStartTicks);
+        }
     }
 
     private static void EnsureNavigationPathRequestPolicy(NavigationPathRequestJob job)
@@ -2326,6 +2477,18 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new ArgumentException("Incremental restricted search sources are invalid.");
         if (targetNodes == null || targetNodes.Count == 0)
             throw new ArgumentException("Incremental restricted search targets are empty.");
+        long stateConstructionStartTicks = MainThreadFrameProfiler.LoggingEnabled
+            ? Stopwatch.GetTimestamp()
+            : 0L;
+        FlowPathKernelSearchState kernelState = new FlowPathKernelSearchState(
+            Math.Max(16, checked(world.Portals.Length * 2)));
+        if (MainThreadFrameProfiler.LoggingEnabled)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationRestrictedSearchStateConstruction,
+                Stopwatch.GetTimestamp() - stateConstructionStartTicks);
+        long objectConstructionStartTicks = MainThreadFrameProfiler.LoggingEnabled
+            ? Stopwatch.GetTimestamp()
+            : 0L;
         var search = new IncrementalRestrictedPortalSearch
         {
             World = world,
@@ -2337,8 +2500,12 @@ public static partial class FlowFieldCrowdMovementSystem
             TargetNodeSequence = targetNodes,
             RemainingTargets = targetNodes.Count,
             Stage = IncrementalRestrictedSearchStage.InitializeTargets,
-            KernelState = new FlowPathKernelSearchState(Math.Max(16, checked(world.Portals.Length * 2)))
+            KernelState = kernelState
         };
+        if (MainThreadFrameProfiler.LoggingEnabled)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationRestrictedSearchObjectConstruction,
+                Stopwatch.GetTimestamp() - objectConstructionStartTicks);
         _perf.NavigationPathRestrictedSearchCreates++;
         return search;
     }
@@ -2407,9 +2574,16 @@ public static partial class FlowFieldCrowdMovementSystem
                 case IncrementalRestrictedSearchStage.InitializeTargets:
                     if (search.TargetInitializationCursor < search.TargetNodeSequence.Count)
                     {
+                        long targetInitializationStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                            ? Stopwatch.GetTimestamp()
+                            : 0L;
                         int target = search.TargetNodeSequence[search.TargetInitializationCursor++];
                         if (!search.TargetNodes.Add(target))
                             throw new InvalidOperationException("Incremental restricted search contains a duplicate target.");
+                        if (MainThreadFrameProfiler.LoggingEnabled)
+                            MainThreadFrameProfiler.Record(
+                                MainThreadPerfScope.FlowNavigationRestrictedSearchTargetInitialization,
+                                Stopwatch.GetTimestamp() - targetInitializationStartTicks);
                     }
                     else
                     {
@@ -2421,6 +2595,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 case IncrementalRestrictedSearchStage.InitializeSources:
                     if (search.SourceInitializationCursor < search.SourceNodes.Count)
                     {
+                        long sourceInitializationStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                            ? Stopwatch.GetTimestamp()
+                            : 0L;
                         search.KernelState.BeginCommandSlice();
                         do
                         {
@@ -2437,6 +2614,10 @@ public static partial class FlowFieldCrowdMovementSystem
                         }
                         while (operationCount < operationCapacity
                                && search.SourceInitializationCursor < search.SourceNodes.Count);
+                        if (MainThreadFrameProfiler.LoggingEnabled)
+                            MainThreadFrameProfiler.Record(
+                                MainThreadPerfScope.FlowNavigationRestrictedSearchSourceInitialization,
+                                Stopwatch.GetTimestamp() - sourceInitializationStartTicks);
                         long commandStartTicks = MainThreadFrameProfiler.LoggingEnabled
                             ? Stopwatch.GetTimestamp()
                             : 0L;
@@ -2462,6 +2643,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 case IncrementalRestrictedSearchStage.Crossing:
                 case IncrementalRestrictedSearchStage.Edges:
                 {
+                    long graphPreparationStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                        ? Stopwatch.GetTimestamp()
+                        : 0L;
                     FlowPathKernelGraphIndex graph = ResolveFlowPathKernelSearchGraphIndex(
                         search.World,
                         search.LowerLevel);
@@ -2473,6 +2657,10 @@ public static partial class FlowFieldCrowdMovementSystem
                         EdgeCursor = search.EdgeCursor
                     };
                     PortalHierarchyCluster cluster = search.ContainingCluster;
+                    if (MainThreadFrameProfiler.LoggingEnabled)
+                        MainThreadFrameProfiler.Record(
+                            MainThreadPerfScope.FlowNavigationRestrictedSearchGraphPreparation,
+                            Stopwatch.GetTimestamp() - graphPreparationStartTicks);
                     FlowPathKernelGraphSliceResult slice;
                     if (search.KernelState.HasPendingGraphSlice)
                     {
@@ -2515,8 +2703,11 @@ public static partial class FlowFieldCrowdMovementSystem
                     if (slice.OperationCount <= 0
                         && slice.StopReason != FlowPathKernelGraphSliceStopReason.TargetSettled)
                         throw new InvalidOperationException("Incremental restricted graph slice consumed no operations.");
-                    RecordNavigationPathGraphSlice(slice.OperationCount);
-                    search.CurrentNode = slice.Cursor.CurrentNode;
+                        RecordNavigationPathGraphSlice(slice.OperationCount);
+                        long graphStateApplyStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                            ? Stopwatch.GetTimestamp()
+                            : 0L;
+                        search.CurrentNode = slice.Cursor.CurrentNode;
                     search.CurrentCost = slice.Cursor.CurrentCost;
                     search.EdgeCursor = slice.Cursor.EdgeCursor;
                     search.Stage = slice.Cursor.Stage == 0
@@ -2524,14 +2715,18 @@ public static partial class FlowFieldCrowdMovementSystem
                         : IncrementalRestrictedSearchStage.Edges;
                     operationCount++;
                     search.RemainingTargets = slice.RemainingTargets;
-                    if (slice.StopReason == FlowPathKernelGraphSliceStopReason.TargetSettled
+                        if (slice.StopReason == FlowPathKernelGraphSliceStopReason.TargetSettled
                         || slice.StopReason == FlowPathKernelGraphSliceStopReason.FrontierEmpty)
                     {
                         CompleteIncrementalRestrictedPortalSearch(search);
                         search.Stage = IncrementalRestrictedSearchStage.Complete;
-                        complete = true;
-                    }
-                    return operationCount;
+                            complete = true;
+                        }
+                        if (MainThreadFrameProfiler.LoggingEnabled)
+                            MainThreadFrameProfiler.Record(
+                                MainThreadPerfScope.FlowNavigationRestrictedSearchGraphStateApply,
+                                Stopwatch.GetTimestamp() - graphStateApplyStartTicks);
+                        return operationCount;
                 }
 
                 case IncrementalRestrictedSearchStage.Complete:
@@ -2590,6 +2785,8 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("Navigation goal connector advance requires a resolved hierarchy level.");
 
         int sharedDepth = source.HierarchyLevelArrayIndex;
+        bool profileGoalConnectorParts = MainThreadFrameProfiler.LoggingEnabled;
+        long stateLookupStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
         if (job.SharedGoalConnectors.TryGetValue(sharedDepth, out PortalHierarchyConnector sharedConnector))
         {
             if (sharedConnector == null)
@@ -2599,6 +2796,10 @@ public static partial class FlowFieldCrowdMovementSystem
             source.GoalConnector = sharedConnector;
             source.NextGoalConnectorLevel = sharedDepth + 1;
             _perf.NavigationPathSharedGoalConnectorHits++;
+            if (profileGoalConnectorParts)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationGoalConnectorPublish,
+                    Stopwatch.GetTimestamp() - stateLookupStartTicks);
             return 1;
         }
 
@@ -2611,6 +2812,10 @@ public static partial class FlowFieldCrowdMovementSystem
             // The first deterministic source owns construction.  Other
             // sources remain pending until that target-side authority is
             // complete; they must not create a duplicate search.
+            if (profileGoalConnectorParts)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationGoalConnectorStateLookup,
+                    Stopwatch.GetTimestamp() - stateLookupStartTicks);
             return 1;
         }
 
@@ -2629,10 +2834,16 @@ public static partial class FlowFieldCrowdMovementSystem
             _perf.NavigationPathSharedGoalConnectorBuilds++;
         }
 
+        if (profileGoalConnectorParts)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationGoalConnectorStateLookup,
+                Stopwatch.GetTimestamp() - stateLookupStartTicks);
+
         PortalHierarchy hierarchy = _world.Hierarchy
             ?? throw new InvalidOperationException("Navigation path request requires a committed hierarchy.");
         if (source.NextGoalConnectorLevel > source.HierarchyLevelArrayIndex)
         {
+            long publishStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
             if (source.GoalConnector == null)
                 throw new InvalidOperationException("Navigation goal connector reached completion without an authority.");
             if (!job.SharedGoalConnectors.ContainsKey(sharedDepth))
@@ -2648,16 +2859,26 @@ public static partial class FlowFieldCrowdMovementSystem
                 job.SharedGoalConnectorBuilderSourceIds.Remove(sharedDepth);
             }
             source.Stage = NavigationPathSourceStage.CreateHierarchyPolicy;
+            if (profileGoalConnectorParts)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationGoalConnectorPublish,
+                    Stopwatch.GetTimestamp() - publishStartTicks);
             return 1;
         }
 
         if (source.GoalConnector == null)
         {
+            long lookupStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
             PortalHierarchyLevel level = hierarchy.Levels[0];
             PortalHierarchyCluster cluster = level.Clusters[
                 ResolveHierarchyClusterId(_world, level, job.Key.GoalSectorId)];
+            if (profileGoalConnectorParts)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationGoalConnectorStateLookup,
+                    Stopwatch.GetTimestamp() - lookupStartTicks);
             if (source.RestrictedSearch == null)
             {
+                long collectionStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
                 SectorData goalSector = _world.Sectors[job.Key.GoalSectorId];
                 if (!source.RestrictedInputCollectionActive)
                 {
@@ -2698,7 +2919,14 @@ public static partial class FlowFieldCrowdMovementSystem
                 }
                 if (source.RestrictedSourceCollectionCursor < goalSector.PortalIds.Count
                     || source.RestrictedTargetCollectionCursor < cluster.BoundaryNodes.Length)
+                {
+                    if (profileGoalConnectorParts)
+                        MainThreadFrameProfiler.Record(
+                            MainThreadPerfScope.FlowNavigationGoalConnectorCollectionBatch,
+                            Stopwatch.GetTimestamp() - collectionStartTicks);
                     return collectionOperations;
+                }
+                long searchCreateStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
                 source.RestrictedSearch = CreateIncrementalRestrictedPortalSearch(
                     _world,
                     cluster,
@@ -2709,6 +2937,15 @@ public static partial class FlowFieldCrowdMovementSystem
                     source.RestrictedTargetNodes.ToArray());
                 source.RestrictedSearch.MaterializeResultOnComplete = false;
                 EndRestrictedInputCollection(source);
+                if (profileGoalConnectorParts)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowNavigationGoalConnectorCollectionBatch,
+                        Stopwatch.GetTimestamp() - collectionStartTicks);
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowNavigationGoalConnectorSearchCreate,
+                        Stopwatch.GetTimestamp() - searchCreateStartTicks);
+                }
                 return Math.Max(1, collectionOperations);
             }
             bool profileGoalSearch = MainThreadFrameProfiler.LoggingEnabled;
@@ -2723,6 +2960,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     Stopwatch.GetTimestamp() - goalSearchStartTicks);
             if (!complete)
                 return operationCount;
+            long publishStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
             source.GoalConnector = new PortalHierarchyConnector
             {
                 TargetLevelIndex = 0,
@@ -2731,22 +2969,32 @@ public static partial class FlowFieldCrowdMovementSystem
             source.RestrictedSearch.KernelState = null;
             source.RestrictedSearch = null;
             source.NextGoalConnectorLevel = 1;
+            if (profileGoalConnectorParts)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationGoalConnectorPublish,
+                    Stopwatch.GetTimestamp() - publishStartTicks);
             return operationCount;
         }
 
         if (source.RestrictedSearch == null)
         {
+            long lookupStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
             PortalHierarchyLevel targetLevel = hierarchy.Levels[source.NextGoalConnectorLevel];
             PortalHierarchyCluster targetCluster = targetLevel.Clusters[
                 ResolveHierarchyClusterId(_world, targetLevel, job.Key.GoalSectorId)];
             PortalHierarchyLevel lowerLevel = hierarchy.Levels[source.NextGoalConnectorLevel - 1];
             PortalHierarchyCluster childCluster = lowerLevel.Clusters[
                 ResolveHierarchyClusterId(_world, lowerLevel, job.Key.GoalSectorId)];
+            if (profileGoalConnectorParts)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationGoalConnectorStateLookup,
+                    Stopwatch.GetTimestamp() - lookupStartTicks);
             if (!source.RestrictedInputCollectionActive)
             {
                 BeginRestrictedInputCollection(source);
                 return 1;
             }
+            long collectionStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
             int collectionOperations = 0;
             while (collectionOperations < operationCapacity
                    && source.RestrictedSourceCollectionCursor < childCluster.BoundaryNodes.Length)
@@ -2771,7 +3019,14 @@ public static partial class FlowFieldCrowdMovementSystem
             }
             if (source.RestrictedSourceCollectionCursor < childCluster.BoundaryNodes.Length
                 || source.RestrictedTargetCollectionCursor < targetCluster.BoundaryNodes.Length)
+            {
+                if (profileGoalConnectorParts)
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowNavigationGoalConnectorCollectionBatch,
+                        Stopwatch.GetTimestamp() - collectionStartTicks);
                 return collectionOperations;
+            }
+            long searchCreateStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
             source.RestrictedSearch = CreateIncrementalRestrictedPortalSearch(
                 _world,
                 targetCluster,
@@ -2782,6 +3037,15 @@ public static partial class FlowFieldCrowdMovementSystem
                 source.RestrictedTargetNodes.ToArray());
             source.RestrictedSearch.MaterializeResultOnComplete = false;
             EndRestrictedInputCollection(source);
+            if (profileGoalConnectorParts)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationGoalConnectorCollectionBatch,
+                    Stopwatch.GetTimestamp() - collectionStartTicks);
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationGoalConnectorSearchCreate,
+                    Stopwatch.GetTimestamp() - searchCreateStartTicks);
+            }
             return Math.Max(1, collectionOperations);
         }
         bool profileUpperSearch = MainThreadFrameProfiler.LoggingEnabled;
@@ -2796,6 +3060,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 Stopwatch.GetTimestamp() - upperSearchStartTicks);
         if (!upperComplete)
             return upperOperationCount;
+        long upperPublishStartTicks = profileGoalConnectorParts ? Stopwatch.GetTimestamp() : 0L;
         source.GoalConnector = new PortalHierarchyConnector
         {
             TargetLevelIndex = source.NextGoalConnectorLevel,
@@ -2805,6 +3070,10 @@ public static partial class FlowFieldCrowdMovementSystem
         source.RestrictedSearch.KernelState = null;
         source.RestrictedSearch = null;
         source.NextGoalConnectorLevel++;
+        if (profileGoalConnectorParts)
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowNavigationGoalConnectorPublish,
+                Stopwatch.GetTimestamp() - upperPublishStartTicks);
         return upperOperationCount;
     }
 
@@ -4737,6 +5006,7 @@ public static partial class FlowFieldCrowdMovementSystem
         }
         NavigationPathRequestQueue.Clear();
         PendingNavigationPathRequests.Clear();
+        NavigationPathRequestBySourceId.Clear();
     }
 
     private static void DisposeNavigationPathSourceTransientState(NavigationPathSourceJob source)

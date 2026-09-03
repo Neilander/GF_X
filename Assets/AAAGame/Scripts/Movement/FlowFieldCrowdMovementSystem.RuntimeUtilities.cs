@@ -859,10 +859,96 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         if (!buckets.TryGetValue(key, out List<AgentRuntimeData> bucket))
         {
-            bucket = new List<AgentRuntimeData>(4);
+            bucket = NavigationGoalBucketListPool.Count > 0
+                ? NavigationGoalBucketListPool.Pop()
+                : new List<AgentRuntimeData>(4);
             buckets.Add(key, bucket);
         }
         bucket.Add(agent);
+    }
+
+    private static void AddNavigationGoalBucketEntryOrdered(
+        Dictionary<long, List<AgentRuntimeData>> buckets,
+        long key,
+        AgentRuntimeData agent,
+        int agentId)
+    {
+        if (agent == null)
+            throw new InvalidOperationException("AddNavigationGoalBucketEntryOrdered received a null agent.");
+        if (!buckets.TryGetValue(key, out List<AgentRuntimeData> bucket))
+        {
+            bucket = NavigationGoalBucketListPool.Count > 0
+                ? NavigationGoalBucketListPool.Pop()
+                : new List<AgentRuntimeData>(4);
+            buckets.Add(key, bucket);
+        }
+
+        int insertionIndex = bucket.Count;
+        for (int i = 0; i < bucket.Count; i++)
+        {
+            AgentRuntimeData existingAgent = bucket[i]
+                ?? throw new InvalidOperationException("AddNavigationGoalBucketEntryOrdered found a null bucket agent.");
+            int existingId = existingAgent.Id;
+            if (existingId == agentId)
+                throw new InvalidOperationException($"Navigation goal bucket already contains agent={agentId}.");
+            if (existingId > agentId)
+            {
+                insertionIndex = i;
+                break;
+            }
+        }
+        bucket.Insert(insertionIndex, agent);
+    }
+
+    private static void RemoveNavigationGoalBucketEntry(
+        Dictionary<long, List<AgentRuntimeData>> buckets,
+        long key,
+        int agentId)
+    {
+        if (!buckets.TryGetValue(key, out List<AgentRuntimeData> bucket) || bucket == null)
+            throw new InvalidOperationException($"Navigation goal bucket missing for agent removal agent={agentId} key={key}.");
+        int foundIndex = -1;
+        for (int i = 0; i < bucket.Count; i++)
+        {
+            AgentRuntimeData agent = bucket[i]
+                ?? throw new InvalidOperationException("RemoveNavigationGoalBucketEntry found a null bucket agent.");
+            if (agent.Id == agentId)
+            {
+                foundIndex = i;
+                break;
+            }
+        }
+        if (foundIndex < 0)
+            throw new InvalidOperationException($"Navigation goal bucket did not contain agent={agentId} key={key}.");
+        bucket.RemoveAt(foundIndex);
+        if (bucket.Count == 0)
+        {
+            bucket.Clear();
+            NavigationGoalBucketListPool.Push(bucket);
+            buckets.Remove(key);
+        }
+    }
+
+    private static void ResetNavigationGoalOccupancyBuckets()
+    {
+        foreach (List<AgentRuntimeData> bucket in NavigationGoalPositionBuckets.Values)
+        {
+            if (bucket == null)
+                throw new InvalidOperationException("ResetNavigationGoalOccupancyBuckets found a null position bucket.");
+            bucket.Clear();
+            NavigationGoalBucketListPool.Push(bucket);
+        }
+        NavigationGoalPositionBuckets.Clear();
+        foreach (List<AgentRuntimeData> bucket in NavigationGoalTargetBuckets.Values)
+        {
+            if (bucket == null)
+                throw new InvalidOperationException("ResetNavigationGoalOccupancyBuckets found a null target bucket.");
+            bucket.Clear();
+            NavigationGoalBucketListPool.Push(bucket);
+        }
+        NavigationGoalTargetBuckets.Clear();
+        NavigationGoalPositionBucketByAgent.Clear();
+        NavigationGoalTargetBucketByAgent.Clear();
     }
 
     private static void EnsureNavigationGoalOccupancyBuckets()
@@ -872,11 +958,28 @@ public static partial class FlowFieldCrowdMovementSystem
 
         int frame = GetFrameCount();
         int worldVersion = _world.Version;
+        float bucketGeometrySize = ResolveAgentSpatialBucketSize();
+        Vector3 bucketGeometryOrigin = _world.Origin;
+        bool geometrySame = _navigationGoalOccupancyBucketGeometryInitialized
+                            && _navigationGoalOccupancyBucketGeometrySize == bucketGeometrySize
+                            && _navigationGoalOccupancyBucketGeometryOrigin == bucketGeometryOrigin;
+        if (!geometrySame)
+        {
+            _navigationGoalOccupancyBucketGeometryInitialized = true;
+            _navigationGoalOccupancyBucketGeometrySize = bucketGeometrySize;
+            _navigationGoalOccupancyBucketGeometryOrigin = bucketGeometryOrigin;
+            _navigationGoalOccupancyBucketGeometryGeneration = checked(
+                _navigationGoalOccupancyBucketGeometryGeneration + 1);
+            ResetNavigationGoalOccupancyBuckets();
+            _lastNavigationGoalOccupancyBucketFrame = -1;
+        }
         if (_lastNavigationGoalOccupancyBucketFrame == frame
-            && _lastNavigationGoalOccupancyBucketWorldVersion == worldVersion)
+            && _lastNavigationGoalOccupancyBucketWorldVersion == _navigationGoalOccupancyBucketGeometryGeneration)
         {
             return;
         }
+
+        int previousGeometryGeneration = _lastNavigationGoalOccupancyBucketWorldVersion;
 
         bool profile = MainThreadFrameProfiler.LoggingEnabled;
         long buildStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
@@ -890,42 +993,146 @@ public static partial class FlowFieldCrowdMovementSystem
                 MainThreadPerfScope.FlowCombatApproachOccupancyAgentSync,
                 System.Diagnostics.Stopwatch.GetTimestamp() - syncStartTicks);
         }
+
+        bool canUpdateIncrementally = previousGeometryGeneration == _navigationGoalOccupancyBucketGeometryGeneration
+                                       && NavigationGoalPositionBucketByAgent.Count == OrderedAgentIds.Count
+                                       && NavigationGoalTargetBucketByAgent.Count == OrderedAgentIds.Count;
+        if (canUpdateIncrementally)
+        {
+            for (int i = 0; i < OrderedAgentIds.Count; i++)
+            {
+                int agentId = OrderedAgentIds[i];
+                if (!NavigationGoalPositionBucketByAgent.ContainsKey(agentId)
+                    || !NavigationGoalTargetBucketByAgent.ContainsKey(agentId))
+                {
+                    canUpdateIncrementally = false;
+                    break;
+                }
+            }
+        }
+        if (canUpdateIncrementally)
+        {
+            long incrementalStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
+            long maximumThresholdRaw = 0L;
+            for (int i = 0; i < OrderedAgentIds.Count; i++)
+            {
+                int agentId = OrderedAgentIds[i];
+                if (!Agents.TryGetValue(agentId, out AgentRuntimeData agent) || agent == null)
+                    throw new InvalidOperationException(
+                        $"EnsureNavigationGoalOccupancyBuckets failed: ordered agent is missing id={agentId}.");
+
+                long newPositionBucket = ResolveNavigationGoalBucketKey(agent.PositionFixed);
+                long oldPositionBucket = NavigationGoalPositionBucketByAgent[agentId];
+                if (newPositionBucket != oldPositionBucket)
+                {
+                    RemoveNavigationGoalBucketEntry(NavigationGoalPositionBuckets, oldPositionBucket, agentId);
+                    AddNavigationGoalBucketEntryOrdered(NavigationGoalPositionBuckets, newPositionBucket, agent, agentId);
+                    NavigationGoalPositionBucketByAgent[agentId] = newPositionBucket;
+                }
+
+                long newTargetBucket = ShouldUseAgentNavigationGoalAsOccupancyFixed(agent)
+                    ? ResolveNavigationGoalBucketKey(agent.NavState.LastGoalWorldFixed)
+                    : long.MinValue;
+                long oldTargetBucket = NavigationGoalTargetBucketByAgent[agentId];
+                if (newTargetBucket != oldTargetBucket)
+                {
+                    if (oldTargetBucket != long.MinValue)
+                        RemoveNavigationGoalBucketEntry(NavigationGoalTargetBuckets, oldTargetBucket, agentId);
+                    if (newTargetBucket != long.MinValue)
+                        AddNavigationGoalBucketEntryOrdered(NavigationGoalTargetBuckets, newTargetBucket, agent, agentId);
+                    NavigationGoalTargetBucketByAgent[agentId] = newTargetBucket;
+                }
+
+                Fix64 agentThreshold = agent.RadiusFixed * (Fix64)2 + NavigationGoalOccupancyPadding;
+                if (agentThreshold.RawValue > maximumThresholdRaw)
+                    maximumThresholdRaw = agentThreshold.RawValue;
+            }
+            _navigationGoalOccupancyMaximumThreshold = Fix64.FromRaw(maximumThresholdRaw);
+            _lastNavigationGoalOccupancyBucketFrame = frame;
+            _lastNavigationGoalOccupancyBucketWorldVersion = _navigationGoalOccupancyBucketGeometryGeneration;
+            if (profile)
+            {
+                long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - incrementalStartTicks;
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowCombatApproachOccupancyBucketIncremental,
+                    elapsedTicks);
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowCombatApproachOccupancyBucketFill,
+                    elapsedTicks);
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowCombatApproachOccupancyBucketBuild,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - buildStartTicks);
+            }
+            return;
+        }
+
         long bucketFillStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
-        NavigationGoalPositionBuckets.Clear();
-        NavigationGoalTargetBuckets.Clear();
+        ResetNavigationGoalOccupancyBuckets();
         _navigationGoalOccupancyMaximumThreshold = Fix64.Zero;
+        long positionBucketTicks = 0L;
+        long targetBucketTicks = 0L;
+        long thresholdTicks = 0L;
         for (int i = 0; i < OrderedAgentIds.Count; i++)
         {
             if (!Agents.TryGetValue(OrderedAgentIds[i], out AgentRuntimeData agent) || agent == null)
                 throw new InvalidOperationException(
                     $"EnsureNavigationGoalOccupancyBuckets failed: ordered agent is missing id={OrderedAgentIds[i]}.");
 
+            long sectionStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
+            long positionBucketKey = ResolveNavigationGoalBucketKey(agent.PositionFixed);
             AddNavigationGoalBucketEntry(
                 NavigationGoalPositionBuckets,
-                ResolveNavigationGoalBucketKey(agent.PositionFixed),
+                positionBucketKey,
                 agent);
+            NavigationGoalPositionBucketByAgent[OrderedAgentIds[i]] = positionBucketKey;
+            if (profile)
+                positionBucketTicks += System.Diagnostics.Stopwatch.GetTimestamp() - sectionStartTicks;
 
+            sectionStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
             Fix64 agentThreshold = agent.RadiusFixed * (Fix64)2 + NavigationGoalOccupancyPadding;
             if (agentThreshold > _navigationGoalOccupancyMaximumThreshold)
                 _navigationGoalOccupancyMaximumThreshold = agentThreshold;
+            if (profile)
+                thresholdTicks += System.Diagnostics.Stopwatch.GetTimestamp() - sectionStartTicks;
 
+            sectionStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
             if (ShouldUseAgentNavigationGoalAsOccupancyFixed(agent))
             {
+                long targetBucketKey = ResolveNavigationGoalBucketKey(agent.NavState.LastGoalWorldFixed);
                 AddNavigationGoalBucketEntry(
                     NavigationGoalTargetBuckets,
-                    ResolveNavigationGoalBucketKey(agent.NavState.LastGoalWorldFixed),
+                    targetBucketKey,
                     agent);
+                NavigationGoalTargetBucketByAgent[OrderedAgentIds[i]] = targetBucketKey;
             }
+            else
+            {
+                NavigationGoalTargetBucketByAgent[OrderedAgentIds[i]] = long.MinValue;
+            }
+            if (profile)
+                targetBucketTicks += System.Diagnostics.Stopwatch.GetTimestamp() - sectionStartTicks;
         }
         if (profile)
         {
             MainThreadFrameProfiler.Record(
                 MainThreadPerfScope.FlowCombatApproachOccupancyBucketFill,
                 System.Diagnostics.Stopwatch.GetTimestamp() - bucketFillStartTicks);
+            if (positionBucketTicks > 0L)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowCombatApproachOccupancyBucketPosition,
+                    positionBucketTicks);
+            if (targetBucketTicks > 0L)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowCombatApproachOccupancyBucketTarget,
+                    targetBucketTicks);
+            if (thresholdTicks > 0L)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowCombatApproachOccupancyBucketThreshold,
+                    thresholdTicks);
         }
 
         _lastNavigationGoalOccupancyBucketFrame = frame;
-        _lastNavigationGoalOccupancyBucketWorldVersion = worldVersion;
+        _lastNavigationGoalOccupancyBucketWorldVersion = _navigationGoalOccupancyBucketGeometryGeneration;
         if (profile)
         {
             MainThreadFrameProfiler.Record(

@@ -2338,12 +2338,29 @@ public static partial class FlowFieldCrowdMovementSystem
         long scoreTicks = 0L;
         long scoreArithmeticTicks = 0L;
         long occupancyPhaseTicks = 0L;
+        long scoreIslandFilterTicks = 0L;
+        long occupancyPreparationTicks = 0L;
+        long occupancyPreparationStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         PrepareCombatTargetSlotOccupancyCandidates(entry, requiredClearance, startIsland);
+        if (profile)
+        {
+            occupancyPreparationTicks = Stopwatch.GetTimestamp() - occupancyPreparationStartTicks;
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowCombatApproachOccupancyPreparation,
+                occupancyPreparationTicks);
+        }
         for (int i = 0; i < entry.Points.Length; i++)
         {
             _perf.CombatApproachScoredCandidates++;
+            long islandFilterStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             if (entry.IslandIds[i] != startIsland)
+            {
+                if (profile)
+                    scoreIslandFilterTicks += Stopwatch.GetTimestamp() - islandFilterStartTicks;
                 continue;
+            }
+            if (profile)
+                scoreIslandFilterTicks += Stopwatch.GetTimestamp() - islandFilterStartTicks;
             _perf.CombatApproachSameIslandCandidates++;
 
             FixVector2 candidate = entry.Points[i];
@@ -2420,15 +2437,22 @@ public static partial class FlowFieldCrowdMovementSystem
                     MainThreadPerfScope.FlowCombatApproachScoreArithmetic,
                     scoreArithmeticTicks);
             }
+            if (scoreIslandFilterTicks > 0L)
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowCombatApproachCoreScoreIslandFilter,
+                    scoreIslandFilterTicks);
             long elapsedTicks = Stopwatch.GetTimestamp() - scorePhaseStartTicks;
             MainThreadFrameProfiler.Record(
                 MainThreadPerfScope.FlowCombatApproachCoreScorePhase,
                 elapsedTicks);
             coreAttributedTicks += elapsedTicks;
-            long scoreUnattributedTicks = elapsedTicks - occupancyPhaseTicks - scoreTicks;
+            long scoreUnattributedTicks = elapsedTicks
+                                          - occupancyPreparationTicks
+                                          - occupancyPhaseTicks
+                                          - scoreTicks;
             if (scoreUnattributedTicks < 0L)
                 throw new InvalidOperationException(
-                    $"Combat approach score timing is inconsistent. total={elapsedTicks}, occupancy={occupancyPhaseTicks}, score={scoreTicks}.");
+                    $"Combat approach score timing is inconsistent. total={elapsedTicks}, preparation={occupancyPreparationTicks}, occupancy={occupancyPhaseTicks}, score={scoreTicks}.");
             if (scoreUnattributedTicks > 0L)
                 MainThreadFrameProfiler.Record(
                     MainThreadPerfScope.FlowCombatApproachCoreScoreUnattributed,
@@ -3078,9 +3102,31 @@ public static partial class FlowFieldCrowdMovementSystem
                     elapsedTicks);
             }
 #if UNITY_EDITOR
-            CaptureEditorNavigationPathTickDiagnostic();
+            if (profile)
+            {
+                long diagnosticStartTicks = Stopwatch.GetTimestamp();
+                CaptureEditorNavigationPathTickDiagnostic();
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathDiagnosticCapture,
+                    Stopwatch.GetTimestamp() - diagnosticStartTicks);
+            }
+            else
+            {
+                CaptureEditorNavigationPathTickDiagnostic();
+            }
 #endif
-            EndNavigationWorkBudget();
+            if (profile)
+            {
+                long budgetEndStartTicks = Stopwatch.GetTimestamp();
+                EndNavigationWorkBudget();
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationPathBudgetEnd,
+                    Stopwatch.GetTimestamp() - budgetEndStartTicks);
+            }
+            else
+            {
+                EndNavigationWorkBudget();
+            }
         }
 
         CollectedNavigationSyncRequests.Clear();
