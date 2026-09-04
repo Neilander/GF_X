@@ -409,7 +409,22 @@ namespace UnityGameFramework.Runtime
         FlowCombatApproachOccupancyBucketIncremental = 398,
         FlowCombatApproachOccupancyPrepareInitialization = 399,
         FlowCombatApproachOccupancyPrepareCacheState = 400,
-        Count = 401
+        FlowMovingTargetPolicyAnchorTargetResolve = 401,
+        FlowMovingTargetPolicyAnchorKeyBuild = 402,
+        FlowMovingTargetPolicyAnchorDictionaryLookup = 403,
+        FlowMovingTargetPolicyAnchorDictionaryCreate = 404,
+        FlowMovingTargetPolicyAnchorDictionaryInsert = 405,
+        FlowMovingTargetPolicyBatchResolutionLookup = 406,
+        FlowMovingTargetPolicyBatchStatePublish = 407,
+        FlowMovingTargetPolicyAnchorProjectionCacheCheck = 408,
+        FlowMovingTargetPolicyAnchorProjectionIslandResolve = 409,
+        FlowMovingTargetPolicyAnchorProjectionRequest = 410,
+        FlowMovingTargetPolicyInputResolution = 411,
+        FlowMovingTargetPolicyBatchContinuation = 412,
+        FlowMovingTargetPolicyBatchEarlyPath = 413,
+        FlowMovingTargetPolicyRawGoalPath = 414,
+        FlowMovingTargetPolicyOutputInitialization = 415,
+        Count = 416
     }
 
     public static class MainThreadFrameProfiler
@@ -432,6 +447,9 @@ namespace UnityGameFramework.Runtime
         private static readonly long[] LastCompletedMaxLogicTickScopeTicks = new long[(int)MainThreadPerfScope.Count];
         private static readonly long[] ScopeAllocatedBytes = new long[(int)MainThreadPerfScope.Count];
         private static readonly long[] IntervalScopeAllocatedBytes = new long[(int)MainThreadPerfScope.Count];
+        private static bool _recordMeasurementActive;
+        private static long _recordMeasurementTicks;
+        private static int _recordMeasurementCount;
         private static readonly Dictionary<Type, LogicListenerSample> LogicListenerSamples = new Dictionary<Type, LogicListenerSample>();
         private static readonly List<LogicListenerSample> LogicListenerSortBuffer = new List<LogicListenerSample>();
         private static readonly Dictionary<Type, long> CurrentLogicTickListenerTicks = new Dictionary<Type, long>();
@@ -496,6 +514,9 @@ namespace UnityGameFramework.Runtime
             LastCompletedLogicFrameMilliseconds = 0.0;
             LastCompletedMaxLogicTickMilliseconds = 0.0;
             LastCompletedMaxLogicTickFrame = 0;
+            _recordMeasurementActive = false;
+            _recordMeasurementTicks = 0L;
+            _recordMeasurementCount = 0;
             _currentMaxLogicTickTicks = 0L;
             _currentLogicTickFrame = 0;
             _currentMaxLogicTickFrame = 0;
@@ -587,6 +608,7 @@ namespace UnityGameFramework.Runtime
             if (ticks <= 0 && allocatedBytes <= 0)
                 return;
 
+            long measurementStartTicks = _recordMeasurementActive ? Stopwatch.GetTimestamp() : 0L;
             EnsureFrame();
             int index = (int)scope;
             if (index < 0 || index >= ScopeTicks.Length)
@@ -598,6 +620,11 @@ namespace UnityGameFramework.Runtime
                 CurrentLogicTickScopeTicks[index] += ticks;
             if (allocatedBytes > 0)
                 ScopeAllocatedBytes[index] += allocatedBytes;
+            if (_recordMeasurementActive)
+            {
+                _recordMeasurementTicks += Stopwatch.GetTimestamp() - measurementStartTicks;
+                _recordMeasurementCount++;
+            }
         }
 
         public static void RecordLogicFrameListener(Type listenerType, long ticks)
@@ -640,6 +667,24 @@ namespace UnityGameFramework.Runtime
                     LastCompletedMaxLogicTickListenerTicks[entry.Key] = entry.Value;
             }
             _logicTickActive = false;
+        }
+
+        public static void BeginRecordMeasurement()
+        {
+            if (!LoggingEnabled)
+                return;
+            _recordMeasurementActive = true;
+            _recordMeasurementTicks = 0L;
+            _recordMeasurementCount = 0;
+        }
+
+        public static void EndRecordMeasurement(out long ticks, out int count)
+        {
+            ticks = _recordMeasurementTicks;
+            count = _recordMeasurementCount;
+            _recordMeasurementActive = false;
+            _recordMeasurementTicks = 0L;
+            _recordMeasurementCount = 0;
         }
 
         private static void EnsureFrame()

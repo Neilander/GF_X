@@ -299,6 +299,21 @@ internal static class Lv2PullChasePerformanceRunner
         MainThreadPerfScope.FlowCombatApproachOccupancyBucketIncremental,
         MainThreadPerfScope.FlowCombatApproachOccupancyPrepareInitialization,
         MainThreadPerfScope.FlowCombatApproachOccupancyPrepareCacheState,
+        MainThreadPerfScope.FlowMovingTargetPolicyAnchorTargetResolve,
+        MainThreadPerfScope.FlowMovingTargetPolicyAnchorKeyBuild,
+        MainThreadPerfScope.FlowMovingTargetPolicyAnchorDictionaryLookup,
+        MainThreadPerfScope.FlowMovingTargetPolicyAnchorDictionaryCreate,
+        MainThreadPerfScope.FlowMovingTargetPolicyAnchorDictionaryInsert,
+        MainThreadPerfScope.FlowMovingTargetPolicyBatchResolutionLookup,
+        MainThreadPerfScope.FlowMovingTargetPolicyBatchStatePublish,
+        MainThreadPerfScope.FlowMovingTargetPolicyAnchorProjectionCacheCheck,
+        MainThreadPerfScope.FlowMovingTargetPolicyAnchorProjectionIslandResolve,
+        MainThreadPerfScope.FlowMovingTargetPolicyAnchorProjectionRequest,
+        MainThreadPerfScope.FlowMovingTargetPolicyInputResolution,
+        MainThreadPerfScope.FlowMovingTargetPolicyBatchContinuation,
+        MainThreadPerfScope.FlowMovingTargetPolicyBatchEarlyPath,
+        MainThreadPerfScope.FlowMovingTargetPolicyRawGoalPath,
+        MainThreadPerfScope.FlowMovingTargetPolicyOutputInitialization,
         MainThreadPerfScope.FlowCombatApproachScoreAngle,
         MainThreadPerfScope.FlowCombatApproachScoreSelfDistance,
         MainThreadPerfScope.FlowCombatApproachScoreTargetDistance,
@@ -1027,10 +1042,10 @@ internal static class Lv2PullChasePerformanceRunner
         s_PeakPathPortalExpansions = Math.Max(
             s_PeakPathPortalExpansions,
             FlowFieldCrowdMovementSystem.GetEditorTestFramePathPortalGraphNodeExpansionCount());
-        int pathRequestGroups = FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathRequestGroupCount();
-        int pathRequestOperations = FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathRequestOperationCount();
-        int pathRequestCommits = FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathRequestCommitCount();
-        int pathRequestSourceCommits = FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathSourceCommitCount();
+        int pathRequestGroups = -1;
+        int pathRequestOperations = -1;
+        int pathRequestCommits = -1;
+        int pathRequestSourceCommits = -1;
         int pendingPathRequestGroups = FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathRequestCount();
         int pendingPathRequestSources = FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationPathSourceCount();
         int pathRequestOperationQuota = FlowFieldCrowdMovementSystem.GetEditorTestNavigationPathRequestOperationQuota();
@@ -1069,12 +1084,32 @@ internal static class Lv2PullChasePerformanceRunner
             }
         }
 
+        bool hasCompletedLogicTickSnapshot = logicTickMs > 0.0
+                                              && MainThreadFrameProfiler.LastCompletedMaxLogicTickFrame >= 0
+                                              && MainThreadFrameProfiler.LastCompletedMaxLogicTickFrame <= int.MaxValue;
+        int diagnosticLogicFrame = hasCompletedLogicTickSnapshot
+            ? checked((int)MainThreadFrameProfiler.LastCompletedMaxLogicTickFrame)
+            : -1;
+        if (hasCompletedLogicTickSnapshot
+            && !FlowFieldCrowdMovementSystem.HasEditorFlowPerfTickSnapshot(diagnosticLogicFrame))
+        {
+            hasCompletedLogicTickSnapshot = false;
+        }
+        if (hasCompletedLogicTickSnapshot)
+        {
+            pathRequestGroups = FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathRequestGroupCount(diagnosticLogicFrame);
+            pathRequestOperations = FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathRequestOperationCount(diagnosticLogicFrame);
+            pathRequestCommits = FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathRequestCommitCount(diagnosticLogicFrame);
+            pathRequestSourceCommits = FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathSourceCommitCount(diagnosticLogicFrame);
+        }
+
         bool periodic = completedFrame - s_LastPeriodicSampleFrame >= SampleIntervalRenderFrames;
         double pathHandleMilliseconds = MainThreadFrameProfiler.GetLastCompletedScopeMilliseconds(MainThreadPerfScope.FlowPreparePathHandle);
         double continuationMilliseconds = MainThreadFrameProfiler.GetLastCompletedScopeMilliseconds(MainThreadPerfScope.FlowTileCommitContinuation);
-        bool pathSearchExpanded = EditorApplication.isPlaying
-                                  && FlowFieldCrowdMovementSystem.GetEditorTestFramePathPortalGraphNodeExpansionCount() > 0;
-        bool pathRequestAdvanced = pathRequestOperations > 0 || pathRequestCommits > 0;
+        bool pathSearchExpanded = hasCompletedLogicTickSnapshot
+                                  && FlowFieldCrowdMovementSystem.GetEditorTestFramePathPortalGraphNodeExpansionCount(diagnosticLogicFrame) > 0;
+        bool pathRequestAdvanced = hasCompletedLogicTickSnapshot
+                                    && (pathRequestOperations > 0 || pathRequestCommits > 0);
         if (!periodic && !pathSearchExpanded && !pathRequestAdvanced && pathHandleMilliseconds < 0.5 && continuationMilliseconds < 0.5)
             return;
         if (periodic)
@@ -1097,18 +1132,24 @@ internal static class Lv2PullChasePerformanceRunner
         string navigation = EditorApplication.isPlaying
             ? FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics()
             : string.Empty;
-        string pathSearch = EditorApplication.isPlaying
-            ? FlowFieldCrowdMovementSystem.GetEditorTestFramePathSearchDiagnostics()
-            : string.Empty;
-        string pathStages = EditorApplication.isPlaying
-            ? FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathStageDiagnostics()
-            : string.Empty;
-        string navigationSyncStages = EditorApplication.isPlaying
-            ? FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationSyncStageDiagnostics()
-            : string.Empty;
-        string combatApproach = EditorApplication.isPlaying
-            ? FlowFieldCrowdMovementSystem.GetEditorTestFrameCombatApproachDiagnostics()
-            : string.Empty;
+        string snapshotState = hasCompletedLogicTickSnapshot
+            ? $"logic={diagnosticLogicFrame}"
+            : "unavailable";
+        string pathSearch = EditorApplication.isPlaying && hasCompletedLogicTickSnapshot
+            ? FlowFieldCrowdMovementSystem.GetEditorTestFramePathSearchDiagnostics(diagnosticLogicFrame)
+            : $"snapshot={snapshotState}";
+        string pathStages = EditorApplication.isPlaying && hasCompletedLogicTickSnapshot
+            ? FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationPathStageDiagnostics(diagnosticLogicFrame)
+            : $"snapshot={snapshotState}";
+        string navigationSyncStages = EditorApplication.isPlaying && hasCompletedLogicTickSnapshot
+            ? FlowFieldCrowdMovementSystem.GetEditorTestFrameNavigationSyncStageDiagnostics(diagnosticLogicFrame)
+            : $"snapshot={snapshotState}";
+        string combatApproach = EditorApplication.isPlaying && hasCompletedLogicTickSnapshot
+            ? FlowFieldCrowdMovementSystem.GetEditorTestFrameCombatApproachDiagnostics(diagnosticLogicFrame)
+            : $"snapshot={snapshotState}";
+        string pathRequestSample = hasCompletedLogicTickSnapshot
+            ? $"groups={pathRequestGroups},operations={pathRequestOperations},quota={pathRequestOperationQuota},commits={pathRequestCommits},sourceCommits={pathRequestSourceCommits}"
+            : $"snapshot={snapshotState},quota={pathRequestOperationQuota}";
         string startConnectors = EditorApplication.isPlaying
             ? FlowFieldCrowdMovementSystem.GetEditorTestHierarchyStartConnectorDiagnostics(completedFrame)
             : string.Empty;
@@ -1119,8 +1160,7 @@ internal static class Lv2PullChasePerformanceRunner
             $"sample render={completedFrame},logic={LogicFrameRuntime.CurrentFrame},state={(RunnerState)SessionState.GetInt(StateKey, 0)}," +
             $"mode={(ScenarioMode)SessionState.GetInt(ModeKey, 0)},frameMs={frameMs:F3},trackedMs={MainThreadFrameProfiler.LastCompletedTrackedMilliseconds:F3}," +
             $"untrackedMs={MainThreadFrameProfiler.LastCompletedUntrackedMilliseconds:F3},logicMs={logicMs:F3},maxLogicTickMs={MainThreadFrameProfiler.LastCompletedMaxLogicTickMilliseconds:F3},maxLogicTickFrame={MainThreadFrameProfiler.LastCompletedMaxLogicTickFrame},editorGapMs={updateGapMs:F3}," +
-            $"scopes=[{BuildChaseScopeSample()}],tickScopes=[{BuildCompletedMaxLogicTickScopeSample()}],pathRequests=[groups={pathRequestGroups},operations={pathRequestOperations},quota={pathRequestOperationQuota}," +
-            $"commits={pathRequestCommits},sourceCommits={pathRequestSourceCommits},pendingGroups={pendingPathRequestGroups},pendingSources={pendingPathRequestSources}]," +
+            $"scopes=[{BuildChaseScopeSample()}],tickScopes=[{BuildCompletedMaxLogicTickScopeSample()}],pathRequests=[{pathRequestSample},pendingGroups={pendingPathRequestGroups},pendingSources={pendingPathRequestSources}]," +
             $"pathSearch=[{pathSearch}],pathStages=[{pathStages}],navigationSyncStages=[{navigationSyncStages}]," +
             $"combatApproach=[{combatApproach}]," +
             $"maxTickListeners=[{MainThreadFrameProfiler.GetLastCompletedMaxLogicTickListenerSummary()}]," +

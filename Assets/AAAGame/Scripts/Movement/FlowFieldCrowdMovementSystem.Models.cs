@@ -2261,6 +2261,10 @@ public static partial class FlowFieldCrowdMovementSystem
         public int RawGoalX;
         public int RawGoalY;
         public int WorldVersion;
+        public IEntityContext Target;
+        public FixVector2 TargetFramePosition;
+        public Fix64 TargetExtent;
+        public bool UseRawGoal;
         public bool PendingProjection;
     }
 

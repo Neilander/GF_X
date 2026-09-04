@@ -961,66 +961,122 @@ public static partial class FlowFieldCrowdMovementSystem
 
     public static string GetEditorTestFramePathSearchDiagnostics()
     {
-        return $"logicFrame={_perf.Frame},sectorSearches={_perf.SectorPathSearches}," +
-               $"portalNodes={_perf.PathPortalGraphNodeExpansions},transitionScans={_perf.PathPortalGraphOutgoingTransitionScans}," +
-               $"transitionHits={_perf.PathPortalGraphOutgoingTransitionHits},stableInitial={_perf.StableGoalRefreshInitial}," +
-               $"stableCell={_perf.StableGoalRefreshCellDelta},policyQueries={_perf.SectorCorridorPolicyQueries}," +
-               $"movingAnchorBatchHits={_perf.MovingTargetAnchorBatchHits},movingAnchorBatchMisses={_perf.MovingTargetAnchorBatchMisses}," +
-               $"policyRebinds={_perf.SectorCorridorExactGoalRebinds},policyReplacements={_perf.SectorCorridorExactGoalReplacements}," +
-               $"policyMs={TicksToMs(_perf.SectorCorridorPolicyTicks):F3},policyCount={SectorCorridorPolicies.Count}," +
-               $"startConnectorHits={_perf.HierarchyStartConnectorCacheHits},startConnectorMisses={_perf.HierarchyStartConnectorCacheMisses}," +
-               $"downwardHits={_perf.HierarchyDownwardCustomizationCacheHits},downwardMisses={_perf.HierarchyDownwardCustomizationCacheMisses}," +
-               $"downwardExpansions={_perf.HierarchyDownwardCustomizationExpansions}," +
-               $"witnessHits={_perf.HierarchyL0WitnessCacheHits},witnessMisses={_perf.HierarchyL0WitnessCacheMisses}";
+        return BuildEditorTestFramePathSearchDiagnostics(_perf);
+    }
+
+    public static string GetEditorTestFramePathSearchDiagnostics(int logicFrame)
+    {
+        return BuildEditorTestFramePathSearchDiagnostics(GetEditorFlowPerfTickSnapshot(logicFrame));
+    }
+
+    private static string BuildEditorTestFramePathSearchDiagnostics(FlowPerfAccumulator perf)
+    {
+        return $"logicFrame={perf.Frame},sectorSearches={perf.SectorPathSearches}," +
+               $"portalNodes={perf.PathPortalGraphNodeExpansions},transitionScans={perf.PathPortalGraphOutgoingTransitionScans}," +
+               $"transitionHits={perf.PathPortalGraphOutgoingTransitionHits},stableInitial={perf.StableGoalRefreshInitial}," +
+               $"stableCell={perf.StableGoalRefreshCellDelta},policyQueries={perf.SectorCorridorPolicyQueries}," +
+               $"movingAnchorBatchHits={perf.MovingTargetAnchorBatchHits},movingAnchorBatchMisses={perf.MovingTargetAnchorBatchMisses}," +
+               $"policyRebinds={perf.SectorCorridorExactGoalRebinds},policyReplacements={perf.SectorCorridorExactGoalReplacements}," +
+               $"policyMs={TicksToMs(perf.SectorCorridorPolicyTicks):F3},policyCount={SectorCorridorPolicies.Count}," +
+               $"startConnectorHits={perf.HierarchyStartConnectorCacheHits},startConnectorMisses={perf.HierarchyStartConnectorCacheMisses}," +
+               $"downwardHits={perf.HierarchyDownwardCustomizationCacheHits},downwardMisses={perf.HierarchyDownwardCustomizationCacheMisses}," +
+               $"downwardExpansions={perf.HierarchyDownwardCustomizationExpansions}," +
+               $"witnessHits={perf.HierarchyL0WitnessCacheHits},witnessMisses={perf.HierarchyL0WitnessCacheMisses}";
     }
 
     public static string GetEditorTestFrameNavigationPathStageDiagnostics()
     {
-        return $"initialize={TicksToMs(_perf.NavigationPathInitializeTicks):F3}ms/{_perf.NavigationPathInitializeOperations}," +
-               $"goalConnector={TicksToMs(_perf.NavigationPathGoalConnectorTicks):F3}ms/{_perf.NavigationPathGoalConnectorOperations}," +
-               $"createHierarchy={TicksToMs(_perf.NavigationPathCreateHierarchyTicks):F3}ms/{_perf.NavigationPathCreateHierarchyOperations}," +
-               $"expandHierarchy={TicksToMs(_perf.NavigationPathExpandHierarchyTicks):F3}ms/{_perf.NavigationPathExpandHierarchyOperations}," +
-               $"downward={TicksToMs(_perf.NavigationPathDownwardTicks):F3}ms/{_perf.NavigationPathDownwardOperations}," +
-               $"l0={TicksToMs(_perf.NavigationPathL0Ticks):F3}ms/{_perf.NavigationPathL0Operations}," +
-               $"materialize={TicksToMs(_perf.NavigationPathMaterializeTicks):F3}ms/{_perf.NavigationPathMaterializeOperations}," +
-               $"materializeStages=(initialize={TicksToMs(_perf.NavigationPathMaterializeInitializeTicks):F3}ms/{_perf.NavigationPathMaterializeInitializeOperations}," +
-               $"startPortal={TicksToMs(_perf.NavigationPathMaterializeStartPortalTicks):F3}ms/{_perf.NavigationPathMaterializeStartPortalOperations}," +
-               $"downward={TicksToMs(_perf.NavigationPathMaterializeDownwardTicks):F3}ms/{_perf.NavigationPathMaterializeDownwardOperations}," +
-               $"policy={TicksToMs(_perf.NavigationPathMaterializePolicyTicks):F3}ms/{_perf.NavigationPathMaterializePolicyOperations}," +
-               $"goalConnector={TicksToMs(_perf.NavigationPathMaterializeGoalConnectorTicks):F3}ms/{_perf.NavigationPathMaterializeGoalConnectorOperations}," +
-               $"conversion={TicksToMs(_perf.NavigationPathMaterializeConversionTicks):F3}ms/{_perf.NavigationPathMaterializeConversionOperations}," +
-               $"immutableCopy={TicksToMs(_perf.NavigationPathMaterializeImmutableCopyTicks):F3}ms/{_perf.NavigationPathMaterializeImmutableCopyOperations}," +
-               $"hash={TicksToMs(_perf.NavigationPathMaterializeHashTicks):F3}ms/{_perf.NavigationPathMaterializeHashOperations}," +
-               $"publish={TicksToMs(_perf.NavigationPathMaterializePublishTicks):F3}ms/{_perf.NavigationPathMaterializePublishOperations}," +
-               $"localBinding={TicksToMs(_perf.NavigationPathLocalBindingTicks):F3}ms/{_perf.NavigationPathLocalBindingOperations})," +
-               $"complete={TicksToMs(_perf.NavigationPathCompleteTicks):F3}ms/{_perf.NavigationPathCompleteOperations}";
+        return BuildEditorTestFrameNavigationPathStageDiagnostics(_perf);
+    }
+
+    public static string GetEditorTestFrameNavigationPathStageDiagnostics(int logicFrame)
+    {
+        return BuildEditorTestFrameNavigationPathStageDiagnostics(GetEditorFlowPerfTickSnapshot(logicFrame));
+    }
+
+    private static string BuildEditorTestFrameNavigationPathStageDiagnostics(FlowPerfAccumulator perf)
+    {
+        return $"initialize={TicksToMs(perf.NavigationPathInitializeTicks):F3}ms/{perf.NavigationPathInitializeOperations}," +
+               $"goalConnector={TicksToMs(perf.NavigationPathGoalConnectorTicks):F3}ms/{perf.NavigationPathGoalConnectorOperations}," +
+               $"createHierarchy={TicksToMs(perf.NavigationPathCreateHierarchyTicks):F3}ms/{perf.NavigationPathCreateHierarchyOperations}," +
+               $"expandHierarchy={TicksToMs(perf.NavigationPathExpandHierarchyTicks):F3}ms/{perf.NavigationPathExpandHierarchyOperations}," +
+               $"downward={TicksToMs(perf.NavigationPathDownwardTicks):F3}ms/{perf.NavigationPathDownwardOperations}," +
+               $"l0={TicksToMs(perf.NavigationPathL0Ticks):F3}ms/{perf.NavigationPathL0Operations}," +
+               $"materialize={TicksToMs(perf.NavigationPathMaterializeTicks):F3}ms/{perf.NavigationPathMaterializeOperations}," +
+               $"materializeStages=(initialize={TicksToMs(perf.NavigationPathMaterializeInitializeTicks):F3}ms/{perf.NavigationPathMaterializeInitializeOperations}," +
+               $"startPortal={TicksToMs(perf.NavigationPathMaterializeStartPortalTicks):F3}ms/{perf.NavigationPathMaterializeStartPortalOperations}," +
+               $"downward={TicksToMs(perf.NavigationPathMaterializeDownwardTicks):F3}ms/{perf.NavigationPathMaterializeDownwardOperations}," +
+               $"policy={TicksToMs(perf.NavigationPathMaterializePolicyTicks):F3}ms/{perf.NavigationPathMaterializePolicyOperations}," +
+               $"goalConnector={TicksToMs(perf.NavigationPathMaterializeGoalConnectorTicks):F3}ms/{perf.NavigationPathMaterializeGoalConnectorOperations}," +
+               $"conversion={TicksToMs(perf.NavigationPathMaterializeConversionTicks):F3}ms/{perf.NavigationPathMaterializeConversionOperations}," +
+               $"immutableCopy={TicksToMs(perf.NavigationPathMaterializeImmutableCopyTicks):F3}ms/{perf.NavigationPathMaterializeImmutableCopyOperations}," +
+               $"hash={TicksToMs(perf.NavigationPathMaterializeHashTicks):F3}ms/{perf.NavigationPathMaterializeHashOperations}," +
+               $"publish={TicksToMs(perf.NavigationPathMaterializePublishTicks):F3}ms/{perf.NavigationPathMaterializePublishOperations}," +
+               $"localBinding={TicksToMs(perf.NavigationPathLocalBindingTicks):F3}ms/{perf.NavigationPathLocalBindingOperations})," +
+               $"complete={TicksToMs(perf.NavigationPathCompleteTicks):F3}ms/{perf.NavigationPathCompleteOperations}";
     }
 
     public static string GetEditorTestFrameNavigationSyncStageDiagnostics()
     {
-        return $"agentUpdate={TicksToMs(_perf.AgentUpdateTicks):F3}ms," +
-               $"demandResolve={TicksToMs(_perf.NavigationDemandResolutionTicks):F3}ms/{_perf.NavigationDemandResolutionCount}," +
-               $"demandDispatch={TicksToMs(_perf.NavigationDemandDispatchTicks):F3}ms/{_perf.NavigationDemandDispatchCount}," +
-               $"pathQueue={TicksToMs(_perf.NavigationPathRequestQueueTicks):F3}ms," +
-               $"flowQueue={TicksToMs(_perf.FlowTileQueueTicks):F3}ms," +
-               $"portalOwner={TicksToMs(_perf.FixedPortalOwnerSnapshotTicks):F3}ms," +
-               $"corridorBuild={TicksToMs(_perf.FixedCorridorBuildTicks):F3}ms/{_perf.FixedCorridorBuildOperations}," +
-               $"participantRefresh={TicksToMs(_perf.FixedPortalParticipantRefreshTicks):F3}ms," +
-               $"ownerResolve={TicksToMs(_perf.FixedPortalOwnerResolveTicks):F3}ms";
+        return BuildEditorTestFrameNavigationSyncStageDiagnostics(_perf);
+    }
+
+    public static string GetEditorTestFrameNavigationSyncStageDiagnostics(int logicFrame)
+    {
+        return BuildEditorTestFrameNavigationSyncStageDiagnostics(GetEditorFlowPerfTickSnapshot(logicFrame));
+    }
+
+    private static string BuildEditorTestFrameNavigationSyncStageDiagnostics(FlowPerfAccumulator perf)
+    {
+        return $"agentUpdate={TicksToMs(perf.AgentUpdateTicks):F3}ms," +
+               $"demandResolve={TicksToMs(perf.NavigationDemandResolutionTicks):F3}ms/{perf.NavigationDemandResolutionCount}," +
+               $"stableGoalProfilerRecord={TicksToMs(perf.StableGoalProfilerRecordTicks):F3}ms/{perf.StableGoalProfilerRecordCount}," +
+               $"stableGoalPrologue={TicksToMs(perf.StableGoalPrologueTicks):F3}ms," +
+               $"stableGoalBody={TicksToMs(perf.StableGoalBodyTicks):F3}ms/{perf.StableGoalBodyCallCount}," +
+               $"stableGoalMeasurementBegin={TicksToMs(perf.StableGoalMeasurementBeginTicks):F3}ms," +
+               $"stableGoalInvocation={TicksToMs(perf.StableGoalInvocationTicks):F3}ms/{perf.StableGoalInvocationCount}," +
+               $"stableGoalInvocationMax={TicksToMs(perf.StableGoalInvocationMaxTicks):F3}ms," +
+               $"stableGoalBodyMax={TicksToMs(perf.StableGoalBodyMaxTicks):F3}ms," +
+               $"stableGoalPathRequestInvocation={TicksToMs(perf.StableGoalPathRequestInvocationTicks):F3}ms/{perf.StableGoalPathRequestInvocationCount}/max{TicksToMs(perf.StableGoalPathRequestInvocationMaxTicks):F3}," +
+               $"stableGoalPathRequestArgumentPreparation={TicksToMs(perf.StableGoalPathRequestArgumentPreparationTicks):F3}ms/{perf.StableGoalPathRequestArgumentPreparationCount}," +
+               $"stableGoalNavigationCommandInvocation={TicksToMs(perf.StableGoalNavigationCommandInvocationTicks):F3}ms/{perf.StableGoalNavigationCommandInvocationCount}/max{TicksToMs(perf.StableGoalNavigationCommandInvocationMaxTicks):F3}," +
+               $"stableGoalMeasurementFinalize={TicksToMs(perf.StableGoalMeasurementFinalizeTicks):F3}ms," +
+               $"demandDispatch={TicksToMs(perf.NavigationDemandDispatchTicks):F3}ms/{perf.NavigationDemandDispatchCount}," +
+               $"pathQueue={TicksToMs(perf.NavigationPathRequestQueueTicks):F3}ms," +
+               $"flowQueue={TicksToMs(perf.FlowTileQueueTicks):F3}ms," +
+               $"portalOwner={TicksToMs(perf.FixedPortalOwnerSnapshotTicks):F3}ms," +
+               $"corridorBuild={TicksToMs(perf.FixedCorridorBuildTicks):F3}ms/{perf.FixedCorridorBuildOperations}," +
+               $"participantRefresh={TicksToMs(perf.FixedPortalParticipantRefreshTicks):F3}ms," +
+               $"ownerResolve={TicksToMs(perf.FixedPortalOwnerResolveTicks):F3}ms";
     }
 
     public static string GetEditorTestFrameCombatApproachDiagnostics()
     {
-        return $"calls={_perf.CombatApproachCalls},cacheHits={_perf.CombatApproachSlotCacheHits}," +
-               $"cacheBuilds={_perf.CombatApproachSlotCacheBuilds},scored={_perf.CombatApproachScoredCandidates}," +
-               $"sameIsland={_perf.CombatApproachSameIslandCandidates},expandedCalls={_perf.CombatApproachExpandedCalls}," +
-               $"expandedCandidates={_perf.CombatApproachExpandedCandidates},successes={_perf.CombatApproachSuccesses}," +
-               $"noSlotFailures={_perf.CombatApproachNoSlotFailures}";
+        return BuildEditorTestFrameCombatApproachDiagnostics(_perf);
+    }
+
+    public static string GetEditorTestFrameCombatApproachDiagnostics(int logicFrame)
+    {
+        return BuildEditorTestFrameCombatApproachDiagnostics(GetEditorFlowPerfTickSnapshot(logicFrame));
+    }
+
+    private static string BuildEditorTestFrameCombatApproachDiagnostics(FlowPerfAccumulator perf)
+    {
+        return $"calls={perf.CombatApproachCalls},cacheHits={perf.CombatApproachSlotCacheHits}," +
+               $"cacheBuilds={perf.CombatApproachSlotCacheBuilds},scored={perf.CombatApproachScoredCandidates}," +
+               $"sameIsland={perf.CombatApproachSameIslandCandidates},expandedCalls={perf.CombatApproachExpandedCalls}," +
+               $"expandedCandidates={perf.CombatApproachExpandedCandidates},successes={perf.CombatApproachSuccesses}," +
+               $"noSlotFailures={perf.CombatApproachNoSlotFailures}";
     }
 
     public static int GetEditorTestFramePathPortalGraphNodeExpansionCount()
     {
         return _perf.PathPortalGraphNodeExpansions;
+    }
+
+    public static int GetEditorTestFramePathPortalGraphNodeExpansionCount(int logicFrame)
+    {
+        return GetEditorFlowPerfTickSnapshot(logicFrame).PathPortalGraphNodeExpansions;
     }
 
     public static int GetEditorTestFrameSectorCorridorPolicyQueryCount()

@@ -388,6 +388,8 @@ public static partial class FlowFieldCrowdMovementSystem
     private const int EditorNavigationPathTickDiagnosticCapacity = 512;
     private static readonly Queue<FlowPerfAccumulator> EditorNavigationPathTickDiagnostics =
         new Queue<FlowPerfAccumulator>(EditorNavigationPathTickDiagnosticCapacity);
+    private static readonly Queue<FlowPerfAccumulator> EditorFlowPerfTickSnapshots =
+        new Queue<FlowPerfAccumulator>(EditorNavigationPathTickDiagnosticCapacity);
 #endif
 
     private static void PrepareNavigationPathRuntimeContainerCode()
@@ -535,13 +537,25 @@ public static partial class FlowFieldCrowdMovementSystem
             MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowPrepareStartCell, Stopwatch.GetTimestamp() - phaseStartTicks);
 
         phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        long stableGoalArgumentPreparationStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        IEntityContext stableGoalSource = request.Source;
+        FixVector2 stableGoalInputGoal = request.InputGoalPosition;
+        int stableGoalMovingTargetId = request.MovingTargetId;
+        Fix64 stableGoalMaximumTravelDistance = request.MaximumTravelDistance;
+        if (profile)
+        {
+            _perf.StableGoalPathRequestArgumentPreparationTicks += Stopwatch.GetTimestamp() - stableGoalArgumentPreparationStartTicks;
+            _perf.StableGoalPathRequestArgumentPreparationCount++;
+        }
+        long stableGoalInvocationStartTicks = phaseStartTicks;
         if (!TryResolveStableGoalCellFixed(
                 agent,
-                request.Source,
-                request.InputGoalPosition,
+                stableGoalSource,
+                stableGoalInputGoal,
                 startX,
                 startY,
                 sourceIslandId,
+                stableGoalMovingTargetId,
                 out int goalX,
                 out int goalY,
                 out FixVector2 stableGoal,
@@ -551,6 +565,18 @@ public static partial class FlowFieldCrowdMovementSystem
                 out bool useSectorCorridorPolicy,
                 out bool pendingProjection))
         {
+            if (profile)
+            {
+                long stableGoalInvocationTicks = Stopwatch.GetTimestamp() - stableGoalInvocationStartTicks;
+                _perf.StableGoalInvocationTicks += stableGoalInvocationTicks;
+                _perf.StableGoalInvocationCount++;
+                if (stableGoalInvocationTicks > _perf.StableGoalInvocationMaxTicks)
+                    _perf.StableGoalInvocationMaxTicks = stableGoalInvocationTicks;
+                _perf.StableGoalPathRequestInvocationTicks += stableGoalInvocationTicks;
+                _perf.StableGoalPathRequestInvocationCount++;
+                if (stableGoalInvocationTicks > _perf.StableGoalPathRequestInvocationMaxTicks)
+                    _perf.StableGoalPathRequestInvocationMaxTicks = stableGoalInvocationTicks;
+            }
             if (pendingProjection)
             {
                 if (!_world.TryGetSectorId(startX, startY, out int pendingStartSectorId))
@@ -561,10 +587,10 @@ public static partial class FlowFieldCrowdMovementSystem
 
                 PreparePendingMovingTargetProjectionNavigation(
                     agent,
-                    request.MovingTargetId,
+                    stableGoalMovingTargetId,
                     pendingStartSectorId,
-                    request.InputGoalPosition,
-                    request.MaximumTravelDistance);
+                    stableGoalInputGoal,
+                    stableGoalMaximumTravelDistance);
                 if (profile)
                 {
                     MainThreadFrameProfiler.Record(
@@ -579,7 +605,21 @@ public static partial class FlowFieldCrowdMovementSystem
             return false;
         }
         if (profile)
+        {
+            long stableGoalInvocationTicks = Stopwatch.GetTimestamp() - stableGoalInvocationStartTicks;
+            _perf.StableGoalInvocationTicks += stableGoalInvocationTicks;
+            _perf.StableGoalInvocationCount++;
+            if (stableGoalInvocationTicks > _perf.StableGoalInvocationMaxTicks)
+                _perf.StableGoalInvocationMaxTicks = stableGoalInvocationTicks;
+            _perf.StableGoalPathRequestInvocationTicks += stableGoalInvocationTicks;
+            _perf.StableGoalPathRequestInvocationCount++;
+            if (stableGoalInvocationTicks > _perf.StableGoalPathRequestInvocationMaxTicks)
+                _perf.StableGoalPathRequestInvocationMaxTicks = stableGoalInvocationTicks;
+        }
+        if (profile)
+        {
             MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowPrepareStableGoal, Stopwatch.GetTimestamp() - phaseStartTicks);
+        }
         long sectorValidationStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (!_world.TryGetSectorId(startX, startY, out int startSectorId))
         {
@@ -4950,16 +4990,58 @@ public static partial class FlowFieldCrowdMovementSystem
 #if UNITY_EDITOR
     private static void CaptureEditorNavigationPathTickDiagnostic()
     {
-        if (!MainThreadFrameProfiler.LoggingEnabled || _perf.NavigationPathRequestOperations <= 0)
+        if (!MainThreadFrameProfiler.LoggingEnabled
+            || (_perf.NavigationPathRequestOperations <= 0 && _perf.NavigationDemandResolutionCount <= 0))
             return;
         EditorNavigationPathTickDiagnostics.Enqueue(_perf);
+        // The path queue closes the useful navigation statistics before the
+        // next BeginPerfCall boundary. Keep the same accumulator reference so
+        // later work in this logic frame remains visible to frame-aligned readers.
+        EditorFlowPerfTickSnapshots.Enqueue(_perf);
         while (EditorNavigationPathTickDiagnostics.Count > EditorNavigationPathTickDiagnosticCapacity)
             EditorNavigationPathTickDiagnostics.Dequeue();
+        while (EditorFlowPerfTickSnapshots.Count > EditorNavigationPathTickDiagnosticCapacity)
+            EditorFlowPerfTickSnapshots.Dequeue();
     }
 
     private static void ClearEditorNavigationPathTickDiagnostics()
     {
         EditorNavigationPathTickDiagnostics.Clear();
+        EditorFlowPerfTickSnapshots.Clear();
+    }
+
+    private static void CaptureEditorFlowPerfTickSnapshot()
+    {
+        if (!MainThreadFrameProfiler.LoggingEnabled || !_perfInitialized || _perf.Frame < 0)
+            return;
+        EditorFlowPerfTickSnapshots.Enqueue(_perf);
+        while (EditorFlowPerfTickSnapshots.Count > EditorNavigationPathTickDiagnosticCapacity)
+            EditorFlowPerfTickSnapshots.Dequeue();
+    }
+
+    private static FlowPerfAccumulator GetEditorFlowPerfTickSnapshot(int logicFrame)
+    {
+        if (logicFrame < 0)
+            throw new ArgumentOutOfRangeException(nameof(logicFrame), logicFrame, "Logic frame cannot be negative.");
+        foreach (FlowPerfAccumulator snapshot in EditorFlowPerfTickSnapshots)
+        {
+            if (snapshot.Frame == logicFrame)
+                return snapshot;
+        }
+        throw new InvalidOperationException(
+            $"Flow performance snapshot is unavailable for logic frame {logicFrame}.");
+    }
+
+    public static bool HasEditorFlowPerfTickSnapshot(int logicFrame)
+    {
+        if (logicFrame < 0)
+            return false;
+        foreach (FlowPerfAccumulator snapshot in EditorFlowPerfTickSnapshots)
+        {
+            if (snapshot.Frame == logicFrame)
+                return true;
+        }
+        return false;
     }
 
     public static string[] DrainEditorTestNavigationPathTickDiagnostics()
@@ -4988,6 +5070,8 @@ public static partial class FlowFieldCrowdMovementSystem
             diagnostics[i] =
                 $"logicPathTick logic={snapshot.Frame},queue={TicksToMs(snapshot.NavigationPathRequestQueueTicks):F3}ms," +
                 $"groups={snapshot.NavigationPathRequestGroups},sourceAdds={snapshot.NavigationPathRequestSourceAdds},operations={snapshot.NavigationPathRequestOperations}," +
+                $"navigationSync=(demandResolve={TicksToMs(snapshot.NavigationDemandResolutionTicks):F3}ms/{snapshot.NavigationDemandResolutionCount}," +
+                $"demandDispatch={TicksToMs(snapshot.NavigationDemandDispatchTicks):F3}ms/{snapshot.NavigationDemandDispatchCount})," +
                 $"searchSlices={snapshot.NavigationPathSearchCommandSlices}/{snapshot.NavigationPathSearchCommandOperations}," +
                 $"routeSlices={snapshot.NavigationPathRouteSlices}/{snapshot.NavigationPathRouteSliceOperations}," +
                 $"commits={snapshot.NavigationPathRequestCommits},sourceCommits={snapshot.NavigationPathSourceCommits}," +
@@ -5217,9 +5301,19 @@ public static partial class FlowFieldCrowdMovementSystem
         return _perf.NavigationPathRequestGroups;
     }
 
+    public static int GetEditorTestFrameNavigationPathRequestGroupCount(int logicFrame)
+    {
+        return GetEditorFlowPerfTickSnapshot(logicFrame).NavigationPathRequestGroups;
+    }
+
     public static int GetEditorTestFrameNavigationPathRequestOperationCount()
     {
         return _perf.NavigationPathRequestOperations;
+    }
+
+    public static int GetEditorTestFrameNavigationPathRequestOperationCount(int logicFrame)
+    {
+        return GetEditorFlowPerfTickSnapshot(logicFrame).NavigationPathRequestOperations;
     }
 
     public static void GetEditorTestFrameNavigationPathSliceCounts(
@@ -5263,9 +5357,19 @@ public static partial class FlowFieldCrowdMovementSystem
         return _perf.NavigationPathRequestCommits;
     }
 
+    public static int GetEditorTestFrameNavigationPathRequestCommitCount(int logicFrame)
+    {
+        return GetEditorFlowPerfTickSnapshot(logicFrame).NavigationPathRequestCommits;
+    }
+
     public static int GetEditorTestFrameNavigationPathSourceCommitCount()
     {
         return _perf.NavigationPathSourceCommits;
+    }
+
+    public static int GetEditorTestFrameNavigationPathSourceCommitCount(int logicFrame)
+    {
+        return GetEditorFlowPerfTickSnapshot(logicFrame).NavigationPathSourceCommits;
     }
 
 #endif

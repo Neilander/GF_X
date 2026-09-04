@@ -151,6 +151,9 @@ public static partial class FlowFieldCrowdMovementSystem
             return;
 
         _perf.FrameTicks = nowTicks - _perf.FrameStartTicks;
+#if UNITY_EDITOR
+        CaptureEditorFlowPerfTickSnapshot();
+#endif
         FlushPerfIfNeeded();
         TrimMovingTargetAnchors();
         TrimCombatTargetSlotCache();

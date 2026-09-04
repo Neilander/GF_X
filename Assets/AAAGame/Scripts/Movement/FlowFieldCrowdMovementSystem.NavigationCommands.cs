@@ -179,6 +179,7 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        long stableGoalInvocationStartTicks = phaseStartTicks;
         bool goalResolved = TryResolveStableGoalCellFixed(
                 agent,
                 source,
@@ -186,6 +187,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 startX,
                 startY,
                 startIsland,
+                int.MinValue,
                 out int goalX,
                 out int goalY,
                 out FixVector2 stableGoalPosition,
@@ -194,6 +196,18 @@ public static partial class FlowFieldCrowdMovementSystem
                 out FixVector2 finalGoalPosition,
                 out bool useSectorCorridorPolicy,
                 out bool pendingProjection);
+        if (profile)
+        {
+            long stableGoalInvocationTicks = Stopwatch.GetTimestamp() - stableGoalInvocationStartTicks;
+            _perf.StableGoalInvocationTicks += stableGoalInvocationTicks;
+            _perf.StableGoalInvocationCount++;
+            if (stableGoalInvocationTicks > _perf.StableGoalInvocationMaxTicks)
+                _perf.StableGoalInvocationMaxTicks = stableGoalInvocationTicks;
+            _perf.StableGoalNavigationCommandInvocationTicks += stableGoalInvocationTicks;
+            _perf.StableGoalNavigationCommandInvocationCount++;
+            if (stableGoalInvocationTicks > _perf.StableGoalNavigationCommandInvocationMaxTicks)
+                _perf.StableGoalNavigationCommandInvocationMaxTicks = stableGoalInvocationTicks;
+        }
         if (profile)
         {
             MainThreadFrameProfiler.Record(
