@@ -1039,6 +1039,7 @@ public static partial class FlowFieldCrowdMovementSystem
                $"stableGoalBodyMax={TicksToMs(perf.StableGoalBodyMaxTicks):F3}ms," +
                $"stableGoalPathRequestInvocation={TicksToMs(perf.StableGoalPathRequestInvocationTicks):F3}ms/{perf.StableGoalPathRequestInvocationCount}/max{TicksToMs(perf.StableGoalPathRequestInvocationMaxTicks):F3}," +
                $"stableGoalPathRequestArgumentPreparation={TicksToMs(perf.StableGoalPathRequestArgumentPreparationTicks):F3}ms/{perf.StableGoalPathRequestArgumentPreparationCount}," +
+               $"stableGoalInvocationGap={TicksToMs(perf.StableGoalInvocationGapTicks):F3}ms/{perf.StableGoalInvocationGapCount}/max{TicksToMs(perf.StableGoalInvocationGapMaxTicks):F3}," +
                $"stableGoalNavigationCommandInvocation={TicksToMs(perf.StableGoalNavigationCommandInvocationTicks):F3}ms/{perf.StableGoalNavigationCommandInvocationCount}/max{TicksToMs(perf.StableGoalNavigationCommandInvocationMaxTicks):F3}," +
                $"stableGoalMeasurementFinalize={TicksToMs(perf.StableGoalMeasurementFinalizeTicks):F3}ms," +
                $"demandDispatch={TicksToMs(perf.NavigationDemandDispatchTicks):F3}ms/{perf.NavigationDemandDispatchCount}," +

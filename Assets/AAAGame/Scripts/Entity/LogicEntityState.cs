@@ -919,7 +919,18 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, ISkill
                 break;
             case MAEntityLogicFramePhase.Brain:
                 if (m_Brain is ITickBrain tickBrain)
+                {
+                    long brainStartTicks = MainThreadFrameProfiler.LoggingEnabled
+                        ? System.Diagnostics.Stopwatch.GetTimestamp()
+                        : 0L;
                     tickBrain.Tick(this, deltaTime);
+                    if (brainStartTicks != 0L)
+                    {
+                        MainThreadFrameProfiler.RecordLogicTickInvocation(
+                            MainThreadPerfScope.LogicEntityBrain,
+                            System.Diagnostics.Stopwatch.GetTimestamp() - brainStartTicks);
+                    }
+                }
                 break;
             case MAEntityLogicFramePhase.NavigationSync:
                 if (UsesFlowNavigationAgent

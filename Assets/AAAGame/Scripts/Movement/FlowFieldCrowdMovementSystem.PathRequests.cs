@@ -547,7 +547,7 @@ public static partial class FlowFieldCrowdMovementSystem
             _perf.StableGoalPathRequestArgumentPreparationTicks += Stopwatch.GetTimestamp() - stableGoalArgumentPreparationStartTicks;
             _perf.StableGoalPathRequestArgumentPreparationCount++;
         }
-        long stableGoalInvocationStartTicks = phaseStartTicks;
+        long stableGoalInvocationStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (!TryResolveStableGoalCellFixed(
                 agent,
                 stableGoalSource,
@@ -576,6 +576,11 @@ public static partial class FlowFieldCrowdMovementSystem
                 _perf.StableGoalPathRequestInvocationCount++;
                 if (stableGoalInvocationTicks > _perf.StableGoalPathRequestInvocationMaxTicks)
                     _perf.StableGoalPathRequestInvocationMaxTicks = stableGoalInvocationTicks;
+                long stableGoalInvocationGapTicks = stableGoalInvocationTicks - _lastStableGoalBodyTicks;
+                _perf.StableGoalInvocationGapTicks += stableGoalInvocationGapTicks;
+                _perf.StableGoalInvocationGapCount++;
+                if (stableGoalInvocationGapTicks > _perf.StableGoalInvocationGapMaxTicks)
+                    _perf.StableGoalInvocationGapMaxTicks = stableGoalInvocationGapTicks;
             }
             if (pendingProjection)
             {
@@ -615,6 +620,11 @@ public static partial class FlowFieldCrowdMovementSystem
             _perf.StableGoalPathRequestInvocationCount++;
             if (stableGoalInvocationTicks > _perf.StableGoalPathRequestInvocationMaxTicks)
                 _perf.StableGoalPathRequestInvocationMaxTicks = stableGoalInvocationTicks;
+            long stableGoalInvocationGapTicks = stableGoalInvocationTicks - _lastStableGoalBodyTicks;
+            _perf.StableGoalInvocationGapTicks += stableGoalInvocationGapTicks;
+            _perf.StableGoalInvocationGapCount++;
+            if (stableGoalInvocationGapTicks > _perf.StableGoalInvocationGapMaxTicks)
+                _perf.StableGoalInvocationGapMaxTicks = stableGoalInvocationGapTicks;
         }
         if (profile)
         {
@@ -1867,11 +1877,14 @@ public static partial class FlowFieldCrowdMovementSystem
         finally
         {
             long dispatchFinalizationStartTicks = recordTiming ? Stopwatch.GetTimestamp() : 0L;
-            long elapsedTicks = recordTiming ? Stopwatch.GetTimestamp() - startTicks : 0L;
-            if (recordTiming)
-            {
-                stageElapsedTicks += elapsedTicks;
-                RecordNavigationPathRequestStage(stage, operationCount, elapsedTicks);
+                long elapsedTicks = recordTiming ? Stopwatch.GetTimestamp() - startTicks : 0L;
+                if (recordTiming)
+                {
+                    stageElapsedTicks += elapsedTicks;
+                    MainThreadFrameProfiler.RecordLogicTickInvocation(
+                        MainThreadPerfScope.FlowNavigationResolvePathQueueBatch,
+                        elapsedTicks);
+                    RecordNavigationPathRequestStage(stage, operationCount, elapsedTicks);
                 RecordNavigationPathSliceDispatchStage(stage, elapsedTicks);
             }
             else
@@ -2767,10 +2780,15 @@ public static partial class FlowFieldCrowdMovementSystem
         NavigationPathSourceJob source,
         int operationCapacity)
     {
-        if (job == null || source == null || source.Demand == null)
-            throw new InvalidOperationException("Navigation goal connector advance received an incomplete request source.");
-        if (source.HierarchyLevelArrayIndex < 0)
-            throw new InvalidOperationException("Navigation goal connector advance requires a resolved hierarchy level.");
+        bool profileGoalConnector = MainThreadFrameProfiler.LoggingEnabled;
+        long goalConnectorStartTicks = profileGoalConnector ? Stopwatch.GetTimestamp() : 0L;
+        long goalConnectorChildTicks = 0L;
+        try
+        {
+            if (job == null || source == null || source.Demand == null)
+                throw new InvalidOperationException("Navigation goal connector advance received an incomplete request source.");
+            if (source.HierarchyLevelArrayIndex < 0)
+                throw new InvalidOperationException("Navigation goal connector advance requires a resolved hierarchy level.");
 
         int sharedDepth = source.HierarchyLevelArrayIndex;
         if (job.SharedGoalConnectors.TryGetValue(sharedDepth, out PortalHierarchyConnector sharedConnector))
@@ -2861,9 +2879,13 @@ public static partial class FlowFieldCrowdMovementSystem
                         job.Policy.GoalCellIndex % _world.Width,
                         job.Policy.GoalCellIndex / _world.Width);
                     if (profileGoalInput)
+                    {
+                        long goalInputElapsedTicks = Stopwatch.GetTimestamp() - goalInputStartTicks;
                         MainThreadFrameProfiler.Record(
                             MainThreadPerfScope.FlowNavigationGoalConnectorInputCollection,
-                            Stopwatch.GetTimestamp() - goalInputStartTicks);
+                            goalInputElapsedTicks);
+                        goalConnectorChildTicks += goalInputElapsedTicks;
+                    }
                     if (cost != long.MaxValue)
                     {
                         source.RestrictedSourceNodes.Add(EncodePortalNode(job.Key.GoalSectorId, portalId));
@@ -2903,9 +2925,13 @@ public static partial class FlowFieldCrowdMovementSystem
                 operationCapacity,
                 out bool complete);
             if (profileGoalSearch)
+            {
+                long goalSearchElapsedTicks = Stopwatch.GetTimestamp() - goalSearchStartTicks;
                 MainThreadFrameProfiler.Record(
                     MainThreadPerfScope.FlowNavigationGoalConnectorSearchSlice,
-                    Stopwatch.GetTimestamp() - goalSearchStartTicks);
+                    goalSearchElapsedTicks);
+                goalConnectorChildTicks += goalSearchElapsedTicks;
+            }
             if (!complete)
                 return operationCount;
             source.GoalConnector = new PortalHierarchyConnector
@@ -2978,9 +3004,13 @@ public static partial class FlowFieldCrowdMovementSystem
             operationCapacity,
             out bool upperComplete);
         if (profileUpperSearch)
+        {
+            long upperSearchElapsedTicks = Stopwatch.GetTimestamp() - upperSearchStartTicks;
             MainThreadFrameProfiler.Record(
                 MainThreadPerfScope.FlowNavigationGoalConnectorSearchSlice,
-                Stopwatch.GetTimestamp() - upperSearchStartTicks);
+                upperSearchElapsedTicks);
+            goalConnectorChildTicks += upperSearchElapsedTicks;
+        }
         if (!upperComplete)
             return upperOperationCount;
         source.GoalConnector = new PortalHierarchyConnector
@@ -2993,6 +3023,19 @@ public static partial class FlowFieldCrowdMovementSystem
         source.RestrictedSearch = null;
         source.NextGoalConnectorLevel++;
         return upperOperationCount;
+        }
+        finally
+        {
+            if (profileGoalConnector)
+            {
+                long residualTicks = Stopwatch.GetTimestamp() - goalConnectorStartTicks - goalConnectorChildTicks;
+                if (residualTicks < 0L)
+                    throw new InvalidOperationException($"Navigation goal connector exclusive timing is inconsistent. residualTicks={residualTicks}.");
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowNavigationGoalConnectorUnattributed,
+                    residualTicks);
+            }
+        }
     }
 
     private static void BeginRestrictedInputCollection(NavigationPathSourceJob source)

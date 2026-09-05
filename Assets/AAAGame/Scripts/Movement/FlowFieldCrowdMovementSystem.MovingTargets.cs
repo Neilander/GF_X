@@ -10,6 +10,8 @@ using MainThreadPerfScope = UnityGameFramework.Runtime.MainThreadPerfScope;
 
 public static partial class FlowFieldCrowdMovementSystem
 {
+    private static long _lastStableGoalBodyTicks;
+
     private static bool TryResolveStableGoalCellFixed(
         AgentRuntimeData agent,
         IEntityContext self,
@@ -503,6 +505,7 @@ public static partial class FlowFieldCrowdMovementSystem
             {
                 long stableGoalBodyEndTicks = Stopwatch.GetTimestamp();
                 long stableGoalBodyTicks = stableGoalBodyEndTicks - stableGoalBodyStartTicks;
+                _lastStableGoalBodyTicks = stableGoalBodyTicks;
                 _perf.StableGoalBodyTicks += stableGoalBodyTicks;
                 _perf.StableGoalBodyCallCount++;
                 if (stableGoalBodyTicks > _perf.StableGoalBodyMaxTicks)

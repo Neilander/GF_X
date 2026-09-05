@@ -162,6 +162,9 @@ public static partial class FlowFieldCrowdMovementSystem
 
         int runtimeCompletedCount = CompleteRuntimeRebuildQueue();
         RequireRuntimeNavigationReady("initial-navigation-preparation");
+        // Build the occupancy index after all initial entities are committed and
+        // navigation worlds are ready, before the first gameplay logic tick.
+        EnsureNavigationGoalOccupancyBuckets();
         stopwatch.Stop();
         LogNoStacktrace(
             $"[FlowWorld] Initial preparation end elapsed={stopwatch.Elapsed.TotalMilliseconds:F3}ms " +

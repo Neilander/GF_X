@@ -253,7 +253,7 @@ public static class MAEntityLogicFrameSystem
         return phase switch
         {
             MAEntityLogicFramePhase.BaseAndBuffs => MainThreadPerfScope.LogicEntityBaseAndBuffs,
-            MAEntityLogicFramePhase.NavigationPositionSync => MainThreadPerfScope.LogicEntityNavigationSync,
+            MAEntityLogicFramePhase.NavigationPositionSync => MainThreadPerfScope.LogicEntityNavigationPositionSync,
             MAEntityLogicFramePhase.NavigationSync => MainThreadPerfScope.LogicEntityNavigationSync,
             MAEntityLogicFramePhase.Brain => MainThreadPerfScope.LogicEntityBrain,
             MAEntityLogicFramePhase.Targeting => MainThreadPerfScope.LogicEntityTargeting,

@@ -567,6 +567,7 @@ public static partial class FlowFieldCrowdMovementSystem
         if (string.IsNullOrEmpty(agent.RegistrationSource))
             agent.RegistrationSource = "UpdateAgentForEditorTest";
         UpdateAgentNavigationIntent(agent, entity.MoveComp);
+        TryAddNavigationGoalOccupancyAgent(agent);
         _lastAgentSpatialBucketFrame = -1;
         _lastAgentRegistrySyncFrame = -1;
     }
@@ -606,6 +607,7 @@ public static partial class FlowFieldCrowdMovementSystem
         agent.RegistrationSource = "RegisterAgent";
         agent.IsSyntheticRegistration = false;
         UpdateAgentNavigationIntent(agent, entity.MoveComp);
+        TryAddNavigationGoalOccupancyAgent(agent);
         _lastAgentSpatialBucketFrame = -1;
         _lastAgentRegistrySyncFrame = -1;
     }
@@ -614,6 +616,7 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         CancelNavigationPathRequestsForSource(agentId);
         RemoveFixedPortalParticipation(agentId);
+        TryRemoveNavigationGoalOccupancyAgent(agentId);
         bool removed = Agents.Remove(agentId);
         int orderedIndex = OrderedAgentIds.BinarySearch(agentId);
         if (removed)

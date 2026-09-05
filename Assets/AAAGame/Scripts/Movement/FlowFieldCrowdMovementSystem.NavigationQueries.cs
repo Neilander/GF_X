@@ -2345,6 +2345,9 @@ public static partial class FlowFieldCrowdMovementSystem
         if (profile)
         {
             occupancyPreparationTicks = Stopwatch.GetTimestamp() - occupancyPreparationStartTicks;
+            MainThreadFrameProfiler.RecordLogicTickInvocation(
+                MainThreadPerfScope.FlowCombatApproachOccupancyPreparation,
+                occupancyPreparationTicks);
             MainThreadFrameProfiler.Record(
                 MainThreadPerfScope.FlowCombatApproachOccupancyPreparation,
                 occupancyPreparationTicks);
@@ -2442,6 +2445,9 @@ public static partial class FlowFieldCrowdMovementSystem
                     MainThreadPerfScope.FlowCombatApproachCoreScoreIslandFilter,
                     scoreIslandFilterTicks);
             long elapsedTicks = Stopwatch.GetTimestamp() - scorePhaseStartTicks;
+            MainThreadFrameProfiler.RecordLogicTickInvocation(
+                MainThreadPerfScope.FlowCombatApproachCoreScorePhase,
+                elapsedTicks);
             MainThreadFrameProfiler.Record(
                 MainThreadPerfScope.FlowCombatApproachCoreScorePhase,
                 elapsedTicks);

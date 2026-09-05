@@ -480,6 +480,7 @@ public static partial class FlowFieldCrowdMovementSystem
         UpdateAgentNavigationIntent(agent, self.MoveComp);
         Agents.Add(agentId, agent);
         AddOrderedAgentId(agentId);
+        TryAddNavigationGoalOccupancyAgent(agent);
     }
 
     private static void AddOrderedAgentId(int agentId)
@@ -903,6 +904,49 @@ public static partial class FlowFieldCrowdMovementSystem
         bucket.Insert(insertionIndex, agent);
     }
 
+    private static void TryAddNavigationGoalOccupancyAgent(AgentRuntimeData agent)
+    {
+        if (agent == null)
+            throw new InvalidOperationException("TryAddNavigationGoalOccupancyAgent received a null agent.");
+        if (!_navigationGoalOccupancyBucketGeometryInitialized
+            || _world == null
+            || _lastNavigationGoalOccupancyBucketWorldVersion != _navigationGoalOccupancyBucketGeometryGeneration)
+            return;
+        if (NavigationGoalPositionBucketByAgent.ContainsKey(agent.Id)
+            || NavigationGoalTargetBucketByAgent.ContainsKey(agent.Id))
+            return;
+
+        long positionBucketKey = ResolveNavigationGoalBucketKey(agent.PositionFixed);
+        AddNavigationGoalBucketEntryOrdered(NavigationGoalPositionBuckets, positionBucketKey, agent, agent.Id);
+        NavigationGoalPositionBucketByAgent.Add(agent.Id, positionBucketKey);
+
+        long targetBucketKey = ShouldUseAgentNavigationGoalAsOccupancyFixed(agent)
+            ? ResolveNavigationGoalBucketKey(agent.NavState.LastGoalWorldFixed)
+            : long.MinValue;
+        if (targetBucketKey != long.MinValue)
+            AddNavigationGoalBucketEntryOrdered(NavigationGoalTargetBuckets, targetBucketKey, agent, agent.Id);
+        NavigationGoalTargetBucketByAgent.Add(agent.Id, targetBucketKey);
+
+        Fix64 threshold = agent.RadiusFixed * (Fix64)2 + NavigationGoalOccupancyPadding;
+        if (threshold > _navigationGoalOccupancyMaximumThreshold)
+            _navigationGoalOccupancyMaximumThreshold = threshold;
+    }
+
+    private static void TryRemoveNavigationGoalOccupancyAgent(int agentId)
+    {
+        bool hasPosition = NavigationGoalPositionBucketByAgent.TryGetValue(agentId, out long positionBucketKey);
+        bool hasTarget = NavigationGoalTargetBucketByAgent.TryGetValue(agentId, out long targetBucketKey);
+        if (!hasPosition && !hasTarget)
+            return;
+        if (!hasPosition || !hasTarget)
+            throw new InvalidOperationException($"TryRemoveNavigationGoalOccupancyAgent found partial bucket state agent={agentId}.");
+        RemoveNavigationGoalBucketEntry(NavigationGoalPositionBuckets, positionBucketKey, agentId);
+        if (targetBucketKey != long.MinValue)
+            RemoveNavigationGoalBucketEntry(NavigationGoalTargetBuckets, targetBucketKey, agentId);
+        NavigationGoalPositionBucketByAgent.Remove(agentId);
+        NavigationGoalTargetBucketByAgent.Remove(agentId);
+    }
+
     private static void RemoveNavigationGoalBucketEntry(
         Dictionary<long, List<AgentRuntimeData>> buckets,
         long key,
@@ -1070,6 +1114,12 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         long bucketFillStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
+        if (profile)
+        {
+            UnityEngine.Debug.Log(
+                $"[FlowOccupancy] full-rebuild frame={frame},previousGeometryGeneration={previousGeometryGeneration},currentGeometryGeneration={_navigationGoalOccupancyBucketGeometryGeneration}," +
+                $"agents={OrderedAgentIds.Count},positionBuckets={NavigationGoalPositionBucketByAgent.Count},targetBuckets={NavigationGoalTargetBucketByAgent.Count},lastBucketFrame={_lastNavigationGoalOccupancyBucketFrame}.");
+        }
         ResetNavigationGoalOccupancyBuckets();
         _navigationGoalOccupancyMaximumThreshold = Fix64.Zero;
         long positionBucketTicks = 0L;

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using GameFramework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -29,6 +31,7 @@ internal static class Lv2PullChasePerformanceRunner
     private const string WaypointIndexKey = SessionPrefix + "WaypointIndex";
     private const string RetreatStartFrameKey = SessionPrefix + "RetreatStartFrame";
     private const string BuildScenarioKey = SessionPrefix + "BuildScenario";
+    private const string PrewarmKey = SessionPrefix + "Prewarm";
     private const string BuildScheduledFrameKey = SessionPrefix + "BuildScheduledFrame";
     private const string BuildAppliedFrameKey = SessionPrefix + "BuildAppliedFrame";
     private const string BuildBeforeDefendScheduledFrameKey = SessionPrefix + "BuildBeforeDefendScheduledFrame";
@@ -72,6 +75,7 @@ internal static class Lv2PullChasePerformanceRunner
         MainThreadPerfScope.LogicFrameListenerUnattributed,
         MainThreadPerfScope.LogicEntityFrameSetup,
         MainThreadPerfScope.LogicEntityBaseAndBuffs,
+        MainThreadPerfScope.LogicEntityNavigationPositionSync,
         MainThreadPerfScope.LogicEntityNavigationSync,
         MainThreadPerfScope.FlowNavigationAgentUpdate,
         MainThreadPerfScope.FlowNavigationInactiveClear,
@@ -109,6 +113,7 @@ internal static class Lv2PullChasePerformanceRunner
         MainThreadPerfScope.FlowNavigationGoalConnectorSearchSlice,
         MainThreadPerfScope.FlowNavigationGoalConnectorInputCollection,
         MainThreadPerfScope.FlowNavigationGoalConnectorLink,
+        MainThreadPerfScope.FlowNavigationGoalConnectorUnattributed,
         MainThreadPerfScope.FlowNavigationDemandAgentPreparation,
         MainThreadPerfScope.FlowNavigationDemandAssembly,
         MainThreadPerfScope.FlowNavigationTileQueue,
@@ -382,7 +387,31 @@ internal static class Lv2PullChasePerformanceRunner
     private static int s_MaxLogicFrame;
     private static double s_MaxLogicTickMilliseconds;
     private static int s_MaxLogicTickRenderFrame;
+    private static ulong s_MaxLogicTickLogicFrame;
+    private static ulong s_MaxLogicTickWarmLogicFrame;
     private static readonly double[] s_MaxLogicTickScopeMilliseconds = new double[(int)MainThreadPerfScope.Count];
+    private static readonly double[] s_MaxLogicTickScopeRecordFirstMilliseconds = new double[(int)MainThreadPerfScope.Count];
+    private static readonly double[] s_MaxLogicTickScopeRecordHotAverageMilliseconds = new double[(int)MainThreadPerfScope.Count];
+    private static readonly int[] s_MaxLogicTickScopeRecordCounts = new int[(int)MainThreadPerfScope.Count];
+    private static string s_MaxLogicTickInvocationEvidence = string.Empty;
+
+    private readonly struct TickTimingMetric
+    {
+        public TickTimingMetric(double maxTickMs, double firstMs, double hotAverageMs, string hotAverageSource = "derived")
+        {
+            MaxTickMs = maxTickMs;
+            FirstMs = firstMs;
+            HotAverageMs = hotAverageMs;
+            HotAverageSource = hotAverageSource;
+        }
+
+        public double MaxTickMs { get; }
+        public double FirstMs { get; }
+        public double HotAverageMs { get; }
+        public string HotAverageSource { get; }
+        public double RawColdGapMs => FirstMs - HotAverageMs;
+        public double ColdGapMs => RawColdGapMs;
+    }
     private static string s_NavigationBeforeInvade = string.Empty;
     private static string s_NavigationAfterInvade = string.Empty;
     private static string s_LastRetreatDirection = string.Empty;
@@ -431,16 +460,22 @@ internal static class Lv2PullChasePerformanceRunner
     [MenuItem("Tools/Logic Frames/Run Lv2 Pull Chase Performance")]
     public static void Run()
     {
-        Start(false);
+        Start(false, false);
+    }
+
+    [MenuItem("Tools/Logic Frames/Run Lv2 Pull Chase Performance (Prewarm)")]
+    public static void RunPrewarmed()
+    {
+        Start(false, true);
     }
 
     [MenuItem("Tools/Logic Frames/Run Lv2 RuntimeDirty Build Performance")]
     public static void RunRuntimeDirtyBuildPerformance()
     {
-        Start(true);
+        Start(true, false);
     }
 
-    private static void Start(bool buildScenario)
+    private static void Start(bool buildScenario, bool prewarm)
     {
         if (SessionState.GetBool(RunningKey, false))
             throw new InvalidOperationException("Lv2 pull-chase performance runner is already running.");
@@ -455,6 +490,7 @@ internal static class Lv2PullChasePerformanceRunner
         string startedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
         SessionState.SetBool(RunningKey, true);
         SessionState.SetBool(BuildScenarioKey, buildScenario);
+        SessionState.SetBool(PrewarmKey, prewarm);
         SessionState.SetInt(StateKey, (int)RunnerState.WaitingForPlay);
         SessionState.SetString(StartedUtcKey, startedUtc);
         MainThreadFrameProfilerNextPlayCapture.ArmNextPlay(false);
@@ -567,6 +603,8 @@ internal static class Lv2PullChasePerformanceRunner
             throw new InvalidOperationException($"Lv2 pull-chase runner requires BuildBeforeInvade, actual={PhaseManager.CurrentPhase}.");
 
         inputManager.ChangeState(InputState.Game);
+        if (SessionState.GetBool(PrewarmKey, false))
+            PrewarmStableGoalMethod();
         ulong frame = LogicFrameRuntime.CurrentFrame;
         SessionState.SetInt(BaselineStartFrameKey, ToSessionInt(frame));
         SessionState.SetInt(StateKey, (int)RunnerState.Baseline);
@@ -613,6 +651,17 @@ internal static class Lv2PullChasePerformanceRunner
         s_NavigationAfterInvade = FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics();
         SessionState.SetInt(StateKey, (int)RunnerState.WaitingForTarget);
         AppendEvent("invade-applied", frame, s_NavigationAfterInvade);
+    }
+
+    private static void PrewarmStableGoalMethod()
+    {
+        MethodInfo method = typeof(FlowFieldCrowdMovementSystem).GetMethod(
+            "TryResolveStableGoalCellFixed",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        if (method == null)
+            throw new InvalidOperationException("Prewarm could not find TryResolveStableGoalCellFixed.");
+        RuntimeHelpers.PrepareMethod(method.MethodHandle);
+        AppendEvent("stable-goal-method-prewarmed", LogicFrameRuntime.CurrentFrame, method.MethodHandle.GetFunctionPointer().ToInt64().ToString(CultureInfo.InvariantCulture));
     }
 
     private static void ScheduleDDoSConstruction(ulong currentFrame)
@@ -979,6 +1028,7 @@ internal static class Lv2PullChasePerformanceRunner
 
     private static void BeginPerformanceWindow()
     {
+        MainThreadFrameProfiler.ResetPerformanceWindow();
         Array.Clear(s_ChaseScopePeakMilliseconds, 0, s_ChaseScopePeakMilliseconds.Length);
         Array.Clear(s_ChaseScopePeakRenderFrames, 0, s_ChaseScopePeakRenderFrames.Length);
         Array.Clear(s_ChaseScopePeakCalls, 0, s_ChaseScopePeakCalls.Length);
@@ -990,7 +1040,12 @@ internal static class Lv2PullChasePerformanceRunner
         s_MaxLogicFrame = -1;
         s_MaxLogicTickMilliseconds = 0.0;
         s_MaxLogicTickRenderFrame = -1;
+        s_MaxLogicTickLogicFrame = 0;
+        s_MaxLogicTickWarmLogicFrame = 0;
         Array.Clear(s_MaxLogicTickScopeMilliseconds, 0, s_MaxLogicTickScopeMilliseconds.Length);
+        Array.Clear(s_MaxLogicTickScopeRecordFirstMilliseconds, 0, s_MaxLogicTickScopeRecordFirstMilliseconds.Length);
+        Array.Clear(s_MaxLogicTickScopeRecordHotAverageMilliseconds, 0, s_MaxLogicTickScopeRecordHotAverageMilliseconds.Length);
+        Array.Clear(s_MaxLogicTickScopeRecordCounts, 0, s_MaxLogicTickScopeRecordCounts.Length);
         s_ApproachFrameMilliseconds.Clear();
         s_ApproachLogicMilliseconds.Clear();
         s_RetreatFrameMilliseconds.Clear();
@@ -1076,12 +1131,26 @@ internal static class Lv2PullChasePerformanceRunner
         {
             s_MaxLogicTickMilliseconds = logicTickMs;
             s_MaxLogicTickRenderFrame = completedFrame;
+            s_MaxLogicTickLogicFrame = MainThreadFrameProfiler.LastCompletedMaxLogicTickFrame;
             for (int i = 0; i < s_ChaseScopes.Length; i++)
             {
                 MainThreadPerfScope scope = s_ChaseScopes[i];
                 s_MaxLogicTickScopeMilliseconds[(int)scope] =
                     MainThreadFrameProfiler.GetLastCompletedMaxLogicTickScopeMilliseconds(scope);
             }
+            Array.Clear(s_MaxLogicTickScopeRecordFirstMilliseconds, 0, s_MaxLogicTickScopeRecordFirstMilliseconds.Length);
+            Array.Clear(s_MaxLogicTickScopeRecordHotAverageMilliseconds, 0, s_MaxLogicTickScopeRecordHotAverageMilliseconds.Length);
+            Array.Clear(s_MaxLogicTickScopeRecordCounts, 0, s_MaxLogicTickScopeRecordCounts.Length);
+            for (int i = 0; i < (int)MainThreadPerfScope.Count; i++)
+            {
+                MainThreadPerfScope scope = (MainThreadPerfScope)i;
+                int count = MainThreadFrameProfiler.GetLastCompletedMaxLogicTickScopeRecordCount(scope);
+                s_MaxLogicTickScopeRecordCounts[i] = count;
+                s_MaxLogicTickScopeRecordFirstMilliseconds[i] = MainThreadFrameProfiler.GetLastCompletedMaxLogicTickScopeRecordFirstMilliseconds(scope);
+                double subsequentMs = MainThreadFrameProfiler.GetLastCompletedMaxLogicTickScopeRecordSubsequentMilliseconds(scope);
+                s_MaxLogicTickScopeRecordHotAverageMilliseconds[i] = count > 1 ? subsequentMs / (count - 1) : 0.0;
+            }
+            s_MaxLogicTickInvocationEvidence = BuildCurrentMaxLogicTickInvocationReport();
         }
 
         bool hasCompletedLogicTickSnapshot = logicTickMs > 0.0
@@ -1252,6 +1321,475 @@ internal static class Lv2PullChasePerformanceRunner
         {
             MainThreadPerfScope scope = s_ChaseScopes[i];
             lines[i] = $"maxTickScope name={scope},milliseconds={s_MaxLogicTickScopeMilliseconds[(int)scope].ToString("F3", CultureInfo.InvariantCulture)}";
+        }
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string BuildMaxLogicTickScopeRecordEvidence()
+    {
+        var lines = new List<string>();
+        for (int i = 0; i < (int)MainThreadPerfScope.Count; i++)
+        {
+            MainThreadPerfScope scope = (MainThreadPerfScope)i;
+            double maxMs = MainThreadPerfScopeMilliseconds(scope);
+            if (maxMs < 0.1)
+                continue;
+
+            int count = s_MaxLogicTickScopeRecordCounts[i];
+            double firstMs = s_MaxLogicTickScopeRecordFirstMilliseconds[i];
+            double hotAverageMs = s_MaxLogicTickScopeRecordHotAverageMilliseconds[i];
+            string hotAverageSource = "maxTick";
+            if (count <= 1)
+            {
+                int overallCount = MainThreadFrameProfiler.GetScopeRecordCount(scope);
+                if (overallCount <= 1)
+                    throw new InvalidOperationException(
+                        $"Max logic Tick scope has no hot comparison record. name={scope}, logicFrame={s_MaxLogicTickLogicFrame}, count={count}, overallCount={overallCount}.");
+                double overallSubsequentMs = MainThreadFrameProfiler.GetScopeRecordSubsequentMilliseconds(scope);
+                hotAverageMs = overallSubsequentMs / (overallCount - 1);
+                hotAverageSource = "overall";
+            }
+            double coldGapMs = count > 0 ? firstMs - hotAverageMs : 0.0;
+            ulong firstRecordLogicFrame = count > 0 ? s_MaxLogicTickLogicFrame : 0;
+            bool firstInMaxTick = count > 0;
+            lines.Add($"scopeRecord name={scope},maxTickMs={maxMs.ToString("F3", CultureInfo.InvariantCulture)},count={count},firstRecordLogicFrame={firstRecordLogicFrame},firstInMaxTick={firstInMaxTick},firstMs={firstMs.ToString("F3", CultureInfo.InvariantCulture)},hotAverageMs={hotAverageMs.ToString("F3", CultureInfo.InvariantCulture)},hotAverageSource={hotAverageSource},coldGapMs={coldGapMs.ToString("F3", CultureInfo.InvariantCulture)}");
+        }
+        return lines.Count > 0 ? string.Join(Environment.NewLine, lines) : "none";
+    }
+
+    private static double MainThreadPerfScopeMilliseconds(MainThreadPerfScope scope)
+    {
+        return s_MaxLogicTickScopeMilliseconds[(int)scope];
+    }
+
+    private static string BuildOverallScopeRecordEvidence()
+    {
+        var lines = new List<string>();
+        for (int i = 0; i < (int)MainThreadPerfScope.Count; i++)
+        {
+            MainThreadPerfScope scope = (MainThreadPerfScope)i;
+            int count = MainThreadFrameProfiler.GetScopeRecordCount(scope);
+            double firstMs = MainThreadFrameProfiler.GetScopeRecordFirstMilliseconds(scope);
+            double subsequentMs = MainThreadFrameProfiler.GetScopeRecordSubsequentMilliseconds(scope);
+            double maxMs = MainThreadPerfScopeMilliseconds(scope);
+            if (maxMs < 0.1 && firstMs < 0.1)
+                continue;
+            double hotAverageMs = count > 1 ? subsequentMs / (count - 1) : 0.0;
+            double coldGapMs = count > 1 ? firstMs - hotAverageMs : 0.0;
+            ulong firstFrame = MainThreadFrameProfiler.GetScopeRecordFirstLogicFrame(scope);
+            bool firstInMaxTick = firstFrame != 0 && firstFrame == s_MaxLogicTickLogicFrame;
+            lines.Add($"scopeOverall name={scope},maxTickMs={maxMs.ToString("F3", CultureInfo.InvariantCulture)},count={count},firstLogicFrame={firstFrame},firstInMaxTick={firstInMaxTick},firstMs={firstMs.ToString("F3", CultureInfo.InvariantCulture)},hotAverageMs={hotAverageMs.ToString("F3", CultureInfo.InvariantCulture)},coldGapMs={coldGapMs.ToString("F3", CultureInfo.InvariantCulture)}");
+        }
+        return lines.Count > 0 ? string.Join(Environment.NewLine, lines) : "none";
+    }
+
+    private static string BuildCurrentMaxLogicTickInvocationReport()
+    {
+        MainThreadPerfScope[] scopes =
+        {
+            MainThreadPerfScope.LogicEntityBrain,
+            MainThreadPerfScope.EntityBrainCombat,
+            MainThreadPerfScope.FlowCombatApproach,
+            MainThreadPerfScope.FlowCombatApproachCore,
+            MainThreadPerfScope.FlowCombatApproachCoreScorePhase,
+            MainThreadPerfScope.FlowNavigationResolvePathQueueBatch,
+            MainThreadPerfScope.FlowCombatApproachOccupancyPreparation,
+        };
+        var lines = new string[scopes.Length];
+        for (int i = 0; i < scopes.Length; i++)
+        {
+            MainThreadPerfScope scope = scopes[i];
+            int count = MainThreadFrameProfiler.GetLastCompletedMaxLogicTickInvocationCount(scope);
+            double firstMs = MainThreadFrameProfiler.GetLastCompletedMaxLogicTickInvocationFirstMilliseconds(scope);
+            double subsequentMs = MainThreadFrameProfiler.GetLastCompletedMaxLogicTickInvocationSubsequentMilliseconds(scope);
+            double subsequentAverageMs = count > 1 ? subsequentMs / (count - 1) : 0.0;
+            double firstGapMs = count > 1 ? firstMs - subsequentAverageMs : 0.0;
+            lines[i] = $"invocation name={scope},count={count},firstMs={firstMs.ToString("F3", CultureInfo.InvariantCulture)}," +
+                       $"subsequentTotalMs={subsequentMs.ToString("F3", CultureInfo.InvariantCulture)}," +
+                       $"subsequentAverageMs={subsequentAverageMs.ToString("F3", CultureInfo.InvariantCulture)}," +
+                       $"firstMinusSubsequentAverageMs={firstGapMs.ToString("F3", CultureInfo.InvariantCulture)}";
+        }
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string BuildOverallInvocationReport()
+    {
+        MainThreadPerfScope[] scopes =
+        {
+            MainThreadPerfScope.LogicEntityBrain,
+            MainThreadPerfScope.EntityBrainCombat,
+            MainThreadPerfScope.FlowCombatApproach,
+            MainThreadPerfScope.FlowCombatApproachCore,
+            MainThreadPerfScope.FlowCombatApproachCoreScorePhase,
+            MainThreadPerfScope.FlowNavigationResolvePathQueueBatch,
+            MainThreadPerfScope.FlowCombatApproachOccupancyPreparation,
+        };
+        var lines = new string[scopes.Length];
+        for (int i = 0; i < scopes.Length; i++)
+        {
+            MainThreadPerfScope scope = scopes[i];
+            int count = MainThreadFrameProfiler.GetInvocationCount(scope);
+            double firstMs = MainThreadFrameProfiler.GetInvocationFirstMilliseconds(scope);
+            double subsequentMs = MainThreadFrameProfiler.GetInvocationSubsequentMilliseconds(scope);
+            double subsequentAverageMs = count > 1 ? subsequentMs / (count - 1) : 0.0;
+            double firstGapMs = count > 1 ? firstMs - subsequentAverageMs : 0.0;
+            ulong firstFrame = MainThreadFrameProfiler.GetInvocationFirstLogicFrame(scope);
+            bool firstInMaxTick = firstFrame != 0 && firstFrame == s_MaxLogicTickLogicFrame;
+            lines[i] = $"invocation name={scope},count={count},firstLogicFrame={firstFrame},firstInMaxTick={firstInMaxTick},firstMs={firstMs.ToString("F3", CultureInfo.InvariantCulture)}," +
+                       $"subsequentTotalMs={subsequentMs.ToString("F3", CultureInfo.InvariantCulture)}," +
+                       $"subsequentAverageMs={subsequentAverageMs.ToString("F3", CultureInfo.InvariantCulture)}," +
+                       $"firstMinusSubsequentAverageMs={firstGapMs.ToString("F3", CultureInfo.InvariantCulture)}";
+        }
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static TickTimingMetric GetMaxLogicTickTiming(MainThreadPerfScope scope)
+    {
+        int index = (int)scope;
+        double maxTickMs = s_MaxLogicTickScopeMilliseconds[index];
+        int count = s_MaxLogicTickScopeRecordCounts[index];
+        if (maxTickMs > 0.0 && count <= 0)
+        {
+            throw new InvalidOperationException(
+                $"Max logic Tick scope has a value without a record. name={scope}, maxTickMs={maxTickMs:F6}, logicFrame={s_MaxLogicTickLogicFrame}.");
+        }
+
+        if (count <= 0)
+            return new TickTimingMetric(0.0, 0.0, 0.0);
+
+        if (!MainThreadFrameProfiler.TryGetLogicTickHotScopeComparison(
+                s_MaxLogicTickLogicFrame,
+                scope,
+                out ulong hotLogicFrame,
+                out double hotMilliseconds,
+                out int targetCalls,
+                out int hotCalls))
+        {
+            throw new InvalidOperationException(
+                $"Max logic Tick scope has no same-workload hot comparison. name={scope}, logicFrame={s_MaxLogicTickLogicFrame}, count={count}, targetCalls={targetCalls}, workloadSignature=0x{MainThreadFrameProfiler.GetLogicTickWorkloadSignature(s_MaxLogicTickLogicFrame):X16}.");
+        }
+        if (hotCalls != targetCalls)
+        {
+            throw new InvalidOperationException(
+                $"Logic Tick hot comparison call count mismatch. name={scope}, targetLogicFrame={s_MaxLogicTickLogicFrame}, hotLogicFrame={hotLogicFrame}, targetCalls={targetCalls}, hotCalls={hotCalls}.");
+        }
+
+        return new TickTimingMetric(
+            maxTickMs,
+            maxTickMs,
+            hotMilliseconds,
+            $"logicTick={hotLogicFrame}");
+    }
+
+    private static TickTimingMetric SubtractTickTiming(
+        string name,
+        TickTimingMetric parent,
+        params TickTimingMetric[] children)
+    {
+        double maxTickMs = parent.MaxTickMs;
+        double coldGapMs = parent.ColdGapMs;
+        for (int i = 0; i < children.Length; i++)
+        {
+            maxTickMs -= children[i].MaxTickMs;
+            coldGapMs -= children[i].ColdGapMs;
+        }
+
+        if (maxTickMs < -0.002)
+        {
+            throw new InvalidOperationException(
+                $"Max logic Tick leaf timing is inconsistent. name={name}, maxTickMs={maxTickMs:F6}, coldGapMs={coldGapMs:F6}.");
+        }
+
+        return new TickTimingMetric(maxTickMs, maxTickMs, maxTickMs - coldGapMs, "derived");
+    }
+
+    private static string BuildMaxLogicTickLeafColdFormula()
+    {
+        var leaves = new List<KeyValuePair<string, TickTimingMetric>>();
+        void Add(string name, TickTimingMetric metric)
+        {
+            leaves.Add(new KeyValuePair<string, TickTimingMetric>(name, metric));
+        }
+
+        TickTimingMetric tick = GetMaxLogicTickTiming(MainThreadPerfScope.LogicFrameTick);
+        TickTimingMetric listenerCallbacks = GetMaxLogicTickTiming(MainThreadPerfScope.LogicFrameListenerCallbacks);
+        TickTimingMetric listenerAttributed = GetMaxLogicTickTiming(MainThreadPerfScope.LogicFrameListenerAttributed);
+        Add("Tick外Listener", SubtractTickTiming(
+            "Tick外Listener",
+            tick,
+            listenerCallbacks,
+            GetMaxLogicTickTiming(MainThreadPerfScope.LogicFrameListenerSnapshot)));
+        Add("Listener未归属", GetMaxLogicTickTiming(MainThreadPerfScope.LogicFrameListenerUnattributed));
+
+        TickTimingMetric stableGoal = GetMaxLogicTickTiming(MainThreadPerfScope.FlowPrepareStableGoal);
+        TickTimingMetric anchorDictionary = GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyAnchorDictionary);
+        TickTimingMetric anchorDictionaryLookup = GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyAnchorDictionaryLookup);
+        TickTimingMetric anchorDictionaryInsert = GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyAnchorDictionaryInsert);
+        TickTimingMetric anchorDictionaryResidual = SubtractTickTiming(
+            "StableGoal.AnchorDictionary未归属",
+            anchorDictionary,
+            anchorDictionaryLookup,
+            anchorDictionaryInsert,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyAnchorDictionaryCreate));
+        TickTimingMetric anchorState = GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyAnchorState);
+        TickTimingMetric anchorStateResidual = SubtractTickTiming(
+            "StableGoal.AnchorState未归属",
+            anchorState,
+            anchorDictionary,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyAnchorGoalState),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyAnchorNavState));
+        TickTimingMetric inputResolution = GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyInputResolution);
+        TickTimingMetric inputResolutionResidual = SubtractTickTiming(
+            "StableGoal.InputResolution未归属",
+            inputResolution,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyBatchResolutionLookup));
+        TickTimingMetric stableGoalResidual = SubtractTickTiming(
+            "StableGoal调用边界未归属",
+            stableGoal,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyClassification),
+            inputResolution,
+            anchorState,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyAnchorPublish));
+        Add("StableGoal分类", GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyClassification));
+        Add("StableGoal批解析定位", GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyBatchResolutionLookup));
+        Add("StableGoal输入解析未归属", inputResolutionResidual);
+        Add("StableGoal锚点字典查找", anchorDictionaryLookup);
+        Add("StableGoal锚点字典插入", anchorDictionaryInsert);
+        Add("StableGoal锚点字典未归属", anchorDictionaryResidual);
+        Add("StableGoal锚点目标状态", GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyAnchorGoalState));
+        Add("StableGoal锚点导航状态", GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyAnchorNavState));
+        Add("StableGoal锚点状态未归属", anchorStateResidual);
+        Add("StableGoal锚点发布", GetMaxLogicTickTiming(MainThreadPerfScope.FlowMovingTargetPolicyAnchorPublish));
+        Add("StableGoal调用边界未归属", stableGoalResidual);
+
+        TickTimingMetric demandResolve = GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationDemandResolve);
+        TickTimingMetric demandResolveResidual = SubtractTickTiming(
+            "DemandResolve未归属",
+            demandResolve,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowPrepareStartCell),
+            stableGoal);
+        Add("DemandResolve未归属", demandResolveResidual);
+
+        TickTimingMetric demandDispatch = GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationDemandDispatch);
+        Add("DemandReuse", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationDemandReuse));
+        Add("DemandEnqueue", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationDemandEnqueue));
+        Add("DemandDispatch未归属", SubtractTickTiming(
+            "DemandDispatch未归属",
+            demandDispatch,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationDemandReuse),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationDemandEnqueue)));
+        TickTimingMetric demandBatch = GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationResolveDemandBatch);
+        Add("DemandBatch未归属", SubtractTickTiming("DemandBatch未归属", demandBatch, demandResolve, demandDispatch));
+
+        TickTimingMetric pathGoal = GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathSliceGoalConnector);
+        TickTimingMetric pathGoalSearch = GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationGoalConnectorSearchSlice);
+        TickTimingMetric pathGoalInput = GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationGoalConnectorInputCollection);
+        Add("PathSliceInitialize", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathSliceInitialize));
+        Add("PathSliceGoalConnector搜索", pathGoalSearch);
+        Add("PathSliceGoalConnector输入收集", pathGoalInput);
+        Add("PathSliceGoalConnector未归属", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationGoalConnectorUnattributed));
+        TickTimingMetric pathDispatchFinalization = GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathSliceDispatchFinalization);
+        Add("PathSliceDispatch收尾", pathDispatchFinalization);
+        Add("PathSliceDispatch未归属", SubtractTickTiming(
+            "PathSliceDispatch未归属",
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathSliceDispatchUnattributed),
+            pathDispatchFinalization,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathSliceDispatchPreparation)));
+        TickTimingMetric pathQueue = GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationResolvePathQueueBatch);
+        Add("PathQueue资格", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathQueueEligibility));
+        Add("PathQueue循环未归属", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathQueueLoopUnattributed));
+        Add("PathQueue处理未归属", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathQueueProcessingUnattributed));
+        Add("PathQueue提交循环", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathQueueCommitLoop));
+        Add("PathQueue世界状态枚举", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathWorldStateEnumeration));
+        Add("PathQueue世界切换", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathWorldActivation));
+        Add("PathQueue世界恢复", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathWorldRestore));
+        Add("PathQueue世界外未归属", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathWorldOuterUnattributed));
+        Add("PathQueue预算记账", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathBudgetAccounting));
+        Add("PathQueue未归属", SubtractTickTiming(
+            "PathQueue未归属",
+            pathQueue,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathSliceInitialize),
+            pathGoal,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathSliceDispatchUnattributed),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathQueueEligibility),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathQueueLoopUnattributed),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathQueueProcessingUnattributed),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathQueueCommitLoop),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathWorldStateEnumeration),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathWorldActivation),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathWorldRestore),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathWorldOuterUnattributed),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathBudgetAccounting)));
+
+        TickTimingMetric resolveRequests = GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationResolveRequests);
+        Add("ResolveRequests路径诊断", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathDiagnosticCapture));
+        Add("ResolveRequests预算结束", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathBudgetEnd));
+        Add("ResolveRequests未归属", SubtractTickTiming(
+            "ResolveRequests未归属",
+            resolveRequests,
+            demandBatch,
+            pathQueue,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathDiagnosticCapture),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationPathBudgetEnd)));
+        TickTimingMetric navigationCommit = GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationCommit);
+        Add("NavigationCommit未归属", SubtractTickTiming("NavigationCommit未归属", navigationCommit, resolveRequests));
+
+        TickTimingMetric slotCacheBuild = GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotCacheBuild);
+        TickTimingMetric slotCacheBuildResidual = SubtractTickTiming(
+            "SlotCacheBuild未归属",
+            slotCacheBuild,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotGenerate),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotClearance),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotLineOfSight),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotDeduplicate),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotCacheArrayMaterialize),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotCachePublish));
+        Add("SlotCache查找", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotCacheLookup));
+        Add("SlotCache生成", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotGenerate));
+        Add("SlotCache清除判定", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotClearance));
+        Add("SlotCache视线判定", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotLineOfSight));
+        Add("SlotCache去重", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotDeduplicate));
+        Add("SlotCache数组物化", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotCacheArrayMaterialize));
+        Add("SlotCache发布", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotCachePublish));
+        Add("SlotCacheBuild未归属", slotCacheBuildResidual);
+        TickTimingMetric slotCache = GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotCache);
+        Add("SlotCache未归属", SubtractTickTiming(
+            "SlotCache未归属",
+            slotCache,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachSlotCacheLookup),
+            slotCacheBuild));
+
+        TickTimingMetric occupancyPreparation = GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachOccupancyPreparation);
+        Add("Occupancy桶填充", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachOccupancyBucketFill));
+        Add("Occupancy准备迭代", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachOccupancyPrepareIteration));
+        Add("Occupancy准备快照", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachOccupancySnapshot));
+        Add("OccupancyPreparation未归属", SubtractTickTiming(
+            "OccupancyPreparation未归属",
+            occupancyPreparation,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachOccupancyBucketFill),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachOccupancyPrepareIteration),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachOccupancySnapshot),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachOccupancyPrepareGuard),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachOccupancyPrepareCacheState),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachOccupancySlotFilter)));
+        TickTimingMetric score = GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachScore);
+        Add("CombatScore算术", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachScoreArithmetic));
+        Add("CombatScore未归属", SubtractTickTiming(
+            "CombatScore未归属",
+            score,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachScoreArithmetic)));
+        TickTimingMetric scorePhase = GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachCoreScorePhase);
+        Add("Occupancy判定", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachOccupancy));
+        Add("CombatScorePhase未归属", SubtractTickTiming(
+            "CombatScorePhase未归属",
+            scorePhase,
+            occupancyPreparation,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachOccupancy),
+            score,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachCoreScoreUnattributed)));
+
+        TickTimingMetric combatCore = GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachCore);
+        Add("CombatCore准备代理", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachCoreAgentPreparation));
+        Add("CombatCore设置", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachCoreSetup));
+        Add("CombatCore方向设置", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachDirectionSetup));
+        Add("CombatCore扩展", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachCoreExpandedPhase));
+        Add("CombatCore收尾", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachFinalize));
+        Add("CombatCore未归属", SubtractTickTiming(
+            "CombatCore未归属",
+            combatCore,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachCoreAgentPreparation),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachCoreSetup),
+            slotCache,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachDirectionSetup),
+            scorePhase,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachCoreExpandedPhase),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachCoreUnattributed),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachFinalize)));
+        TickTimingMetric approach = GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproach);
+        Add("CombatApproach预解析", GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachPreResolve));
+        Add("CombatApproach未归属", SubtractTickTiming(
+            "CombatApproach未归属",
+            approach,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowCombatApproachPreResolve),
+            combatCore));
+        TickTimingMetric entityBrainCombat = GetMaxLogicTickTiming(MainThreadPerfScope.EntityBrainCombat);
+        Add("EntityBrainCombat未归属", SubtractTickTiming("EntityBrainCombat未归属", entityBrainCombat, approach));
+        TickTimingMetric brain = GetMaxLogicTickTiming(MainThreadPerfScope.LogicEntityBrain);
+        Add("Brain未归属", SubtractTickTiming("Brain未归属", brain, entityBrainCombat));
+
+        TickTimingMetric targeting = GetMaxLogicTickTiming(MainThreadPerfScope.LogicEntityTargeting);
+        TickTimingMetric targetingEvaluate = GetMaxLogicTickTiming(MainThreadPerfScope.CharacterTargetingEvaluate);
+        Add("Targeting候选扫描", GetMaxLogicTickTiming(MainThreadPerfScope.CharacterTargetingCandidateScan));
+        Add("TargetingEvaluate未归属", SubtractTickTiming(
+            "TargetingEvaluate未归属",
+            targetingEvaluate,
+            GetMaxLogicTickTiming(MainThreadPerfScope.CharacterTargetingCandidateScan)));
+        Add("Targeting未归属", SubtractTickTiming("Targeting未归属", targeting, targetingEvaluate));
+
+        TickTimingMetric navigationPositionSync = GetMaxLogicTickTiming(MainThreadPerfScope.LogicEntityNavigationPositionSync);
+        Add("NavigationPositionSync代理更新", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationAgentUpdate));
+        Add("NavigationPositionSync非活动清理", GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationInactiveClear));
+        Add("NavigationPositionSync未归属", SubtractTickTiming(
+            "NavigationPositionSync未归属",
+            navigationPositionSync,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationAgentUpdate),
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowNavigationInactiveClear)));
+        TickTimingMetric navigationSync = GetMaxLogicTickTiming(MainThreadPerfScope.LogicEntityNavigationSync);
+        Add("NavigationSync组移动", GetMaxLogicTickTiming(MainThreadPerfScope.FlowGroupMove));
+        Add("NavigationSync未归属", SubtractTickTiming(
+            "NavigationSync未归属",
+            navigationSync,
+            navigationCommit,
+            GetMaxLogicTickTiming(MainThreadPerfScope.FlowGroupMove)));
+
+        TickTimingMetric moveIntent = GetMaxLogicTickTiming(MainThreadPerfScope.LogicEntityMoveIntent);
+        Add("MoveIntent准备", GetMaxLogicTickTiming(MainThreadPerfScope.CharacterMovePrepare));
+        Add("MoveIntent未归属", SubtractTickTiming(
+            "MoveIntent未归属",
+            moveIntent,
+            GetMaxLogicTickTiming(MainThreadPerfScope.CharacterMovePrepare)));
+        Add("BaseAndBuffs", GetMaxLogicTickTiming(MainThreadPerfScope.LogicEntityBaseAndBuffs));
+        Add("FrameSetup", GetMaxLogicTickTiming(MainThreadPerfScope.LogicEntityFrameSetup));
+        Add("MoveResolve", GetMaxLogicTickTiming(MainThreadPerfScope.LogicEntityMoveResolve));
+        Add("MoveCommit", GetMaxLogicTickTiming(MainThreadPerfScope.LogicEntityMoveCommit));
+        Add("Attack", GetMaxLogicTickTiming(MainThreadPerfScope.LogicEntityAttack));
+        Add("DamageResolve", GetMaxLogicTickTiming(MainThreadPerfScope.LogicEntityDamageResolve));
+        Add("Projectile", GetMaxLogicTickTiming(MainThreadPerfScope.LogicEntityProjectile));
+        Add("PostUpdate", GetMaxLogicTickTiming(MainThreadPerfScope.LogicEntityPostUpdate));
+        Add("FrameComplete", GetMaxLogicTickTiming(MainThreadPerfScope.LogicEntityFrameComplete));
+
+        TickTimingMetric attributedChildren = new TickTimingMetric(0.0, 0.0, 0.0);
+        for (int i = 0; i < leaves.Count; i++)
+        {
+            if (leaves[i].Key.StartsWith("Tick外", StringComparison.Ordinal)
+                || leaves[i].Key.StartsWith("Listener", StringComparison.Ordinal))
+                continue;
+            attributedChildren = new TickTimingMetric(
+                attributedChildren.MaxTickMs + leaves[i].Value.MaxTickMs,
+                attributedChildren.FirstMs + leaves[i].Value.FirstMs,
+                attributedChildren.HotAverageMs + leaves[i].Value.HotAverageMs);
+        }
+        Add("ListenerAttributed未归属", SubtractTickTiming("ListenerAttributed未归属", listenerAttributed, attributedChildren));
+
+        double maxTickTotal = 0.0;
+        double coldTotal = 0.0;
+        var lines = new List<string>(leaves.Count + 2);
+        for (int i = 0; i < leaves.Count; i++)
+        {
+            TickTimingMetric metric = leaves[i].Value;
+            maxTickTotal += metric.MaxTickMs;
+            coldTotal += metric.ColdGapMs;
+            lines.Add($"leaf name={leaves[i].Key},maxTickMs={metric.MaxTickMs.ToString("F3", CultureInfo.InvariantCulture)},logicTickFrame={s_MaxLogicTickLogicFrame},hotAverageSource={metric.HotAverageSource},tickValueMs={metric.FirstMs.ToString("F3", CultureInfo.InvariantCulture)},warmTickValueMs={metric.HotAverageMs.ToString("F3", CultureInfo.InvariantCulture)},coldGapMs={metric.ColdGapMs.ToString("F3", CultureInfo.InvariantCulture)}");
+        }
+
+        double tickCold = tick.ColdGapMs;
+        double contributionRate = tick.MaxTickMs > 0.0 ? coldTotal / tick.MaxTickMs : 0.0;
+        lines.Add($"leafFormula maxTickTotalMs={maxTickTotal.ToString("F3", CultureInfo.InvariantCulture)},tickMaxMs={tick.MaxTickMs.ToString("F3", CultureInfo.InvariantCulture)},residualMs={(maxTickTotal - tick.MaxTickMs).ToString("F3", CultureInfo.InvariantCulture)}");
+        lines.Add($"leafFormulaCold tickColdMs={tickCold.ToString("F3", CultureInfo.InvariantCulture)},leafColdTotalMs={coldTotal.ToString("F3", CultureInfo.InvariantCulture)},residualMs={(coldTotal - tickCold).ToString("F3", CultureInfo.InvariantCulture)},contributionRate={contributionRate.ToString("F6", CultureInfo.InvariantCulture)},equation={tick.MaxTickMs.ToString("F3", CultureInfo.InvariantCulture)}*{contributionRate.ToString("F6", CultureInfo.InvariantCulture)}={coldTotal.ToString("F3", CultureInfo.InvariantCulture)}");
+        if (System.Math.Abs(maxTickTotal - tick.MaxTickMs) > 0.02 || System.Math.Abs(coldTotal - tickCold) > 0.02)
+        {
+            throw new InvalidOperationException(
+                $"Max logic Tick leaf formula does not close. maxTickResidual={maxTickTotal - tick.MaxTickMs:F6}, coldResidual={coldTotal - tickCold:F6}.");
         }
         return string.Join(Environment.NewLine, lines);
     }
@@ -1439,8 +1977,14 @@ internal static class Lv2PullChasePerformanceRunner
             "finalChase=" + DescribeChaseState(hero, target) + Environment.NewLine +
             "maxLogicTickMs=" + s_MaxLogicTickMilliseconds.ToString("F3", CultureInfo.InvariantCulture) + Environment.NewLine +
             "maxLogicTickRenderFrame=" + s_MaxLogicTickRenderFrame + Environment.NewLine +
+            "maxLogicTickLogicFrame=" + s_MaxLogicTickLogicFrame + Environment.NewLine +
             "scopePeaks:" + Environment.NewLine + BuildChaseScopePeakReport() + Environment.NewLine +
             "maxLogicTickScopes:" + Environment.NewLine + BuildMaxLogicTickScopeReport() + Environment.NewLine +
+            "maxLogicTickScopeRecordEvidence:" + Environment.NewLine + BuildMaxLogicTickScopeRecordEvidence() + Environment.NewLine +
+            "maxLogicTickLeafColdFormula:" + Environment.NewLine + BuildMaxLogicTickLeafColdFormula() + Environment.NewLine +
+            "overallScopeRecordEvidence:" + Environment.NewLine + BuildOverallScopeRecordEvidence() + Environment.NewLine +
+            "maxLogicTickInvocationEvidence:" + Environment.NewLine + s_MaxLogicTickInvocationEvidence + Environment.NewLine +
+            "overallInvocationEvidence:" + Environment.NewLine + BuildOverallInvocationReport() + Environment.NewLine +
             "samples:" + Environment.NewLine + string.Join(Environment.NewLine, s_Samples) + Environment.NewLine;
         WriteResult(ResultRelativePath, report);
         Log.Info("[Lv2PullChasePerformance] PASS. maxFrameMs={0:F3}, maxLogicMs={1:F3}, samples={2}.", s_MaxFrameMilliseconds, s_MaxLogicMilliseconds, s_Samples.Count);
@@ -1530,6 +2074,15 @@ internal static class Lv2PullChasePerformanceRunner
         s_MaxFrame = -1;
         s_MaxLogicMilliseconds = 0.0;
         s_MaxLogicFrame = -1;
+        s_MaxLogicTickMilliseconds = 0.0;
+        s_MaxLogicTickRenderFrame = -1;
+        s_MaxLogicTickLogicFrame = 0;
+        s_MaxLogicTickWarmLogicFrame = 0;
+        Array.Clear(s_MaxLogicTickScopeMilliseconds, 0, s_MaxLogicTickScopeMilliseconds.Length);
+        Array.Clear(s_MaxLogicTickScopeRecordFirstMilliseconds, 0, s_MaxLogicTickScopeRecordFirstMilliseconds.Length);
+        Array.Clear(s_MaxLogicTickScopeRecordHotAverageMilliseconds, 0, s_MaxLogicTickScopeRecordHotAverageMilliseconds.Length);
+        Array.Clear(s_MaxLogicTickScopeRecordCounts, 0, s_MaxLogicTickScopeRecordCounts.Length);
+        s_MaxLogicTickInvocationEvidence = string.Empty;
         s_ApproachFrameMilliseconds.Clear();
         s_ApproachLogicMilliseconds.Clear();
         s_RetreatFrameMilliseconds.Clear();
@@ -1563,6 +2116,7 @@ internal static class Lv2PullChasePerformanceRunner
         SessionState.SetInt(DefenseScheduledFrameKey, 0);
         SessionState.SetInt(DefenseAppliedFrameKey, 0);
         SessionState.SetBool(BuildScenarioKey, false);
+        SessionState.SetBool(PrewarmKey, false);
     }
 
     private static int ToSessionInt(ulong frame)

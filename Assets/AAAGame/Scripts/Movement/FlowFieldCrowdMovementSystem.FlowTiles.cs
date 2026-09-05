@@ -1112,6 +1112,9 @@ public static partial class FlowFieldCrowdMovementSystem
         public long StableGoalPathRequestInvocationMaxTicks;
         public long StableGoalPathRequestArgumentPreparationTicks;
         public int StableGoalPathRequestArgumentPreparationCount;
+        public long StableGoalInvocationGapTicks;
+        public long StableGoalInvocationGapMaxTicks;
+        public int StableGoalInvocationGapCount;
         public long StableGoalNavigationCommandInvocationTicks;
         public int StableGoalNavigationCommandInvocationCount;
         public long StableGoalNavigationCommandInvocationMaxTicks;

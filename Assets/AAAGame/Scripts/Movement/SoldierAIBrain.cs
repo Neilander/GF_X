@@ -308,9 +308,13 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                     TickCombat(self, dt);
                     if (MainThreadFrameProfiler.LoggingEnabled)
                     {
+                        long combatElapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - combatStartTicks;
+                        MainThreadFrameProfiler.RecordLogicTickInvocation(
+                            MainThreadPerfScope.EntityBrainCombat,
+                            combatElapsedTicks);
                         MainThreadFrameProfiler.Record(
                             MainThreadPerfScope.EntityBrainCombat,
-                            System.Diagnostics.Stopwatch.GetTimestamp() - combatStartTicks);
+                            combatElapsedTicks);
                     }
                 }
                 break;
@@ -824,9 +828,13 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             {
                 if (MainThreadFrameProfiler.LoggingEnabled)
                 {
+                    long approachElapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - approachStartTicks;
+                    MainThreadFrameProfiler.RecordLogicTickInvocation(
+                        MainThreadPerfScope.FlowCombatApproach,
+                        approachElapsedTicks);
                     MainThreadFrameProfiler.Record(
                         MainThreadPerfScope.FlowCombatApproach,
-                        System.Diagnostics.Stopwatch.GetTimestamp() - approachStartTicks);
+                        approachElapsedTicks);
                 }
             }
             if (!approachResolved)
@@ -1028,9 +1036,13 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 out failureKind);
         if (profile)
         {
+            long coreElapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - coreStartTicks;
+            MainThreadFrameProfiler.RecordLogicTickInvocation(
+                MainThreadPerfScope.FlowCombatApproachCore,
+                coreElapsedTicks);
             MainThreadFrameProfiler.Record(
                 MainThreadPerfScope.FlowCombatApproachCore,
-                System.Diagnostics.Stopwatch.GetTimestamp() - coreStartTicks);
+                coreElapsedTicks);
         }
         if (!coreResolved)
         {
