@@ -31,11 +31,13 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         bool profileStableGoal = MainThreadFrameProfiler.LoggingEnabled;
         long stableGoalMethodEntryTicks = profileStableGoal ? Stopwatch.GetTimestamp() : 0L;
+        long measurementBeginTicks = 0L;
         if (profileStableGoal)
         {
             long measurementBeginStartTicks = Stopwatch.GetTimestamp();
             MainThreadFrameProfiler.BeginRecordMeasurement();
-            _perf.StableGoalMeasurementBeginTicks += Stopwatch.GetTimestamp() - measurementBeginStartTicks;
+            measurementBeginTicks = Stopwatch.GetTimestamp() - measurementBeginStartTicks;
+            _perf.StableGoalMeasurementBeginTicks += measurementBeginTicks;
         }
         long stableGoalBodyStartTicks = profileStableGoal ? Stopwatch.GetTimestamp() : 0L;
         if (profileStableGoal)
@@ -513,9 +515,15 @@ public static partial class FlowFieldCrowdMovementSystem
                 MainThreadFrameProfiler.EndRecordMeasurement(
                     out long recordTicks,
                     out int recordCount);
-                _perf.StableGoalMeasurementFinalizeTicks += Stopwatch.GetTimestamp() - stableGoalBodyEndTicks;
+                long measurementFinalizeTicks = Stopwatch.GetTimestamp() - stableGoalBodyEndTicks;
+                _perf.StableGoalMeasurementFinalizeTicks += measurementFinalizeTicks;
                 _perf.StableGoalProfilerRecordTicks += recordTicks;
                 _perf.StableGoalProfilerRecordCount += recordCount;
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowStableGoalBody, stableGoalBodyTicks);
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowStableGoalProfilerRecord, recordTicks);
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowStableGoalMeasurementBegin, measurementBeginTicks);
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowStableGoalPrologue, stableGoalBodyStartTicks - stableGoalMethodEntryTicks);
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowStableGoalMeasurementFinalize, measurementFinalizeTicks);
             }
         }
     }
@@ -2300,7 +2308,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 if (islandId <= 0 || islandId >= buildJob.IslandCellLists.Length)
                 {
                     throw new InvalidOperationException(
-                        $"Goal projection spatial index found a walkable cell without a finalized island. cell={cellIndex} world={world.Version}.");
+                        $"Goal projection spatial index found a walkable cell without a finalized island. cell={cellIndex} world={world.Version} islandId={islandId} islandCount={world.IslandCount} indexLength={buildJob.IslandCellLists.Length}.");
                 }
                 List<int> islandCells = buildJob.IslandCellLists[islandId];
                 if (islandCells == null)

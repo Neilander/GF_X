@@ -426,7 +426,17 @@ namespace UnityGameFramework.Runtime
         FlowMovingTargetPolicyRawGoalPath = 414,
         FlowMovingTargetPolicyOutputInitialization = 415,
         LogicEntityNavigationPositionSync = 416,
-        Count = 418
+        FlowStableGoalBody = 418,
+        FlowStableGoalPrologue = 419,
+        FlowStableGoalMeasurementBegin = 420,
+        FlowStableGoalMeasurementFinalize = 421,
+        FlowNavigationPolicyInitializeLookup = 422,
+        FlowNavigationPolicyInitializeAnchor = 423,
+        FlowNavigationPolicyInitializeConstruct = 424,
+        FlowNavigationPolicyInitializeAuthority = 425,
+        FlowNavigationPolicyInitializePin = 426,
+        FlowStableGoalProfilerRecord = 427,
+        Count = 428
     }
 
     public static class MainThreadFrameProfiler
@@ -534,6 +544,44 @@ namespace UnityGameFramework.Runtime
         private static bool _logicTickActive;
 
         public static bool LoggingEnabled { get; set; }
+        public readonly struct ScopeRecordSample
+        {
+            public ScopeRecordSample(ulong logicFrame, MainThreadPerfScope scope, long ticks, long recordedAt, Type listenerType = null)
+            {
+                LogicFrame = logicFrame;
+                Scope = scope;
+                Ticks = ticks;
+                RecordedAt = recordedAt;
+                ListenerType = listenerType;
+            }
+
+            public ulong LogicFrame { get; }
+            public MainThreadPerfScope Scope { get; }
+            public long Ticks { get; }
+            public long RecordedAt { get; }
+            public Type ListenerType { get; }
+        }
+
+        private const int ScopeRecordCaptureCapacity = 1048576;
+        private static List<ScopeRecordSample> _scopeRecordCapture;
+        private static bool _scopeRecordCaptureEnabled;
+
+        public static IReadOnlyList<ScopeRecordSample> CapturedScopeRecords => _scopeRecordCapture;
+
+        public static void BeginScopeRecordCapture()
+        {
+            if (_logicTickActive || _scopeRecordCaptureEnabled)
+                throw new InvalidOperationException("Scope record capture must begin once, outside a logic Tick.");
+            _scopeRecordCapture = new List<ScopeRecordSample>(ScopeRecordCaptureCapacity);
+            _scopeRecordCaptureEnabled = true;
+        }
+
+        public static void EndScopeRecordCapture()
+        {
+            if (_logicTickActive)
+                throw new InvalidOperationException("Scope record capture cannot end during a logic Tick.");
+            _scopeRecordCaptureEnabled = false;
+        }
         public static bool ConsoleLoggingEnabled { get; set; } = true;
         public static int LastCompletedFrame { get; private set; } = -1;
         public static double LastCompletedFrameMilliseconds { get; private set; }
@@ -546,6 +594,8 @@ namespace UnityGameFramework.Runtime
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetForPlaySession()
         {
+            _scopeRecordCaptureEnabled = false;
+            _scopeRecordCapture = null;
             LoggingEnabled = false;
             ConsoleLoggingEnabled = true;
             LastCompletedFrame = -1;
@@ -1014,6 +1064,12 @@ namespace UnityGameFramework.Runtime
             ScopeCalls[index]++;
             if (_logicTickActive)
             {
+                if (_scopeRecordCaptureEnabled)
+                {
+                    if (_scopeRecordCapture.Count == ScopeRecordCaptureCapacity)
+                        throw new InvalidOperationException("Scope record capture capacity exceeded; the capture is incomplete.");
+                    _scopeRecordCapture.Add(new ScopeRecordSample(_currentLogicTickFrame, scope, ticks, Stopwatch.GetTimestamp()));
+                }
                 CurrentLogicTickScopeTicks[index] += ticks;
                 if (CurrentLogicTickScopeRecordCounts[index] == 0)
                     CurrentLogicTickScopeRecordFirstTicks[index] = ticks;
@@ -1081,6 +1137,13 @@ namespace UnityGameFramework.Runtime
             {
                 CurrentLogicTickListenerTicks.TryGetValue(listenerType, out long currentTicks);
                 CurrentLogicTickListenerTicks[listenerType] = currentTicks + ticks;
+                if (_scopeRecordCaptureEnabled)
+                {
+                    if (_scopeRecordCapture.Count == ScopeRecordCaptureCapacity)
+                        throw new InvalidOperationException("Scope record capture capacity exceeded; the capture is incomplete.");
+                    _scopeRecordCapture.Add(new ScopeRecordSample(_currentLogicTickFrame, MainThreadPerfScope.Count,
+                        ticks, Stopwatch.GetTimestamp(), listenerType));
+                }
             }
         }
 

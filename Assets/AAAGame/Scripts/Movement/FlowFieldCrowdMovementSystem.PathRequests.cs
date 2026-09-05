@@ -2465,12 +2465,18 @@ public static partial class FlowFieldCrowdMovementSystem
         if (SectorCorridorPolicies.TryGetValue(job.PolicyKey, out SectorCorridorPolicy cached))
         {
             if (profile)
+            {
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationPolicyInitializeLookup, Stopwatch.GetTimestamp() - phaseStartTicks);
                 _perf.NavigationPathInitializePolicyLookupTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
+            }
             job.Policy = cached;
             return;
         }
         if (profile)
+        {
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationPolicyInitializeLookup, Stopwatch.GetTimestamp() - phaseStartTicks);
             _perf.NavigationPathInitializePolicyLookupTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
+        }
 
         phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (job.Key.MovingTargetId != int.MinValue)
@@ -2494,12 +2500,18 @@ public static partial class FlowFieldCrowdMovementSystem
             {
                 job.Policy = pinnedPolicy;
                 if (profile)
+                {
+                    MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationPolicyInitializeAnchor, Stopwatch.GetTimestamp() - phaseStartTicks);
                     _perf.NavigationPathInitializePolicyAnchorTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
+                }
                 return;
             }
         }
         if (profile)
+        {
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationPolicyInitializeAnchor, Stopwatch.GetTimestamp() - phaseStartTicks);
             _perf.NavigationPathInitializePolicyAnchorTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
+        }
 
         phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         job.Policy = new SectorCorridorPolicy
@@ -2510,12 +2522,18 @@ public static partial class FlowFieldCrowdMovementSystem
             LastUsedFrame = GetFrameCount()
         };
         if (profile)
+        {
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationPolicyInitializeConstruct, Stopwatch.GetTimestamp() - phaseStartTicks);
             _perf.NavigationPathInitializePolicyConstructTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
+        }
         _perf.NavigationPathPolicyCreates++;
         phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         SetSectorCorridorPolicy(job.PolicyKey, job.Policy);
         if (profile)
+        {
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationPolicyInitializeAuthority, Stopwatch.GetTimestamp() - phaseStartTicks);
             _perf.NavigationPathInitializePolicyAuthorityTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
+        }
         phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (job.Key.MovingTargetId != int.MinValue)
         {
@@ -2526,7 +2544,10 @@ public static partial class FlowFieldCrowdMovementSystem
             PinMovingTargetSectorCorridorPolicy(MovingTargetAnchors[anchorKey], job.PolicyKey);
         }
         if (profile)
+        {
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowNavigationPolicyInitializePin, Stopwatch.GetTimestamp() - phaseStartTicks);
             _perf.NavigationPathInitializePolicyPinTicks += Stopwatch.GetTimestamp() - phaseStartTicks;
+        }
         _perf.SectorPathSearches++;
     }
 

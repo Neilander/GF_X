@@ -1,0 +1,14 @@
+Flow 冷启动最细项审计
+source=Logs/Lv2PullChasePerformance.txt
+entry=Launch -> procedure -> Lv2 -> Run Lv2 Pull Chase Performance
+result=PASS
+maxLogicTick=logic=80/render=141
+mapping=14.66+14.71
+parentsExcluded=True
+base14.66Positions=51
+stableGoal14.71Expanded=True
+allFinestLeafCount=85
+above0.1msLeafCount=49
+
+leafFormula maxTickTotalMs=28.946,tickMaxMs=28.949,residualMs=-0.003
+leafFormulaCold tickColdMs=26.013,leafColdTotalMs=26.012,residualMs=-0.001,contributionRate=0.898548,equation=28.949*0.898548=26.012
