@@ -12,6 +12,15 @@ public static partial class FlowFieldCrowdMovementSystem
 {
     private static long _lastStableGoalBodyTicks;
 
+    private static void PrepareMovingTargetRuntimeContainerCode()
+    {
+        PrepareLocalDictionaryCode(default(MovingTargetAnchorKey), default(MovingTargetAnchor));
+        PrepareLocalDictionaryCode(default(MovingTargetAnchorKey), default(MovingTargetAnchorBatchResolution));
+        PrepareLocalDictionaryCode(default(CombatTargetSlotKey), default(CombatTargetSlotEntry));
+        // Prepare the pure fixed-point angle dependency without querying or publishing navigation state.
+        _ = Fix64.Atan2(Fix64.One, Fix64.One);
+    }
+
     private static bool TryResolveStableGoalCellFixed(
         AgentRuntimeData agent,
         IEntityContext self,
@@ -2268,7 +2277,7 @@ public static partial class FlowFieldCrowdMovementSystem
             buildJob = new GoalProjectionSpatialIndexBuildJob
             {
                 BucketCellLists = new List<int>[checked(bucketCountX * bucketCountY)],
-                IslandCellLists = new List<int>[checked(world.IslandCount + 1)]
+                IslandCellLists = new List<int>[checked(ResolveMaximumFinalizedIslandId(world) + 1)]
             };
         }
 
@@ -2276,10 +2285,11 @@ public static partial class FlowFieldCrowdMovementSystem
                                    / GoalProjectionSpatialIndex.BucketSizeInCells;
         int expectedBucketCountY = (world.Height + GoalProjectionSpatialIndex.BucketSizeInCells - 1)
                                    / GoalProjectionSpatialIndex.BucketSizeInCells;
+        int maximumFinalizedIslandId = ResolveMaximumFinalizedIslandId(world);
         if (buildJob.BucketCellLists == null
             || buildJob.BucketCellLists.Length != expectedBucketCountX * expectedBucketCountY
             || buildJob.IslandCellLists == null
-            || buildJob.IslandCellLists.Length != world.IslandCount + 1)
+            || buildJob.IslandCellLists.Length != maximumFinalizedIslandId + 1)
         {
             throw new InvalidOperationException("Goal projection spatial index build has invalid bucket storage.");
         }
@@ -2393,6 +2403,24 @@ public static partial class FlowFieldCrowdMovementSystem
         _perf.GoalProjectionIndexPublishes++;
         buildJob = null;
         return true;
+    }
+
+    private static int ResolveMaximumFinalizedIslandId(NavigationWorld world)
+    {
+        if (world == null || world.IslandIds == null || world.IslandIds.Length != world.Width * world.Height)
+            throw new InvalidOperationException("Goal projection island index requires finalized island ids.");
+        int maximumId = 0;
+        for (int i = 0; i < world.IslandIds.Length; i++)
+        {
+            if (!world.WalkableMask[i])
+                continue;
+            int islandId = world.IslandIds[i];
+            if (islandId <= 0)
+                throw new InvalidOperationException($"Goal projection island index found an invalid finalized island id at cell={i}.");
+            if (islandId > maximumId)
+                maximumId = islandId;
+        }
+        return maximumId;
     }
 
     private static bool ProcessGoalProjectionSpatialHierarchyBuild(

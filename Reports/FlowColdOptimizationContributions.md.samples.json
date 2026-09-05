@@ -1,0 +1,3465 @@
+[
+  {
+    "Name": "FlowCombatApproachSlotClearance/self",
+    "MaxTickMs": 1.4676,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12083,
+    "FirstInTickMs": 1.1075,
+    "HotAverageMs": 0.3601,
+    "FirstMinusHotMs": 0.7474,
+    "ColdContributionMs": 0.7474,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 12223,
+        "LogicFrame": 80,
+        "OwnTicks": 3601
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationPathQueueLoopUnattributed/self",
+    "MaxTickMs": 1.1776,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14106,
+    "FirstInTickMs": 1.1755,
+    "HotAverageMs": 0.00105,
+    "FirstMinusHotMs": 1.17445,
+    "ColdContributionMs": 1.17445,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14113,
+        "LogicFrame": 80,
+        "OwnTicks": 3
+      },
+      {
+        "Sequence": 14141,
+        "LogicFrame": 80,
+        "OwnTicks": 18
+      }
+    ]
+  },
+  {
+    "Name": "EntityBrainCombat/self",
+    "MaxTickMs": 1.0048,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12160,
+    "FirstInTickMs": 0.9958,
+    "HotAverageMs": 0.0012857142857142856,
+    "FirstMinusHotMs": 0.9945142857142857,
+    "ColdContributionMs": 0.9945142857142857,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 12217,
+        "LogicFrame": 80,
+        "OwnTicks": 35
+      },
+      {
+        "Sequence": 12490,
+        "LogicFrame": 80,
+        "OwnTicks": 12
+      },
+      {
+        "Sequence": 12717,
+        "LogicFrame": 80,
+        "OwnTicks": 11
+      },
+      {
+        "Sequence": 12959,
+        "LogicFrame": 80,
+        "OwnTicks": 8
+      },
+      {
+        "Sequence": 13223,
+        "LogicFrame": 80,
+        "OwnTicks": 8
+      },
+      {
+        "Sequence": 13501,
+        "LogicFrame": 80,
+        "OwnTicks": 7
+      },
+      {
+        "Sequence": 13773,
+        "LogicFrame": 80,
+        "OwnTicks": 9
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationPathSliceGoalConnector/self",
+    "MaxTickMs": 0.8036,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14089,
+    "FirstInTickMs": 0.1236,
+    "HotAverageMs": 0.11333333333333333,
+    "FirstMinusHotMs": 0.010266666666666674,
+    "ColdContributionMs": 0.010266666666666674,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14095,
+        "LogicFrame": 80,
+        "OwnTicks": 6524
+      },
+      {
+        "Sequence": 14100,
+        "LogicFrame": 80,
+        "OwnTicks": 45
+      },
+      {
+        "Sequence": 14104,
+        "LogicFrame": 80,
+        "OwnTicks": 31
+      },
+      {
+        "Sequence": 14129,
+        "LogicFrame": 80,
+        "OwnTicks": 15
+      },
+      {
+        "Sequence": 14135,
+        "LogicFrame": 80,
+        "OwnTicks": 180
+      },
+      {
+        "Sequence": 14139,
+        "LogicFrame": 80,
+        "OwnTicks": 5
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationPathInitializePolicy/self",
+    "MaxTickMs": 0.7364,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14082,
+    "FirstInTickMs": 0.7354,
+    "HotAverageMs": 0.001,
+    "FirstMinusHotMs": 0.7344,
+    "ColdContributionMs": 0.7344,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14123,
+        "LogicFrame": 80,
+        "OwnTicks": 10
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationPathQueueEligibility/self",
+    "MaxTickMs": 0.7322,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14107,
+    "FirstInTickMs": 0.7293,
+    "HotAverageMs": 0.0029,
+    "FirstMinusHotMs": 0.7264,
+    "ColdContributionMs": 0.7264,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14142,
+        "LogicFrame": 80,
+        "OwnTicks": 29
+      }
+    ]
+  },
+  {
+    "Name": "FlowCombatApproachSlotLineOfSight/self",
+    "MaxTickMs": 0.7302,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12084,
+    "FirstInTickMs": 0.4303,
+    "HotAverageMs": 0.2999,
+    "FirstMinusHotMs": 0.1304,
+    "ColdContributionMs": 0.1304,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 12224,
+        "LogicFrame": 80,
+        "OwnTicks": 2999
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationDemandQueueCreate/self",
+    "MaxTickMs": 0.7003,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13880,
+    "FirstInTickMs": 0.6873,
+    "HotAverageMs": 0.013,
+    "FirstMinusHotMs": 0.6743,
+    "ColdContributionMs": 0.6743,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14041,
+        "LogicFrame": 80,
+        "OwnTicks": 130
+      }
+    ]
+  },
+  {
+    "Name": "FlowCombatApproachPreResolve/self",
+    "MaxTickMs": 0.6932,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12078,
+    "FirstInTickMs": 0.6849,
+    "HotAverageMs": 0.0011857142857142856,
+    "FirstMinusHotMs": 0.6837142857142857,
+    "ColdContributionMs": 0.6837142857142857,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 12161,
+        "LogicFrame": 80,
+        "OwnTicks": 18
+      },
+      {
+        "Sequence": 12218,
+        "LogicFrame": 80,
+        "OwnTicks": 13
+      },
+      {
+        "Sequence": 12491,
+        "LogicFrame": 80,
+        "OwnTicks": 11
+      },
+      {
+        "Sequence": 12718,
+        "LogicFrame": 80,
+        "OwnTicks": 11
+      },
+      {
+        "Sequence": 12960,
+        "LogicFrame": 80,
+        "OwnTicks": 10
+      },
+      {
+        "Sequence": 13224,
+        "LogicFrame": 80,
+        "OwnTicks": 10
+      },
+      {
+        "Sequence": 13502,
+        "LogicFrame": 80,
+        "OwnTicks": 10
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationGoalConnectorSearchSlice/self",
+    "MaxTickMs": 0.6763,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14098,
+    "FirstInTickMs": 0.4746,
+    "HotAverageMs": 0.10085,
+    "FirstMinusHotMs": 0.37375,
+    "ColdContributionMs": 0.37375,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14102,
+        "LogicFrame": 80,
+        "OwnTicks": 1859
+      },
+      {
+        "Sequence": 14137,
+        "LogicFrame": 80,
+        "OwnTicks": 158
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationDemandSourceInsert/self",
+    "MaxTickMs": 0.6425,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13883,
+    "FirstInTickMs": 0.237,
+    "HotAverageMs": 0.05792857142857143,
+    "FirstMinusHotMs": 0.17907142857142858,
+    "ColdContributionMs": 0.17907142857142858,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 13910,
+        "LogicFrame": 80,
+        "OwnTicks": 1561
+      },
+      {
+        "Sequence": 13937,
+        "LogicFrame": 80,
+        "OwnTicks": 36
+      },
+      {
+        "Sequence": 13957,
+        "LogicFrame": 80,
+        "OwnTicks": 2314
+      },
+      {
+        "Sequence": 13984,
+        "LogicFrame": 80,
+        "OwnTicks": 60
+      },
+      {
+        "Sequence": 14009,
+        "LogicFrame": 80,
+        "OwnTicks": 49
+      },
+      {
+        "Sequence": 14044,
+        "LogicFrame": 80,
+        "OwnTicks": 8
+      },
+      {
+        "Sequence": 14065,
+        "LogicFrame": 80,
+        "OwnTicks": 27
+      }
+    ]
+  },
+  {
+    "Name": "FlowMovingTargetPolicyAnchorGoalState/self",
+    "MaxTickMs": 0.5934,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13864,
+    "FirstInTickMs": 0.5923,
+    "HotAverageMs": 0.0011,
+    "FirstMinusHotMs": 0.5912,
+    "ColdContributionMs": 0.5912,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14027,
+        "LogicFrame": 80,
+        "OwnTicks": 11
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationPolicyInitializeAnchor/self",
+    "MaxTickMs": 0.5875,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14077,
+    "FirstInTickMs": 0.5865,
+    "HotAverageMs": 0.001,
+    "FirstMinusHotMs": 0.5855,
+    "ColdContributionMs": 0.5855,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14118,
+        "LogicFrame": 80,
+        "OwnTicks": 10
+      }
+    ]
+  },
+  {
+    "Name": "FlowCombatApproach/self",
+    "MaxTickMs": 0.5841,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12159,
+    "FirstInTickMs": 0.5821,
+    "HotAverageMs": 0.00028571428571428574,
+    "FirstMinusHotMs": 0.5818142857142857,
+    "ColdContributionMs": 0.5818142857142857,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 12216,
+        "LogicFrame": 80,
+        "OwnTicks": 7
+      },
+      {
+        "Sequence": 12489,
+        "LogicFrame": 80,
+        "OwnTicks": 3
+      },
+      {
+        "Sequence": 12716,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 12958,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 13222,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 13500,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 13772,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      }
+    ]
+  },
+  {
+    "Name": "FlowCombatApproachScoreArithmetic/self",
+    "MaxTickMs": 0.547,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12151,
+    "FirstInTickMs": 0.4829,
+    "HotAverageMs": 0.009157142857142857,
+    "FirstMinusHotMs": 0.4737428571428572,
+    "ColdContributionMs": 0.4737428571428572,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 12208,
+        "LogicFrame": 80,
+        "OwnTicks": 45
+      },
+      {
+        "Sequence": 12482,
+        "LogicFrame": 80,
+        "OwnTicks": 107
+      },
+      {
+        "Sequence": 12709,
+        "LogicFrame": 80,
+        "OwnTicks": 103
+      },
+      {
+        "Sequence": 12951,
+        "LogicFrame": 80,
+        "OwnTicks": 97
+      },
+      {
+        "Sequence": 13215,
+        "LogicFrame": 80,
+        "OwnTicks": 87
+      },
+      {
+        "Sequence": 13493,
+        "LogicFrame": 80,
+        "OwnTicks": 87
+      },
+      {
+        "Sequence": 13765,
+        "LogicFrame": 80,
+        "OwnTicks": 115
+      }
+    ]
+  },
+  {
+    "Name": "LogicMoveResolveStaticSolver/self",
+    "MaxTickMs": 0.5453,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14282,
+    "FirstInTickMs": 0.185,
+    "HotAverageMs": 0.1201,
+    "FirstMinusHotMs": 0.0649,
+    "ColdContributionMs": 0.0,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14287,
+        "LogicFrame": 80,
+        "OwnTicks": 1241
+      },
+      {
+        "Sequence": 14292,
+        "LogicFrame": 80,
+        "OwnTicks": 1214
+      },
+      {
+        "Sequence": 14297,
+        "LogicFrame": 80,
+        "OwnTicks": 1148
+      }
+    ]
+  },
+  {
+    "Name": "CharacterMovePrepare/self",
+    "MaxTickMs": 0.5122,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 13776,
+    "FirstInTickMs": 0.0002,
+    "HotAverageMs": 0.013128205128205127,
+    "FirstMinusHotMs": -0.012928205128205127,
+    "ColdContributionMs": 0.0,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 13778,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 13780,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 13782,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13784,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13786,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13788,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13790,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 13792,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13794,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13796,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13798,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13800,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13802,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13804,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 13806,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 13808,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 13810,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13812,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13813,
+        "LogicFrame": 80,
+        "OwnTicks": 4962
+      },
+      {
+        "Sequence": 13814,
+        "LogicFrame": 80,
+        "OwnTicks": 19
+      },
+      {
+        "Sequence": 13815,
+        "LogicFrame": 80,
+        "OwnTicks": 11
+      },
+      {
+        "Sequence": 13816,
+        "LogicFrame": 80,
+        "OwnTicks": 38
+      },
+      {
+        "Sequence": 13817,
+        "LogicFrame": 80,
+        "OwnTicks": 8
+      },
+      {
+        "Sequence": 13818,
+        "LogicFrame": 80,
+        "OwnTicks": 10
+      },
+      {
+        "Sequence": 13819,
+        "LogicFrame": 80,
+        "OwnTicks": 8
+      },
+      {
+        "Sequence": 13820,
+        "LogicFrame": 80,
+        "OwnTicks": 21
+      },
+      {
+        "Sequence": 13822,
+        "LogicFrame": 80,
+        "OwnTicks": 3
+      },
+      {
+        "Sequence": 13824,
+        "LogicFrame": 80,
+        "OwnTicks": 3
+      },
+      {
+        "Sequence": 13826,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13828,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13830,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13832,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 13834,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13836,
+        "LogicFrame": 80,
+        "OwnTicks": 0
+      },
+      {
+        "Sequence": 13838,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 13840,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13842,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13844,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13846,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      }
+    ]
+  },
+  {
+    "Name": "FlowCombatApproachSlotGenerate/self",
+    "MaxTickMs": 0.5003,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12082,
+    "FirstInTickMs": 0.4138,
+    "HotAverageMs": 0.0865,
+    "FirstMinusHotMs": 0.3273,
+    "ColdContributionMs": 0.3273,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 12222,
+        "LogicFrame": 80,
+        "OwnTicks": 865
+      }
+    ]
+  },
+  {
+    "Name": "FlowCombatApproachSlotCacheLookup/self",
+    "MaxTickMs": 0.4759,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12081,
+    "FirstInTickMs": 0.3884,
+    "HotAverageMs": 0.0125,
+    "FirstMinusHotMs": 0.3759,
+    "ColdContributionMs": 0.3759,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 12164,
+        "LogicFrame": 80,
+        "OwnTicks": 866
+      },
+      {
+        "Sequence": 12221,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 12494,
+        "LogicFrame": 80,
+        "OwnTicks": 4
+      },
+      {
+        "Sequence": 12721,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 12963,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13227,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13505,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      }
+    ]
+  },
+  {
+    "Name": "FlowCombatApproachSlotCachePublish/self",
+    "MaxTickMs": 0.4452,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12087,
+    "FirstInTickMs": 0.445,
+    "HotAverageMs": 0.0002,
+    "FirstMinusHotMs": 0.4448,
+    "ColdContributionMs": 0.4448,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 12227,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationPathInitializeHierarchySelection/self",
+    "MaxTickMs": 0.4381,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14084,
+    "FirstInTickMs": 0.4379,
+    "HotAverageMs": 0.0002,
+    "FirstMinusHotMs": 0.4377,
+    "ColdContributionMs": 0.4377,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14125,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationPathWorldStateEnumeration/self",
+    "MaxTickMs": 0.4333,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14072,
+    "FirstInTickMs": 0.4333,
+    "HotAverageMs": 0.002533333333333333,
+    "FirstMinusHotMs": 0.4307666666666667,
+    "ColdContributionMs": 0.4307666666666667,
+    "HotSource": "later-records-in-validated-ticks",
+    "HotSamples": [
+      {
+        "Sequence": 14650,
+        "LogicFrame": 81,
+        "OwnTicks": 20
+      },
+      {
+        "Sequence": 15129,
+        "LogicFrame": 82,
+        "OwnTicks": 23
+      },
+      {
+        "Sequence": 15601,
+        "LogicFrame": 83,
+        "OwnTicks": 39
+      },
+      {
+        "Sequence": 16065,
+        "LogicFrame": 84,
+        "OwnTicks": 23
+      },
+      {
+        "Sequence": 16538,
+        "LogicFrame": 85,
+        "OwnTicks": 26
+      },
+      {
+        "Sequence": 17513,
+        "LogicFrame": 87,
+        "OwnTicks": 34
+      },
+      {
+        "Sequence": 18038,
+        "LogicFrame": 88,
+        "OwnTicks": 19
+      },
+      {
+        "Sequence": 18550,
+        "LogicFrame": 89,
+        "OwnTicks": 21
+      },
+      {
+        "Sequence": 23315,
+        "LogicFrame": 98,
+        "OwnTicks": 23
+      }
+    ]
+  },
+  {
+    "Name": "FlowMovingTargetPolicyBatchResolutionLookup/self",
+    "MaxTickMs": 0.4114,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13851,
+    "FirstInTickMs": 0.3185,
+    "HotAverageMs": 0.013271428571428571,
+    "FirstMinusHotMs": 0.3052285714285714,
+    "ColdContributionMs": 0.3052285714285714,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 13892,
+        "LogicFrame": 80,
+        "OwnTicks": 918
+      },
+      {
+        "Sequence": 13918,
+        "LogicFrame": 80,
+        "OwnTicks": 3
+      },
+      {
+        "Sequence": 13944,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13965,
+        "LogicFrame": 80,
+        "OwnTicks": 3
+      },
+      {
+        "Sequence": 13991,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 14017,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 14051,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      }
+    ]
+  },
+  {
+    "Name": "LogicMoveResolvePairSolver/self",
+    "MaxTickMs": 0.4005,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14281,
+    "FirstInTickMs": 0.1067,
+    "HotAverageMs": 0.09793333333333333,
+    "FirstMinusHotMs": 0.008766666666666662,
+    "ColdContributionMs": 0.0,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14286,
+        "LogicFrame": 80,
+        "OwnTicks": 985
+      },
+      {
+        "Sequence": 14291,
+        "LogicFrame": 80,
+        "OwnTicks": 994
+      },
+      {
+        "Sequence": 14296,
+        "LogicFrame": 80,
+        "OwnTicks": 959
+      }
+    ]
+  },
+  {
+    "Name": "FlowMovingTargetPolicyAnchorDictionaryInsert/self",
+    "MaxTickMs": 0.388,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13859,
+    "FirstInTickMs": 0.3876,
+    "HotAverageMs": 0.0004,
+    "FirstMinusHotMs": 0.3872,
+    "ColdContributionMs": 0.3872,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14023,
+        "LogicFrame": 80,
+        "OwnTicks": 4
+      }
+    ]
+  },
+  {
+    "Name": "FlowCombatApproachOccupancyBucketFill/self",
+    "MaxTickMs": 0.3308,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12093,
+    "FirstInTickMs": 0.3308,
+    "HotAverageMs": 0.009133333333333334,
+    "FirstMinusHotMs": 0.32166666666666666,
+    "ColdContributionMs": 0.32166666666666666,
+    "HotSource": "later-records-in-validated-ticks",
+    "HotSamples": [
+      {
+        "Sequence": 14364,
+        "LogicFrame": 81,
+        "OwnTicks": 253
+      },
+      {
+        "Sequence": 14837,
+        "LogicFrame": 82,
+        "OwnTicks": 70
+      },
+      {
+        "Sequence": 15315,
+        "LogicFrame": 83,
+        "OwnTicks": 35
+      },
+      {
+        "Sequence": 15784,
+        "LogicFrame": 84,
+        "OwnTicks": 65
+      },
+      {
+        "Sequence": 16238,
+        "LogicFrame": 85,
+        "OwnTicks": 76
+      },
+      {
+        "Sequence": 17222,
+        "LogicFrame": 87,
+        "OwnTicks": 67
+      },
+      {
+        "Sequence": 17750,
+        "LogicFrame": 88,
+        "OwnTicks": 69
+      },
+      {
+        "Sequence": 18259,
+        "LogicFrame": 89,
+        "OwnTicks": 112
+      },
+      {
+        "Sequence": 23023,
+        "LogicFrame": 98,
+        "OwnTicks": 75
+      }
+    ]
+  },
+  {
+    "Name": "FlowMovingTargetPolicyClassification/self",
+    "MaxTickMs": 0.3208,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13852,
+    "FirstInTickMs": 0.3198,
+    "HotAverageMs": 0.001,
+    "FirstMinusHotMs": 0.3188,
+    "ColdContributionMs": 0.3188,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14018,
+        "LogicFrame": 80,
+        "OwnTicks": 10
+      }
+    ]
+  },
+  {
+    "Name": "CharacterTargetingCandidateScan/self",
+    "MaxTickMs": 0.3023,
+    "FirstRecordLogicFrame": 38,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14175,
+    "FirstInTickMs": 0.0338,
+    "HotAverageMs": 0.00895,
+    "FirstMinusHotMs": 0.02485,
+    "ColdContributionMs": 0.0,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14177,
+        "LogicFrame": 80,
+        "OwnTicks": 191
+      },
+      {
+        "Sequence": 14179,
+        "LogicFrame": 80,
+        "OwnTicks": 104
+      },
+      {
+        "Sequence": 14181,
+        "LogicFrame": 80,
+        "OwnTicks": 92
+      },
+      {
+        "Sequence": 14183,
+        "LogicFrame": 80,
+        "OwnTicks": 119
+      },
+      {
+        "Sequence": 14185,
+        "LogicFrame": 80,
+        "OwnTicks": 89
+      },
+      {
+        "Sequence": 14187,
+        "LogicFrame": 80,
+        "OwnTicks": 88
+      },
+      {
+        "Sequence": 14189,
+        "LogicFrame": 80,
+        "OwnTicks": 88
+      },
+      {
+        "Sequence": 14191,
+        "LogicFrame": 80,
+        "OwnTicks": 88
+      },
+      {
+        "Sequence": 14193,
+        "LogicFrame": 80,
+        "OwnTicks": 87
+      },
+      {
+        "Sequence": 14195,
+        "LogicFrame": 80,
+        "OwnTicks": 87
+      },
+      {
+        "Sequence": 14197,
+        "LogicFrame": 80,
+        "OwnTicks": 90
+      },
+      {
+        "Sequence": 14199,
+        "LogicFrame": 80,
+        "OwnTicks": 88
+      },
+      {
+        "Sequence": 14201,
+        "LogicFrame": 80,
+        "OwnTicks": 88
+      },
+      {
+        "Sequence": 14203,
+        "LogicFrame": 80,
+        "OwnTicks": 88
+      },
+      {
+        "Sequence": 14205,
+        "LogicFrame": 80,
+        "OwnTicks": 86
+      },
+      {
+        "Sequence": 14207,
+        "LogicFrame": 80,
+        "OwnTicks": 88
+      },
+      {
+        "Sequence": 14209,
+        "LogicFrame": 80,
+        "OwnTicks": 88
+      },
+      {
+        "Sequence": 14211,
+        "LogicFrame": 80,
+        "OwnTicks": 109
+      },
+      {
+        "Sequence": 14213,
+        "LogicFrame": 80,
+        "OwnTicks": 66
+      },
+      {
+        "Sequence": 14215,
+        "LogicFrame": 80,
+        "OwnTicks": 72
+      },
+      {
+        "Sequence": 14217,
+        "LogicFrame": 80,
+        "OwnTicks": 69
+      },
+      {
+        "Sequence": 14219,
+        "LogicFrame": 80,
+        "OwnTicks": 87
+      },
+      {
+        "Sequence": 14221,
+        "LogicFrame": 80,
+        "OwnTicks": 80
+      },
+      {
+        "Sequence": 14223,
+        "LogicFrame": 80,
+        "OwnTicks": 77
+      },
+      {
+        "Sequence": 14225,
+        "LogicFrame": 80,
+        "OwnTicks": 81
+      },
+      {
+        "Sequence": 14227,
+        "LogicFrame": 80,
+        "OwnTicks": 79
+      },
+      {
+        "Sequence": 14229,
+        "LogicFrame": 80,
+        "OwnTicks": 83
+      },
+      {
+        "Sequence": 14231,
+        "LogicFrame": 80,
+        "OwnTicks": 79
+      },
+      {
+        "Sequence": 14233,
+        "LogicFrame": 80,
+        "OwnTicks": 77
+      },
+      {
+        "Sequence": 14235,
+        "LogicFrame": 80,
+        "OwnTicks": 77
+      }
+    ]
+  },
+  {
+    "Name": "FlowMovingTargetPolicyAnchorDictionaryLookup/self",
+    "MaxTickMs": 0.2887,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13857,
+    "FirstInTickMs": 0.2886,
+    "HotAverageMs": 0.0001,
+    "FirstMinusHotMs": 0.2885,
+    "ColdContributionMs": 0.2885,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14021,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      }
+    ]
+  },
+  {
+    "Name": "LogicEntityMoveIntent/self",
+    "MaxTickMs": 0.2857,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14279,
+    "FirstInTickMs": 0.2857,
+    "HotAverageMs": 0.07556666666666666,
+    "FirstMinusHotMs": 0.21013333333333334,
+    "ColdContributionMs": 0.0,
+    "HotSource": "later-records-in-validated-ticks",
+    "HotSamples": [
+      {
+        "Sequence": 14752,
+        "LogicFrame": 81,
+        "OwnTicks": 721
+      },
+      {
+        "Sequence": 15230,
+        "LogicFrame": 82,
+        "OwnTicks": 788
+      },
+      {
+        "Sequence": 15700,
+        "LogicFrame": 83,
+        "OwnTicks": 672
+      },
+      {
+        "Sequence": 16154,
+        "LogicFrame": 84,
+        "OwnTicks": 693
+      },
+      {
+        "Sequence": 16631,
+        "LogicFrame": 85,
+        "OwnTicks": 761
+      },
+      {
+        "Sequence": 17665,
+        "LogicFrame": 87,
+        "OwnTicks": 757
+      },
+      {
+        "Sequence": 18174,
+        "LogicFrame": 88,
+        "OwnTicks": 797
+      },
+      {
+        "Sequence": 18691,
+        "LogicFrame": 89,
+        "OwnTicks": 935
+      },
+      {
+        "Sequence": 23402,
+        "LogicFrame": 98,
+        "OwnTicks": 677
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationPathDiagnosticCapture/self",
+    "MaxTickMs": 0.2521,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14152,
+    "FirstInTickMs": 0.2521,
+    "HotAverageMs": 0.0015333333333333334,
+    "FirstMinusHotMs": 0.25056666666666666,
+    "ColdContributionMs": 0.25056666666666666,
+    "HotSource": "later-records-in-validated-ticks",
+    "HotSamples": [
+      {
+        "Sequence": 14694,
+        "LogicFrame": 81,
+        "OwnTicks": 21
+      },
+      {
+        "Sequence": 15175,
+        "LogicFrame": 82,
+        "OwnTicks": 16
+      },
+      {
+        "Sequence": 15631,
+        "LogicFrame": 83,
+        "OwnTicks": 15
+      },
+      {
+        "Sequence": 16094,
+        "LogicFrame": 84,
+        "OwnTicks": 15
+      },
+      {
+        "Sequence": 16569,
+        "LogicFrame": 85,
+        "OwnTicks": 15
+      },
+      {
+        "Sequence": 17541,
+        "LogicFrame": 87,
+        "OwnTicks": 14
+      },
+      {
+        "Sequence": 18114,
+        "LogicFrame": 88,
+        "OwnTicks": 14
+      },
+      {
+        "Sequence": 18630,
+        "LogicFrame": 89,
+        "OwnTicks": 15
+      },
+      {
+        "Sequence": 23343,
+        "LogicFrame": 98,
+        "OwnTicks": 13
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationPolicyInitializeAuthority/self",
+    "MaxTickMs": 0.2398,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14080,
+    "FirstInTickMs": 0.2389,
+    "HotAverageMs": 0.0009,
+    "FirstMinusHotMs": 0.238,
+    "ColdContributionMs": 0.238,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14121,
+        "LogicFrame": 80,
+        "OwnTicks": 9
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationRequestSort/self",
+    "MaxTickMs": 0.203,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13847,
+    "FirstInTickMs": 0.203,
+    "HotAverageMs": 0.002,
+    "FirstMinusHotMs": 0.201,
+    "ColdContributionMs": 0.201,
+    "HotSource": "later-records-in-validated-ticks",
+    "HotSamples": [
+      {
+        "Sequence": 14488,
+        "LogicFrame": 81,
+        "OwnTicks": 17
+      },
+      {
+        "Sequence": 14960,
+        "LogicFrame": 82,
+        "OwnTicks": 17
+      },
+      {
+        "Sequence": 15436,
+        "LogicFrame": 83,
+        "OwnTicks": 18
+      },
+      {
+        "Sequence": 15907,
+        "LogicFrame": 84,
+        "OwnTicks": 14
+      },
+      {
+        "Sequence": 16362,
+        "LogicFrame": 85,
+        "OwnTicks": 51
+      },
+      {
+        "Sequence": 17345,
+        "LogicFrame": 87,
+        "OwnTicks": 17
+      },
+      {
+        "Sequence": 17873,
+        "LogicFrame": 88,
+        "OwnTicks": 15
+      },
+      {
+        "Sequence": 18380,
+        "LogicFrame": 89,
+        "OwnTicks": 15
+      },
+      {
+        "Sequence": 23146,
+        "LogicFrame": 98,
+        "OwnTicks": 16
+      }
+    ]
+  },
+  {
+    "Name": "FlowCombatApproachFinalize/self",
+    "MaxTickMs": 0.2005,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12156,
+    "FirstInTickMs": 0.1991,
+    "HotAverageMs": 0.0002,
+    "FirstMinusHotMs": 0.1989,
+    "ColdContributionMs": 0.1989,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 12213,
+        "LogicFrame": 80,
+        "OwnTicks": 8
+      },
+      {
+        "Sequence": 12486,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 12713,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 12955,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13219,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13497,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13769,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationDemandRemoveOther/self",
+    "MaxTickMs": 0.1939,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13878,
+    "FirstInTickMs": 0.193,
+    "HotAverageMs": 0.00015,
+    "FirstMinusHotMs": 0.19285,
+    "ColdContributionMs": 0.19285,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 13906,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 13933,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 13953,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13980,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 14005,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 14039,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationPathSliceDispatchFinalization/self",
+    "MaxTickMs": 0.1917,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14086,
+    "FirstInTickMs": 0.1889,
+    "HotAverageMs": 0.00035,
+    "FirstMinusHotMs": 0.18855,
+    "ColdContributionMs": 0.18855,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14090,
+        "LogicFrame": 80,
+        "OwnTicks": 8
+      },
+      {
+        "Sequence": 14096,
+        "LogicFrame": 80,
+        "OwnTicks": 7
+      },
+      {
+        "Sequence": 14101,
+        "LogicFrame": 80,
+        "OwnTicks": 5
+      },
+      {
+        "Sequence": 14105,
+        "LogicFrame": 80,
+        "OwnTicks": 3
+      },
+      {
+        "Sequence": 14127,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 14130,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 14136,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 14140,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      }
+    ]
+  },
+  {
+    "Name": "FlowCombatApproachCoreScorePhase/self",
+    "MaxTickMs": 0.1856,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12153,
+    "FirstInTickMs": 0.0173,
+    "HotAverageMs": 0.024042857142857144,
+    "FirstMinusHotMs": -0.0067428571428571425,
+    "ColdContributionMs": -0.0067428571428571425,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 12210,
+        "LogicFrame": 80,
+        "OwnTicks": 55
+      },
+      {
+        "Sequence": 12484,
+        "LogicFrame": 80,
+        "OwnTicks": 249
+      },
+      {
+        "Sequence": 12711,
+        "LogicFrame": 80,
+        "OwnTicks": 257
+      },
+      {
+        "Sequence": 12953,
+        "LogicFrame": 80,
+        "OwnTicks": 262
+      },
+      {
+        "Sequence": 13217,
+        "LogicFrame": 80,
+        "OwnTicks": 281
+      },
+      {
+        "Sequence": 13495,
+        "LogicFrame": 80,
+        "OwnTicks": 281
+      },
+      {
+        "Sequence": 13767,
+        "LogicFrame": 80,
+        "OwnTicks": 298
+      }
+    ]
+  },
+  {
+    "Name": "FlowCombatApproachCoreSetup/self",
+    "MaxTickMs": 0.1563,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12080,
+    "FirstInTickMs": 0.1555,
+    "HotAverageMs": 0.00011428571428571428,
+    "FirstMinusHotMs": 0.1553857142857143,
+    "ColdContributionMs": 0.1553857142857143,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 12163,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      },
+      {
+        "Sequence": 12220,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 12493,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 12720,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 12962,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13226,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      },
+      {
+        "Sequence": 13504,
+        "LogicFrame": 80,
+        "OwnTicks": 1
+      }
+    ]
+  },
+  {
+    "Name": "FlowMovingTargetPolicyAnchorPublish/self",
+    "MaxTickMs": 0.1467,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13863,
+    "FirstInTickMs": 0.1465,
+    "HotAverageMs": 0.0002,
+    "FirstMinusHotMs": 0.1463,
+    "ColdContributionMs": 0.1463,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 14026,
+        "LogicFrame": 80,
+        "OwnTicks": 2
+      }
+    ]
+  },
+  {
+    "Name": "FlowNavigationDemandEnqueue/self",
+    "MaxTickMs": 0.1443,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13887,
+    "FirstInTickMs": 0.1387,
+    "HotAverageMs": 0.0008,
+    "FirstMinusHotMs": 0.1379,
+    "ColdContributionMs": 0.1379,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 13914,
+        "LogicFrame": 80,
+        "OwnTicks": 13
+      },
+      {
+        "Sequence": 13940,
+        "LogicFrame": 80,
+        "OwnTicks": 7
+      },
+      {
+        "Sequence": 13961,
+        "LogicFrame": 80,
+        "OwnTicks": 9
+      },
+      {
+        "Sequence": 13987,
+        "LogicFrame": 80,
+        "OwnTicks": 8
+      },
+      {
+        "Sequence": 14012,
+        "LogicFrame": 80,
+        "OwnTicks": 9
+      },
+      {
+        "Sequence": 14047,
+        "LogicFrame": 80,
+        "OwnTicks": 5
+      },
+      {
+        "Sequence": 14068,
+        "LogicFrame": 80,
+        "OwnTicks": 5
+      }
+    ]
+  },
+  {
+    "Name": "FlowCombatApproachSlotCacheArrayMaterialize/self",
+    "MaxTickMs": 0.1412,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12086,
+    "FirstInTickMs": 0.1289,
+    "HotAverageMs": 0.0123,
+    "FirstMinusHotMs": 0.1166,
+    "ColdContributionMs": 0.1166,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 12226,
+        "LogicFrame": 80,
+        "OwnTicks": 123
+      }
+    ]
+  },
+  {
+    "Name": "listener:LogicEntityFrameSnapshotService+SnapshotCaptureListener/self",
+    "MaxTickMs": 0.1179,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 12029,
+    "FirstInTickMs": 0.1179,
+    "HotAverageMs": 0.11596666666666668,
+    "FirstMinusHotMs": 0.0019333333333333255,
+    "ColdContributionMs": 0.0,
+    "HotSource": "later-records-in-validated-ticks",
+    "HotSamples": [
+      {
+        "Sequence": 14312,
+        "LogicFrame": 81,
+        "OwnTicks": 1192
+      },
+      {
+        "Sequence": 14785,
+        "LogicFrame": 82,
+        "OwnTicks": 1168
+      },
+      {
+        "Sequence": 15263,
+        "LogicFrame": 83,
+        "OwnTicks": 1166
+      },
+      {
+        "Sequence": 15733,
+        "LogicFrame": 84,
+        "OwnTicks": 1098
+      },
+      {
+        "Sequence": 16187,
+        "LogicFrame": 85,
+        "OwnTicks": 1234
+      },
+      {
+        "Sequence": 17171,
+        "LogicFrame": 87,
+        "OwnTicks": 1194
+      },
+      {
+        "Sequence": 17698,
+        "LogicFrame": 88,
+        "OwnTicks": 1211
+      },
+      {
+        "Sequence": 18207,
+        "LogicFrame": 89,
+        "OwnTicks": 1100
+      },
+      {
+        "Sequence": 22971,
+        "LogicFrame": 98,
+        "OwnTicks": 1074
+      }
+    ]
+  },
+  {
+    "Name": "FlowCombatApproachOccupancyPrepareInitialization/self",
+    "MaxTickMs": 0.1146,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12099,
+    "FirstInTickMs": 0.1142,
+    "HotAverageMs": 0.0004,
+    "FirstMinusHotMs": 0.1138,
+    "ColdContributionMs": 0.1138,
+    "HotSource": "later-records-in-target-tick",
+    "HotSamples": [
+      {
+        "Sequence": 12234,
+        "LogicFrame": 80,
+        "OwnTicks": 4
+      }
+    ]
+  },
+  {
+    "Name": "LogicEntityTargeting/self",
+    "MaxTickMs": 0.114,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14237,
+    "FirstInTickMs": 0.114,
+    "HotAverageMs": 0.06482222222222221,
+    "FirstMinusHotMs": 0.04917777777777778,
+    "ColdContributionMs": 0.0,
+    "HotSource": "later-records-in-validated-ticks",
+    "HotSamples": [
+      {
+        "Sequence": 14716,
+        "LogicFrame": 81,
+        "OwnTicks": 745
+      },
+      {
+        "Sequence": 15197,
+        "LogicFrame": 82,
+        "OwnTicks": 928
+      },
+      {
+        "Sequence": 15654,
+        "LogicFrame": 83,
+        "OwnTicks": 394
+      },
+      {
+        "Sequence": 16115,
+        "LogicFrame": 84,
+        "OwnTicks": 374
+      },
+      {
+        "Sequence": 16592,
+        "LogicFrame": 85,
+        "OwnTicks": 433
+      },
+      {
+        "Sequence": 17625,
+        "LogicFrame": 87,
+        "OwnTicks": 473
+      },
+      {
+        "Sequence": 18135,
+        "LogicFrame": 88,
+        "OwnTicks": 978
+      },
+      {
+        "Sequence": 18652,
+        "LogicFrame": 89,
+        "OwnTicks": 1023
+      },
+      {
+        "Sequence": 23365,
+        "LogicFrame": 98,
+        "OwnTicks": 486
+      }
+    ]
+  },
+  {
+    "Name": "LogicEntityBrain/self",
+    "MaxTickMs": 0.1018,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 13774,
+    "FirstInTickMs": 0.1018,
+    "HotAverageMs": 0.07316666666666666,
+    "FirstMinusHotMs": 0.028633333333333337,
+    "ColdContributionMs": 0.0,
+    "HotSource": "later-records-in-validated-ticks",
+    "HotSamples": [
+      {
+        "Sequence": 14415,
+        "LogicFrame": 81,
+        "OwnTicks": 804
+      },
+      {
+        "Sequence": 14888,
+        "LogicFrame": 82,
+        "OwnTicks": 736
+      },
+      {
+        "Sequence": 15365,
+        "LogicFrame": 83,
+        "OwnTicks": 675
+      },
+      {
+        "Sequence": 15834,
+        "LogicFrame": 84,
+        "OwnTicks": 694
+      },
+      {
+        "Sequence": 16289,
+        "LogicFrame": 85,
+        "OwnTicks": 836
+      },
+      {
+        "Sequence": 17273,
+        "LogicFrame": 87,
+        "OwnTicks": 725
+      },
+      {
+        "Sequence": 17802,
+        "LogicFrame": 88,
+        "OwnTicks": 704
+      },
+      {
+        "Sequence": 18309,
+        "LogicFrame": 89,
+        "OwnTicks": 677
+      },
+      {
+        "Sequence": 23073,
+        "LogicFrame": 98,
+        "OwnTicks": 734
+      }
+    ]
+  },
+  {
+    "Name": "FlowCombatApproachOccupancyReservations/self",
+    "MaxTickMs": 0.0911,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12118,
+    "FirstInTickMs": 0.0008,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicEntityBaseAndBuffs/self",
+    "MaxTickMs": 0.0693,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 12036,
+    "FirstInTickMs": 0.0693,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachOccupancySlotFilter/self",
+    "MaxTickMs": 0.0657,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12098,
+    "FirstInTickMs": 0.0476,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachOccupancyAgentSync/self",
+    "MaxTickMs": 0.064,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12091,
+    "FirstInTickMs": 0.064,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPolicyInitializePin/self",
+    "MaxTickMs": 0.0583,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14081,
+    "FirstInTickMs": 0.058,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPathInitializeHierarchyResolve/self",
+    "MaxTickMs": 0.058,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14083,
+    "FirstInTickMs": 0.0572,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPolicyInitializeConstruct/self",
+    "MaxTickMs": 0.0475,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14078,
+    "FirstInTickMs": 0.032,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowTileQueueActiveDemand/self",
+    "MaxTickMs": 0.0458,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14156,
+    "FirstInTickMs": 0.0328,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachOccupancy/self",
+    "MaxTickMs": 0.0389,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12117,
+    "FirstInTickMs": 0.0031,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "listener:LogicInteractionAuthorityService+AuthorityListener/self",
+    "MaxTickMs": 0.0353,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 12034,
+    "FirstInTickMs": 0.0353,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicEntityFrameSetup/self",
+    "MaxTickMs": 0.0339,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 12035,
+    "FirstInTickMs": 0.0339,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationResolveDemandBatch/self",
+    "MaxTickMs": 0.0335,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14071,
+    "FirstInTickMs": 0.0335,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowStableGoalMeasurementBegin/self",
+    "MaxTickMs": 0.0331,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13869,
+    "FirstInTickMs": 0.0324,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicMoveResolveProjection/self",
+    "MaxTickMs": 0.0327,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14284,
+    "FirstInTickMs": 0.0102,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachCoreAgentPreparation/self",
+    "MaxTickMs": 0.0314,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12079,
+    "FirstInTickMs": 0.0183,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachScore/self",
+    "MaxTickMs": 0.0309,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12150,
+    "FirstInTickMs": 0.0034,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachSlotCacheBuild/self",
+    "MaxTickMs": 0.0292,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12088,
+    "FirstInTickMs": 0.0253,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationRequestPrune/self",
+    "MaxTickMs": 0.0284,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14070,
+    "FirstInTickMs": 0.0284,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationDemandAgentPreparation/self",
+    "MaxTickMs": 0.0284,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13848,
+    "FirstInTickMs": 0.0066,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationResolveRequests/self",
+    "MaxTickMs": 0.0279,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14154,
+    "FirstInTickMs": 0.0279,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "CharacterTargetingEvaluate/self",
+    "MaxTickMs": 0.0275,
+    "FirstRecordLogicFrame": 38,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14176,
+    "FirstInTickMs": 0.0028,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicEntityMoveCommit/self",
+    "MaxTickMs": 0.0259,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14302,
+    "FirstInTickMs": 0.0259,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowStableGoalMeasurementFinalize/self",
+    "MaxTickMs": 0.0257,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13871,
+    "FirstInTickMs": 0.0252,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationAgentUpdate/self",
+    "MaxTickMs": 0.0253,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 12037,
+    "FirstInTickMs": 0.003,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachOccupancySnapshot/self",
+    "MaxTickMs": 0.0243,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12096,
+    "FirstInTickMs": 0.0115,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowStableGoalBody/self",
+    "MaxTickMs": 0.0241,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13867,
+    "FirstInTickMs": 0.0089,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachCore/self",
+    "MaxTickMs": 0.0233,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12158,
+    "FirstInTickMs": 0.0171,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationDemandResolve/self",
+    "MaxTickMs": 0.0218,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13875,
+    "FirstInTickMs": 0.0145,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationDemandSourceLookup/self",
+    "MaxTickMs": 0.0213,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13882,
+    "FirstInTickMs": 0.0129,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachOccupancyBuckets/self",
+    "MaxTickMs": 0.0209,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12119,
+    "FirstInTickMs": 0.0006,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachSlotDeduplicate/self",
+    "MaxTickMs": 0.0198,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12085,
+    "FirstInTickMs": 0.0042,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicEntityAttack/self",
+    "MaxTickMs": 0.0197,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14239,
+    "FirstInTickMs": 0.0197,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicEntityNavigationSync/self",
+    "MaxTickMs": 0.0192,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14174,
+    "FirstInTickMs": 0.0192,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachOccupancyPrepareIteration/self",
+    "MaxTickMs": 0.0169,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12114,
+    "FirstInTickMs": 0.0096,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachCoreScoreIslandFilter/self",
+    "MaxTickMs": 0.0151,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12152,
+    "FirstInTickMs": 0.001,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationTileQueue/self",
+    "MaxTickMs": 0.0146,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14171,
+    "FirstInTickMs": 0.0146,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "CharacterMoveSteering/self",
+    "MaxTickMs": 0.0141,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14247,
+    "FirstInTickMs": 0.0104,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicMoveResolvePrepare/self",
+    "MaxTickMs": 0.0135,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14280,
+    "FirstInTickMs": 0.0135,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowPrepareStableGoal/self",
+    "MaxTickMs": 0.0129,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13872,
+    "FirstInTickMs": 0.0081,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowMovingTargetPolicyInputResolution/self",
+    "MaxTickMs": 0.0129,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13853,
+    "FirstInTickMs": 0.0089,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicEntityPostUpdate/self",
+    "MaxTickMs": 0.0123,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14303,
+    "FirstInTickMs": 0.0123,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachOccupancyPreparation/self",
+    "MaxTickMs": 0.0119,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12116,
+    "FirstInTickMs": 0.0096,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowPrepareStartCell/self",
+    "MaxTickMs": 0.0111,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13849,
+    "FirstInTickMs": 0.0032,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationGoalConnectorInputCollection/self",
+    "MaxTickMs": 0.0103,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14091,
+    "FirstInTickMs": 0.0048,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachOccupancyPrepareCacheState/self",
+    "MaxTickMs": 0.0103,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12097,
+    "FirstInTickMs": 0.0085,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicFrameListenerCallbacks/self",
+    "MaxTickMs": 0.0101,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14308,
+    "FirstInTickMs": 0.0101,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicEntityNavigationPositionSync/self",
+    "MaxTickMs": 0.0101,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 12077,
+    "FirstInTickMs": 0.0101,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicEntityMoveResolve/self",
+    "MaxTickMs": 0.0099,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14301,
+    "FirstInTickMs": 0.0099,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachOccupancyBucketBuild/self",
+    "MaxTickMs": 0.0096,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12094,
+    "FirstInTickMs": 0.0096,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPathSliceDispatch/self",
+    "MaxTickMs": 0.0094,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14108,
+    "FirstInTickMs": 0.0085,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationDemandSourceBinding/self",
+    "MaxTickMs": 0.0094,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13884,
+    "FirstInTickMs": 0.0057,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPathSliceInitialize/self",
+    "MaxTickMs": 0.0093,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14085,
+    "FirstInTickMs": 0.0086,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowSteeringSetupAgent/self",
+    "MaxTickMs": 0.0086,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14244,
+    "FirstInTickMs": 0.0069,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPathQueueCommitLoop/self",
+    "MaxTickMs": 0.0086,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14111,
+    "FirstInTickMs": 0.0083,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPathWorldOuterUnattributed/self",
+    "MaxTickMs": 0.0085,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14149,
+    "FirstInTickMs": 0.0085,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachSlotCache/self",
+    "MaxTickMs": 0.0084,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12089,
+    "FirstInTickMs": 0.0061,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowMovingTargetPolicyAnchorState/self",
+    "MaxTickMs": 0.0082,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13866,
+    "FirstInTickMs": 0.0075,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCorridorPolicyAuthorityHash/self",
+    "MaxTickMs": 0.0077,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14079,
+    "FirstInTickMs": 0.0058,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPathQueueProcessingUnattributed/self",
+    "MaxTickMs": 0.0071,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14148,
+    "FirstInTickMs": 0.0071,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowMovingTargetPolicyAnchorDictionary/self",
+    "MaxTickMs": 0.0068,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13860,
+    "FirstInTickMs": 0.0063,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationInactiveClear/self",
+    "MaxTickMs": 0.0062,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 13775,
+    "FirstInTickMs": 0.001,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationDemandQueueMutation/self",
+    "MaxTickMs": 0.006,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13881,
+    "FirstInTickMs": 0.0048,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowMovingTargetPolicyAnchorDictionaryCreate/self",
+    "MaxTickMs": 0.0059,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13858,
+    "FirstInTickMs": 0.005,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicFrameTick/self",
+    "MaxTickMs": 0.0059,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14310,
+    "FirstInTickMs": 0.0059,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationDemandAssembly/self",
+    "MaxTickMs": 0.0058,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13874,
+    "FirstInTickMs": 0.0024,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowTileQueueCommit/self",
+    "MaxTickMs": 0.0053,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14168,
+    "FirstInTickMs": 0.0052,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationDemandSnapshotPublish/self",
+    "MaxTickMs": 0.0052,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13886,
+    "FirstInTickMs": 0.0033,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicMoveResolveRegionConstraint/self",
+    "MaxTickMs": 0.0052,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14283,
+    "FirstInTickMs": 0.0018,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowWorldBuildQueue/self",
+    "MaxTickMs": 0.0051,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 12030,
+    "FirstInTickMs": 0.0051,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPathWorldActivation/self",
+    "MaxTickMs": 0.0049,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14073,
+    "FirstInTickMs": 0.0042,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPortalOwners/self",
+    "MaxTickMs": 0.0048,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14172,
+    "FirstInTickMs": 0.0048,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachDirectionSetup/self",
+    "MaxTickMs": 0.0046,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12090,
+    "FirstInTickMs": 0.0035,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowMovingTargetPolicyAnchorLookup/self",
+    "MaxTickMs": 0.0044,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13854,
+    "FirstInTickMs": 0.0017,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowMovingTargetPolicyBatchEarlyPath/self",
+    "MaxTickMs": 0.0044,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13895,
+    "FirstInTickMs": 0.0022,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPathSliceDispatchPreparation/self",
+    "MaxTickMs": 0.0044,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14074,
+    "FirstInTickMs": 0.0042,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationResolvePathQueueBatch/self",
+    "MaxTickMs": 0.0043,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14151,
+    "FirstInTickMs": 0.0043,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicEntityProjectile/self",
+    "MaxTickMs": 0.0043,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14238,
+    "FirstInTickMs": 0.0043,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowMovingTargetPolicyAnchorProjectionIslandResolve/self",
+    "MaxTickMs": 0.0042,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13862,
+    "FirstInTickMs": 0.0036,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationDemandDispatch/self",
+    "MaxTickMs": 0.004,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13888,
+    "FirstInTickMs": 0.0024,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPolicyInitializeLookup/self",
+    "MaxTickMs": 0.004,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14075,
+    "FirstInTickMs": 0.0035,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationDemandQueueLookup/self",
+    "MaxTickMs": 0.0039,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13879,
+    "FirstInTickMs": 0.0025,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowSteeringSetupWorld/self",
+    "MaxTickMs": 0.0037,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14245,
+    "FirstInTickMs": 0.0029,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationDemandSectorValidation/self",
+    "MaxTickMs": 0.0036,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13873,
+    "FirstInTickMs": 0.0027,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowSteeringSetupOccupancy/self",
+    "MaxTickMs": 0.0036,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14246,
+    "FirstInTickMs": 0.0028,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachOccupancyCandidate/self",
+    "MaxTickMs": 0.0036,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12131,
+    "FirstInTickMs": 0.0014,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPathBudgetAccounting/self",
+    "MaxTickMs": 0.0035,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14110,
+    "FirstInTickMs": 0.0029,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationDemandReuse/self",
+    "MaxTickMs": 0.0035,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13877,
+    "FirstInTickMs": 0.0028,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "listener:MAEntityLogicFrameSystem+PhaseListener/self",
+    "MaxTickMs": 0.0032,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14305,
+    "FirstInTickMs": 0.0032,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicEntityDamageResolve/self",
+    "MaxTickMs": 0.0028,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14240,
+    "FirstInTickMs": 0.0028,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "listener:GroupMoveManager/self",
+    "MaxTickMs": 0.0028,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 12033,
+    "FirstInTickMs": 0.0028,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowTileQueueReferenceTrim/self",
+    "MaxTickMs": 0.0026,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14160,
+    "FirstInTickMs": 0.0015,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicFrameListenerSnapshot/self",
+    "MaxTickMs": 0.0025,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 12028,
+    "FirstInTickMs": 0.0025,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicMoveResolveRebuild/self",
+    "MaxTickMs": 0.0024,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14285,
+    "FirstInTickMs": 0.0009,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPathBudgetEnd/self",
+    "MaxTickMs": 0.0021,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14153,
+    "FirstInTickMs": 0.0021,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationDemandPathValidation/self",
+    "MaxTickMs": 0.0021,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13876,
+    "FirstInTickMs": 0.0007,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationPathWorldRestore/self",
+    "MaxTickMs": 0.002,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 14147,
+    "FirstInTickMs": 0.002,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachOccupancyPrepareGuard/self",
+    "MaxTickMs": 0.0018,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12095,
+    "FirstInTickMs": 0.0007,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowMovingTargetPolicyAnchorKeyBuild/self",
+    "MaxTickMs": 0.0017,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13856,
+    "FirstInTickMs": 0.0017,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowMovingTargetPolicyBatchStatePublish/self",
+    "MaxTickMs": 0.0016,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13894,
+    "FirstInTickMs": 0.001,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowStableGoalPrologue/self",
+    "MaxTickMs": 0.0014,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13870,
+    "FirstInTickMs": 0.0013,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "CharacterMoveSetInput/self",
+    "MaxTickMs": 0.0011,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14241,
+    "FirstInTickMs": 0.0003,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "listener:TutorialManager/self",
+    "MaxTickMs": 0.001,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14306,
+    "FirstInTickMs": 0.001,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowCombatApproachCoreExpandedPhase/self",
+    "MaxTickMs": 0.0009,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 12155,
+    "FirstInTickMs": 0.0008,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowGroupMove/self",
+    "MaxTickMs": 0.0009,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 12032,
+    "FirstInTickMs": 0.0009,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowMovingTargetPolicyAnchorNavState/self",
+    "MaxTickMs": 0.0008,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13865,
+    "FirstInTickMs": 0.0008,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowMovingTargetPolicyOutputInitialization/self",
+    "MaxTickMs": 0.0008,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13850,
+    "FirstInTickMs": 0.0006,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowMovingTargetPolicyAnchorProjectionCacheCheck/self",
+    "MaxTickMs": 0.0007,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13861,
+    "FirstInTickMs": 0.0007,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowTileQueuePrune/self",
+    "MaxTickMs": 0.0007,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14157,
+    "FirstInTickMs": 0.0005,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowMovingTargetPolicyAnchorTargetResolve/self",
+    "MaxTickMs": 0.0007,
+    "FirstRecordLogicFrame": 80,
+    "FirstInMaxTick": true,
+    "FirstInTickSequence": 13855,
+    "FirstInTickMs": 0.0006,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowNavigationCommit/self",
+    "MaxTickMs": 0.0006,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14173,
+    "FirstInTickMs": 0.0006,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicEntityFrameComplete/self",
+    "MaxTickMs": 0.0004,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14304,
+    "FirstInTickMs": 0.0004,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicMoveResolveBookkeeping/self",
+    "MaxTickMs": 0.0004,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14300,
+    "FirstInTickMs": 0.0004,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowRuntimeRebuildQueue/self",
+    "MaxTickMs": 0.0004,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 12031,
+    "FirstInTickMs": 0.0004,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowTileQueueMovingTargetProjection/self",
+    "MaxTickMs": 0.0003,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14155,
+    "FirstInTickMs": 0.0003,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "FlowTileQueueSharedGoal/self",
+    "MaxTickMs": 0.0002,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14170,
+    "FirstInTickMs": 0.0002,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  },
+  {
+    "Name": "LogicFrameListenerAttributed/self",
+    "MaxTickMs": 0.0,
+    "FirstRecordLogicFrame": 1,
+    "FirstInMaxTick": false,
+    "FirstInTickSequence": 14307,
+    "FirstInTickMs": 0.0,
+    "HotAverageMs": null,
+    "FirstMinusHotMs": null,
+    "ColdContributionMs": null,
+    "HotSource": "not-measured-below-threshold",
+    "HotSamples": []
+  }
+]

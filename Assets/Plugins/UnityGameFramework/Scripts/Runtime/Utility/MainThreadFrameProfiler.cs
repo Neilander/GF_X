@@ -553,10 +553,12 @@ namespace UnityGameFramework.Runtime
                 Ticks = ticks;
                 RecordedAt = recordedAt;
                 ListenerType = listenerType;
+                CollectionCount = GC.CollectionCount(0);
             }
 
             public ulong LogicFrame { get; }
             public MainThreadPerfScope Scope { get; }
+            public int CollectionCount { get; }
             public long Ticks { get; }
             public long RecordedAt { get; }
             public Type ListenerType { get; }

@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using GameFramework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -644,7 +643,6 @@ internal static class Lv2PullChasePerformanceRunner
             BindingFlags.NonPublic | BindingFlags.Static);
         if (method == null)
             throw new InvalidOperationException("Prewarm could not find TryResolveStableGoalCellFixed.");
-        RuntimeHelpers.PrepareMethod(method.MethodHandle);
         AppendEvent("stable-goal-method-prewarmed", LogicFrameRuntime.CurrentFrame, method.MethodHandle.GetFunctionPointer().ToInt64().ToString(CultureInfo.InvariantCulture));
     }
 
@@ -1565,6 +1563,10 @@ internal static class Lv2PullChasePerformanceRunner
     private static void Pass(ulong frame, IEntityContext hero, IEntityContext target)
     {
         WriteScopeRecordCapture();
+        string recordsHash;
+        using (var hash = System.Security.Cryptography.SHA256.Create())
+        using (var stream = File.OpenRead("Logs/Lv2PullChaseScopeRecords.csv"))
+            recordsHash = BitConverter.ToString(hash.ComputeHash(stream)).Replace("-", string.Empty);
         DrainNavigationPathTickDiagnostics();
         if (s_PeakRequiredFlowTileCommits != 0)
         {
@@ -1616,6 +1618,7 @@ internal static class Lv2PullChasePerformanceRunner
             "maxLogicTickScopeRecordEvidence:" + Environment.NewLine + BuildMaxLogicTickScopeRecordEvidence() + Environment.NewLine +
             "coldAuditStatus=PENDING_EXCLUSIVE_RECORD_ANALYSIS" + Environment.NewLine +
             "coldAuditRecords=Logs/Lv2PullChaseScopeRecords.csv" + Environment.NewLine +
+            "coldAuditRecordsSha256=" + recordsHash + Environment.NewLine +
             "overallScopeRecordEvidence:" + Environment.NewLine + BuildOverallScopeRecordEvidence() + Environment.NewLine +
             "maxLogicTickInvocationEvidence:" + Environment.NewLine + s_MaxLogicTickInvocationEvidence + Environment.NewLine +
             "overallInvocationEvidence:" + Environment.NewLine + BuildOverallInvocationReport() + Environment.NewLine +
@@ -1634,13 +1637,13 @@ internal static class Lv2PullChasePerformanceRunner
         string path = Path.GetFullPath("Logs/Lv2PullChaseScopeRecords.csv");
         using var writer = new StreamWriter(path, false, new System.Text.UTF8Encoding(false));
         writer.NewLine = "\r\n";
-        writer.WriteLine("sequence,logicFrame,scope,ticks,recordedAt,frequency");
+        writer.WriteLine("sequence,logicFrame,scope,ticks,recordedAt,frequency,gcCollections");
         for (int i = 0; i < records.Count; i++)
         {
             MainThreadFrameProfiler.ScopeRecordSample record = records[i];
-            writer.WriteLine(string.Format(CultureInfo.InvariantCulture, "{0},{1},{2},{3},{4},{5}",
+            writer.WriteLine(string.Format(CultureInfo.InvariantCulture, "{0},{1},{2},{3},{4},{5},{6}",
                 i, record.LogicFrame, record.ListenerType == null ? record.Scope.ToString() : "listener:" + record.ListenerType.FullName,
-                record.Ticks, record.RecordedAt, Stopwatch.Frequency));
+                record.Ticks, record.RecordedAt, Stopwatch.Frequency, record.CollectionCount));
         }
     }
 

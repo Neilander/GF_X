@@ -449,6 +449,7 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         var values = new Dictionary<TKey, TValue>(1);
         values.Add(key, value);
+        values[key] = value;
         if (!values.TryGetValue(key, out TValue found)
             || !EqualityComparer<TValue>.Default.Equals(found, value)
             || !values.Remove(key)

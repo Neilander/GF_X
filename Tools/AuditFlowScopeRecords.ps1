@@ -17,7 +17,7 @@ Branch 'LogicFrameListenerAttributed' @('listener:MAEntityLogicFrameSystem+Phase
 Branch 'listener:MAEntityLogicFrameSystem+PhaseListener' @('LogicEntityFrameSetup','LogicEntityBaseAndBuffs','LogicEntityNavigationPositionSync','LogicEntityNavigationSync','LogicEntityBrain','LogicEntityTargeting','LogicEntityProjectile','LogicEntityAttack','LogicEntityDamageResolve','LogicEntityMoveIntent','LogicEntityMoveResolve','LogicEntityMoveCommit','LogicEntityPostUpdate','LogicEntityFrameComplete')
 Branch 'listener:GroupMoveManager' @('FlowGroupMove')
 Branch 'FlowGroupMove' @('FlowConfig','FlowSourceGate','FlowWorldBuildQueue','FlowRuntimeRebuildQueue')
-Branch 'LogicEntityNavigationPositionSync' @('FlowNavigationAgentUpdate','FlowNavigationInactiveClear')
+Branch 'LogicEntityNavigationPositionSync' @('FlowNavigationAgentUpdate')
 Branch 'LogicEntityNavigationSync' @('CharacterMovePrepare','FlowNavigationCommit')
 Branch 'CharacterMovePrepare' @('FlowNavigationInactiveClear','FlowSteeringSetupAgent','FlowSteeringSetupWorld','FlowSteeringSetupOccupancy')
 Branch 'FlowNavigationCommit' @('FlowNavigationResolveRequests','FlowNavigationTileQueue','FlowNavigationPortalOwners')

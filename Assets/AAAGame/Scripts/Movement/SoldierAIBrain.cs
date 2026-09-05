@@ -20,6 +20,11 @@ using MainThreadPerfScope = UnityGameFramework.Runtime.MainThreadPerfScope;
 /// </summary>
 public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler, ILogicDeterministicStateContributor
 {
+    public static void PrepareRuntimeCode()
+    {
+        NavigationRuntimeCodePreparation.Prepare(typeof(SoldierAIBrain));
+    }
+
     public const string DefendPursuitDistanceConfigKey = "DefendPursuitDistance";
     public const string DefendReturnMoveSpeedBonusConfigKey = "DefendReturnMoveSpeedBonus";
     public const string DefendReturnHealthRegenPercentPerSecondConfigKey = "DefendReturnHealthRegenPercentPerSecond";

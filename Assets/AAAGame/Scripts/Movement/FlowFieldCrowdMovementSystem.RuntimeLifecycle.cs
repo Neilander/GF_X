@@ -68,6 +68,8 @@ public static partial class FlowFieldCrowdMovementSystem
 
         AAAGame.FlowPath.FlowPathKernelRuntime.Prepare();
         PrepareNavigationPathRuntimeContainerCode();
+        PrepareMovingTargetRuntimeContainerCode();
+        PrepareRuntimeCode();
 
         s_SmallAgentTypeRadiusFixed = smallRadius;
         s_MediumAgentTypeRadiusFixed = mediumRadius;
@@ -76,6 +78,11 @@ public static partial class FlowFieldCrowdMovementSystem
         Debug.Log(
             $"[FlowField] Runtime agent radii prepared. smallRaw={smallRadius.RawValue}, " +
             $"mediumRaw={mediumRadius.RawValue}, largeRaw={largeRadius.RawValue}.");
+    }
+
+    public static void PrepareRuntimeCode()
+    {
+        NavigationRuntimeCodePreparation.Prepare(typeof(FlowFieldCrowdMovementSystem));
     }
 
     public static void MarkWorldDirty(string reason = null)

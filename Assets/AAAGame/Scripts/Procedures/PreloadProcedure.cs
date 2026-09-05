@@ -66,6 +66,7 @@ public class PreloadProcedure : ProcedureBase
             AgentTypeHelper.PrepareRuntimeMappings();
             CriticalDamageUtility.PrepareRuntimeDependencies();
             FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
+            SoldierAIBrain.PrepareRuntimeCode();
             InitGameFrameworkSettings();
             GF.Log("预加载完成, 进入游戏场景.");
             procedureOwner.SetData<VarString>(ChangeSceneProcedure.P_SceneName, ChangeSceneProcedure.SelectedSceneForGame);

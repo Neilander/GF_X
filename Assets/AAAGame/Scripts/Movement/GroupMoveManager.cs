@@ -1,4 +1,4 @@
-﻿using Stopwatch = System.Diagnostics.Stopwatch;
+﻿﻿using Stopwatch = System.Diagnostics.Stopwatch;
 using UnityGameFramework.Runtime;
 using UnityEngine;
 

@@ -1,4 +1,4 @@
-﻿using NUnit.Framework;
+﻿﻿using NUnit.Framework;
 using UnityGameFramework.Runtime;
 
 public sealed class MainThreadFrameProfilerTests
@@ -19,6 +19,7 @@ public sealed class MainThreadFrameProfilerTests
         {
             MainThreadFrameProfiler.BeginLogicTick(71);
             MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowPrepareStableGoal, 100);
+            System.GC.Collect();
             MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowPrepareStableGoal, 20);
             MainThreadFrameProfiler.RecordLogicFrameListener(typeof(MainThreadFrameProfilerTests), 150);
             MainThreadFrameProfiler.Record(MainThreadPerfScope.LogicFrameTick, 200);
@@ -33,6 +34,9 @@ public sealed class MainThreadFrameProfilerTests
             Assert.AreEqual(6, records.Count);
             Assert.AreEqual(100, records[0].Ticks);
             Assert.AreEqual(20, records[1].Ticks);
+            var collectionCount = typeof(MainThreadFrameProfiler.ScopeRecordSample).GetProperty("CollectionCount");
+            Assert.That(collectionCount, Is.Not.Null, "Raw scope capture must identify GC between timed records.");
+            Assert.That((int)collectionCount.GetValue(records[1]), Is.GreaterThan((int)collectionCount.GetValue(records[0])));
             Assert.AreEqual(71ul, records[1].LogicFrame);
             Assert.AreEqual(typeof(MainThreadFrameProfilerTests), records[2].ListenerType);
             Assert.AreEqual(72ul, records[4].LogicFrame);

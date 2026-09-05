@@ -1,0 +1,43 @@
+{
+  "Status": "PASS",
+  "SourceSha256": "C4114623BD78B5908735F72B1B64508924084214F8D63657CADA64F953DB7063",
+  "Window": "Fixed-entry approach-begin through capture end",
+  "StartFrame": 32,
+  "EndFrame": 679,
+  "PerformanceSha256": "092C06B719EE1560714F4716757D7A24F220CC8AF4DC514AB20172445CDABD17",
+  "TickCount": 648,
+  "StartupMaximum": {
+    "Frame": 1,
+    "TickMs": 53.8263,
+    "FlowUpperBoundMs": 10.384,
+    "GCCollectionsBetweenScopeRecords": 0
+  },
+  "TickP99Ms": 7.1595,
+  "TickMaximum": {
+    "Frame": 79,
+    "TickMs": 9.89,
+    "FlowUpperBoundMs": 0.1107,
+    "GCCollectionsBetweenScopeRecords": 0
+  },
+  "FlowP99UpperBoundMs": 1.7337,
+  "FlowMaximum": {
+    "Frame": 80,
+    "TickMs": 8.0364,
+    "FlowUpperBoundMs": 5.8319,
+    "GCCollectionsBetweenScopeRecords": 0
+  },
+  "FlowUpperBoundScopes": [
+    "FlowGroupMove",
+    "FlowNavigationAgentUpdate",
+    "CharacterMovePrepare",
+    "FlowNavigationCommit",
+    "FlowCombatApproach",
+    "CharacterMoveSteering"
+  ],
+  "Thresholds": {
+    "FlowMaxMs": 8,
+    "TickMaxMs": 16.67,
+    "TickP99Ms": 8.33,
+    "FlowP99Ms": 4
+  }
+}
