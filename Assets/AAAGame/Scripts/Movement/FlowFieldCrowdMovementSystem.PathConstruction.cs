@@ -2770,6 +2770,9 @@ public static partial class FlowFieldCrowdMovementSystem
             return;
         var keys = new List<SectorCorridorPolicyKey>(DeferredSectorCorridorPolicyAuthorityKeys);
         keys.Sort(CompareSectorCorridorPolicyKeys);
+#if UNITY_EDITOR
+        _editorNavigationSyncAuthorityCommitCount = keys.Count;
+#endif
         for (int i = 0; i < keys.Count; i++)
             CommitDeferredSectorCorridorPolicyAuthority(keys[i]);
         DeferredSectorCorridorPolicyAuthorityKeys.Clear();
@@ -2844,6 +2847,15 @@ public static partial class FlowFieldCrowdMovementSystem
         }
         if (pinnedKey.Equals(requestedKey))
             return true;
+        if (!policy.HasAuthorityContentHash)
+        {
+            if (_navigationSyncBatchResolveActive
+                && DeferredSectorCorridorPolicyAuthorityKeys.Contains(pinnedKey))
+            {
+                CommitDeferredSectorCorridorPolicyAuthority(pinnedKey);
+                DeferredSectorCorridorPolicyAuthorityKeys.Remove(pinnedKey);
+            }
+        }
         if (!policy.HasAuthorityContentHash)
         {
             throw new InvalidOperationException(

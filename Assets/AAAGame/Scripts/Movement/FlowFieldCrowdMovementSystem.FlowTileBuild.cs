@@ -496,6 +496,7 @@ public static partial class FlowFieldCrowdMovementSystem
         CurrentFlowTileBuildJobScratch.Clear();
         NextFlowTileBuildJobScratch.Clear();
         BackgroundFlowTileBuildJobScratch.Clear();
+        DependencyFlowTileBuildJobScratch.Clear();
         for (LinkedListNode<FlowTileBuildJob> node = FlowTileBuildQueue.First; node != null; node = node.Next)
         {
             FlowTileBuildJob job = node.Value
@@ -504,7 +505,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 continue;
 
             FlowTileCacheKey key = job.BuildKey.CacheKey;
-            if (CurrentSteeringFlowTileBuildKeys.Contains(key))
+            if (key.GoalKind == TileGoalKind.FinalGoal)
+                DependencyFlowTileBuildJobScratch.Add(node);
+            else if (CurrentSteeringFlowTileBuildKeys.Contains(key))
                 CurrentFlowTileBuildJobScratch.Add(node);
             else if (NextSteeringFlowTileBuildKeys.Contains(key))
                 NextFlowTileBuildJobScratch.Add(node);
@@ -513,6 +516,51 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         int committedCount = 0;
+#if UNITY_EDITOR
+        if (DependencyFlowTileBuildJobScratch.Count > 0)
+        {
+            for (int i = 0; i < DependencyFlowTileBuildJobScratch.Count; i++)
+            {
+                FlowTileBuildJob dependencyJob = DependencyFlowTileBuildJobScratch[i].Value;
+                if (dependencyJob.Stage == FlowTileBuildStage.Integrate
+                    && dependencyJob.HasIntegrationDirectionsHandle
+                    && !dependencyJob.IntegrationDirectionsHandle.IsCompleted)
+                {
+                    dependencyJob.IntegrationDirectionsHandle.Complete();
+                }
+            }
+        }
+#endif
+        int dependencyOperationSlice = DependencyFlowTileBuildJobScratch.Count > 0
+            ? Math.Max(1, remainingOperations / DependencyFlowTileBuildJobScratch.Count)
+            : 0;
+#if UNITY_EDITOR
+        if (_editorTestSynchronousFlowTileBuildActive && DependencyFlowTileBuildJobScratch.Count > 0)
+        {
+            int synchronousDependencyBudget = int.MaxValue;
+            _synchronousDependencyBuildActive = true;
+            try
+            {
+                committedCount += ProcessFlowTileBuildJobScratch(
+                    DependencyFlowTileBuildJobScratch,
+                    maxCount - committedCount,
+                    int.MaxValue,
+                    ref synchronousDependencyBudget);
+            }
+            finally
+            {
+                _synchronousDependencyBuildActive = false;
+            }
+        }
+        else
+#endif
+        {
+            committedCount += ProcessFlowTileBuildJobScratch(
+                DependencyFlowTileBuildJobScratch,
+                maxCount - committedCount,
+                dependencyOperationSlice,
+                ref remainingOperations);
+        }
         int steeringJobCount = CurrentFlowTileBuildJobScratch.Count + NextFlowTileBuildJobScratch.Count;
         int steeringOperationSlice = steeringJobCount > 0
             ? Math.Max(1, remainingOperations / steeringJobCount)
@@ -563,6 +611,7 @@ public static partial class FlowFieldCrowdMovementSystem
         CurrentFlowTileBuildJobScratch.Clear();
         NextFlowTileBuildJobScratch.Clear();
         BackgroundFlowTileBuildJobScratch.Clear();
+        DependencyFlowTileBuildJobScratch.Clear();
         for (LinkedListNode<FlowTileBuildJob> node = FlowTileBuildQueue.First; node != null; node = node.Next)
         {
             FlowTileCacheKey key = node.Value.BuildKey.CacheKey;
@@ -626,11 +675,21 @@ public static partial class FlowFieldCrowdMovementSystem
             {
                 // A worker-owned tile remains pending until its immutable output is ready.
                 // Do not burn logical quota or synchronously complete it on the main thread.
-                continue;
+                if (_editorTestSynchronousFlowTileBuildActive)
+                    job.IntegrationDirectionsHandle.Complete();
+                else if (!_synchronousDependencyBuildActive)
+                    continue;
             }
 
             long scanStartTicks = Stopwatch.GetTimestamp();
-            int jobOperations = Math.Min(operationSlice, remainingOperations);
+#if UNITY_EDITOR
+            bool synchronousEditorBuild = _editorTestSynchronousFlowTileBuildActive;
+#else
+            bool synchronousEditorBuild = false;
+#endif
+            int jobOperations = synchronousEditorBuild
+                ? int.MaxValue
+                : Math.Min(operationSlice, remainingOperations);
             int initialJobOperations = jobOperations;
             bool completed = AdvanceDeterministicFlowTileBuildJob(job, ref jobOperations);
             int consumedOperations = initialJobOperations - jobOperations;
@@ -639,7 +698,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 throw new InvalidOperationException(
                     $"Flow tile build job consumed no operation budget key={FormatTileKey(job.BuildKey.CacheKey)}, stage={job.Stage}.");
             }
-            remainingOperations -= consumedOperations;
+            if (!synchronousEditorBuild)
+                remainingOperations -= consumedOperations;
             MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowTileCommitQueueScan, Stopwatch.GetTimestamp() - scanStartTicks);
 
             FlowTileBuildQueue.Remove(node);
@@ -711,7 +771,11 @@ public static partial class FlowFieldCrowdMovementSystem
                     if (!job.HasIntegrationDirectionsHandle)
                         throw new InvalidOperationException($"Flow tile integration stage has no scheduled job key={FormatTileKey(job.BuildKey.CacheKey)}.");
                     if (!job.IntegrationDirectionsHandle.IsCompleted)
-                        return false;
+                    {
+                        if (!_editorTestSynchronousFlowTileBuildActive && !_synchronousDependencyBuildActive)
+                            return false;
+                        job.IntegrationDirectionsHandle.Complete();
+                    }
                     long phaseStartTicks = Stopwatch.GetTimestamp();
                     job.IntegrationDirectionsHandle.Complete();
                     if (job.StatusNative[0] != 0)

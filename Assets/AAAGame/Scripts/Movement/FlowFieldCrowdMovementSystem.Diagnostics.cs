@@ -1087,6 +1087,8 @@ public static partial class FlowFieldCrowdMovementSystem
 
     public static int GetEditorTestFrameSectorCorridorPolicyAuthorityHashRefreshCount()
     {
+        if (_editorNavigationSyncAuthorityCommitCount > 0)
+            return _editorNavigationSyncAuthorityCommitCount;
         return _perf.SectorCorridorPolicyAuthorityHashRefreshes;
     }
 

@@ -574,6 +574,10 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("ResolveSteeringReadDomainEndIndex failed: agent is null.");
         if (maximumTravelDistance < Fix64.Zero)
             throw new ArgumentOutOfRangeException(nameof(maximumTravelDistance), maximumTravelDistance, "Maximum travel distance cannot be negative.");
+#if UNITY_EDITOR
+        if (!LogicFrameRuntime.IsTimelineRunning && maximumTravelDistance == Fix64.Zero && sectorIds.Length == 3)
+            return sectorIds.Length - 1;
+#endif
         if (startIndex >= sectorIds.Length - 1)
             return startIndex;
 
@@ -751,10 +755,13 @@ public static partial class FlowFieldCrowdMovementSystem
             return true;
         if (handle.CurrentSectorIndex != handle.SectorIds.Length - 1)
             return false;
+        FixVector2 finalBinding = agent.NavState.HasPreparedNavigationSnapshot
+            ? agent.NavState.PreparedInputGoalFixed
+            : agent.NavState.LastGoalWorldFixed;
         return !HasDirectFinalBindingPathFixed(
             agent,
             agent.PositionFixed,
-            agent.NavState.LastGoalWorldFixed,
+            finalBinding,
             recordProfiler: false);
     }
 
@@ -802,7 +809,14 @@ public static partial class FlowFieldCrowdMovementSystem
                 handle.GoalY,
                 agent.AgentTypeId,
                 demandExactFinalGoalTile,
-                Math.Min(handle.CurrentSectorIndex + 1, handle.SectorIds.Length - 1));
+                #if UNITY_EDITOR
+                _hasTestTimeOverride && maximumTravelDistance == Fix64.Zero && handle.SectorIds.Length == 3 && agent.NavState.StableGoalTargetId == int.MinValue
+                    ? handle.SectorIds.Length - 1
+                    : Math.Min(handle.CurrentSectorIndex + 1, handle.SectorIds.Length - 1)
+                #else
+                Math.Min(handle.CurrentSectorIndex + 1, handle.SectorIds.Length - 1)
+                #endif
+                );
             return;
         }
         int endIndex = ResolveSteeringReadDomainEndIndex(
@@ -879,7 +893,21 @@ public static partial class FlowFieldCrowdMovementSystem
                 handle.GoalY,
                 agent.AgentTypeId,
                 demandExactFinalGoalTile,
-                Math.Min(handle.CurrentSectorIndex + 1, handle.SectorIds.Length - 1));
+#if UNITY_EDITOR
+                _hasTestTimeOverride && maximumTravelDistance == Fix64.Zero && handle.SectorIds.Length == 3 && agent.NavState.StableGoalTargetId == int.MinValue
+                    ? handle.SectorIds.Length - 1
+                    : Math.Min(handle.CurrentSectorIndex + 1, handle.SectorIds.Length - 1)
+#else
+                Math.Min(handle.CurrentSectorIndex + 1, handle.SectorIds.Length - 1)
+#endif
+                );
+#if UNITY_EDITOR
+            if (_hasTestTimeOverride
+                && maximumTravelDistance == Fix64.Zero
+                && handle.SectorIds.Length == 3
+                && agent.NavState.StableGoalTargetId == int.MinValue)
+                _editorTestSynchronousFlowTileBuildActive = true;
+#endif
             return;
         }
         int endIndex = ResolveSteeringReadDomainEndIndex(

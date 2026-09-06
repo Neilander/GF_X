@@ -127,6 +127,8 @@ public static partial class FlowFieldCrowdMovementSystem
         new List<LinkedListNode<FlowTileBuildJob>>(32);
     private static readonly List<LinkedListNode<FlowTileBuildJob>> BackgroundFlowTileBuildJobScratch =
         new List<LinkedListNode<FlowTileBuildJob>>(128);
+    private static readonly List<LinkedListNode<FlowTileBuildJob>> DependencyFlowTileBuildJobScratch =
+        new List<LinkedListNode<FlowTileBuildJob>>(16);
     private static readonly HashSet<FlowTileCacheKey> PendingFlowTileDependencyKeys = new HashSet<FlowTileCacheKey>();
     private static readonly Dictionary<int, Stack<float[]>> IntegrationArrayPool = new Dictionary<int, Stack<float[]>>();
     private static readonly Dictionary<int, Stack<long[]>> PortalAccessIntegrationArrayPool = new Dictionary<int, Stack<long[]>>();
@@ -135,6 +137,8 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly HashSet<SectorCorridorPolicyKey> DeferredSectorCorridorPolicyAuthorityKeys =
         new HashSet<SectorCorridorPolicyKey>();
     private static bool _navigationSyncBatchResolveActive;
+    private static bool _synchronousDependencyBuildActive;
+    private static bool _editorTestSynchronousFlowTileBuildActive;
     private static readonly Dictionary<SectorPortalAccessKey, SectorPortalAccessEntry> SectorPortalAccessCache = new Dictionary<SectorPortalAccessKey, SectorPortalAccessEntry>();
     private static readonly Dictionary<StartPortalChoiceKey, StartPortalChoiceEntry> StartPortalChoiceCache = new Dictionary<StartPortalChoiceKey, StartPortalChoiceEntry>();
     private static readonly Dictionary<SharedGoalFieldKey, SharedGoalField> SharedGoalFields = new Dictionary<SharedGoalFieldKey, SharedGoalField>();
@@ -270,6 +274,7 @@ public static partial class FlowFieldCrowdMovementSystem
     private static float _testTime;
     private static float _testDeltaTime = 0.1f;
     private static FlowPerfAccumulator _perf;
+    private static int _editorNavigationSyncAuthorityCommitCount;
     private static bool _perfInitialized;
     private static int _lastSlowFrameOnlyPerfLogFrame = -100000;
     private static int _lastDiagnosticsEnabledFrame = -1;
@@ -327,6 +332,8 @@ public static partial class FlowFieldCrowdMovementSystem
         ClearNavigationPathRequests();
         DeferredSectorCorridorPolicyAuthorityKeys.Clear();
         _navigationSyncBatchResolveActive = false;
+        _synchronousDependencyBuildActive = false;
+        _editorTestSynchronousFlowTileBuildActive = false;
         ClearSectorPortalAccessCache();
         StartPortalChoiceCache.Clear();
         ClearSharedGoalFieldCache();

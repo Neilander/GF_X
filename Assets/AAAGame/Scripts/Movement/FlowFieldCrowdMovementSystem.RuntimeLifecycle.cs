@@ -661,6 +661,10 @@ public static partial class FlowFieldCrowdMovementSystem
         }
         finally
         {
+#if UNITY_EDITOR
+            if (PendingFlowTileBuildJobs.Count == 0)
+                _editorTestSynchronousFlowTileBuildActive = false;
+#endif
             _world = previousWorld;
             _activeWorldState = previousActiveWorldState;
             _perf.FlowTileQueueTicks += Stopwatch.GetTimestamp() - queueStartTicks;

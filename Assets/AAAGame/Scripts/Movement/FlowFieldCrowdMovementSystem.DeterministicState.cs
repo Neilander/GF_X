@@ -1133,22 +1133,38 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         if (!DeferredSectorCorridorPolicyAuthorityKeys.Contains(key)
             || !SectorCorridorPolicies.TryGetValue(key, out SectorCorridorPolicy policy)
-            || policy == null
-            || policy.HasAuthorityContentHash)
+            || policy == null)
         {
             throw new InvalidOperationException("Deferred sector corridor policy authority state is invalid.");
         }
+        if (policy.HasAuthorityContentHash)
+        {
+            DeferredSectorCorridorPolicyAuthorityKeys.Remove(key);
+            return;
+        }
         RefreshSectorCorridorPolicyAuthority(key, policy);
+        DeferredSectorCorridorPolicyAuthorityKeys.Remove(key);
     }
 
     private static void RefreshSectorCorridorPolicyAuthority(
         SectorCorridorPolicyKey key,
         SectorCorridorPolicy policy)
     {
+        if (_navigationSyncBatchResolveActive
+            && !DeferredSectorCorridorPolicyAuthorityKeys.Contains(key))
+        {
+            DeferredSectorCorridorPolicyAuthorityKeys.Add(key);
+            return;
+        }
         bool profile = MainThreadFrameProfiler.LoggingEnabled;
         long hashStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        bool hadAuthority = policy.HasAuthorityContentHash;
+        ulong previousHash = policy.AuthorityContentHash;
         RefreshSectorCorridorPolicyHierarchyAuthorityContentHash(policy);
-        policy.AuthorityContentHash = ComputeSectorCorridorPolicyAuthorityContentHash(key, policy);
+        ulong authorityHash = ComputeSectorCorridorPolicyAuthorityContentHash(key, policy);
+        if (hadAuthority && previousHash == authorityHash)
+            return;
+        policy.AuthorityContentHash = authorityHash;
         _perf.SectorCorridorPolicyAuthorityHashRefreshes++;
         policy.HasAuthorityContentHash = true;
         _sectorCorridorPolicyAuthorityContentHash ^= policy.AuthorityContentHash;

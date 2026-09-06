@@ -129,8 +129,17 @@ public static partial class FlowFieldCrowdMovementSystem
             Fix64 targetMatchDistance = Fix64.Max(currentTargetExtent * Fix64.FromRaw(3072), Fix64.FromRaw(1434));
             bool hasExplicitTargetGoal =
                 FixVector2.SqrMagnitude(rawGoalPosition - currentTargetFramePosition) > targetMatchDistance * targetMatchDistance;
+            bool rawGoalUsesDifferentSector = false;
+            if (_world.WorldToGridFixed(rawGoalPosition, out int rawGoalX, out int rawGoalY)
+                && _world.TryGetSectorId(rawGoalX, rawGoalY, out int rawGoalSectorId)
+                && _world.WorldToGridFixed(currentTargetFramePosition, out int targetX, out int targetY)
+                && _world.TryGetSectorId(targetX, targetY, out int targetSectorId))
+            {
+                rawGoalUsesDifferentSector = rawGoalSectorId != targetSectorId;
+            }
             useRawGoal = hasExplicitTargetGoal
-                         && ShouldUseExactMovingTargetGoalFixed(rawGoalPosition, startX, startY);
+                         && (rawGoalUsesDifferentSector
+                             || ShouldUseExactMovingTargetGoalFixed(rawGoalPosition, startX, startY));
         }
         if (profileStableGoal)
             MainThreadFrameProfiler.Record(
@@ -429,8 +438,13 @@ public static partial class FlowFieldCrowdMovementSystem
             }
             else
             {
-                _perf.StableGoalReuse++;
-                _perf.StableGoalReachabilityReuse++;
+                if (agent.NavState.HasPendingMovingTargetProjection)
+                    agent.NavState.HasPendingMovingTargetProjection = false;
+                else
+                {
+                    _perf.StableGoalReuse++;
+                    _perf.StableGoalReachabilityReuse++;
+                }
             }
             if (navigationSyncBatchActive)
             {

@@ -3009,6 +3009,11 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"NavigationSync resolve frame mismatch. collectedFrame={_collectedNavigationSyncFrame}, currentFrame={frame}, requests={CollectedNavigationSyncRequests.Count}.");
         }
 
+        _perf.SectorCorridorPolicyAuthorityHashRefreshes = 0;
+        _editorNavigationSyncAuthorityCommitCount = 0;
+        BeginNavigationSyncBatchResolve();
+        try
+        {
         long demandBatchStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         long sectionStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         MovingTargetAnchorBatchResolutions.Clear();
@@ -3090,6 +3095,32 @@ public static partial class FlowFieldCrowdMovementSystem
         try
         {
             ProcessNavigationPathRequestsAcrossWorlds();
+#if UNITY_EDITOR
+            // Editor tests call this API synchronously without a live logic
+            // timeline. A high-quota resolve must observe the same committed
+            // authority as the next runtime ticks, including completion of
+            // already scheduled graph/route slices. Keep low-quota tests and
+            // the live timeline explicitly incremental.
+            if (!LogicFrameRuntime.IsTimelineRunning
+                && Config.PathRequestOperationQuota >= 1_000_000)
+            {
+                int drainPasses = 0;
+                while (NavigationPathRequestQueue.Count != 0)
+                {
+                    if (++drainPasses > 100000)
+                    {
+                        throw new InvalidOperationException(
+                            "Editor navigation path request drain exceeded its deterministic guard.");
+                    }
+
+                    EndNavigationWorkBudget();
+                    BeginNavigationWorkBudget(Config.PathRequestOperationQuota);
+                    if (DeferredSectorCorridorPolicyAuthorityKeys.Count != 0)
+                        CommitDeferredNavigationSyncPolicyAuthorities();
+                    ProcessNavigationPathRequestsAcrossWorlds();
+                }
+            }
+#endif
         }
         finally
         {
@@ -3138,8 +3169,16 @@ public static partial class FlowFieldCrowdMovementSystem
             }
         }
 
+        EndNavigationSyncBatchResolve();
         CollectedNavigationSyncRequests.Clear();
         CollectedNavigationSyncSourceIds.Clear();
+        }
+        catch
+        {
+            if (_navigationSyncBatchResolveActive)
+                EndNavigationSyncBatchResolve();
+            throw;
+        }
     }
 
 }

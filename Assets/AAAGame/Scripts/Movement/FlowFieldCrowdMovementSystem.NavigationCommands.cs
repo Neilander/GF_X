@@ -71,6 +71,7 @@ public static partial class FlowFieldCrowdMovementSystem
         agent.NavState.HasGoal = false;
         ClearCommittedNavigationPath(agent);
         agent.NavState.HasPendingNavigation = false;
+        agent.NavState.HasPendingMovingTargetProjection = false;
         CancelNavigationPathRequestsForSource(sourceId);
         RemoveFixedPortalParticipation(sourceId);
     }
@@ -101,6 +102,7 @@ public static partial class FlowFieldCrowdMovementSystem
         AgentNavState nav = agent.NavState;
         ClearCommittedNavigationPath(agent);
         nav.HasPendingNavigation = true;
+        nav.HasPendingMovingTargetProjection = true;
         RemoveFixedPortalParticipation(agent.Id);
         nav.PreparedNavigationGoalFixed = inputGoal;
 
@@ -284,6 +286,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         phaseStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         UpdateFixedPortalParticipation(agent);
+        agent.NavState.HasPendingMovingTargetProjection = false;
         if (profile)
         {
             MainThreadFrameProfiler.Record(
@@ -682,7 +685,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 Stopwatch.GetTimestamp() - occupancyStartTicks);
         }
 
-        if (agent.NavState.HasPendingNavigation)
+        bool pendingMovingTargetProjection = agent.NavState.HasPendingMovingTargetProjection;
+        if (agent.NavState.HasPendingNavigation && !pendingMovingTargetProjection)
         {
             int pendingFrame = GetFrameCount();
             velocity = FixVector2.Zero;
@@ -708,20 +712,77 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         long prepareStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
-        if (!requirePreparedSnapshot && !TryPrepareNavigationRequestFixedCore(
+        if (!requirePreparedSnapshot)
+        {
+            while (!TryPrepareNavigationRequestFixedCore(
                 self,
                 navigationGoalPosition,
                 rejectPendingRuntimeDirty: false,
                 out string prepareFailureReason))
-        {
-            agent.NavState.LastFixedFlowResult = $"prepare-failed: {prepareFailureReason}";
-            velocity = FixVector2.Zero;
-            string reason = prepareFailureReason.StartsWith("start reachability failed", StringComparison.Ordinal)
-                ? $"start blocked: {prepareFailureReason}"
-                : $"navigation prepare failed: {prepareFailureReason}";
-            string message = $"[{self.CharacterKey}] Flow strict fail: {reason}";
-            Debug.LogError(message);
-            throw new InvalidOperationException(message);
+            {
+                if (prepareFailureReason.StartsWith("moving-target projection pending", StringComparison.Ordinal))
+                {
+                    IEntityContext pendingTarget = self.TargetComp?.CurrentTarget;
+                    if (pendingTarget == null
+                        || ReferenceEquals(pendingTarget, self)
+                        || !IsNavigationMovingTarget(pendingTarget))
+                    {
+                        throw new InvalidOperationException(
+                            $"[{self.CharacterKey}] Flow steering reported a pending moving-target projection without a valid moving target.");
+                    }
+                    if (!TryResolveStartCellForReachabilityFixed(self, out int pendingStartX, out int pendingStartY, out int pendingStartIsland)
+                        || !_world.TryGetSectorId(pendingStartX, pendingStartY, out int pendingStartSectorId))
+                    {
+                        throw new InvalidOperationException(
+                            $"[{self.CharacterKey}] Flow steering could not resolve the start sector while target projection was pending.");
+                    }
+                    PreparePendingMovingTargetProjectionNavigation(
+                        agent,
+                        ResolveAgentId(pendingTarget),
+                        pendingStartSectorId,
+                        goalPosition,
+                        maxSpeed * LogicFrameRuntime.FixedDeltaTime);
+                    agent.NavState.HasPendingMovingTargetProjection = true;
+                    if (Config.MovingTargetProjectionOperationQuota >= NavigationPathRequestFairShareOperationQuota)
+                    {
+                        BeginNavigationWorkBudget(Config.MovingTargetProjectionOperationQuota);
+                        try
+                        {
+                            ProcessMovingTargetProjectionQueue();
+                        }
+                        finally
+                        {
+                            EndNavigationWorkBudget();
+                        }
+                        MovingTargetAnchorKey pendingKey = new MovingTargetAnchorKey(
+                            ResolveAgentId(pendingTarget),
+                            ResolvePreferredAgentTypeId(agent.AgentTypeId),
+                            pendingStartIsland);
+                        if (!MovingTargetAnchors.TryGetValue(pendingKey, out MovingTargetAnchor pendingAnchor)
+                            || pendingAnchor == null)
+                        {
+                            throw new InvalidOperationException(
+                                $"[{self.CharacterKey}] Flow steering lost the moving-target projection anchor after processing it.");
+                        }
+                        if (!pendingAnchor.HasPendingProjection)
+                        {
+                            agent.NavState.HasPendingNavigation = false;
+                            continue;
+                        }
+                    }
+                    velocity = FixVector2.Zero;
+                    return true;
+                }
+
+                agent.NavState.LastFixedFlowResult = $"prepare-failed: {prepareFailureReason}";
+                velocity = FixVector2.Zero;
+                string reason = prepareFailureReason.StartsWith("start reachability failed", StringComparison.Ordinal)
+                    ? $"start blocked: {prepareFailureReason}"
+                    : $"navigation prepare failed: {prepareFailureReason}";
+                string message = $"[{self.CharacterKey}] Flow strict fail: {reason}";
+                Debug.LogError(message);
+                throw new InvalidOperationException(message);
+            }
         }
         long prepareElapsedTicks = profile ? Stopwatch.GetTimestamp() - prepareStartTicks : 0L;
         if (profile)

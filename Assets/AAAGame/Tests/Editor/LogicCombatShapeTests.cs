@@ -89,11 +89,10 @@ public class LogicCombatShapeTests
         for (int i = 0; i < guids.Length; i++)
         {
             string assetPath = AssetDatabase.GUIDToAssetPath(guids[i]);
-            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
-            if (prefab != null && prefab.GetComponent<WallBranchView>() != null)
-                continue;
             const string Prefix = "Assets/AAAGame/Prefabs/Entity/";
-            paths.Add(assetPath.Substring(Prefix.Length, assetPath.Length - Prefix.Length - ".prefab".Length));
+            string relativePath = assetPath.Substring(Prefix.Length, assetPath.Length - Prefix.Length - ".prefab".Length);
+            if (relativePath.StartsWith("Building/", System.StringComparison.Ordinal))
+                paths.Add(relativePath);
         }
         return paths;
     }

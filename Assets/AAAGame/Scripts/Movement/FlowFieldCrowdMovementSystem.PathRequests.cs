@@ -692,6 +692,11 @@ public static partial class FlowFieldCrowdMovementSystem
             FinalGoal = finalGoal,
             MaximumTravelDistance = request.MaximumTravelDistance
         };
+        agent.NavState.HasPreparedNavigationSnapshot = true;
+        agent.NavState.PreparedNavigationFrame = GetFrameCount();
+        agent.NavState.PreparedInputGoalFixed = request.InputGoalPosition;
+        agent.NavState.PreparedNavigationGoalFixed = finalGoal;
+        agent.NavState.PreparedMaximumTravelDistanceFixed = request.MaximumTravelDistance;
         if (profile)
             MainThreadFrameProfiler.Record(
                 MainThreadPerfScope.FlowNavigationDemandAssembly,
@@ -1285,8 +1290,9 @@ public static partial class FlowFieldCrowdMovementSystem
                 }
 
                 // A route slice owns its native state until the worker has
-                // completed. Do not busy-spin this request in the same Tick.
-                if (scheduledSliceBeforeAdvance
+                // completed. Park only while a slice is still pending; a
+                // completed slice may advance again within the remaining quota.
+                if (HasNavigationPathRequestScheduledSlice(job)
                     || IsNavigationPathRequestBlockedByPendingSlice(job))
                     NavigationPathRequestsBlockedByPendingSlice.Add(job);
 
@@ -2221,6 +2227,7 @@ public static partial class FlowFieldCrowdMovementSystem
         catch
         {
             policy.HasAuthorityContentHash = true;
+            SectorCorridorPolicies[job.PolicyKey] = policy;
             RefreshSectorCorridorPolicyAuthority(job.PolicyKey, policy);
             PinMovingTargetSectorCorridorPolicy(anchor, job.PolicyKey);
             throw;
@@ -2229,6 +2236,7 @@ public static partial class FlowFieldCrowdMovementSystem
         if (!rebound)
         {
             policy.HasAuthorityContentHash = true;
+            SectorCorridorPolicies[job.PolicyKey] = policy;
             RefreshSectorCorridorPolicyAuthority(job.PolicyKey, policy);
             PinMovingTargetSectorCorridorPolicy(anchor, job.PolicyKey);
             return false;
@@ -2343,6 +2351,12 @@ public static partial class FlowFieldCrowdMovementSystem
             return;
         if (job?.Policy == null)
             throw new InvalidOperationException("Navigation path policy mutation lost its authority instance before commit.");
+        if (_navigationSyncBatchResolveActive)
+        {
+            DeferredSectorCorridorPolicyAuthorityKeys.Add(job.PolicyKey);
+            policyMutationStarted = false;
+            return;
+        }
         RefreshSectorCorridorPolicyAuthority(job.PolicyKey, job.Policy);
         policyMutationStarted = false;
     }
@@ -4355,6 +4369,27 @@ public static partial class FlowFieldCrowdMovementSystem
             (int)RouteExpansionTaskType.TraverseArray,
             (int)RouteExpansionTaskType.BeginConnector,
             operationCapacity);
+#if UNITY_EDITOR
+        // Editor tests invoke the synchronous navigation API without a live
+        // logic timeline. Complete high-quota slices at this boundary so the
+        // test observes the same committed authority that the next runtime
+        // tick would consume, while live timeline calls retain cross-tick
+        // worker scheduling.
+        if (!LogicFrameRuntime.IsTimelineRunning
+            && operationCapacity >= NavigationPathRequestFairShareOperationQuota)
+        {
+            result = state.RouteState.CompleteScheduledSlice();
+            _perf.NavigationPathRouteSlices = checked(_perf.NavigationPathRouteSlices + 1);
+            _perf.NavigationPathRouteSliceOperations = checked(
+                _perf.NavigationPathRouteSliceOperations + result.OperationCount);
+            if (result.OperationCount <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"Navigation route slice stopped without consuming work. reason={result.StopReason}.");
+            }
+            return 1;
+        }
+#endif
         return operationCapacity;
     }
 
@@ -4913,6 +4948,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     $"snapshotSector={demand.StartSectorId}, latestSector={latestDemand.StartSectorId}.");
             }
             UpdateFixedPortalParticipation(demand.Agent);
+            EnqueueSteeringReadDomainFlowTileBuilds(demand.Agent, latestDemand.MaximumTravelDistance);
         }
     }
 
@@ -5239,6 +5275,13 @@ public static partial class FlowFieldCrowdMovementSystem
                 if (++guard > 32)
                     throw new InvalidOperationException("Disconnected restricted boundary search exceeded its slice bound.");
                 AdvanceIncrementalRestrictedPortalSearchSlice(search, operationQuota, out complete);
+                if (!complete
+                    && search.KernelState.HasPendingGraphSlice
+                    && !search.KernelState.IsPendingGraphSliceCompleted)
+                {
+                    while (!search.KernelState.IsPendingGraphSliceCompleted)
+                        System.Threading.Thread.Yield();
+                }
             }
             if (!search.KernelState.TryGetCost(reachableNode, out reachableCost))
                 throw new InvalidOperationException("Disconnected restricted boundary search did not settle its reachable target.");

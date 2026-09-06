@@ -10468,10 +10468,20 @@ public class FlowFieldCrowdMovementSystemTests
             FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 1f / 30f);
             FlowFieldCrowdMovementSystem.CollectNavigationSyncRequestFixed(chaser, exactBinding, Fix64.One);
             FlowFieldCrowdMovementSystem.ResolveCollectedNavigationSyncRequests();
+            string losDiagnostic = FlowFieldCrowdMovementSystem.GetEditorTestOnlyFixedGridLineOfSightDiagnostic(
+                chaser.PositionFixed,
+                exactBinding,
+                allowTargetSoftCost: true);
             Assert.AreEqual(
                 1,
                 FlowFieldCrowdMovementSystem.GetEditorTestPendingFinalGoalFlowTileBuildCount(),
-                "LOS 被墙阻断时必须显式提交唯一 exact FinalGoal fallback，不能静默停住或直穿。");
+                $"LOS 被墙阻断时必须显式提交唯一 exact FinalGoal fallback，不能静默停住或直穿。 " +
+                $"pending={FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount()}, " +
+                $"cachedFinal={FlowFieldCrowdMovementSystem.GetEditorTestCachedFinalGoalFlowTileCount()}, " +
+                $"path={(FlowFieldCrowdMovementSystem.TryGetEditorTestPathSectorIds(chaser.LogicEntityId.Value, out int[] diagSectors) ? string.Join(",", diagSectors) : "<none>")}, " +
+                $"portals={(FlowFieldCrowdMovementSystem.TryGetEditorTestPathPortalIds(chaser.LogicEntityId.Value, out int[] diagPortals) ? string.Join(",", diagPortals) : "<none>")}, " +
+                $"los={losDiagnostic}, " +
+                $"nav={FlowFieldCrowdMovementSystem.GetEditorTestPendingNavigationWorkDiagnostics()}");
 
             FixVector2 velocity = FixVector2.Zero;
             bool completed = false;

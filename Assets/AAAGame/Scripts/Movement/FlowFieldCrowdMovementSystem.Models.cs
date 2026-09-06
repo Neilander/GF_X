@@ -1282,6 +1282,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int FailedPathGoalSectorDirtyVersion;
         public bool HasPreparedNavigationSnapshot;
         public bool HasPendingNavigation;
+        public bool HasPendingMovingTargetProjection;
         public bool HasPendingNavigationReplacement;
         public int CommittedMovingTargetId = int.MinValue;
         public int PreparedNavigationFrame = -1;
